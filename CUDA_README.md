@@ -147,7 +147,7 @@ precision (FP16 by default). The recovery and residual terms share the scale.
 
 ```bash
 python3 -m vc_attention.cuda_backend --device cuda:0
-VC_REQUIRE_CUDA=1 python3 -m pytest tests/test_core.py tests/test_adapter.py tests/test_cuda.py tests/test_paper_alignment.py tests/test_imports.py tests/test_benchmark.py -q
+VC_REQUIRE_CUDA=1 python3 -m pytest tests/test_core.py tests/test_adapter.py tests/test_cuda.py tests/test_paper_alignment.py tests/test_imports.py tests/test_benchmark.py tests/test_accuracy_diagnostics.py -q
 ```
 
 Or, after installing build/test dependencies, run `bash scripts/validate_h800.sh`
@@ -178,6 +178,11 @@ contracts require reporting speed and error together. See [BENCHMARK.md](BENCHMA
 for commands, timing/accuracy scope, subsets and VC ablations. Add
 `--vc-reference-check --check-queries 0` to compare native outputs with the
 same-config Python quantized reference after timing, using the same full Q/K/V.
+For Q/K-only, P-only, V-only and combined accuracy diagnostics, run
+`python3 scripts/diagnose_cuda_accuracy.py`; see
+[ACCURACY_DIAGNOSTICS.md](ACCURACY_DIAGNOSTICS.md). An existing 0.2.0 extension
+does not need rebuilding for this script. Partial stages are FP32 numerical
+replays; native comparisons share one frozen permutation to isolate grouping.
 
 ## Next performance work
 

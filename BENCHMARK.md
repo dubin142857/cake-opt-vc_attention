@@ -142,6 +142,21 @@ FP32 矩阵乘，关闭 TF32；它的耗时不进入性能表。
 否则会改变 Q 的块量化 scale。上述命令检查全部 query。完整诊断保存在 JSON
 的 `vc_reference_check` 字段中，JSON 内的相对误差仍为比例，`0.01` 表示 1%。
 
+## 定位 Q/K、P、V 各阶段误差
+
+已有 0.2.0 扩展可直接运行新增诊断脚本，无须重新编译：
+
+```bash
+python3 scripts/diagnose_cuda_accuracy.py --output results/h200_vc_stages.json
+```
+
+脚本分别在关闭/开启 V-Smooth 时，测试只量化 Q/K、只量化 P、只量化 V、
+两两组合、完整组合，以及 ExpCast 组合；另列输出转回 BF16/FP16 的影响。
+同组固定聚类排列，完整 CUDA/参考对照也共用该排列。
+局部量化组使用 FP32 乘法数值模拟，全部诊断不计时。
+具体列含义、对拍口径及真实 Q/K/V 文件回放见
+[ACCURACY_DIAGNOSTICS.md](ACCURACY_DIAGNOSTICS.md)。
+
 接口参考：[FlashAttention 官方文档](https://github.com/Dao-AILab/flash-attention#readme)、
 [FA3 接口源码](https://github.com/Dao-AILab/flash-attention/blob/main/hopper/flash_attn_interface.py)、
 [FA4 接口源码](https://github.com/Dao-AILab/flash-attention/blob/main/flash_attn/cute/interface.py)、

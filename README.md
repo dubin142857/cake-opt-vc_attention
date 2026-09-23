@@ -6,6 +6,7 @@ cuBLASLt FP8 矩阵乘；用户提供的 H200 日志中，旧版 0.1.0 已通过
 当前 0.2.0 增加论文数值对齐，必须重编译并复验，见 [PAPER_ALIGNMENT.md](PAPER_ALIGNMENT.md)。
 尚不是完整融合内核。与 FlashAttention 2/3/4、SageAttention
 的对比命令见 [BENCHMARK.md](BENCHMARK.md)。
+Q/K、P、V 分阶段精度诊断见 [ACCURACY_DIAGNOSTICS.md](ACCURACY_DIAGNOSTICS.md)，已有 0.2.0 安装可直接运行。
 下文原有 A5 实验记录和两种后端的说明保留为历史背景；默认后端仍为 `reference`。
 
 当前 Python 包源码位于 `src/vc_attention/`，C++/CUDA 源码位于 `csrc/`。

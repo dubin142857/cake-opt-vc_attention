@@ -1,5 +1,19 @@
 {
   "date": "2026-09-23",
+  "stage_accuracy_diagnostics": {
+    "date": "2026-09-23",
+    "operator_version_unchanged": "0.2.0",
+    "full_suite_passed": 137,
+    "hopper_tests_skipped": 29,
+    "npu_tests_skipped": 2,
+    "new_diagnostic_tests_passed": 22,
+    "default_shape_reference_smoke": "passed on local RTX 3060, torch 2.3.1+cu121; --reference-only; 24 stage combinations; [1,2,1024,128] BF16, seed 1234",
+    "full_stage_vs_existing_python_reference": "bitwise identical in both smoothing groups and both probability modes on the local default-shape smoke",
+    "native_comparison_orchestration": "tested with an explicit known-perturbation stub; no new Hopper runtime execution locally",
+    "native_cuda_diagnostic_hopper_test": "added; skipped locally",
+    "formal_cuda_operator_modified": false,
+    "details": "ACCURACY_DIAGNOSTICS.md"
+  },
   "paper_alignment_0_2_0": {
     "numerical_contract_version": 2,
     "build_architectures": ["sm_86", "sm_90"],
