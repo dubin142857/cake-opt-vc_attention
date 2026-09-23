@@ -65,6 +65,25 @@ void block_size(int64_t value, const char* name) {
                 name, " must be a multiple of 32 in [32, 256]");
 }
 
+bool all_finite(Tensor q, Tensor k, Tensor v) {
+    TORCH_CHECK(q.is_cuda(), "Finite check requires CUDA");
+    TORCH_CHECK(q.scalar_type() == at::kFloat || q.scalar_type() == at::kHalf || q.scalar_type() == at::kBFloat16, "Invalid finite-check dtype");
+    const c10::cuda::CUDAGuard guard(q.device());
+    auto view = [&q](const Tensor& t) {
+        TORCH_CHECK(t.device() == q.device() && t.scalar_type() == q.scalar_type() && t.dim() == 4 && t.numel() > 0,
+                    "Finite check requires nonempty four-dimensional tensors of one CUDA dtype/device");
+        vc::InputView result{};
+        result.data = t.data_ptr(); result.size = t.numel(); result.contiguous = t.is_contiguous();
+        for (int dim = 0; dim < 4; ++dim) { result.shape[dim] = t.size(dim); result.stride[dim] = t.stride(dim); }
+        return result;
+    };
+    const auto qv = view(q), kv = view(k), vv = view(v);
+    auto invalid = at::empty({}, q.options().dtype(at::kInt));
+    const int dtype = q.scalar_type() == at::kFloat ? 0 : q.scalar_type() == at::kHalf ? 1 : 2;
+    vc::check_finite(qv, kv, vv, dtype, invalid.data_ptr<int>(), c10::cuda::getCurrentCUDAStream(q.get_device()).stream());
+    return invalid.item<int>() == 0;  // Preserve validation, with one host wait instead of three.
+}
+
 std::vector<Tensor> preprocess_qk(Tensor q, Tensor k, bool k_smooth, bool hadamard) {
     TORCH_CHECK(q.is_cuda() && k.device() == q.device(), "Q/K preprocessing requires one CUDA device");
     const c10::cuda::CUDAGuard guard(q.device());
@@ -99,7 +118,7 @@ std::vector<Tensor> preprocess_qk(Tensor q, Tensor k, bool k_smooth, bool hadama
 
 Tensor forward(Tensor q, Tensor k, Tensor v, int64_t bq, int64_t k_quant,
                int64_t bk, bool smooth, bool expcast, int64_t mean_type, double scale,
-               bool k_smooth, bool hadamard) {
+               bool k_smooth, bool hadamard, bool batched) {
     require_hopper(q);
     const c10::cuda::CUDAGuard guard(q.device());
     const at::NoGradGuard no_grad;
@@ -141,6 +160,10 @@ Tensor forward(Tensor q, Tensor k, Tensor v, int64_t bq, int64_t k_quant,
     small_int(int64_t(s.heads) * s.nk_quant_tiles, "K preprocessing grid");
     small_int(int64_t(s.heads) * s.nk_tiles * s.vp, "V preprocessing grid");
     s.smooth = smooth; s.expcast = expcast; s.mean_type = static_cast<int>(mean_type); s.scale = static_cast<float>(scale);
+    s.query_chunk = std::min(s.nq_tiles, std::max(1, 1024 / s.bq)) * s.bq;
+    const int scratch_heads = batched ? s.heads : 1;
+    const int scratch_rows = batched ? s.query_chunk : s.bq;
+    small_int(int64_t(scratch_heads) * scratch_rows, "batched Softmax grid");
 
     // Every temporary is allocated on the current PyTorch stream, and all
     // kernels/cuBLASLt calls use that same stream. Allocator reuse is ordered.
@@ -149,19 +172,19 @@ Tensor forward(Tensor q, Tensor k, Tensor v, int64_t bq, int64_t k_quant,
     auto q8 = at::empty({s.heads, s.pq, s.dp}, bytes);
     auto k8 = at::empty({s.heads, s.pk, s.dp}, bytes);
     auto v8 = at::empty({s.heads, s.nk_tiles, s.vp, s.bk}, bytes);
-    auto p8 = at::empty({s.bq, s.bk}, bytes);
+    auto p8 = at::empty({scratch_heads, scratch_rows, s.bk}, bytes);
     auto qs = at::empty({s.heads, s.nq_tiles}, f);
     auto ks = at::empty({s.heads, s.nk_quant_tiles}, f);
     auto vs = at::empty({s.heads, s.nk_tiles, s.vp}, f);
     const auto mean_dtype = mean_type == 1 ? at::kHalf : mean_type == 2 ? at::kBFloat16 : at::kFloat;
     auto means = at::empty(vs.sizes(), f.dtype(mean_dtype));
-    auto scores = at::empty({s.bk, s.bq}, f);
-    auto pv = at::empty({s.vp, s.bq}, f);
-    auto maximum = at::empty({s.bq}, f);
+    auto scores = at::empty({scratch_heads, s.bk, scratch_rows}, f);
+    auto pv = at::empty({scratch_heads, s.vp, scratch_rows}, f);
+    auto maximum = at::empty({scratch_heads, scratch_rows}, f);
     auto denom = at::empty_like(maximum);
     auto alpha = at::empty_like(maximum);
     auto mass = at::empty_like(maximum);
-    auto accum = at::empty({s.bq, s.vp}, f);
+    auto accum = at::empty({scratch_heads, scratch_rows, s.vp}, f);
     auto output = at::empty({q.size(0), q.size(1), q.size(2), v.size(3)}, f);
     auto workspace = at::empty({32 * 1024 * 1024}, bytes);
     vc::Buffers buffers{
@@ -172,8 +195,9 @@ Tensor forward(Tensor q, Tensor k, Tensor v, int64_t bq, int64_t k_quant,
         workspace.data_ptr(), static_cast<size_t>(workspace.numel())
     };
     auto handle = blaslt_handle(q.get_device());
-    vc::forward(q.data_ptr<float>(), k.data_ptr<float>(), v.data_ptr<float>(), s, buffers,
-                handle, c10::cuda::getCurrentCUDAStream(q.get_device()).stream());
+    auto launch = batched ? vc::forward_batched : vc::forward;
+    launch(q.data_ptr<float>(), k.data_ptr<float>(), v.data_ptr<float>(), s, buffers,
+           handle, c10::cuda::getCurrentCUDAStream(q.get_device()).stream());
     return output.to(original_type);
 }
 
@@ -329,17 +353,71 @@ std::vector<Tensor> debug_accumulate(Tensor accum, Tensor pv, Tensor mass, Tenso
     return {accum, output};
 }
 
+std::vector<Tensor> debug_batched_step(std::vector<Tensor> x, int64_t qb, int64_t kquant,
+                                       int64_t nq, int64_t nk, int64_t start, int64_t ki,
+                                       double scale, bool cast) {
+    TORCH_CHECK(x.size() == 9, "Expected scores, PV, Q scales, K scales, V scales, means, max, denom, accum");
+    for (int i : {0, 1, 2, 3, 4, 6, 7, 8}) debug_tensor(x[i], x[0], at::kFloat, "Batched diagnostic");
+    TORCH_CHECK(x[5].scalar_type() == at::kFloat || x[5].scalar_type() == at::kHalf || x[5].scalar_type() == at::kBFloat16, "Invalid mean dtype");
+    debug_tensor(x[5], x[0], x[5].scalar_type(), "Batched mean");
+    TORCH_CHECK(x[0].dim() == 3 && x[1].dim() == 3, "Expected [heads, rows, channels]");
+    block_size(qb, "Q block"); block_size(x[0].size(2), "KV block"); block_size(x[1].size(2), "V width");
+    const c10::cuda::CUDAGuard guard(x[0].device());
+    vc::Shape s{};
+    s.heads = small_int(x[0].size(0), "heads"); s.query_chunk = small_int(x[0].size(1), "rows");
+    s.bq = static_cast<int>(qb); s.bk = static_cast<int>(x[0].size(2));
+    s.vp = s.dv = static_cast<int>(x[1].size(2));
+    s.nq = small_int(nq, "Q length"); s.nk = small_int(nk, "KV length");
+    TORCH_CHECK(kquant >= s.bk && kquant <= 4096 && kquant % s.bk == 0, "Invalid K quantization block");
+    s.k_quant = static_cast<int>(kquant);
+    s.nq_tiles = small_int((nq + qb - 1) / qb, "Q tiles");
+    s.nk_tiles = small_int((nk + s.bk - 1) / s.bk, "KV tiles");
+    s.nk_quant_tiles = small_int((nk + kquant - 1) / kquant, "K scale tiles");
+    TORCH_CHECK(s.query_chunk <= 1024 && s.query_chunk % qb == 0 && start >= 0 && start < nq && start % qb == 0 &&
+                start + s.query_chunk <= int64_t(s.nq_tiles) * qb && ki >= 0 && ki < s.nk_tiles, "Invalid diagnostic tile");
+    TORCH_CHECK(std::isfinite(scale) && scale > 0 && std::isfinite(static_cast<float>(scale)), "Invalid scale");
+    small_int(int64_t(s.heads) * s.query_chunk, "Softmax grid");
+    auto shape = [](const Tensor& t, std::initializer_list<int64_t> dims) { return t.sizes() == at::IntArrayRef(dims); };
+    TORCH_CHECK(shape(x[1], {s.heads, s.query_chunk, s.vp}) && x[8].sizes() == x[1].sizes(), "Invalid PV/accumulator shape");
+    TORCH_CHECK(shape(x[2], {s.heads, s.nq_tiles}) && shape(x[3], {s.heads, s.nk_quant_tiles}), "Invalid Q/K metadata");
+    TORCH_CHECK(shape(x[4], {s.heads, s.nk_tiles, s.vp}) && x[5].sizes() == x[4].sizes(), "Invalid V metadata");
+    TORCH_CHECK(shape(x[6], {s.heads, s.query_chunk}) && x[7].sizes() == x[6].sizes(), "Invalid row state");
+    s.expcast = cast; s.scale = static_cast<float>(scale);
+    s.mean_type = x[5].scalar_type() == at::kHalf ? 1 : x[5].scalar_type() == at::kBFloat16 ? 2 : 0;
+    auto scores = x[0].transpose(1, 2).contiguous(), pv = x[1].transpose(1, 2).contiguous();
+    auto maximum = x[6].clone(), denom = x[7].clone(), accum = x[8].clone();
+    auto alpha = at::empty_like(maximum), mass = at::empty_like(maximum);
+    auto p = at::empty(x[0].sizes(), x[0].options().dtype(at::kByte));
+    auto output = at::zeros({s.heads, s.nq, s.dv}, x[0].options());
+    vc::Buffers b{};
+    b.scores = scores.data_ptr<float>(); b.pv = pv.data_ptr<float>(); b.p8 = p.data_ptr<uint8_t>();
+    b.qs = x[2].data_ptr<float>(); b.ks = x[3].data_ptr<float>(); b.vs = x[4].data_ptr<float>(); b.mean = x[5].data_ptr();
+    b.maximum = maximum.data_ptr<float>(); b.denom = denom.data_ptr<float>(); b.accum = accum.data_ptr<float>();
+    b.alpha = alpha.data_ptr<float>(); b.mass = mass.data_ptr<float>(); b.output = output.data_ptr<float>();
+    vc::debug_batched_update(s, b, static_cast<int>(start), static_cast<int>(ki), ki + 1 == s.nk_tiles,
+                             c10::cuda::getCurrentCUDAStream(x[0].get_device()).stream());
+    return {p, alpha, mass, maximum, denom, accum, output};
+}
+
 }  // namespace
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.attr("numerical_contract_version") = 2;
+    m.attr("scheduling_version") = 1;
+    m.def("all_finite", &all_finite);
+    m.def("debug_batched_step", &debug_batched_step);
     m.attr("diagnostic_api_version") = 1;
     m.def("debug_quantize", &debug_quantize);
     m.def("debug_values", &debug_values);
     m.def("debug_gemm", &debug_gemm);
     m.def("debug_softmax", &debug_softmax);
     m.def("debug_accumulate", &debug_accumulate);
-    m.def("forward", &forward, "VC FP8 attention on Hopper (forward only)");
+    m.def("forward", &forward, "VC FP8 attention on Hopper (forward only)",
+          pybind11::arg("q"), pybind11::arg("k"), pybind11::arg("v"),
+          pybind11::arg("q_block"), pybind11::arg("k_quant_block"), pybind11::arg("kv_block"),
+          pybind11::arg("smooth"), pybind11::arg("expcast"), pybind11::arg("mean_type"),
+          pybind11::arg("scale"), pybind11::arg("k_smooth"), pybind11::arg("hadamard"),
+          pybind11::arg("batched") = false);
     m.def("preprocess_qk", &preprocess_qk, "Post-RoPE K centering and normalized Q/K Hadamard (CUDA FP32)");
     m.def("group_values", &group_values, "CUDA Lloyd clustering with stable permutation");
     m.def("expcast_codes", &expcast_codes, "ExpCast FP8 payload bytes");
@@ -350,6 +428,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         info["matmul"] = "cuBLASLt E4M3 x E4M3, FP32 output/accumulation";
         info["fully_fused_attention"] = false;
         info["numerical_contract_version"] = 2;
+        info["scheduling_version"] = 1;
+        info["default_schedule"] = "batched_heads_and_queries";
         info["diagnostic_api_version"] = 1;
         info["expcast_rounding"] = "FP32 FMA then RNE";
         info["value_mean_storage"] = "mu / per-channel V scale at configured mean dtype";

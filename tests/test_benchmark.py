@@ -163,6 +163,29 @@ def test_nonfinite_output_is_rejected():
         benchmark.output_hnd(output, "BHND", output.shape, output.dtype)
 
 
+def test_schedule_and_cache_benchmark_preserves_separate_contracts(monkeypatch):
+    import vc_attention
+    calls = []
+
+    def attention(q, k, v, cfg, **kwargs):
+        calls.append((cfg, kwargs))
+        return q, {}
+
+    monkeypatch.setattr(vc_attention, "attention", attention)
+    qkv = (torch.zeros(1, 2, 3, 8),) * 3
+    rows = benchmark.make_backends(["vc"], qkv, False, vc_schedule_compare=True, vc_reuse_layout=True)
+    assert [r.name for r in rows] == ["vc", "vc_serial", "vc_reuse"]
+    assert len(calls) == 1 and calls[0][1]["step"] == 0
+    cache = calls[0][1]["cache"]
+    calls.clear()
+    for row in rows:
+        row.call()
+    assert [cfg.cuda_schedule for cfg, _ in calls] == ["batched", "serial", "batched"]
+    assert calls[0][1] == calls[1][1] == {}
+    assert calls[2][1]["cache"] is cache and calls[2][1]["step"] == 1
+    assert [r.info["layout_cache_reused"] for r in rows] == [False, False, True]
+
+
 def test_explicit_subset_uses_selected_baseline():
     args = benchmark.parse_args(["--backends", "sage", "vc"])
     assert args.baseline == "sage"

@@ -1,5 +1,24 @@
 {
   "date": "2026-09-23",
+  "batched_scheduling_0_3_0": {
+    "package_version": "0.3.0",
+    "numerical_contract_version": 2,
+    "scheduling_version": 1,
+    "native_build_architectures": ["sm_86", "sm_90"],
+    "native_wheel_build_install": "passed",
+    "full_suite_passed": 178,
+    "hopper_tests_skipped": 36,
+    "npu_tests_skipped": 2,
+    "new_native_cuda_helper_cases": 21,
+    "native_helper_scope": "12 batched Softmax/accumulation cases match serial helpers exactly; 9 dtype/layout finite-check cases preserve NaN/Inf rejection",
+    "core_gemm_calls_default_shape": {"serial": 256, "batched": 16},
+    "core_custom_kernel_launches_default_shape": {"serial": 288, "batched": 16},
+    "call_counts_scope": "Code-derived for B1 H2 NQ1024 NK1024 D128, Q/KV tiles128; not measured GPU kernel counts or speedup",
+    "hopper_batched_fp8_runtime": "not run locally; 6 dedicated Hopper scheduling tests added, existing forward tests use the new default",
+    "target_latency": "not measured",
+    "profiler_validation": "CLI and trace aggregation checked; local PyTorch provides CPU activity only, target CUDA/CUPTI tracing remains unverified",
+    "details": "CUDA_PERFORMANCE.md"
+  },
   "payload_diagnostics_0_2_1": {
     "package_version": "0.2.1",
     "numerical_contract_version": 2,

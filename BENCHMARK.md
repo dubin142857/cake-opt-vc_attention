@@ -1,5 +1,8 @@
 # 在 H200 / H800 对比五种 Attention
 
+0.3.0 默认使用批量 CUDA 调度。新旧路径同轮对比、聚类缓存复用和 profiler 命令见
+[CUDA_PERFORMANCE.md](CUDA_PERFORMANCE.md)。拉取后需要重新编译扩展。
+
 `scripts/benchmark_cuda.py` 默认对比下面五种实现。前三种 FlashAttention
 通过各自的包接口直接调用，SageAttention 使用公开的 `sageattn` 自动分派接口。
 
@@ -9,7 +12,7 @@
 | `flash3` | `flash_attn_3.flash_attn_interface.flash_attn_func` | `flash_attn_3 3.0.0` |
 | `flash4` | `flash_attn.cute.flash_attn_func` | `flash-attn-4 4.0.0b31` |
 | `sage` | `sageattention.sageattn` | `sageattention 2.2.0` |
-| `vc` | `vc_attention.attention(..., Config(backend="cuda_fp8", expcast=True, v_smooth=True))` | 本仓库当前 `vc-attention 0.2.1` |
+| `vc` | `vc_attention.attention(..., Config(backend="cuda_fp8", expcast=True, v_smooth=True))` | 本仓库当前 `vc-attention 0.3.0` |
 
 运行报告会读取实际安装版本，并保存接口路径和参数。老版 FA3 源码安装若没有
 `flash_attn_3.flash_attn_interface`，会尝试同为 FA3 的 `flash_attn_interface`。
@@ -17,8 +20,8 @@
 
 ## 直接运行
 
-你之前在 H200 通过的是 0.1.0。当前 0.2.0 修改了原生 CUDA 与数值契约，
-拉取后须重新编译并自检，再运行测速；已有的四个 Attention 包不需要重装。
+当前 0.3.0 新增原生批量调度接口，拉取后须重新编译并自检，再运行测速；
+已有的四个 Attention 包不需要重装。
 
 ```bash
 git pull --ff-only
@@ -70,7 +73,7 @@ done
 - FA2/3/4 使用连续 `[B,N,H,D]` 输入，Sage/VC 使用连续 `[B,H,N,D]` 输入。
   所需布局副本在计时前生成；结果布局转换和正确性检查也不计时。
 - 计时覆盖 Python API 调用、内部量化、平滑、分配及 GPU 运算。
-  VC 每次都执行第 0 步的 V-Smooth 聚类，不传入跨步布局缓存；
+  默认 VC 每次都执行第 0 步的 V-Smooth 聚类，不传入跨步布局缓存；
   Sage 的内部预处理也计入耗时。此结果不能代表 VC 缓存复用后的后续步性能。
 - 每个实现先预热，排除首次 JIT 编译；每轮按固定种子打乱执行顺序。
   使用 `perf_counter` 并在每轮开始/结束同步 CUDA，测量完整调用的墙钟耗时。

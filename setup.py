@@ -32,7 +32,7 @@ if os.environ.get("VC_ATTENTION_BUILD_CUDA", "1") != "0":
 
 setup(
     name="vc-attention",
-    version="0.2.1",
+    version="0.3.0",
     description="VC-Attention reference and CUDA C++ FP8 backend for Hopper",
     packages=["vc_attention"],
     package_dir={"": "src"},

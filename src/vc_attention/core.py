@@ -28,8 +28,11 @@ class Config:
     backend: str = "reference"
     k_smooth: bool = True
     qk_hadamard: bool = True
+    cuda_schedule: str = "batched"
 
     def __post_init__(self):
+        if self.cuda_schedule not in ("serial", "batched"):
+            raise ValueError("cuda_schedule must be serial or batched")
         for name in ("k_smooth", "qk_hadamard"):
             if not isinstance(getattr(self, name), bool):
                 raise ValueError(f"{name} must be a bool")
@@ -218,7 +221,7 @@ class LayoutCache:
         return (None if state is None else state["pi"]), active, refresh
 
 
-def _validate(q, k, v, causal, mask):
+def _validate(q, k, v, causal, mask, *, native_finite=False):
     if causal:
         raise ValueError("This experiment does not support causal attention")
     if mask is not None:
@@ -235,7 +238,12 @@ def _validate(q, k, v, causal, mask):
         raise ValueError("Q/K/V must have the same device and dtype")
     if q.dtype not in (torch.float16, torch.bfloat16, torch.float32):
         raise ValueError("Inputs must be FP16/BF16/FP32 before quantization")
-    if not all(bool(torch.isfinite(x).all()) for x in (q, k, v)):
+    if native_finite and q.device.type == "cuda":
+        from .cuda_backend import _extension
+        finite = _extension().all_finite(q, k, v)
+    else:
+        finite = all(bool(torch.isfinite(x).all()) for x in (q, k, v))
+    if not finite:
         raise ValueError("Q/K/V must be finite")
 
 
@@ -270,7 +278,7 @@ def attention(
     Quantization disabled => exact streaming reference (unless ExpCast enabled).
     """
     cfg = config or Config()
-    _validate(q, k, v, causal, mask)
+    _validate(q, k, v, causal, mask, native_finite=cfg.backend == "cuda_fp8" and cfg.cuda_schedule == "batched")
     if cfg.backend == "cuda_fp8":
         from .cuda_backend import _attention
         return _attention(q, k, v, cfg, cache=cache, step=step, total_steps=total_steps,

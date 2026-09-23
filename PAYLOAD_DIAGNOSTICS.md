@@ -1,5 +1,8 @@
 # 0.2.1：固定量化字节的 CUDA 对拍与 Q/K 粒度审计
 
+0.3.0 起该脚本显式使用 `cuda_schedule="serial"`，保持逐 tile GEMM 形状不变。
+默认批量路径的验证和性能对比见 [CUDA_PERFORMANCE.md](CUDA_PERFORMANCE.md)。
+
 上一轮 H200 结果：只量化 Q/K 时约 3.76%，完整量化约 5.1%～5.3%；
 固定聚类排列后，CUDA 与 Python 参考仍有约 0.5%～0.6% 差异。
 本轮进一步固定 E4M3 字节、scale、存储均值，逐层查找差异来源。

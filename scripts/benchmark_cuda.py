@@ -87,7 +87,7 @@ def external_backend(name, qkv_hnd, qkv_shd):
     return Backend(name, lambda: function(*inputs, **kwargs), layout, info)
 
 
-def make_backends(names, qkv_hnd, vc_ablation):
+def make_backends(names, qkv_hnd, vc_ablation, *, vc_schedule_compare=False, vc_reuse_layout=False):
     # Make layout copies once, outside every timed call, for all Flash versions.
     qkv_shd = tuple(x.transpose(1, 2).contiguous() for x in qkv_hnd) if any(
         name in ("flash2", "flash3", "flash4") for name in names
@@ -97,7 +97,7 @@ def make_backends(names, qkv_hnd, vc_ablation):
         if name != "vc":
             backends.append(external_backend(name, qkv_hnd, qkv_shd))
             continue
-        from vc_attention import Config, attention
+        from vc_attention import Config, LayoutCache, attention
 
         variants = [("vc", True, True)]
         if vc_ablation:
@@ -105,12 +105,27 @@ def make_backends(names, qkv_hnd, vc_ablation):
                          ("vc_v_smooth", True, False)]
         for label, smooth, cast in variants:
             cfg = Config(backend="cuda_fp8", v_smooth=smooth, expcast=cast)
-            backends.append(Backend(
-                label, lambda cfg=cfg: attention(*qkv_hnd, cfg), "BHND",
-                {"distribution": "vc-attention", "version": distribution_version("vc-attention"),
-                 "interface": "vc_attention.attention", "input_layout": "BHND",
-                 "config": asdict(cfg), "layout_cache_reused": False},
-            ))
+            schedules = [(label, cfg)]
+            if vc_schedule_compare:
+                schedules.append((label + "_serial", replace(cfg, cuda_schedule="serial")))
+            for row_name, row_cfg in schedules:
+                backends.append(Backend(
+                    row_name, lambda cfg=row_cfg: attention(*qkv_hnd, cfg), "BHND",
+                    {"distribution": "vc-attention", "version": distribution_version("vc-attention"),
+                     "interface": "vc_attention.attention", "input_layout": "BHND",
+                     "config": asdict(row_cfg), "layout_cache_reused": False},
+                ))
+            if vc_reuse_layout and smooth:
+                cache = LayoutCache(cfg)
+                reuse = dict(cache=cache, step=1, total_steps=20, request_id="benchmark-reuse", layer_id=0)
+                # Only the permutation/centers persist. Every timed call still
+                # receives Q/K/V and recomputes transforms, quantization, means.
+                attention(*qkv_hnd, cfg, **{**reuse, "step": 0})
+                backends.append(Backend(
+                    label + "_reuse", lambda cfg=cfg, reuse=reuse: attention(*qkv_hnd, cfg, **reuse), "BHND",
+                    {**backends[-1].info, "config": asdict(cfg), "layout_cache_reused": True,
+                     "denoising_step": 1, "total_steps": 20, "cache_setup_in_timing": False},
+                ))
     return backends
 
 
@@ -222,6 +237,8 @@ def parse_args(argv=None):
     parser.add_argument("--check-queries", type=int, default=128, help="evenly spaced rows for accuracy; 0 checks all")
     parser.add_argument("--reference-chunk", type=int, default=32, help="FP32 oracle query rows per chunk")
     parser.add_argument("--vc-ablation", action="store_true", help="also measure VC control/ExpCast-only/V-Smooth-only")
+    parser.add_argument("--vc-schedule-compare", action="store_true", help="also time the original serial CUDA schedule on the same inputs")
+    parser.add_argument("--vc-reuse-layout", action="store_true", help="also time active V-Smooth with an already initialized layout cache")
     parser.add_argument("--vc-reference-check", action="store_true", help="compare VC to the same-config Python quantized reference after timing")
     parser.add_argument("--output", help="save complete JSON report")
     args = parser.parse_args(argv)
@@ -232,6 +249,8 @@ def parse_args(argv=None):
         parser.error("--backends must not contain duplicates")
     if args.vc_ablation and "vc" not in args.backends:
         parser.error("--vc-ablation requires vc in --backends")
+    if (args.vc_schedule_compare or args.vc_reuse_layout) and "vc" not in args.backends:
+        parser.error("VC schedule/cache comparisons require vc in --backends")
     if args.vc_reference_check and "vc" not in args.backends:
         parser.error("--vc-reference-check requires vc in --backends")
     args.baseline = args.baseline or ("flash3" if "flash3" in args.backends else args.backends[0])
@@ -263,7 +282,8 @@ def run(args):
     dtype = getattr(torch, args.dtype)
     qkv = tuple(torch.randn(args.batch, args.heads, n, args.dim, device=device, dtype=dtype)
                 for n in (args.queries, args.tokens, args.tokens))
-    backends = make_backends(args.backends, qkv, args.vc_ablation)
+    backends = make_backends(args.backends, qkv, args.vc_ablation,
+                             vc_schedule_compare=args.vc_schedule_compare, vc_reuse_layout=args.vc_reuse_layout)
     indices = query_indices(args.queries, args.check_queries)
     print(f"FP32 reference: {len(indices)} query rows, all {args.tokens} keys", flush=True)
     golden = fp32_reference(*qkv, indices, args.reference_chunk)
@@ -321,7 +341,8 @@ def run(args):
             "Dense noncausal forward MHA, no dropout/backward; identical random Q/K/V values.",
             "Synchronized wall time per API call; median of trial means. Not isolated GPU kernel time.",
             "Input layout conversion, output checks and first-use JIT excluded; internal preprocessing included.",
-            "VC includes quantization/allocation/validation and first-step clustering every call; no layout cache.",
+            "VC includes quantization/allocation/validation and first-step clustering; explicitly labeled *_reuse rows alone reuse layout.",
+            "*_serial rows retain the original per-head/per-query-tile schedule; other VC rows use batched head/query scheduling.",
             "Sage uses its public sageattn auto dispatch, including its internal preprocessing.",
             "Different internal precisions; synthetic accuracy is not model quality validation.",
             "speedup_vs_baseline = baseline_ms / row_ms; vc_speedup_vs = other_ms / vc_ms; >1 is faster.",
@@ -355,15 +376,19 @@ def run(args):
 
 def print_report(report):
     baseline = report["arguments"]["baseline"]
-    print(f"\n{'backend':<14} {'version':<16} {'median ms':>12} {'min ms':>12} {'max ms':>12} "
+    print(f"\n{'backend':<22} {'version':<16} {'median ms':>12} {'min ms':>12} {'max ms':>12} "
           f"{'speedup':>10} {'rel RMSE':>12} {'max abs':>12}")
     for name, row in report["results"].items():
-        print(f"{name:<14} {row['version']:<16} {row['median_ms']:12.4f} {row['min_ms']:12.4f} "
+        print(f"{name:<22} {row['version']:<16} {row['median_ms']:12.4f} {row['min_ms']:12.4f} "
               f"{row['max_ms']:12.4f} {row['speedup_vs_baseline']:9.3f}x "
               f"{row['relative_rmse_vs_fp32']:12.6f} {row['max_abs_error_vs_fp32']:12.6f}")
     print(f"speedup = {baseline} latency / row latency; >1 means this row is faster.")
     for name, speedup in report["vc_speedup_vs"].items():
         print(f"VC speedup vs {name}: {speedup:.4f}x (other_ms / vc_ms; >1 means VC is faster)")
+    for name, row in report["results"].items():
+        serial = report["results"].get(name + "_serial")
+        if serial is not None:
+            print(f"Scheduling speedup {name}: {serial['median_ms'] / row['median_ms']:.4f}x (serial / batched)")
     count = len(report["accuracy"]["query_indices"])
     total = report["arguments"]["queries"]
     scope = "all" if count == total else "sampled"

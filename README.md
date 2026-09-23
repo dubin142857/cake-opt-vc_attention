@@ -3,11 +3,13 @@
 新增 H800 CUDA C++ 后端：`Config(backend="cuda_fp8")`。源码、`pip install .`
 构建方式和远端验证步骤见 [CUDA_README.md](CUDA_README.md)。QK/PV 使用真实
 cuBLASLt FP8 矩阵乘；用户提供的 H200 日志中，旧版 0.1.0 已通过原生自检和 60 项测试。
-当前 0.2.0 增加论文数值对齐，必须重编译并复验，见 [PAPER_ALIGNMENT.md](PAPER_ALIGNMENT.md)。
+0.2.0 增加论文数值对齐，见 [PAPER_ALIGNMENT.md](PAPER_ALIGNMENT.md)。
 尚不是完整融合内核。与 FlashAttention 2/3/4、SageAttention
 的对比命令见 [BENCHMARK.md](BENCHMARK.md)。
 Q/K、P、V 分阶段精度诊断见 [ACCURACY_DIAGNOSTICS.md](ACCURACY_DIAGNOSTICS.md)，已有 0.2.0 安装可直接运行。
-0.2.1 修正参考 scale 除法的舍入，并增加固定量化字节的 CUDA 对拍；本轮须重建扩展，见 [PAYLOAD_DIAGNOSTICS.md](PAYLOAD_DIAGNOSTICS.md)。
+0.2.1 修正参考 scale 除法的舍入，并增加固定量化字节的 CUDA 对拍，见 [PAYLOAD_DIAGNOSTICS.md](PAYLOAD_DIAGNOSTICS.md)。
+当前 **0.3.0** 默认批量处理 head 和 Q 行、缓存 GEMM plan、合并状态更新及输入校验。
+**须重新编译**；新旧路径与缓存复用对比、profiler 命令见 [CUDA_PERFORMANCE.md](CUDA_PERFORMANCE.md)。
 下文原有 A5 实验记录和两种后端的说明保留为历史背景；默认后端仍为 `reference`。
 
 当前 Python 包源码位于 `src/vc_attention/`，C++/CUDA 源码位于 `csrc/`。

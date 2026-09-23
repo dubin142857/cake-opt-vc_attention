@@ -10,6 +10,15 @@ kernels for fixed-payload diagnostics. Rebuild for these new entry points;
 the production CUDA forward arithmetic and defaults are unchanged. See
 [PAYLOAD_DIAGNOSTICS.md](PAYLOAD_DIAGNOSTICS.md).
 
+Version **0.3.0** defaults to batched head/query scheduling, cached GEMM plans,
+fused state initialization/final output, and a single native finite-input check.
+Rebuild the extension. The original schedule remains explicitly available with
+`Config(cuda_schedule="serial")`; no algorithm fallback is used. See
+[CUDA_PERFORMANCE.md](CUDA_PERFORMANCE.md) for same-run benchmarks and profiling.
+Local validation: **178 passed, 38 skipped** (36 Hopper, 2 NPU); compiled `sm_86`
+and `sm_90`. Batched Softmax/accumulation and finite checks ran on RTX 3060.
+Hopper FP8 batched GEMM and H200 latency remain to be tested on the target machine.
+
 ## Implementation and current validation
 
 - `csrc/kernels.cu`: actual CUDA kernels for K centering, Q/K Hadamard and E4M3 quantization, per-channel V
@@ -151,7 +160,7 @@ precision (FP16 by default). The recovery and residual terms share the scale.
 
 ```bash
 python3 -m vc_attention.cuda_backend --device cuda:0
-VC_REQUIRE_CUDA=1 python3 -m pytest tests/test_core.py tests/test_adapter.py tests/test_cuda.py tests/test_paper_alignment.py tests/test_imports.py tests/test_benchmark.py tests/test_accuracy_diagnostics.py tests/test_payload_diagnostics.py -q
+VC_REQUIRE_CUDA=1 python3 -m pytest tests/test_core.py tests/test_adapter.py tests/test_cuda.py tests/test_cuda_scheduling.py tests/test_paper_alignment.py tests/test_imports.py tests/test_benchmark.py tests/test_accuracy_diagnostics.py tests/test_payload_diagnostics.py -q
 ```
 
 Or, after installing build/test dependencies, run `bash scripts/validate_h800.sh`

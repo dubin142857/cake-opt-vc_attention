@@ -248,7 +248,9 @@ def run(args):
     for smooth in (False, True):
         label = "v_smooth_on" if smooth else "v_smooth_off"
         print(f"\n{label}: preprocessing and Q/K granularity audit", flush=True)
-        cfg = Config(v_smooth=smooth)
+        # This tile replay isolates arithmetic with the original GEMM geometry.
+        # Batched-vs-serial scheduling is checked separately by Hopper tests.
+        cfg = Config(v_smooth=smooth, cuda_schedule="serial")
         prepared = stages.prepare(qkv, cfg, scale)
         ref_pack, native_pack, prep_errors = prepare_packs(qkv, cfg, prepared, ext)
         group = {"preprocessing": prep_errors,
@@ -289,6 +291,7 @@ def run(args):
         "Granularity sweep is E4M3 numerical sensitivity analysis, not a claim of author kernel defaults or performance.",
         "Byte mismatch RMSE measures byte numbers, not decoded value error; use different_elements/fraction for byte rows.",
         "All tiles are traced; check-queries only selects final-output metrics. Grouping is fixed within each smoothing group.",
+        "Production comparison explicitly uses cuda_schedule=serial to match each debug GEMM shape; this is not the new batched performance path.",
         "JSON relative errors are ratios; printed tables use PERCENT. No universal quality acceptance threshold.",
     ]
     return report

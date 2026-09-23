@@ -6,6 +6,13 @@
 
 namespace vc {
 
+struct InputView {
+    const void* data;
+    int64_t size, shape[4], stride[4];
+    bool contiguous;
+};
+void check_finite(InputView q, InputView k, InputView v, int dtype, int* invalid, cudaStream_t stream);
+
 struct Shape {
     int heads, nq, nk, d, dv;
     int bq, bk, k_quant;
@@ -14,6 +21,7 @@ struct Shape {
     bool smooth, expcast;
     int mean_type;  // 0=FP32, 1=FP16, 2=BF16.
     float scale;
+    int query_chunk;  // Batched schedule scratch rows per head; <= 1024.
 };
 
 struct Buffers {
@@ -31,6 +39,11 @@ struct Buffers {
 void forward(const float* q, const float* k, const float* v,
              const Shape& s, const Buffers& b,
              cublasLtHandle_t handle, cudaStream_t stream);
+void forward_batched(const float* q, const float* k, const float* v,
+                     const Shape& s, const Buffers& b,
+                     cublasLtHandle_t handle, cudaStream_t stream);
+void debug_batched_update(const Shape& s, const Buffers& b, int query_start,
+                          int key_tile, bool finish, cudaStream_t stream);
 void expcast(const float* input, uint8_t* output, int64_t size, cudaStream_t stream);
 void transform_qk(const float* input, const float* mean, float* output,
                   int heads, int tokens, int width, int out_width,

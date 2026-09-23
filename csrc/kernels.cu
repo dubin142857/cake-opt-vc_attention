@@ -8,6 +8,9 @@
 #include <cmath>
 #include <stdexcept>
 #include <string>
+#include <memory>
+#include <tuple>
+#include <vector>
 
 namespace vc {
 namespace {
@@ -49,6 +52,35 @@ __device__ float reduce_sum(float value, float* scratch) {
 
 __device__ uint8_t encode(float x) {
     return __nv_cvt_float_to_fp8(fminf(448.0f, fmaxf(-448.0f, x)), __NV_SATFINITE, __NV_E4M3);
+}
+
+__device__ float as_float(float x) { return x; }
+__device__ float as_float(__half x) { return __half2float(x); }
+__device__ float as_float(__nv_bfloat16 x) { return __bfloat162float(x); }
+
+template <typename T>
+__device__ float read_view(InputView view, int64_t index) {
+    int64_t offset = index;
+    if (!view.contiguous) {
+        offset = 0;
+        for (int dim = 3; dim >= 0; --dim) {
+            offset += (index % view.shape[dim]) * view.stride[dim];
+            index /= view.shape[dim];
+        }
+    }
+    return as_float(static_cast<const T*>(view.data)[offset]);
+}
+
+template <typename T>
+__global__ void check_finite_kernel(InputView q, InputView k, InputView v, int* invalid) {
+    const int64_t total = q.size + k.size + v.size;
+    for (int64_t i = int64_t(blockIdx.x) * blockDim.x + threadIdx.x;
+         i < total; i += int64_t(blockDim.x) * gridDim.x) {
+        const float value = i < q.size ? read_view<T>(q, i)
+                          : i < q.size + k.size ? read_view<T>(k, i - q.size)
+                          : read_view<T>(v, i - q.size - k.size);
+        if (!isfinite(value)) { atomicExch(invalid, 1); return; }
+    }
 }
 
 __device__ float decode_positive(uint8_t code) {
@@ -169,20 +201,21 @@ __global__ void init_state(Buffers b, Shape s) {
 
 // QK GEMM produces column-major scores. P is written row-major so it can be
 // interpreted as a transposed column-major A operand in the next GEMM.
-__global__ void softmax_update(Buffers b, Shape s, int head, int q_tile, int k_tile) {
-    __shared__ float scratch[256];
-    const int row = blockIdx.x;
+__device__ void softmax_row(Buffers b, Shape s, int head, int query,
+                            int row, int matrix_rows, int k_tile,
+                            bool first, float* scratch) {
     const int j = threadIdx.x;
-    const bool valid_row = q_tile * s.bq + row < s.nq;
+    const bool valid_row = query < s.nq;
     const bool valid_key = j < s.bk && k_tile * s.bk + j < s.nk;
-    const float qs = b.qs[head * s.nq_tiles + q_tile];
+    const float qs = b.qs[head * s.nq_tiles + query / s.bq];
     const float ks = b.ks[head * s.nk_quant_tiles + (k_tile * s.bk) / s.k_quant];
     float score = -CUDART_INF_F;
     if (valid_row && valid_key)
-        score = ((b.scores[j * s.bq + row] * qs) * ks) * s.scale;
+        score = ((b.scores[int64_t(j) * matrix_rows + row] * qs) * ks) * s.scale;
     const float tile_max = reduce_max(score, scratch);
-    const float new_max = valid_row ? fmaxf(tile_max, b.maximum[row]) : 0.0f;
-    const float alpha = valid_row ? expf(b.maximum[row] - new_max) : 0.0f;
+    const float old_max = first ? -CUDART_INF_F : b.maximum[row];
+    const float new_max = valid_row ? fmaxf(tile_max, old_max) : 0.0f;
+    const float alpha = valid_row ? expf(old_max - new_max) : 0.0f;
     float probability = 0.0f;
     uint8_t payload = 0;
     if (valid_row && valid_key) {
@@ -201,7 +234,47 @@ __global__ void softmax_update(Buffers b, Shape s, int head, int q_tile, int k_t
         b.alpha[row] = alpha;
         b.mass[row] = mass;
         b.maximum[row] = new_max;
-        b.denom[row] = alpha * b.denom[row] + mass;
+        b.denom[row] = alpha * (first ? 0.0f : b.denom[row]) + mass;
+    }
+}
+
+__global__ void softmax_update(Buffers b, Shape s, int head, int q_tile, int k_tile) {
+    __shared__ float scratch[256];
+    softmax_row(b, s, head, q_tile * s.bq + blockIdx.x,
+                blockIdx.x, s.bq, k_tile, false, scratch);
+}
+
+__global__ void batched_softmax(Buffers b, Shape s, int query_start, int k_tile) {
+    __shared__ float scratch[256];
+    const int head = blockIdx.x / s.query_chunk;
+    const int row = blockIdx.x % s.query_chunk;
+    const int64_t base = int64_t(head) * s.query_chunk;
+    b.scores += base * s.bk; b.p8 += base * s.bk;
+    b.maximum += base; b.denom += base; b.alpha += base; b.mass += base;
+    softmax_row(b, s, head, query_start + row, row, s.query_chunk,
+                k_tile, k_tile == 0, scratch);
+}
+
+__global__ void batched_accumulate(Buffers b, Shape s, int query_start, int k_tile, bool finish) {
+    const int64_t count = int64_t(s.heads) * s.query_chunk * s.vp;
+    for (int64_t i = int64_t(blockIdx.x) * blockDim.x + threadIdx.x;
+         i < count; i += int64_t(blockDim.x) * gridDim.x) {
+        const int col = i % s.vp;
+        const int64_t state = i / s.vp;
+        const int head = state / s.query_chunk, row = state % s.query_chunk;
+        const int64_t meta = (int64_t(head) * s.nk_tiles + k_tile) * s.vp + col;
+        const float mean = s.mean_type == 1 ? __half2float(static_cast<const __half*>(b.mean)[meta])
+                         : s.mean_type == 2 ? __bfloat162float(static_cast<const __nv_bfloat16*>(b.mean)[meta])
+                         : static_cast<const float*>(b.mean)[meta];
+        const float product = b.pv[(int64_t(head) * s.vp + col) * s.query_chunk + row];
+        const float contribution = (product / 256.0f + b.mass[state] * mean) * b.vs[meta];
+        const float result = b.alpha[state] * (k_tile == 0 ? 0.0f : b.accum[i]) + contribution;
+        if (finish) {
+            if (query_start + row < s.nq && col < s.dv)
+                b.output[(int64_t(head) * s.nq + query_start + row) * s.dv + col] = result / b.denom[state];
+        } else {
+            b.accum[i] = result;
+        }
     }
 }
 
@@ -243,7 +316,8 @@ class Fp8Gemm {
         if (operation_) cublasLtMatmulDescDestroy(operation_);
     }
 public:
-    Fp8Gemm(cublasLtHandle_t handle, int m, int n, int k, size_t workspace_bytes) {
+    Fp8Gemm(cublasLtHandle_t handle, int m, int n, int k, size_t workspace_bytes,
+            int batch = 1, int64_t stride_a = 0, int64_t stride_b = 0, int64_t stride_c = 0) {
         try {
             blas_check(cublasLtMatmulDescCreate(&operation_, CUBLAS_COMPUTE_32F, CUDA_R_32F), "MatmulDescCreate");
             cublasOperation_t trans_a = CUBLAS_OP_T, trans_b = CUBLAS_OP_N;
@@ -256,6 +330,13 @@ public:
             blas_check(cublasLtMatrixLayoutCreate(&a_, CUDA_R_8F_E4M3, k, m, k), "A layout");
             blas_check(cublasLtMatrixLayoutCreate(&b_, CUDA_R_8F_E4M3, k, n, k), "B layout");
             blas_check(cublasLtMatrixLayoutCreate(&c_, CUDA_R_32F, m, n, m), "C/D layout");
+            if (batch > 1) {
+                for (auto layout : {a_, b_, c_})
+                    blas_check(cublasLtMatrixLayoutSetAttribute(layout, CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT, &batch, sizeof(batch)), "batch count");
+                blas_check(cublasLtMatrixLayoutSetAttribute(a_, CUBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET, &stride_a, sizeof(stride_a)), "A batch stride");
+                blas_check(cublasLtMatrixLayoutSetAttribute(b_, CUBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET, &stride_b, sizeof(stride_b)), "B batch stride");
+                blas_check(cublasLtMatrixLayoutSetAttribute(c_, CUBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET, &stride_c, sizeof(stride_c)), "C batch stride");
+            }
             blas_check(cublasLtMatmulPreferenceCreate(&preference_), "PreferenceCreate");
             blas_check(cublasLtMatmulPreferenceSetAttribute(preference_, CUBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES, &workspace_bytes, sizeof(workspace_bytes)), "workspace preference");
             cublasLtMatmulHeuristicResult_t candidates[8]{};
@@ -284,7 +365,31 @@ public:
     }
 };
 
+// Cache only immutable descriptors/algorithms, never input data or workspace.
+// Handles belong to a device and host thread; include the handle in the key.
+std::shared_ptr<Fp8Gemm> cached_gemm(cublasLtHandle_t handle, int m, int n, int k,
+                                    size_t workspace, int batch, int64_t sa, int64_t sb, int64_t sc) {
+    using Key = std::tuple<cublasLtHandle_t, int, int, int, size_t, int, int64_t, int64_t, int64_t>;
+    using Entry = std::pair<Key, std::shared_ptr<Fp8Gemm>>;
+    static thread_local std::vector<Entry> cache;
+    const Key key{handle, m, n, k, workspace, batch, sa, sb, sc};
+    for (const auto& entry : cache) if (entry.first == key) return entry.second;
+    auto plan = std::make_shared<Fp8Gemm>(handle, m, n, k, workspace, batch, sa, sb, sc);
+    if (cache.size() == 32) cache.erase(cache.begin());
+    cache.emplace_back(key, plan);
+    return plan;
+}
+
 }  // namespace
+
+void check_finite(InputView q, InputView k, InputView v, int dtype, int* invalid, cudaStream_t stream) {
+    cuda_check(cudaMemsetAsync(invalid, 0, sizeof(int), stream), "finite flag initialization");
+    const int blocks = static_cast<int>(std::min<int64_t>((q.size + k.size + v.size + 255) / 256, 65535));
+    if (dtype == 0) check_finite_kernel<float><<<blocks, 256, 0, stream>>>(q, k, v, invalid);
+    else if (dtype == 1) check_finite_kernel<__half><<<blocks, 256, 0, stream>>>(q, k, v, invalid);
+    else check_finite_kernel<__nv_bfloat16><<<blocks, 256, 0, stream>>>(q, k, v, invalid);
+    cuda_check(cudaGetLastError(), "Q/K/V finite check");
+}
 
 void expcast(const float* input, uint8_t* output, int64_t size, cudaStream_t stream) {
     if (!size) return;
@@ -327,6 +432,40 @@ void debug_accumulate(const Shape& s, const Buffers& b, cudaStream_t stream) {
     accumulate<<<(s.bq * s.vp + 255) / 256, 256, 0, stream>>>(b, s, 0, 0);
     write_output<<<(s.bq * s.dv + 255) / 256, 256, 0, stream>>>(b, s, 0, 0);
     cuda_check(cudaGetLastError(), "diagnostic accumulation and normalization");
+}
+
+void debug_batched_update(const Shape& s, const Buffers& b, int query_start,
+                          int key_tile, bool finish, cudaStream_t stream) {
+    batched_softmax<<<s.heads * s.query_chunk, 256, 0, stream>>>(b, s, query_start, key_tile);
+    cuda_check(cudaGetLastError(), "batched Softmax");
+    const int blocks = static_cast<int>(std::min<int64_t>((int64_t(s.heads) * s.query_chunk * s.vp + 255) / 256, 65535));
+    batched_accumulate<<<blocks, 256, 0, stream>>>(b, s, query_start, key_tile, finish);
+    cuda_check(cudaGetLastError(), "batched accumulation");
+}
+
+void forward_batched(const float* q, const float* k, const float* v,
+                     const Shape& s, const Buffers& b, cublasLtHandle_t handle, cudaStream_t stream) {
+    debug_quantize(q, b.q8, b.qs, s.heads, s.nq, s.pq, s.d, s.dp, s.bq, s.nq_tiles, stream);
+    debug_quantize(k, b.k8, b.ks, s.heads, s.nk, s.pk, s.d, s.dp, s.k_quant, s.nk_quant_tiles, stream);
+    debug_values(v, s, b, stream);
+    for (int start = 0; start < s.pq; start += s.query_chunk) {
+        Shape chunk = s;
+        const int rows = chunk.query_chunk = std::min(s.query_chunk, s.pq - start);
+        auto qk = cached_gemm(handle, rows, s.bk, s.dp, b.workspace_bytes, s.heads,
+                               int64_t(s.pq) * s.dp, int64_t(s.pk) * s.dp, int64_t(rows) * s.bk);
+        auto pv = cached_gemm(handle, rows, s.vp, s.bk, b.workspace_bytes, s.heads,
+                               int64_t(rows) * s.bk, int64_t(s.nk_tiles) * s.vp * s.bk, int64_t(rows) * s.vp);
+        for (int ki = 0; ki < s.nk_tiles; ++ki) {
+            qk->run(handle, b.q8 + int64_t(start) * s.dp,
+                     b.k8 + int64_t(ki) * s.bk * s.dp, b.scores, b, stream);
+            batched_softmax<<<s.heads * rows, 256, 0, stream>>>(b, chunk, start, ki);
+            cuda_check(cudaGetLastError(), "batched Softmax/ExpCast");
+            pv->run(handle, b.p8, b.v8 + int64_t(ki) * s.vp * s.bk, b.pv, b, stream);
+            const int blocks = static_cast<int>(std::min<int64_t>((int64_t(s.heads) * rows * s.vp + 255) / 256, 65535));
+            batched_accumulate<<<blocks, 256, 0, stream>>>(b, chunk, start, ki, ki + 1 == s.nk_tiles);
+            cuda_check(cudaGetLastError(), "batched online output update");
+        }
+    }
 }
 
 void forward(const float* q, const float* k, const float* v,

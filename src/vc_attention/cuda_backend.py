@@ -16,6 +16,8 @@ def _extension():
         ) from exc
     if getattr(ext, "numerical_contract_version", None) != 2:
         raise RuntimeError("Stale CUDA extension: rebuild with python3 -m pip install . --no-build-isolation --no-deps")
+    if getattr(ext, "scheduling_version", None) != 1:
+        raise RuntimeError("Rebuild vc-attention 0.3.0 for batched scheduling: bash scripts/validate_h800.sh")
     return ext
 
 
@@ -51,7 +53,8 @@ def _attention(q, k, v, cfg, *, cache, step, total_steps, request_id, layer_id, 
         v = v.gather(-2, pi.unsqueeze(-1).expand_as(v))
     mean_type = {"float32": 0, "float16": 1, "bfloat16": 2}[cfg.mean_dtype]
     output = ext.forward(q, k, v, cfg.q_block, cfg.k_quant_block, cfg.kv_block,
-                         active, cfg.expcast, mean_type, scale, cfg.k_smooth, cfg.qk_hadamard)
+                         active, cfg.expcast, mean_type, scale, cfg.k_smooth, cfg.qk_hadamard,
+                         cfg.cuda_schedule == "batched")
     return output, {
         "backend": "cuda_fp8",
         "smoothing_active": active,
@@ -63,6 +66,7 @@ def _attention(q, k, v, cfg, *, cache, step, total_steps, request_id, layer_id, 
         "tiles": math.ceil(q.shape[-2] / cfg.q_block) * math.ceil(k.shape[-2] / cfg.kv_block),
         "native_fused_attention": False,
         "native_fp8_matmul": True,
+        "cuda_schedule": cfg.cuda_schedule,
     }
 
 
