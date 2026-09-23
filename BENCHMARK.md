@@ -9,7 +9,7 @@
 | `flash3` | `flash_attn_3.flash_attn_interface.flash_attn_func` | `flash_attn_3 3.0.0` |
 | `flash4` | `flash_attn.cute.flash_attn_func` | `flash-attn-4 4.0.0b31` |
 | `sage` | `sageattention.sageattn` | `sageattention 2.2.0` |
-| `vc` | `vc_attention.attention(..., Config(backend="cuda_fp8", expcast=True, v_smooth=True))` | `vc-attention 0.2.0` |
+| `vc` | `vc_attention.attention(..., Config(backend="cuda_fp8", expcast=True, v_smooth=True))` | 本仓库当前 `vc-attention 0.2.1` |
 
 运行报告会读取实际安装版本，并保存接口路径和参数。老版 FA3 源码安装若没有
 `flash_attn_3.flash_attn_interface`，会尝试同为 FA3 的 `flash_attn_interface`。
@@ -156,6 +156,11 @@ python3 scripts/diagnose_cuda_accuracy.py --output results/h200_vc_stages.json
 局部量化组使用 FP32 乘法数值模拟，全部诊断不计时。
 具体列含义、对拍口径及真实 Q/K/V 文件回放见
 [ACCURACY_DIAGNOSTICS.md](ACCURACY_DIAGNOSTICS.md)。
+
+进一步固定量化字节、scale 和均值，逐层对拍 QK/PV、Softmax 与在线累加：
+重建 0.2.1 后运行 `python3 scripts/diagnose_cuda_payloads.py`。
+这版还修正了 Python 参考的 scale 除法舍入，旧版 REF 数字不能直接当作新版参考。
+原生 CUDA forward 数值路径保持原样。详见 [PAYLOAD_DIAGNOSTICS.md](PAYLOAD_DIAGNOSTICS.md)。
 
 接口参考：[FlashAttention 官方文档](https://github.com/Dao-AILab/flash-attention#readme)、
 [FA3 接口源码](https://github.com/Dao-AILab/flash-attention/blob/main/hopper/flash_attn_interface.py)、

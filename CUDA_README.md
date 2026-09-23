@@ -5,6 +5,10 @@ Version 0.2.0 adds paper-described K centering and Q/K Hadamard preprocessing,
 corrects ExpCast FMA rounding and scaled V-mean storage. **Rebuild after pulling.**
 See [PAPER_ALIGNMENT.md](PAPER_ALIGNMENT.md) for the numerical contract and
 remaining implementation choices; this is not an author-code reproduction.
+Version 0.2.1 fixes reference scale-division rounding and exports production
+kernels for fixed-payload diagnostics. Rebuild for these new entry points;
+the production CUDA forward arithmetic and defaults are unchanged. See
+[PAYLOAD_DIAGNOSTICS.md](PAYLOAD_DIAGNOSTICS.md).
 
 ## Implementation and current validation
 
@@ -147,7 +151,7 @@ precision (FP16 by default). The recovery and residual terms share the scale.
 
 ```bash
 python3 -m vc_attention.cuda_backend --device cuda:0
-VC_REQUIRE_CUDA=1 python3 -m pytest tests/test_core.py tests/test_adapter.py tests/test_cuda.py tests/test_paper_alignment.py tests/test_imports.py tests/test_benchmark.py tests/test_accuracy_diagnostics.py -q
+VC_REQUIRE_CUDA=1 python3 -m pytest tests/test_core.py tests/test_adapter.py tests/test_cuda.py tests/test_paper_alignment.py tests/test_imports.py tests/test_benchmark.py tests/test_accuracy_diagnostics.py tests/test_payload_diagnostics.py -q
 ```
 
 Or, after installing build/test dependencies, run `bash scripts/validate_h800.sh`

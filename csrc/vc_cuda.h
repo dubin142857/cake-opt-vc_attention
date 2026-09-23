@@ -36,4 +36,15 @@ void transform_qk(const float* input, const float* mean, float* output,
                   int heads, int tokens, int width, int out_width,
                   bool hadamard, cudaStream_t stream);
 
+// Diagnostic entry points reuse the production kernels and GEMM descriptor.
+// They do not alter the forward path or select alternate arithmetic.
+void debug_quantize(const float* input, uint8_t* output, float* scales,
+                    int heads, int n, int padded_n, int d, int padded_d,
+                    int block, int tiles, cudaStream_t stream);
+void debug_values(const float* input, const Shape& s, const Buffers& b, cudaStream_t stream);
+void debug_gemm(const uint8_t* a, const uint8_t* b, float* output, int m, int n, int k,
+                const Buffers& scratch, cublasLtHandle_t handle, cudaStream_t stream);
+void debug_softmax(const Shape& s, const Buffers& b, cudaStream_t stream);
+void debug_accumulate(const Shape& s, const Buffers& b, cudaStream_t stream);
+
 }  // namespace vc

@@ -300,6 +300,35 @@ void transform_qk(const float* input, const float* mean, float* output,
     cuda_check(cudaGetLastError(), "Q/K centering and Hadamard launch");
 }
 
+void debug_quantize(const float* input, uint8_t* output, float* scales,
+                    int heads, int n, int padded_n, int d, int padded_d,
+                    int block, int tiles, cudaStream_t stream) {
+    quantize_qk<<<heads * tiles, 256, 0, stream>>>(input, output, scales, n, padded_n, d, padded_d, block, tiles);
+    cuda_check(cudaGetLastError(), "diagnostic Q/K quantization");
+}
+
+void debug_values(const float* input, const Shape& s, const Buffers& b, cudaStream_t stream) {
+    prepare_values<<<s.heads * s.nk_tiles * s.vp, 256, 0, stream>>>(input, b.v8, b.vs, b.mean, s);
+    cuda_check(cudaGetLastError(), "diagnostic V quantization");
+}
+
+void debug_gemm(const uint8_t* a, const uint8_t* b, float* output, int m, int n, int k,
+                const Buffers& scratch, cublasLtHandle_t handle, cudaStream_t stream) {
+    Fp8Gemm gemm(handle, m, n, k, scratch.workspace_bytes);
+    gemm.run(handle, a, b, output, scratch, stream);
+}
+
+void debug_softmax(const Shape& s, const Buffers& b, cudaStream_t stream) {
+    softmax_update<<<s.bq, 256, 0, stream>>>(b, s, 0, 0, 0);
+    cuda_check(cudaGetLastError(), "diagnostic Softmax");
+}
+
+void debug_accumulate(const Shape& s, const Buffers& b, cudaStream_t stream) {
+    accumulate<<<(s.bq * s.vp + 255) / 256, 256, 0, stream>>>(b, s, 0, 0);
+    write_output<<<(s.bq * s.dv + 255) / 256, 256, 0, stream>>>(b, s, 0, 0);
+    cuda_check(cudaGetLastError(), "diagnostic accumulation and normalization");
+}
+
 void forward(const float* q, const float* k, const float* v,
              const Shape& s, const Buffers& b, cublasLtHandle_t handle, cudaStream_t stream) {
     Fp8Gemm qk(handle, s.bq, s.bk, s.dp, b.workspace_bytes);

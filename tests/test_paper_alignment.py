@@ -51,7 +51,8 @@ def test_value_residual_uses_full_mean_and_storage_uses_scaled_mean(mean_dtype):
     payload, scale, stored = prepare_value_tile(tile, True, Config(mean_dtype=mean_dtype))
     mean = tile.mean(-2, keepdim=True)
     residual = tile - mean
-    expected_scale = residual.abs().amax(-2, keepdim=True) / 448
+    # Widen independently to obtain a correctly rounded FP32 quotient.
+    expected_scale = (residual.abs().amax(-2, keepdim=True).double() / 448).float()
     expected_payload = (residual / expected_scale).clamp(-448, 448).to(torch.float8_e4m3fn)
     expected_mean = (mean / expected_scale).to(getattr(torch, mean_dtype)).float()
     torch.testing.assert_close(scale, expected_scale, atol=0, rtol=0)

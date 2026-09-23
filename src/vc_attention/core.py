@@ -105,18 +105,25 @@ def prepare_value_tile(tile, active, cfg):
     residual = tile - mean
     if not cfg.quantize:
         return residual, torch.ones_like(mean), mean
-    vscale = residual.abs().amax(-2, keepdim=True) / 448.0
+    vscale = _divide_fp32(residual.abs().amax(-2, keepdim=True), 448.0)
     vscale = torch.where(vscale == 0, torch.ones_like(vscale), vscale)
     # A nearly constant block can have a huge mu/scale. This finite-storage
     # guard is an explicit engineering choice, not a paper-tuned parameter.
-    vscale = torch.maximum(vscale, mean.abs() / torch.finfo(getattr(torch, cfg.mean_dtype)).max)
+    vscale = torch.maximum(vscale, _divide_fp32(mean.abs(), torch.finfo(getattr(torch, cfg.mean_dtype)).max))
     payload = (residual / vscale).clamp(-448, 448).to(torch.float8_e4m3fn)
     scaled_mean = (mean / vscale).to(getattr(torch, cfg.mean_dtype)).float()
     return payload, vscale, scaled_mean
 
 
+def _divide_fp32(x, divisor):
+    # A scalar divisor may be lowered to multiplication by a rounded reciprocal
+    # in eager PyTorch. A device Tensor divisor keeps FP32 division, matching the
+    # native quantizers. One ULP in a scale can change an E4M3 boundary byte.
+    return x / x.new_tensor(divisor)
+
+
 def _encode(x, dims):
-    scale = x.abs().amax(dim=dims, keepdim=True) / 448.0
+    scale = _divide_fp32(x.abs().amax(dim=dims, keepdim=True), 448.0)
     scale = torch.where(scale == 0, torch.ones_like(scale), scale)
     payload = (x / scale).clamp(-448, 448).to(torch.float8_e4m3fn)
     return payload, scale

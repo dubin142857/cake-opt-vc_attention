@@ -250,8 +250,8 @@ def diagnose(qkv, scale, config, indices, chunk, native, progress=print):
     return results
 
 
-def parse_args(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
+def parse_args(argv=None, *, description=None):
+    parser = argparse.ArgumentParser(description=__doc__ if description is None else description)
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--reference-only", action="store_true", help="explicitly skip native CUDA comparisons; supports CPU or CUDA")
     parser.add_argument("--capture", help="trusted .pt file with post-RoPE q/k/v [B,H,N,D]; preserve dtype, full context")

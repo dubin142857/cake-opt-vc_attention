@@ -3,6 +3,7 @@
 对照 [VC-Attention v1](https://arxiv.org/html/2609.15810v1) 的公式 4、6、7
 与附录 B，修正 0.1.0 的遗漏。当前是根据论文重建的 CUDA 数值实现，
 尚未复现作者的融合内核、完整模型质量或性能结果。
+后续 0.2.1 的参考舍入修正与 Q/K 粒度审计见 [PAYLOAD_DIAGNOSTICS.md](PAYLOAD_DIAGNOSTICS.md)。
 
 | 项目 | 0.2.0 实现 |
 | --- | --- |

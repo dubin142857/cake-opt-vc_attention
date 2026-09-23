@@ -226,10 +226,119 @@ Tensor expcast_codes(Tensor input) {
     return result;
 }
 
+void debug_tensor(const Tensor& x, const Tensor& owner, at::ScalarType type, const char* name) {
+    TORCH_CHECK(x.is_cuda() && x.device() == owner.device() && x.scalar_type() == type &&
+                x.is_contiguous() && x.numel() > 0, name, " requires nonempty contiguous CUDA tensors of the expected dtype on one device");
+}
+
+std::vector<Tensor> debug_quantize(Tensor x, int64_t block) {
+    debug_tensor(x, x, at::kFloat, "debug_quantize");
+    TORCH_CHECK(x.dim() == 4 && x.size(3) <= 128 && block > 0 && block <= 4096, "Invalid Q/K diagnostic shape or block");
+    const c10::cuda::CUDAGuard guard(x.device());
+    const int heads = small_int(x.size(0) * x.size(1), "B*H");
+    const int n = small_int(x.size(2), "tokens"), d = small_int(x.size(3), "channels");
+    const int tiles = small_int((int64_t(n) + block - 1) / block, "tiles");
+    const int pn = small_int(int64_t(tiles) * block, "padded tokens"), pd = (d + 31) / 32 * 32;
+    small_int(int64_t(heads) * tiles, "quantization grid");
+    auto codes = at::empty({x.size(0), x.size(1), pn, pd}, x.options().dtype(at::kByte));
+    auto scales = at::empty({x.size(0), x.size(1), tiles}, x.options());
+    vc::debug_quantize(x.data_ptr<float>(), codes.data_ptr<uint8_t>(), scales.data_ptr<float>(),
+                       heads, n, pn, d, pd, static_cast<int>(block), tiles,
+                       c10::cuda::getCurrentCUDAStream(x.get_device()).stream());
+    return {codes, scales};
+}
+
+std::vector<Tensor> debug_values(Tensor x, int64_t block, bool smooth, int64_t mean_type) {
+    debug_tensor(x, x, at::kFloat, "debug_values");
+    TORCH_CHECK(x.dim() == 4 && x.size(3) <= 128 && mean_type >= 0 && mean_type <= 2, "Invalid V diagnostic shape or mean type");
+    block_size(block, "V block");
+    const c10::cuda::CUDAGuard guard(x.device());
+    vc::Shape s{};
+    s.heads = small_int(x.size(0) * x.size(1), "B*H");
+    s.nk = small_int(x.size(2), "tokens"); s.dv = small_int(x.size(3), "channels");
+    s.bk = static_cast<int>(block); s.vp = (s.dv + 31) / 32 * 32;
+    s.nk_tiles = small_int((int64_t(s.nk) + block - 1) / block, "V tiles");
+    small_int(int64_t(s.heads) * s.nk_tiles * s.vp, "V grid");
+    s.smooth = smooth; s.mean_type = static_cast<int>(mean_type);
+    auto codes = at::empty({x.size(0), x.size(1), s.nk_tiles, s.vp, s.bk}, x.options().dtype(at::kByte));
+    auto scales = at::empty({x.size(0), x.size(1), s.nk_tiles, s.vp}, x.options());
+    auto means = at::empty(scales.sizes(), x.options().dtype(mean_type == 1 ? at::kHalf : mean_type == 2 ? at::kBFloat16 : at::kFloat));
+    vc::Buffers b{}; b.v8 = codes.data_ptr<uint8_t>(); b.vs = scales.data_ptr<float>(); b.mean = means.data_ptr();
+    vc::debug_values(x.data_ptr<float>(), s, b, c10::cuda::getCurrentCUDAStream(x.get_device()).stream());
+    return {codes, scales, means};
+}
+
+Tensor debug_gemm(Tensor a, Tensor b) {
+    require_hopper(a);
+    debug_tensor(a, a, at::kByte, "GEMM A"); debug_tensor(b, a, at::kByte, "GEMM B");
+    TORCH_CHECK(a.dim() == 2 && b.dim() == 2 && a.size(1) == b.size(1), "Expected row-major [M,K] and [N,K] payload bytes");
+    block_size(a.size(0), "M"); block_size(b.size(0), "N"); block_size(a.size(1), "K");
+    const c10::cuda::CUDAGuard guard(a.device());
+    auto output = at::empty({b.size(0), a.size(0)}, a.options().dtype(at::kFloat));
+    auto workspace = at::empty({32 * 1024 * 1024}, a.options());
+    vc::Buffers scratch{}; scratch.workspace = workspace.data_ptr(); scratch.workspace_bytes = workspace.numel();
+    vc::debug_gemm(a.data_ptr<uint8_t>(), b.data_ptr<uint8_t>(), output.data_ptr<float>(),
+                   static_cast<int>(a.size(0)), static_cast<int>(b.size(0)), static_cast<int>(a.size(1)),
+                   scratch, blaslt_handle(a.get_device()), c10::cuda::getCurrentCUDAStream(a.get_device()).stream());
+    return output.transpose(0, 1).contiguous();
+}
+
+std::vector<Tensor> debug_softmax(Tensor scores, Tensor qs, Tensor ks, Tensor maximum,
+                                  Tensor denom, double scale, int64_t rows, int64_t keys, bool cast) {
+    for (const auto& x : {scores, qs, ks, maximum, denom}) debug_tensor(x, scores, at::kFloat, "Softmax inputs");
+    TORCH_CHECK(scores.dim() == 2 && qs.numel() == 1 && ks.numel() == 1, "Invalid score/scale dimensions");
+    block_size(scores.size(0), "query tile"); block_size(scores.size(1), "key tile");
+    TORCH_CHECK(maximum.dim() == 1 && denom.sizes() == maximum.sizes() && maximum.numel() == scores.size(0), "Invalid row state");
+    TORCH_CHECK(rows > 0 && rows <= scores.size(0) && keys > 0 && keys <= scores.size(1), "Invalid valid-row/key counts");
+    TORCH_CHECK(std::isfinite(scale) && scale > 0 && std::isfinite(static_cast<float>(scale)), "Invalid scale");
+    const c10::cuda::CUDAGuard guard(scores.device());
+    vc::Shape s{};
+    s.bq = static_cast<int>(scores.size(0)); s.bk = static_cast<int>(scores.size(1)); s.k_quant = s.bk;
+    s.nq = static_cast<int>(rows); s.nk = static_cast<int>(keys); s.nq_tiles = s.nk_quant_tiles = 1;
+    s.expcast = cast; s.scale = static_cast<float>(scale);
+    auto packed = scores.transpose(0, 1).contiguous();
+    auto p = at::empty(scores.sizes(), scores.options().dtype(at::kByte));
+    auto alpha = at::empty_like(maximum), mass = at::empty_like(maximum);
+    maximum = maximum.clone(); denom = denom.clone();
+    vc::Buffers b{};
+    b.scores = packed.data_ptr<float>(); b.p8 = p.data_ptr<uint8_t>(); b.qs = qs.data_ptr<float>(); b.ks = ks.data_ptr<float>();
+    b.maximum = maximum.data_ptr<float>(); b.denom = denom.data_ptr<float>(); b.alpha = alpha.data_ptr<float>(); b.mass = mass.data_ptr<float>();
+    vc::debug_softmax(s, b, c10::cuda::getCurrentCUDAStream(scores.get_device()).stream());
+    return {p, alpha, mass, maximum, denom};
+}
+
+std::vector<Tensor> debug_accumulate(Tensor accum, Tensor pv, Tensor mass, Tensor alpha,
+                                     Tensor vs, Tensor mean, Tensor denom, int64_t rows) {
+    for (const auto& x : {accum, pv, mass, alpha, vs, denom}) debug_tensor(x, accum, at::kFloat, "Accumulation inputs");
+    TORCH_CHECK(mean.scalar_type() == at::kFloat || mean.scalar_type() == at::kHalf || mean.scalar_type() == at::kBFloat16, "Invalid mean dtype");
+    debug_tensor(mean, accum, mean.scalar_type(), "Mean");
+    TORCH_CHECK(accum.dim() == 2 && pv.sizes() == accum.sizes(), "Invalid PV/accumulator dimensions");
+    block_size(accum.size(0), "query tile"); block_size(accum.size(1), "value channels");
+    TORCH_CHECK(mass.dim() == 1 && alpha.sizes() == mass.sizes() && denom.sizes() == mass.sizes() && mass.numel() == accum.size(0), "Invalid accumulation row state");
+    TORCH_CHECK(vs.dim() == 1 && mean.sizes() == vs.sizes() && vs.numel() == accum.size(1), "Invalid value metadata");
+    TORCH_CHECK(rows > 0 && rows <= accum.size(0), "Invalid valid-row count");
+    const c10::cuda::CUDAGuard guard(accum.device());
+    vc::Shape s{}; s.bq = static_cast<int>(accum.size(0)); s.vp = s.dv = static_cast<int>(accum.size(1));
+    s.nq = static_cast<int>(rows); s.nk_tiles = 1;
+    s.mean_type = mean.scalar_type() == at::kHalf ? 1 : mean.scalar_type() == at::kBFloat16 ? 2 : 0;
+    auto packed = pv.transpose(0, 1).contiguous();
+    auto output = at::zeros_like(accum); accum = accum.clone();
+    vc::Buffers b{}; b.accum = accum.data_ptr<float>(); b.pv = packed.data_ptr<float>(); b.mass = mass.data_ptr<float>();
+    b.alpha = alpha.data_ptr<float>(); b.vs = vs.data_ptr<float>(); b.mean = mean.data_ptr(); b.denom = denom.data_ptr<float>(); b.output = output.data_ptr<float>();
+    vc::debug_accumulate(s, b, c10::cuda::getCurrentCUDAStream(accum.get_device()).stream());
+    return {accum, output};
+}
+
 }  // namespace
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.attr("numerical_contract_version") = 2;
+    m.attr("diagnostic_api_version") = 1;
+    m.def("debug_quantize", &debug_quantize);
+    m.def("debug_values", &debug_values);
+    m.def("debug_gemm", &debug_gemm);
+    m.def("debug_softmax", &debug_softmax);
+    m.def("debug_accumulate", &debug_accumulate);
     m.def("forward", &forward, "VC FP8 attention on Hopper (forward only)");
     m.def("preprocess_qk", &preprocess_qk, "Post-RoPE K centering and normalized Q/K Hadamard (CUDA FP32)");
     m.def("group_values", &group_values, "CUDA Lloyd clustering with stable permutation");
@@ -241,6 +350,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         info["matmul"] = "cuBLASLt E4M3 x E4M3, FP32 output/accumulation";
         info["fully_fused_attention"] = false;
         info["numerical_contract_version"] = 2;
+        info["diagnostic_api_version"] = 1;
         info["expcast_rounding"] = "FP32 FMA then RNE";
         info["value_mean_storage"] = "mu / per-channel V scale at configured mean dtype";
         return info;
