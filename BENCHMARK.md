@@ -3,6 +3,44 @@
 0.3.0 默认使用批量 CUDA 调度。新旧路径同轮对比、聚类缓存复用和 profiler 命令见
 [CUDA_PERFORMANCE.md](CUDA_PERFORMANCE.md)。拉取后需要重新编译扩展。
 
+## `[1,37741,28,128]` 测试场景
+
+该形状按 `[batch, sequence, heads, head_dim]`（BSHD）解释。
+Q/K/V 都使用完整的 37741 长度，BF16，dense、noncausal self-attention：
+
+| 接口 | 实际输入布局和形状 |
+| --- | --- |
+| FlashAttention 2/3/4 | BSHD `[1,37741,28,128]` |
+| VC、SageAttention | BHND `[1,28,37741,128]` |
+
+```bash
+git pull --ff-only origin master
+bash scripts/benchmark_37741.sh
+```
+
+这个入口默认比较五个后端，预热 2 次、每轮重复 5 次、共 3 轮。
+结果保存到 `results/h200_shape_1_37741_28_128.json`，控制台与 JSON 环境字段
+`input_shapes` 会列出两种布局下 Q/K/V 的形状。已经安装 0.3.0 扩展时，
+这次脚本更新不需要重新编译；旧版扩展仍需先运行 `bash scripts/validate_h800.sh`。
+
+只测 VC 或增加聚类缓存复用对比：
+
+```bash
+bash scripts/benchmark_37741.sh --backends vc --vc-reuse-layout
+```
+
+精度指标抽样 128 个 query，使用全部 37741 个 key；**计时始终计算完整 Q/K/V**。
+尚未在本地 RTX 3060 执行这个完整 H200 场景；形状和布局映射已检查。
+此入口不默认加入串行路径、完整 Python 量化参考或逐 tile 对拍；
+旧串行路径在该尺寸一次调用就需 4,873,400 次 GEMM 提交，会让运行耗时大幅增加。
+
+通用 `benchmark_cuda.py` 的无参数默认值仍是小规模 BHND `[1,2,1024,128]`，
+便于回归对比。直接指定大场景的等价命令：
+
+```bash
+python3 scripts/benchmark_cuda.py --batch 1 --queries 37741 --tokens 37741 --heads 28 --dim 128 --dtype bfloat16 --warmup 2 --repeats 5 --trials 3 --output results/h200_shape_1_37741_28_128.json
+```
+
 `scripts/benchmark_cuda.py` 默认对比下面五种实现。前三种 FlashAttention
 通过各自的包接口直接调用，SageAttention 使用公开的 `sageattn` 自动分派接口。
 

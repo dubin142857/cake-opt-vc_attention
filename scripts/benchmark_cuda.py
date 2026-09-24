@@ -259,6 +259,16 @@ def parse_args(argv=None):
     return args
 
 
+def input_shapes(args):
+    """Name axes explicitly: VC/Sage use BHND; FlashAttention uses BSHD."""
+    return {
+        "BHND": {name: [args.batch, args.heads, length, args.dim]
+                 for name, length in (("q", args.queries), ("k", args.tokens), ("v", args.tokens))},
+        "BSHD": {name: [args.batch, length, args.heads, args.dim]
+                 for name, length in (("q", args.queries), ("k", args.tokens), ("v", args.tokens))},
+    }
+
+
 @torch.no_grad()
 def run(args):
     device = torch.device(args.device)
@@ -272,6 +282,7 @@ def run(args):
         "gpu": torch.cuda.get_device_name(device),
         "capability": list(torch.cuda.get_device_capability(device)),
         "device": str(device), "tf32_enabled": False,
+        "input_shapes": input_shapes(args),
     }
     if "vc" in args.backends:
         from vc_attention.cuda_backend import preflight

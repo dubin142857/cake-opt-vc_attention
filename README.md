@@ -10,6 +10,7 @@ Q/K、P、V 分阶段精度诊断见 [ACCURACY_DIAGNOSTICS.md](ACCURACY_DIAGNOST
 0.2.1 修正参考 scale 除法的舍入，并增加固定量化字节的 CUDA 对拍，见 [PAYLOAD_DIAGNOSTICS.md](PAYLOAD_DIAGNOSTICS.md)。
 当前 **0.3.0** 默认批量处理 head 和 Q 行、缓存 GEMM plan、合并状态更新及输入校验。
 **须重新编译**；新旧路径与缓存复用对比、profiler 命令见 [CUDA_PERFORMANCE.md](CUDA_PERFORMANCE.md)。
+BSHD `[1,37741,28,128]` 的完整长度性能场景：`bash scripts/benchmark_37741.sh`，见 [BENCHMARK.md](BENCHMARK.md)。
 下文原有 A5 实验记录和两种后端的说明保留为历史背景；默认后端仍为 `reference`。
 
 当前 Python 包源码位于 `src/vc_attention/`，C++/CUDA 源码位于 `csrc/`。
