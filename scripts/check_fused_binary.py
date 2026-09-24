@@ -9,10 +9,10 @@ import subprocess
 
 
 def inspect_sass(sass):
-    variants = {"baseline": {}, "pipeline": {}}
+    variants = {"baseline": {}, "pipeline": {}, "d128_full": {}, "d128_tail": {}}
     for section in sass.split("Function : ")[1:]:
         name = section.splitlines()[0]
-        match = re.search(r"fused_attention(_pipeline)?ILb([01])ELb0", name)
+        match = re.search(r"fused_attention(_pipeline|_d128)?ILb([01])ELb0(?:ELb([01]))?", name)
         if not match:
             continue
         fp8 = re.findall(r"QGMMA\.[^;\n]*\.E4M3\.E4M3[^;\n]*", section)
@@ -21,8 +21,9 @@ def inspect_sass(sass):
         if re.search(r"\bHMMA\.", section):
             raise RuntimeError("Unexpected FP16 HMMA in native fused core")
         copies = len(re.findall(r"\bLDGSTS\.", section))
-        variant = "pipeline" if match[1] else "baseline"
-        if variant == "pipeline" and not copies:
+        variant = {None: "baseline", "_pipeline": "pipeline", "_d128":
+                   "d128_tail" if match[3] == "1" else "d128_full"}[match[1]]
+        if variant != "baseline" and not copies:
             raise RuntimeError("Pipelined native core must contain async global-to-shared LDGSTS copies")
         variants[variant]["expcast" if match[2] == "1" else "e4m3"] = {
             "function": name, "fp8_wgmma_instructions": len(fp8), "instruction": fp8[0].strip(),
@@ -30,7 +31,7 @@ def inspect_sass(sass):
             "local_load_instructions": len(re.findall(r"\bLDL\b", section)),
             "local_store_instructions": len(re.findall(r"\bSTL\b", section))}
     if any(set(modes) != {"e4m3", "expcast"} for modes in variants.values()):
-        raise RuntimeError("Baseline and pipeline modes must contain E4M3 QGMMA; rebuild 0.5.0 with sm_90a")
+        raise RuntimeError("Baseline, pipeline and both D128 variants must contain E4M3 QGMMA; rebuild 0.6.0 with sm_90a")
     return variants
 
 

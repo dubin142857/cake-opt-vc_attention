@@ -203,11 +203,15 @@ __global__ void fused_attention(Shape s, Buffers b) {
 }
 
 #include "fused_pipeline.cuh"
+#include "fused_d128.cuh"
 
 template<bool Emulate>
-void launch(const Shape& s, const Buffers& b, cudaStream_t stream, bool pipeline) {
+void launch(const Shape& s, const Buffers& b, cudaStream_t stream, bool pipeline, bool specialized) {
     const int blocks = s.heads * ((s.nq + 63) / 64);
-    if (pipeline) {
+    if (specialized) {
+        if (s.expcast) launch_d128<true, Emulate>(s, b, stream);
+        else launch_d128<false, Emulate>(s, b, stream);
+    } else if (pipeline) {
         if (s.expcast) fused_attention_pipeline<true, Emulate><<<blocks, 128, 0, stream>>>(s, b);
         else fused_attention_pipeline<false, Emulate><<<blocks, 128, 0, stream>>>(s, b);
     } else if (s.expcast) fused_attention<true, Emulate><<<blocks, 128, 0, stream>>>(s, b);
@@ -218,11 +222,12 @@ void launch(const Shape& s, const Buffers& b, cudaStream_t stream, bool pipeline
 }  // namespace
 
 void forward_fused(const float* q, const float* k, const float* v,
-                   const Shape& s, const Buffers& b, cudaStream_t stream, bool debug_emulate, bool pipeline) {
+                   const Shape& s, const Buffers& b, cudaStream_t stream,
+                   bool debug_emulate, bool pipeline, bool specialized) {
     debug_quantize(q, b.q8, b.qs, s.heads, s.nq, s.pq, s.d, s.dp, s.bq, s.nq_tiles, stream);
     debug_quantize(k, b.k8, b.ks, s.heads, s.nk, s.pk, s.d, s.dp, s.k_quant, s.nk_quant_tiles, stream);
     debug_values(v, s, b, stream);
-    if (debug_emulate) launch<true>(s, b, stream, pipeline);
-    else launch<false>(s, b, stream, pipeline);
+    if (debug_emulate) launch<true>(s, b, stream, pipeline, specialized);
+    else launch<false>(s, b, stream, pipeline, specialized);
 }
 }  // namespace vc

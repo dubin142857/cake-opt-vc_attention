@@ -22,7 +22,8 @@ def operation_counts(args):
     return {"q_chunks": chunks, "kv_tiles": ktiles,
             "batched_gemm_calls": 2 * chunks * ktiles,
             "batched_update_kernel_launches": 2 * chunks * ktiles,
-            "fused_attention_core_launches": 1,
+            "fused_attention_core_launches": (int(args.queries >= 64) + int(args.queries % 64 != 0))
+                if args.dim == 128 else 1,
             "legacy_serial_gemm_calls": 2 * args.batch * args.heads * qtiles * ktiles}
 
 
@@ -50,7 +51,7 @@ def run(args):
     runtime = require_batched_runtime(args.schedule)
     from vc_attention import Config, LayoutCache
     from vc_attention.core import _validate
-    from vc_attention.cuda_backend import _extension, preflight
+    from vc_attention.cuda_backend import _extension, _fused_variant, preflight
     device = torch.device(args.device)
     torch.cuda.set_device(device)
     torch.backends.cuda.matmul.allow_tf32 = False
@@ -103,7 +104,9 @@ def run(args):
         k, v = phase("KV_permutation", lambda: (
             k.gather(-2, pi.unsqueeze(-1).expand_as(k)),
             v.gather(-2, pi.unsqueeze(-1).expand_as(v))))
-    launch = ext.forward_fused if args.schedule == "fused" else ext.forward
+    variant = _fused_variant(args.dim, args.dim, cfg) if args.schedule == "fused" else None
+    report["cuda_fused_variant"] = variant
+    launch = (ext.forward_fused_d128 if variant == "d128" else ext.forward_fused) if variant else ext.forward
     output = phase(f"native_{args.schedule}_CUDA_forward", lambda: launch(
         q, k, v, cfg.q_block, cfg.k_quant_block, cfg.kv_block, active, cfg.expcast,
         {"float32": 0, "float16": 1, "bfloat16": 2}[cfg.mean_dtype], args.dim**-0.5,

@@ -41,6 +41,7 @@ def parse_args(argv=None):
     parser.add_argument("--vc-schedule", choices=("fused", "batched"), default="fused")
     parser.add_argument("--vc-schedule-compare", action="store_true", help="also profile the expensive legacy serial path")
     parser.add_argument("--vc-fused-compare", action="store_true", help="also profile the retained 0.4.0 fused core")
+    parser.add_argument("--vc-specialize-compare", action="store_true", help="also profile the retained 0.5.0 generic pipeline")
     parser.add_argument("--vc-reuse-layout", action="store_true")
     parser.add_argument("--output-dir", default="results/h200_profile")
     args = parser.parse_args(argv)
@@ -48,6 +49,8 @@ def parse_args(argv=None):
         parser.error("shapes, warmup and iterations must be positive")
     if args.vc_fused_compare and args.vc_schedule != "fused":
         parser.error("--vc-fused-compare requires --vc-schedule fused")
+    if args.vc_specialize_compare and (args.vc_schedule != "fused" or args.dim != 128):
+        parser.error("--vc-specialize-compare requires --vc-schedule fused and --dim 128")
     return args
 
 
@@ -66,7 +69,8 @@ def run(args):
                 for n in (args.queries, args.tokens, args.tokens))
     backends = make_backends(["vc"], qkv, False, vc_schedule_compare=args.vc_schedule_compare,
                              vc_reuse_layout=args.vc_reuse_layout, vc_schedule=args.vc_schedule,
-                             vc_fused_compare=args.vc_fused_compare)
+                             vc_fused_compare=args.vc_fused_compare,
+                             vc_specialize_compare=args.vc_specialize_compare)
     directory = Path(args.output_dir)
     directory.mkdir(parents=True, exist_ok=True)
     report = {"environment": {"torch": torch.__version__, "torch_cuda": torch.version.cuda, **info, "runtime": runtime},

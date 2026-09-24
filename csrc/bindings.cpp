@@ -116,12 +116,12 @@ std::vector<Tensor> preprocess_qk(Tensor q, Tensor k, bool k_smooth, bool hadama
     return {qr, kr};
 }
 
-template<int Mode>  // 0=cuBLAS, 1/2=pipelined native/emulator, 3/4=0.4.0 native/emulator.
+template<int Mode>  // 0=cuBLAS, 1/2=generic pipeline, 3/4=0.4.0, 5/6=D128 (native/emulator).
 Tensor forward(Tensor q, Tensor k, Tensor v, int64_t bq, int64_t k_quant,
                int64_t bk, bool smooth, bool expcast, int64_t mean_type, double scale,
                bool k_smooth, bool hadamard, bool batched) {
     constexpr bool fused = Mode != 0;
-    if constexpr (Mode == 2 || Mode == 4) {
+    if constexpr (Mode == 2 || Mode == 4 || Mode == 6) {
         TORCH_CHECK(q.is_cuda(), "Diagnostic emulator requires CUDA tensors");
         TORCH_CHECK(q.numel() <= 1024 * 128 && k.numel() <= 1024 * 128,
                     "Diagnostic emulator is restricted to small test tensors; it is not a performance backend");
@@ -145,6 +145,11 @@ Tensor forward(Tensor q, Tensor k, Tensor v, int64_t bq, int64_t k_quant,
     TORCH_CHECK(k_quant >= bk && k_quant <= 4096 && k_quant % bk == 0,
                 "k_quant_block must be a multiple of kv_block and <= 4096");
     TORCH_CHECK(mean_type >= 0 && mean_type <= 2, "Invalid mean dtype");
+    if constexpr (Mode >= 5) {
+        TORCH_CHECK(q.size(3) == 128 && v.size(3) == 128 && bq == 128 && k_quant == 256 &&
+                    bk == 128 && mean_type == 1,
+                    "D128 specialization requires D=DV=128, q_block=128, k_quant_block=256, kv_block=128, mean_dtype=float16");
+    }
 
     const auto original_type = q.scalar_type();
     auto transformed = preprocess_qk(q, k, k_smooth, hadamard);
@@ -205,7 +210,7 @@ Tensor forward(Tensor q, Tensor k, Tensor v, int64_t bq, int64_t k_quant,
     const auto stream = c10::cuda::getCurrentCUDAStream(q.get_device()).stream();
     if constexpr (fused) {
         vc::forward_fused(q.data_ptr<float>(), k.data_ptr<float>(), v.data_ptr<float>(), s, buffers, stream,
-                          Mode == 2 || Mode == 4, Mode < 3);
+                          Mode == 2 || Mode == 4 || Mode == 6, Mode != 3 && Mode != 4, Mode >= 5);
     } else {
         auto handle = blaslt_handle(q.get_device());
         auto launch = batched ? vc::forward_batched : vc::forward;
@@ -419,6 +424,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.attr("scheduling_version") = 1;
     m.attr("fused_api_version") = 1;
     m.attr("fused_pipeline_version") = 1;
+    m.attr("fused_d128_version") = 1;
     m.def("all_finite", &all_finite);
     m.def("debug_batched_step", &debug_batched_step);
     m.attr("diagnostic_api_version") = 1;
@@ -428,10 +434,11 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("debug_softmax", &debug_softmax);
     m.def("debug_accumulate", &debug_accumulate);
     const char* names[] = {"forward", "forward_fused", "debug_fused_emulated",
-                           "forward_fused_baseline", "debug_fused_baseline_emulated"};
+                           "forward_fused_baseline", "debug_fused_baseline_emulated",
+                           "forward_fused_d128", "debug_fused_d128_emulated"};
     using Forward = decltype(&forward<0>);
-    const Forward entries[] = {&forward<0>, &forward<1>, &forward<2>, &forward<3>, &forward<4>};
-    for (int mode = 0; mode < 5; ++mode) m.def(names[mode], entries[mode],
+    const Forward entries[] = {&forward<0>, &forward<1>, &forward<2>, &forward<3>, &forward<4>, &forward<5>, &forward<6>};
+    for (int mode = 0; mode < 7; ++mode) m.def(names[mode], entries[mode],
           "VC forward; debug_fused_emulated is a small-tensor numerical diagnostic only",
           pybind11::arg("q"), pybind11::arg("k"), pybind11::arg("v"),
           pybind11::arg("q_block"), pybind11::arg("k_quant_block"), pybind11::arg("kv_block"),
@@ -449,6 +456,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         info["fully_fused_attention"] = false;
         info["fused_attention_available"] = true;
         info["fused_pipeline_version"] = 1;
+        info["fused_d128_version"] = 1;
         info["fused_pipeline"] = "16-byte cp.async; separate K/V buffers; V overlaps QK, next K overlaps PV";
         info["fused_matmul"] = "Hopper WGMMA m64n128k32 E4M3 x E4M3, FP32 accumulation (sm_90a)";
         info["preprocessing_fused"] = false;

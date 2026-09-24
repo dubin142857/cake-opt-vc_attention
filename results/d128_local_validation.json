@@ -1,0 +1,51 @@
+{
+  "date": "2026-09-24",
+  "vc_version": "0.6.0",
+  "environment": {
+    "platform": "Windows",
+    "gpu": "NVIDIA GeForce RTX 3060 Laptop GPU",
+    "torch": "2.3.1+cu121",
+    "nvcc": "12.4.131",
+    "compiled_architectures": ["sm_86", "sm_90a"]
+  },
+  "suite": {"passed": 282, "skipped": 128},
+  "emulated_d128_vs_generic": {
+    "cases": 32,
+    "bitwise_equal": true,
+    "query_lengths": [1, 63, 64, 65, 127, 128, 129, 193],
+    "key_lengths": [1, 127, 128, 129, 255, 256, 257, 641],
+    "smoothing_modes": [false, true],
+    "expcast_modes": [false, true]
+  },
+  "emulated_kernel_memcheck": {"tests_passed": 93, "errors": 0},
+  "emulated_kernel_racecheck": {
+    "tests_passed": 45, "errors": 0, "warnings": 0,
+    "scope": "D128 emulator tests including same-generic comparison, known answers and invalid-configuration guards",
+    "exit_workaround": "Direct Python executable, torch.cuda.synchronize and flushed stdout before os._exit(test_status). Regular PyTorch shutdown hung after passing tests; only this completed run is counted."
+  },
+  "native_binary": {
+    "verified_in_installed_extension": true,
+    "variants_verified": ["baseline", "pipeline", "d128_full", "d128_tail"],
+    "modes_verified": ["e4m3", "expcast"],
+    "instruction": "QGMMA.64x128x32.F32.E4M3.E4M3",
+    "d128_async_copy_instruction": "LDGSTS",
+    "fp16_hmma_in_native_functions": false,
+    "d128_shared_bytes": 49152,
+    "d128_registers_per_thread": {
+      "full_e4m3": 255, "full_expcast": 255,
+      "tail_e4m3": 255, "tail_expcast": 241
+    },
+    "spill_load_bytes": 0,
+    "spill_store_bytes": 0,
+    "local_load_instructions": 0,
+    "local_store_instructions": 0
+  },
+  "limitations": [
+    "Hopper native execution and performance were not available locally; Hopper/NPU tests were skipped.",
+    "The diagnostic emulator uses the production cp.async/shared-memory/Softmax/update code but replaces WGMMA with scalar arithmetic.",
+    "Native WGMMA correctness, interaction with cp.async, and timing need H200 validation.",
+    "No latency improvement is claimed before same-run remote A/B measurement.",
+    "Full-row register use did not decrease; CUDA 13 may generate different resource counts.",
+    "The specialized core launches two kernels for Q lengths >=64 not divisible by 64; other positive Q lengths use one."
+  ]
+}

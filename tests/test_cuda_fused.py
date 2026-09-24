@@ -12,7 +12,7 @@ import pytest
 import torch
 
 from vc_attention import Config, attention
-from vc_attention.cuda_backend import _extension
+from vc_attention.cuda_backend import _extension, _fused_variant
 
 
 has_cuda = torch.cuda.is_available() and importlib.util.find_spec("vc_attention._cuda_ext") is not None
@@ -26,13 +26,13 @@ def launch(request):
     if not has_cuda or (request.param == "native" and not has_hopper):
         pytest.skip("native fused FP8 requires Hopper; emulator requires CUDA")
     ext = _extension()
-    assert ext.fused_api_version == 1 and ext.fused_pipeline_version == 1, "Rebuild the 0.5.0 extension"
+    assert (ext.fused_api_version, ext.fused_pipeline_version, ext.fused_d128_version) == (1, 1, 1), "Rebuild the 0.6.0 extension"
 
     def call(q, k, v, cfg, *, baseline=False):
-        if request.param == "native":
-            fn = ext.forward_fused_baseline if baseline else ext.forward_fused
-        else:
-            fn = ext.debug_fused_baseline_emulated if baseline else ext.debug_fused_emulated
+        variant = "baseline" if baseline else _fused_variant(q.shape[-1], v.shape[-1], cfg)
+        suffix = {"baseline": "_baseline", "pipeline": "", "d128": "_d128"}[variant]
+        fn = getattr(ext, "forward_fused" + suffix if request.param == "native"
+                     else "debug_fused" + suffix + "_emulated")
         return fn(q, k, v, cfg.q_block, cfg.k_quant_block, cfg.kv_block,
                   cfg.v_smooth, cfg.expcast,
                   {"float32": 0, "float16": 1, "bfloat16": 2}[cfg.mean_dtype],
@@ -43,8 +43,11 @@ def launch(request):
 def test_fused_configuration_is_explicit_and_rejects_unsupported_kv_block():
     assert Config(backend="cuda_fp8", cuda_schedule="fused").cuda_schedule == "fused"
     assert Config().cuda_fused_pipeline is True
+    assert Config().cuda_fused_specialize is True
     with pytest.raises(ValueError, match="cuda_fused_pipeline"):
         Config(cuda_fused_pipeline="false")
+    with pytest.raises(ValueError, match="cuda_fused_specialize"):
+        Config(cuda_fused_specialize="false")
     with pytest.raises(ValueError, match="kv_block=128"):
         Config(backend="cuda_fp8", cuda_schedule="fused", kv_block=64)
 
@@ -149,6 +152,65 @@ def test_public_fused_vs_batched_with_fixed_grouping(cast):
     assert stats["native_fused_attention"] and stats["native_fp8_matmul"]
     assert not stats["preprocessing_fused"]
     assert stats["cuda_fused_pipeline"]
+    assert stats["cuda_fused_variant"] == "d128"
+    generic, generic_stats = attention(q, k, v, replace(cfg, cuda_fused_specialize=False))
+    torch.testing.assert_close(actual, generic, rtol=0, atol=0)
+    assert generic_stats["cuda_fused_variant"] == "pipeline"
     baseline, baseline_stats = attention(q, k, v, replace(cfg, cuda_fused_pipeline=False))
     torch.testing.assert_close(actual, baseline, rtol=0, atol=0)
     assert not baseline_stats["cuda_fused_pipeline"]
+    assert baseline_stats["cuda_fused_variant"] == "baseline"
+
+
+@pytest.mark.parametrize("nq,nk", [(1, 1), (63, 127), (64, 128), (65, 129),
+                                    (127, 256), (128, 255), (129, 257), (193, 641)])
+@pytest.mark.parametrize("smooth,cast", [(False, False), (False, True), (True, False), (True, True)])
+def test_d128_matches_generic_bitwise_across_full_tiles_tails_and_scale_groups(launch, nq, nk, smooth, cast):
+    generator = torch.Generator().manual_seed(601)
+    q, k, v = (torch.randn(1, 1, n, 128, generator=generator).cuda() for n in (nq, nk, nk))
+    for start in range(0, nk, 128):
+        k[:, :, start:start + 128] *= 1 + start / 128
+        v[:, :, start:start + 128] += 3 * ((start // 128) % 3 - 1)
+    cfg = Config(backend="cuda_fp8", cuda_schedule="fused", expcast=cast, v_smooth=smooth)
+    expected = launch(q, k, v, replace(cfg, cuda_fused_specialize=False))
+    actual = launch(q, k, v, cfg)
+    torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+
+
+@pytest.mark.parametrize("cast", [False, True])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
+def test_d128_known_answer_maximum_change_strides_stream_and_updated_values(launch, cast, dtype):
+    q = torch.ones(2, 2, 65, 128, device="cuda", dtype=dtype)
+    k = torch.cat([torch.full((2, 2, 128, 128), -20., device="cuda", dtype=dtype),
+                   torch.full((2, 2, 3, 128), 20., device="cuda", dtype=dtype)], 2)
+    offset = torch.arange(4, device="cuda", dtype=dtype).reshape(2, 2, 1, 1)
+    v = torch.cat([torch.full((2, 2, 128, 128), 3., device="cuda", dtype=dtype),
+                   torch.full((2, 2, 3, 128), 9., device="cuda", dtype=dtype)], 2) + offset
+    q, k, v = (torch.stack([x, x], -1)[..., 0] for x in (q, k, v))
+    cfg = Config(backend="cuda_fp8", cuda_schedule="fused", expcast=cast, v_smooth=True)
+    stream = torch.cuda.Stream()
+    stream.wait_stream(torch.cuda.current_stream())
+    with torch.cuda.stream(stream):
+        first = launch(q, k, v, cfg)
+        second = launch(q, k, v + 2, cfg)
+    stream.synchronize()
+    assert first.dtype == dtype
+    torch.testing.assert_close(first, (9 + offset).expand_as(first), rtol=2e-5, atol=2e-5)
+    torch.testing.assert_close(second, (11 + offset).expand_as(second), rtol=2e-5, atol=2e-5)
+
+
+@pytest.mark.parametrize("d,dv,changes", [
+    (64, 128, {}), (128, 64, {}), (128, 128, {"q_block": 96}),
+    (128, 128, {"k_quant_block": 128}), (128, 128, {"k_quant_block": 384}),
+    (128, 128, {"mean_dtype": "float32"}), (128, 128, {"mean_dtype": "bfloat16"}),
+])
+def test_d128_incompatible_config_selects_generic_and_direct_emulated_entry_rejects(d, dv, changes):
+    cfg = Config(backend="cuda_fp8", cuda_schedule="fused", **changes)
+    assert _fused_variant(d, dv, cfg) == "pipeline"
+    if not has_cuda:
+        pytest.skip("direct entry validation requires CUDA")
+    q = torch.zeros(1, 1, 1, d, device="cuda")
+    v = torch.zeros(1, 1, 1, dv, device="cuda")
+    with pytest.raises(RuntimeError, match="D128 specialization requires"):
+        _extension().debug_fused_d128_emulated(q, q, v, cfg.q_block, cfg.k_quant_block, 128,
+            True, True, {"float32": 0, "float16": 1, "bfloat16": 2}[cfg.mean_dtype], d**-0.5, True, True, False)

@@ -1,11 +1,12 @@
 # Hopper (H800/H100/H200) CUDA C++ implementation
 
-Version **0.5.0** adds async K/V copies to `cuda_schedule="fused"`: a single native FP8 MMA
-attention kernel, with preprocessing still separate. Benchmarks now select it
+Version **0.6.0** specializes the native FP8 core for D128/default quantization geometry,
+with one or two core launches and preprocessing still separate. Benchmarks select it
 by default; Python Config keeps the compatible batched default. **Requires nvcc
->= 12.4 and a rebuild.** See [PIPELINED_CUDA.md](PIPELINED_CUDA.md) for same-run comparisons
-against the retained 0.4.0 fused core (`--vc-fused-compare`). The cuBLASLt baseline
-described below remains available; 0.5.0 Hopper runtime/performance needs remote validation.
+>= 12.4 and a rebuild.** See [D128_CUDA.md](D128_CUDA.md) for same-run comparisons
+against the retained 0.5.0 generic core (`--vc-specialize-compare`). The 0.4.0 core
+(`--vc-fused-compare`) and cuBLASLt baseline remain available. 0.6.0 native execution
+and performance need H200 validation; the user's 0.5.0 API measurement was 129.7160 ms.
 
 This provides `Config(backend="cuda_fp8")` for VC-Attention (V-Smooth + ExpCast).
 Version 0.2.0 adds paper-described K centering and Q/K Hadamard preprocessing,
@@ -26,7 +27,7 @@ Local validation: **178 passed, 38 skipped** (36 Hopper, 2 NPU); compiled `sm_86
 and `sm_90`. Batched Softmax/accumulation and finite checks ran on RTX 3060.
 Hopper FP8 batched GEMM and H200 latency remain to be tested on the target machine.
 
-## Implementation and current validation
+## cuBLASLt baseline implementation and historical validation
 
 - `csrc/kernels.cu`: actual CUDA kernels for K centering, Q/K Hadamard and E4M3 quantization, per-channel V
   residual quantization, ExpCast, online Softmax, and V-mean recovery.
@@ -75,7 +76,7 @@ executes pytest from a directory whose name contains a hyphen.
 ## Requirements
 
 - Target: Linux, NVIDIA H800/H100/H200 (compute capability 9.x).
-- CUDA Toolkit 12.1 or newer with `nvcc` and cuBLASLt. Use a Toolkit compatible
+- CUDA Toolkit 12.4 or newer with `nvcc` and cuBLASLt. Use a Toolkit compatible
   with the CUDA-enabled PyTorch installed in the target environment.
 - PyTorch >= 2.3, Python >= 3.9, a CUDA-supported C++17 compiler.
 - Python build/test tools: setuptools >= 64, wheel, ninja, pytest, numpy.
@@ -90,14 +91,14 @@ python3 -c "import torch; print(torch.__version__, torch.version.cuda); print(to
 nvcc --version
 python3 -m pip install 'setuptools>=64' wheel ninja pytest numpy
 
-export TORCH_CUDA_ARCH_LIST=9.0
+export TORCH_CUDA_ARCH_LIST=9.0a
 export MAX_JOBS=4
 python3 -m pip install . --no-build-isolation --no-deps
 ```
 
 `CUDA_HOME` may be set to the Toolkit directory if `nvcc` is not discovered.
 Building does not require an attached GPU: the architecture is explicit. The
-default build targets `9.0`, even if the build host has a different GPU.
+default build targets `9.0a`, even if the build host has a different GPU.
 Never copy a Windows `.pyd` to Linux; compile from source on the remote host.
 When changing `.cpp` or `.cu`, rerun the install command to rebuild the extension.
 Rerun it after changing Python sources as well when using this normal install.
