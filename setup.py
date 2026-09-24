@@ -1,5 +1,7 @@
 """Build against the torch already installed in the target environment."""
 import os
+import re
+import subprocess
 import sys
 
 from setuptools import setup
@@ -15,11 +17,23 @@ if os.environ.get("VC_ATTENTION_BUILD_CUDA", "1") != "0":
             "pip install . --no-build-isolation. For reference-only use, set "
             "VC_ATTENTION_BUILD_CUDA=0 explicitly."
         )
+    compiler = os.path.join(CUDA_HOME, "bin", "nvcc.exe" if sys.platform == "win32" else "nvcc")
+    compiler_info = subprocess.check_output([compiler, "--version"], text=True)
+    compiler_version = re.search(r"release (\d+)\.(\d+)", compiler_info)
+    if not compiler_version or tuple(map(int, compiler_version.groups())) < (12, 4):
+        raise RuntimeError("vc-attention 0.4.0 fused WGMMA build requires nvcc >= 12.4. Set CUDA_HOME to a compatible toolkit.")
     # The build host need not have a GPU. H800/H100 are the intended targets.
-    os.environ.setdefault("TORCH_CUDA_ARCH_LIST", "9.0")
+    # WGMMA requires the architecture-specific sm_90a image. Keep any extra
+    # development targets (e.g. sm_86 for diagnostic tests), but always include it.
+    arch_list = os.environ.get("TORCH_CUDA_ARCH_LIST", "9.0a").replace(" ", ";").split(";")
+    arch_list = ["9.0a" if a in ("9.0", "9.0+PTX", "Hopper") else a for a in arch_list if a]
+    if not any(a.startswith("9.0a") for a in arch_list):
+        arch_list.append("9.0a")
+    os.environ["TORCH_CUDA_ARCH_LIST"] = ";".join(dict.fromkeys(arch_list))
     extensions = [CUDAExtension(
         "vc_attention._cuda_ext",
-        sources=["csrc/bindings.cpp", "csrc/kernels.cu"],
+        sources=["csrc/bindings.cpp", "csrc/kernels.cu", "csrc/fused.cu"],
+        depends=["csrc/vc_cuda.h", "csrc/wgmma.cuh"],
         libraries=["cublasLt"],
         extra_compile_args={
             "cxx": ["/O2", "/std:c++17"] if sys.platform == "win32" else ["-O3", "-std=c++17"],
@@ -32,7 +46,7 @@ if os.environ.get("VC_ATTENTION_BUILD_CUDA", "1") != "0":
 
 setup(
     name="vc-attention",
-    version="0.3.0",
+    version="0.4.0",
     description="VC-Attention reference and CUDA C++ FP8 backend for Hopper",
     packages=["vc_attention"],
     package_dir={"": "src"},

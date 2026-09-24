@@ -116,10 +116,16 @@ std::vector<Tensor> preprocess_qk(Tensor q, Tensor k, bool k_smooth, bool hadama
     return {qr, kr};
 }
 
+template<int Mode>  // 0=cuBLAS schedules, 1=fused FP8, 2=explicit diagnostic emulator.
 Tensor forward(Tensor q, Tensor k, Tensor v, int64_t bq, int64_t k_quant,
                int64_t bk, bool smooth, bool expcast, int64_t mean_type, double scale,
                bool k_smooth, bool hadamard, bool batched) {
-    require_hopper(q);
+    constexpr bool fused = Mode != 0;
+    if constexpr (Mode == 2) {
+        TORCH_CHECK(q.is_cuda(), "Diagnostic emulator requires CUDA tensors");
+        TORCH_CHECK(q.numel() <= 1024 * 128 && k.numel() <= 1024 * 128,
+                    "Diagnostic emulator is restricted to small test tensors; it is not a performance backend");
+    } else require_hopper(q);
     const c10::cuda::CUDAGuard guard(q.device());
     const at::NoGradGuard no_grad;
     TORCH_CHECK(q.dim() == 4 && k.dim() == 4 && v.dim() == 4, "Expected [B,H,N,D] tensors");
@@ -135,6 +141,7 @@ Tensor forward(Tensor q, Tensor k, Tensor v, int64_t bq, int64_t k_quant,
     TORCH_CHECK(std::isfinite(scale) && scale > 0.0 && std::isfinite(static_cast<float>(scale)), "scale must be positive finite FP32");
     block_size(bq, "q_block");
     block_size(bk, "kv_block");
+    TORCH_CHECK(!fused || bk == 128, "Fused CUDA currently requires kv_block=128; no fallback was used");
     TORCH_CHECK(k_quant >= bk && k_quant <= 4096 && k_quant % bk == 0,
                 "k_quant_block must be a multiple of kv_block and <= 4096");
     TORCH_CHECK(mean_type >= 0 && mean_type <= 2, "Invalid mean dtype");
@@ -161,6 +168,7 @@ Tensor forward(Tensor q, Tensor k, Tensor v, int64_t bq, int64_t k_quant,
     small_int(int64_t(s.heads) * s.nk_tiles * s.vp, "V preprocessing grid");
     s.smooth = smooth; s.expcast = expcast; s.mean_type = static_cast<int>(mean_type); s.scale = static_cast<float>(scale);
     s.query_chunk = std::min(s.nq_tiles, std::max(1, 1024 / s.bq)) * s.bq;
+    if (fused) small_int(int64_t(s.heads) * ((int64_t(s.nq) + 63) / 64), "Fused grid");
     const int scratch_heads = batched ? s.heads : 1;
     const int scratch_rows = batched ? s.query_chunk : s.bq;
     small_int(int64_t(scratch_heads) * scratch_rows, "batched Softmax grid");
@@ -172,21 +180,21 @@ Tensor forward(Tensor q, Tensor k, Tensor v, int64_t bq, int64_t k_quant,
     auto q8 = at::empty({s.heads, s.pq, s.dp}, bytes);
     auto k8 = at::empty({s.heads, s.pk, s.dp}, bytes);
     auto v8 = at::empty({s.heads, s.nk_tiles, s.vp, s.bk}, bytes);
-    auto p8 = at::empty({scratch_heads, scratch_rows, s.bk}, bytes);
+    auto p8 = at::empty({fused ? 0 : scratch_heads, scratch_rows, s.bk}, bytes);
     auto qs = at::empty({s.heads, s.nq_tiles}, f);
     auto ks = at::empty({s.heads, s.nk_quant_tiles}, f);
     auto vs = at::empty({s.heads, s.nk_tiles, s.vp}, f);
     const auto mean_dtype = mean_type == 1 ? at::kHalf : mean_type == 2 ? at::kBFloat16 : at::kFloat;
     auto means = at::empty(vs.sizes(), f.dtype(mean_dtype));
-    auto scores = at::empty({scratch_heads, s.bk, scratch_rows}, f);
-    auto pv = at::empty({scratch_heads, s.vp, scratch_rows}, f);
-    auto maximum = at::empty({scratch_heads, scratch_rows}, f);
+    auto scores = at::empty({fused ? 0 : scratch_heads, s.bk, scratch_rows}, f);
+    auto pv = at::empty({fused ? 0 : scratch_heads, s.vp, scratch_rows}, f);
+    auto maximum = at::empty({fused ? 0 : scratch_heads, scratch_rows}, f);
     auto denom = at::empty_like(maximum);
     auto alpha = at::empty_like(maximum);
     auto mass = at::empty_like(maximum);
-    auto accum = at::empty({scratch_heads, scratch_rows, s.vp}, f);
+    auto accum = at::empty({fused ? 0 : scratch_heads, scratch_rows, s.vp}, f);
     auto output = at::empty({q.size(0), q.size(1), q.size(2), v.size(3)}, f);
-    auto workspace = at::empty({32 * 1024 * 1024}, bytes);
+    auto workspace = at::empty({fused ? 0 : 32 * 1024 * 1024}, bytes);
     vc::Buffers buffers{
         q8.data_ptr<uint8_t>(), k8.data_ptr<uint8_t>(), v8.data_ptr<uint8_t>(), p8.data_ptr<uint8_t>(),
         qs.data_ptr<float>(), ks.data_ptr<float>(), vs.data_ptr<float>(), means.data_ptr(),
@@ -194,10 +202,14 @@ Tensor forward(Tensor q, Tensor k, Tensor v, int64_t bq, int64_t k_quant,
         alpha.data_ptr<float>(), mass.data_ptr<float>(), accum.data_ptr<float>(), output.data_ptr<float>(),
         workspace.data_ptr(), static_cast<size_t>(workspace.numel())
     };
-    auto handle = blaslt_handle(q.get_device());
-    auto launch = batched ? vc::forward_batched : vc::forward;
-    launch(q.data_ptr<float>(), k.data_ptr<float>(), v.data_ptr<float>(), s, buffers,
-           handle, c10::cuda::getCurrentCUDAStream(q.get_device()).stream());
+    const auto stream = c10::cuda::getCurrentCUDAStream(q.get_device()).stream();
+    if constexpr (fused) {
+        vc::forward_fused(q.data_ptr<float>(), k.data_ptr<float>(), v.data_ptr<float>(), s, buffers, stream, Mode == 2);
+    } else {
+        auto handle = blaslt_handle(q.get_device());
+        auto launch = batched ? vc::forward_batched : vc::forward;
+        launch(q.data_ptr<float>(), k.data_ptr<float>(), v.data_ptr<float>(), s, buffers, handle, stream);
+    }
     return output.to(original_type);
 }
 
@@ -404,6 +416,7 @@ std::vector<Tensor> debug_batched_step(std::vector<Tensor> x, int64_t qb, int64_
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.attr("numerical_contract_version") = 2;
     m.attr("scheduling_version") = 1;
+    m.attr("fused_api_version") = 1;
     m.def("all_finite", &all_finite);
     m.def("debug_batched_step", &debug_batched_step);
     m.attr("diagnostic_api_version") = 1;
@@ -412,7 +425,11 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("debug_gemm", &debug_gemm);
     m.def("debug_softmax", &debug_softmax);
     m.def("debug_accumulate", &debug_accumulate);
-    m.def("forward", &forward, "VC FP8 attention on Hopper (forward only)",
+    const char* names[] = {"forward", "forward_fused", "debug_fused_emulated"};
+    using Forward = decltype(&forward<0>);
+    const Forward entries[] = {&forward<0>, &forward<1>, &forward<2>};
+    for (int mode = 0; mode < 3; ++mode) m.def(names[mode], entries[mode],
+          "VC forward; debug_fused_emulated is a small-tensor numerical diagnostic only",
           pybind11::arg("q"), pybind11::arg("k"), pybind11::arg("v"),
           pybind11::arg("q_block"), pybind11::arg("k_quant_block"), pybind11::arg("kv_block"),
           pybind11::arg("smooth"), pybind11::arg("expcast"), pybind11::arg("mean_type"),
@@ -427,6 +444,9 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         info["cublaslt_version"] = cublasLtGetVersion();
         info["matmul"] = "cuBLASLt E4M3 x E4M3, FP32 output/accumulation";
         info["fully_fused_attention"] = false;
+        info["fused_attention_available"] = true;
+        info["fused_matmul"] = "Hopper WGMMA m64n128k32 E4M3 x E4M3, FP32 accumulation (sm_90a)";
+        info["preprocessing_fused"] = false;
         info["numerical_contract_version"] = 2;
         info["scheduling_version"] = 1;
         info["default_schedule"] = "batched_heads_and_queries";

@@ -1,5 +1,10 @@
 # 0.3.0：批量执行优化
 
+本文记录 0.3.0 批量路径。当前 0.4.0 新增融合主体，benchmark、阶段诊断和 profiler
+默认选 fused，见 [FUSED_CUDA.md](FUSED_CUDA.md)。复测本文批量路径需传 `--vc-schedule batched`。
+Profiler 现在默认只采集选择的 VC 路径；旧串行/缓存对照需分别显式开启
+`--vc-schedule-compare` / `--vc-reuse-layout`，避免大尺寸意外运行旧串行路径。
+
 大尺寸 BSHD `[1,37741,28,128]` 的五后端对比入口为
 `bash scripts/benchmark_37741.sh`，形状映射和计时范围见 [BENCHMARK.md](BENCHMARK.md)。
 下文的调用次数和命令默认对应原来的 1024 长度小场景。

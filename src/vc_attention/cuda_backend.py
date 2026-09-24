@@ -40,6 +40,8 @@ def _attention(q, k, v, cfg, *, cache, step, total_steps, request_id, layer_id, 
     from .core import LayoutCache
 
     ext = _extension()
+    if cfg.cuda_schedule == "fused" and getattr(ext, "fused_api_version", None) != 1:
+        raise RuntimeError("Rebuild vc-attention 0.4.0 for fused FP8 attention: bash scripts/validate_h800.sh")
     if cache is None:
         cache = LayoutCache(cfg)
         request_id = "one-shot" if request_id is None else request_id
@@ -52,7 +54,8 @@ def _attention(q, k, v, cfg, *, cache, step, total_steps, request_id, layer_id, 
         k = k.gather(-2, pi.unsqueeze(-1).expand_as(k))
         v = v.gather(-2, pi.unsqueeze(-1).expand_as(v))
     mean_type = {"float32": 0, "float16": 1, "bfloat16": 2}[cfg.mean_dtype]
-    output = ext.forward(q, k, v, cfg.q_block, cfg.k_quant_block, cfg.kv_block,
+    launch = ext.forward_fused if cfg.cuda_schedule == "fused" else ext.forward
+    output = launch(q, k, v, cfg.q_block, cfg.k_quant_block, cfg.kv_block,
                          active, cfg.expcast, mean_type, scale, cfg.k_smooth, cfg.qk_hadamard,
                          cfg.cuda_schedule == "batched")
     return output, {
@@ -64,13 +67,14 @@ def _attention(q, k, v, cfg, *, cache, step, total_steps, request_id, layer_id, 
         "qk_hadamard": cfg.qk_hadamard,
         "numerical_contract_version": 2,
         "tiles": math.ceil(q.shape[-2] / cfg.q_block) * math.ceil(k.shape[-2] / cfg.kv_block),
-        "native_fused_attention": False,
+        "native_fused_attention": cfg.cuda_schedule == "fused",
+        "preprocessing_fused": False,
         "native_fp8_matmul": True,
         "cuda_schedule": cfg.cuda_schedule,
     }
 
 
-def preflight(device="cuda:0"):
+def preflight(device="cuda:0", *, schedule="batched"):
     """Fail loudly unless both native FP8 GEMMs and ExpCast work on Hopper."""
     from .core import Config, attention, expcast_codes
 
@@ -85,11 +89,15 @@ def preflight(device="cuda:0"):
     k = torch.zeros(1, 1, 35, 16, device=device)
     v = torch.full((1, 1, 35, 16), 3.0, device=device)
     for cast in (False, True):
-        actual, _ = attention(q, k, v, Config(backend="cuda_fp8", expcast=cast))
+        actual, _ = attention(q, k, v, Config(backend="cuda_fp8", expcast=cast, cuda_schedule=schedule))
         torch.testing.assert_close(actual, torch.full_like(actual, 3), rtol=2e-5, atol=2e-5)
     torch.cuda.synchronize(device)
+    info = dict(ext.build_info())
+    if schedule == "fused":
+        info["matmul"] = info["fused_matmul"]
     return {"device": str(device), "name": torch.cuda.get_device_name(device),
-            "preflight": "passed", **ext.build_info()}
+            "preflight": "passed", **info, "cuda_schedule": schedule,
+            "native_fused_attention": schedule == "fused"}
 
 
 if __name__ == "__main__":
@@ -97,5 +105,6 @@ if __name__ == "__main__":
     import json
     parser = argparse.ArgumentParser()
     parser.add_argument("--device", default="cuda:0")
+    parser.add_argument("--schedule", choices=("batched", "fused", "serial"), default="batched")
     args = parser.parse_args()
-    print(json.dumps(preflight(args.device), indent=2))
+    print(json.dumps(preflight(args.device, schedule=args.schedule), indent=2))

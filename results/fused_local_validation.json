@@ -1,0 +1,30 @@
+{
+  "date": "2026-09-24",
+  "vc_version": "0.4.0",
+  "environment": {
+    "platform": "Windows",
+    "gpu": "NVIDIA GeForce RTX 3060 Laptop GPU",
+    "torch": "2.3.1+cu121",
+    "nvcc": "12.4.131",
+    "compiled_architectures": ["sm_86", "sm_90a"]
+  },
+  "suite": {"passed": 209, "skipped": 64},
+  "emulated_kernel_memcheck": {"tests_passed": 24, "errors": 0},
+  "emulated_kernel_racecheck": {"tests_passed": 6, "errors": 0, "warnings": 0},
+  "native_binary": {
+    "verified_in_installed_extension": true,
+    "instruction": "QGMMA.64x128x32.F32.E4M3.E4M3",
+    "modes_verified": ["e4m3", "expcast"],
+    "fp16_hmma_in_native_functions": false,
+    "shared_bytes": 32768,
+    "registers_per_thread": 255,
+    "spill_load_bytes": 0,
+    "spill_store_bytes": 0
+  },
+  "limitations": [
+    "Native Hopper WGMMA execution was not available locally.",
+    "The explicit diagnostic emulator does not validate WGMMA descriptors or asynchronous proxy semantics.",
+    "No H200 latency, large-shape throughput or model-quality result is claimed.",
+    "Compiler resource counts may change with the remote CUDA 13 toolchain."
+  ]
+}

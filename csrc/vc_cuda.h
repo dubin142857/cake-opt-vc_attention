@@ -42,6 +42,8 @@ void forward(const float* q, const float* k, const float* v,
 void forward_batched(const float* q, const float* k, const float* v,
                      const Shape& s, const Buffers& b,
                      cublasLtHandle_t handle, cudaStream_t stream);
+void forward_fused(const float* q, const float* k, const float* v,
+                   const Shape& s, const Buffers& b, cudaStream_t stream, bool debug_emulate = false);
 void debug_batched_update(const Shape& s, const Buffers& b, int query_start,
                           int key_tile, bool finish, cudaStream_t stream);
 void expcast(const float* input, uint8_t* output, int64_t size, cudaStream_t stream);

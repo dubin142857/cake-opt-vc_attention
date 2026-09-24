@@ -49,7 +49,7 @@ def distribution_version(name, *, package_file=None):
         return "unknown (distribution metadata unavailable)"
 
 
-def require_batched_runtime():
+def require_batched_runtime(schedule="batched"):
     """A git pull must not accidentally benchmark an old pip-installed serial build."""
     import vc_attention
     ext = importlib.import_module("vc_attention._cuda_ext")
@@ -60,12 +60,18 @@ def require_batched_runtime():
         "cuda_schedule": getattr(vc_attention.Config(), "cuda_schedule", None),
         "scheduling_version": getattr(ext, "scheduling_version", None),
         "numerical_contract_version": getattr(ext, "numerical_contract_version", None),
+        "fused_api_version": getattr(ext, "fused_api_version", None),
+        "selected_schedule": schedule,
     }
     print("Installed VC runtime: " + json.dumps(info), flush=True)
     if info["cuda_schedule"] != "batched" or info["scheduling_version"] != 1 or info["numerical_contract_version"] != 2:
         raise RuntimeError("Stale VC package/extension: git pull does not update the pip installation. "
-                           "Run bash scripts/validate_h800.sh to rebuild/install vc-attention 0.3.0. "
+                           "Run bash scripts/validate_h800.sh to rebuild/install vc-attention 0.4.0. "
                            "Refusing to run the legacy serial implementation as the optimized backend.")
+    if schedule == "fused":
+        if info["fused_api_version"] != 1:
+            raise RuntimeError("Rebuild vc-attention 0.4.0 for fused attention: bash scripts/validate_h800.sh. No fallback was used.")
+        vc_attention.Config(cuda_schedule="fused")  # Check Python and native parts together.
     return info
 
 
@@ -115,7 +121,7 @@ def external_backend(name, qkv_hnd, qkv_shd):
     return Backend(name, lambda: function(*inputs, **kwargs), layout, info)
 
 
-def make_backends(names, qkv_hnd, vc_ablation, *, vc_schedule_compare=False, vc_reuse_layout=False):
+def make_backends(names, qkv_hnd, vc_ablation, *, vc_schedule_compare=False, vc_reuse_layout=False, vc_schedule="batched"):
     # Make layout copies once, outside every timed call, for all Flash versions.
     qkv_shd = tuple(x.transpose(1, 2).contiguous() for x in qkv_hnd) if any(
         name in ("flash2", "flash3", "flash4") for name in names
@@ -133,7 +139,7 @@ def make_backends(names, qkv_hnd, vc_ablation, *, vc_schedule_compare=False, vc_
             variants += [("vc_control", False, False), ("vc_expcast", False, True),
                          ("vc_v_smooth", True, False)]
         for label, smooth, cast in variants:
-            cfg = Config(backend="cuda_fp8", v_smooth=smooth, expcast=cast, cuda_schedule="batched")
+            cfg = Config(backend="cuda_fp8", v_smooth=smooth, expcast=cast, cuda_schedule=vc_schedule)
             schedules = [(label, cfg)]
             if vc_schedule_compare:
                 schedules.append((label + "_serial", replace(cfg, cuda_schedule="serial")))
@@ -266,6 +272,7 @@ def parse_args(argv=None):
     parser.add_argument("--check-queries", type=int, default=128, help="evenly spaced rows for accuracy; 0 checks all")
     parser.add_argument("--reference-chunk", type=int, default=32, help="FP32 oracle query rows per chunk")
     parser.add_argument("--vc-ablation", action="store_true", help="also measure VC control/ExpCast-only/V-Smooth-only")
+    parser.add_argument("--vc-schedule", choices=("fused", "batched"), default="fused", help="VC attention core (default: fused; rebuild 0.4.0)")
     parser.add_argument("--vc-schedule-compare", action="store_true", help="also time the original serial CUDA schedule on the same inputs")
     parser.add_argument("--vc-reuse-layout", action="store_true", help="also time active V-Smooth with an already initialized layout cache")
     parser.add_argument("--vc-reference-check", action="store_true", help="compare VC to the same-config Python quantized reference after timing")
@@ -314,9 +321,9 @@ def run(args):
         "input_shapes": input_shapes(args),
     }
     if "vc" in args.backends:
-        environment["vc_runtime"] = require_batched_runtime()
+        environment["vc_runtime"] = require_batched_runtime(args.vc_schedule)
         from vc_attention.cuda_backend import preflight
-        environment["vc_preflight"] = preflight(device)
+        environment["vc_preflight"] = preflight(device, schedule=args.vc_schedule)
     print(json.dumps(environment, indent=2), flush=True)
     # Preflight may consume random numbers; subsets must still get the same Q/K/V.
     torch.manual_seed(args.seed)
@@ -324,7 +331,8 @@ def run(args):
     qkv = tuple(torch.randn(args.batch, args.heads, n, args.dim, device=device, dtype=dtype)
                 for n in (args.queries, args.tokens, args.tokens))
     backends = make_backends(args.backends, qkv, args.vc_ablation,
-                             vc_schedule_compare=args.vc_schedule_compare, vc_reuse_layout=args.vc_reuse_layout)
+                             vc_schedule_compare=args.vc_schedule_compare, vc_reuse_layout=args.vc_reuse_layout,
+                             vc_schedule=args.vc_schedule)
     indices = query_indices(args.queries, args.check_queries)
     print(f"FP32 reference: {len(indices)} query rows, all {args.tokens} keys", flush=True)
     golden = fp32_reference(*qkv, indices, args.reference_chunk)
@@ -431,7 +439,7 @@ def print_report(report):
     for name, row in report["results"].items():
         serial = report["results"].get(name + "_serial")
         if serial is not None:
-            print(f"Scheduling speedup {name}: {serial['median_ms'] / row['median_ms']:.4f}x (serial / batched)")
+            print(f"Scheduling speedup {name}: {serial['median_ms'] / row['median_ms']:.4f}x (serial / {row['config']['cuda_schedule']})")
     count = len(report["accuracy"]["query_indices"])
     total = report["arguments"]["queries"]
     scope = "all" if count == total else "sampled"

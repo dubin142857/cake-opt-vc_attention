@@ -22,6 +22,7 @@ def operation_counts(args):
     return {"q_chunks": chunks, "kv_tiles": ktiles,
             "batched_gemm_calls": 2 * chunks * ktiles,
             "batched_update_kernel_launches": 2 * chunks * ktiles,
+            "fused_attention_core_launches": 1,
             "legacy_serial_gemm_calls": 2 * args.batch * args.heads * qtiles * ktiles}
 
 
@@ -35,6 +36,7 @@ def parse_args(argv=None):
     parser.add_argument("--dim", type=int, choices=(64, 128), default=128)
     parser.add_argument("--dtype", choices=("float16", "bfloat16"), default="bfloat16")
     parser.add_argument("--seed", type=int, default=1234)
+    parser.add_argument("--schedule", choices=("fused", "batched"), default="fused")
     parser.add_argument("--no-v-smooth", action="store_true", help="explicitly skip clustering and V centering for a separate diagnostic")
     parser.add_argument("--output", default="results/h200_vc_runtime.json")
     args = parser.parse_args(argv)
@@ -45,14 +47,14 @@ def parse_args(argv=None):
 
 @torch.no_grad()
 def run(args):
-    runtime = require_batched_runtime()
+    runtime = require_batched_runtime(args.schedule)
     from vc_attention import Config, LayoutCache
     from vc_attention.core import _validate
     from vc_attention.cuda_backend import _extension, preflight
     device = torch.device(args.device)
     torch.cuda.set_device(device)
     torch.backends.cuda.matmul.allow_tf32 = False
-    cfg = Config(backend="cuda_fp8", expcast=True, v_smooth=not args.no_v_smooth, cuda_schedule="batched")
+    cfg = Config(backend="cuda_fp8", expcast=True, v_smooth=not args.no_v_smooth, cuda_schedule=args.schedule)
     report = {"runtime": runtime, "arguments": vars(args), "input_shapes": input_shapes(args),
               "call_counts_from_code": operation_counts(args), "phases": {},
               "notes": ["Single staged forward, first-use costs included. This is not a benchmark speedup.",
@@ -82,7 +84,7 @@ def run(args):
         return value
 
     print(json.dumps({"input_shapes": report["input_shapes"], "call_counts": report["call_counts_from_code"]}, indent=2), flush=True)
-    report["preflight"] = phase("small_native_fp8_preflight", lambda: preflight(device))
+    report["preflight"] = phase("small_native_fp8_preflight", lambda: preflight(device, schedule=args.schedule))
     ext = _extension()
     torch.manual_seed(args.seed)
     dtype = getattr(torch, args.dtype)
@@ -101,10 +103,11 @@ def run(args):
         k, v = phase("KV_permutation", lambda: (
             k.gather(-2, pi.unsqueeze(-1).expand_as(k)),
             v.gather(-2, pi.unsqueeze(-1).expand_as(v))))
-    output = phase("native_batched_CUDA_forward", lambda: ext.forward(
+    launch = ext.forward_fused if args.schedule == "fused" else ext.forward
+    output = phase(f"native_{args.schedule}_CUDA_forward", lambda: launch(
         q, k, v, cfg.q_block, cfg.k_quant_block, cfg.kv_block, active, cfg.expcast,
         {"float32": 0, "float16": 1, "bfloat16": 2}[cfg.mean_dtype], args.dim**-0.5,
-        cfg.k_smooth, cfg.qk_hadamard, True))
+        cfg.k_smooth, cfg.qk_hadamard, args.schedule == "batched"))
     finite = phase("output_finite_check", lambda: bool(torch.isfinite(output).all()))
     report["output"] = {"shape": list(output.shape), "device": str(output.device), "finite": finite}
     save()

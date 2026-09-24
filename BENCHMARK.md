@@ -1,7 +1,7 @@
 # 在 H200 / H800 对比五种 Attention
 
-0.3.0 默认使用批量 CUDA 调度。新旧路径同轮对比、聚类缓存复用和 profiler 命令见
-[CUDA_PERFORMANCE.md](CUDA_PERFORMANCE.md)。拉取后需要重新编译扩展。
+0.4.0 测速默认使用融合主体 `--vc-schedule fused`，见 [FUSED_CUDA.md](FUSED_CUDA.md)。
+需要 nvcc >= 12.4 并重新编译扩展。旧批量路径可用 `--vc-schedule batched` 选择。
 
 ## `[1,37741,28,128]` 测试场景
 
@@ -15,13 +15,14 @@ Q/K/V 都使用完整的 37741 长度，BF16，dense、noncausal self-attention�
 
 ```bash
 git pull --ff-only origin master
+bash scripts/validate_h800.sh
 bash scripts/benchmark_37741.sh
 ```
 
 这个入口默认比较五个后端，预热 2 次、每轮重复 5 次、共 3 轮。
 结果保存到 `results/h200_shape_1_37741_28_128.json`，控制台与 JSON 环境字段
-`input_shapes` 会列出两种布局下 Q/K/V 的形状。已经安装 0.3.0 扩展时，
-这次脚本更新不需要重新编译；旧版扩展仍需先运行 `bash scripts/validate_h800.sh`。
+`input_shapes` 会列出两种布局下 Q/K/V 的形状。旧版 0.3.0 扩展不能执行融合主体，
+必须先运行 `bash scripts/validate_h800.sh` 编译安装 0.4.0。
 
 运行前会打印实际安装的 VC 版本、Python 包路径、CUDA 扩展路径和调度版本。
 如果只是拉取了 Git 代码、pip 包仍为旧版，会明确拒绝把旧串行实现当作新版测速。
@@ -34,8 +35,9 @@ python3 scripts/diagnose_cuda_runtime.py --output results/h200_vc_runtime.json
 
 默认即该完整形状，依次打印 GPU 分配、有限值检查、V 聚类、KV 重排、原生 CUDA forward
 的 START/DONE。每完成一个阶段保存一次 JSON；第一调用包含初始化开销，不能当作稳态加速比。
-这个尺寸的新批量路径每次仍需 21,830 次 GEMM 和 21,830 次更新 kernel 提交，
-不是小形状的 16 次；默认测速每个后端有 2+5×3=17 次完整调用。
+0.4.0 融合路径的 Attention 主体只启动一次 kernel，预处理另外计入。
+旧批量路径每次仍需 21,830 次 GEMM 和 21,830 次更新 kernel 提交；
+默认测速每个后端有 2+5×3=17 次完整调用。
 逐阶段脚本不运行旧串行路径或 Python 量化参考。
 
 只测 VC 或增加聚类缓存复用对比：

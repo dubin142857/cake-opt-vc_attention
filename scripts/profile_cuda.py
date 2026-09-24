@@ -1,4 +1,4 @@
-"""Record CPU/CUDA timelines for batched, serial and cached-layout VC calls.
+"""Record CPU/CUDA timelines for the selected VC core and optional comparisons.
 
 Profiler overhead is intentional; use benchmark_cuda.py for latency numbers.
 """
@@ -8,7 +8,7 @@ from pathlib import Path
 
 import torch
 
-from benchmark_cuda import make_backends, output_hnd
+from benchmark_cuda import make_backends, output_hnd, require_batched_runtime
 from vc_attention.cuda_backend import preflight
 
 
@@ -38,6 +38,9 @@ def parse_args(argv=None):
     parser.add_argument("--seed", type=int, default=1234)
     parser.add_argument("--warmup", type=int, default=5)
     parser.add_argument("--iterations", type=int, default=3)
+    parser.add_argument("--vc-schedule", choices=("fused", "batched"), default="fused")
+    parser.add_argument("--vc-schedule-compare", action="store_true", help="also profile the expensive legacy serial path")
+    parser.add_argument("--vc-reuse-layout", action="store_true")
     parser.add_argument("--output-dir", default="results/h200_profile")
     args = parser.parse_args(argv)
     if min(args.batch, args.heads, args.queries, args.tokens, args.warmup, args.iterations) < 1:
@@ -49,7 +52,8 @@ def parse_args(argv=None):
 def run(args):
     device = torch.device(args.device)
     torch.cuda.set_device(device)
-    info = preflight(device)
+    runtime = require_batched_runtime(args.vc_schedule)
+    info = preflight(device, schedule=args.vc_schedule)
     if torch.profiler.ProfilerActivity.CUDA not in torch.profiler.supported_activities():
         raise RuntimeError("CUDA profiling/CUPTI is unavailable in this PyTorch environment")
     torch.backends.cuda.matmul.allow_tf32 = False
@@ -57,10 +61,11 @@ def run(args):
     dtype = getattr(torch, args.dtype)
     qkv = tuple(torch.randn(args.batch, args.heads, n, args.dim, device=device, dtype=dtype)
                 for n in (args.queries, args.tokens, args.tokens))
-    backends = make_backends(["vc"], qkv, False, vc_schedule_compare=True, vc_reuse_layout=True)
+    backends = make_backends(["vc"], qkv, False, vc_schedule_compare=args.vc_schedule_compare,
+                             vc_reuse_layout=args.vc_reuse_layout, vc_schedule=args.vc_schedule)
     directory = Path(args.output_dir)
     directory.mkdir(parents=True, exist_ok=True)
-    report = {"environment": {"torch": torch.__version__, "torch_cuda": torch.version.cuda, **info},
+    report = {"environment": {"torch": torch.__version__, "torch_cuda": torch.version.cuda, **info, "runtime": runtime},
               "arguments": vars(args), "results": {},
               "notes": ["Profiling adds overhead. Use benchmark_cuda.py for latency/speedup.",
                         "Kernel and CUDA runtime durations are separate; never add CPU and GPU times.",

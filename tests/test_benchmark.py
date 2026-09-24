@@ -220,6 +220,24 @@ def test_runtime_version_uses_loaded_package_not_stale_checkout_metadata(monkeyp
     assert benchmark.distribution_version("vc-attention", package_file=package) == "0.3.0"
 
 
+def test_fused_benchmark_requires_native_entry_and_dispatches_explicitly(monkeypatch):
+    import vc_attention
+    ext = SimpleNamespace(scheduling_version=1, numerical_contract_version=2)
+    monkeypatch.setattr(benchmark.importlib, "import_module", lambda _: ext)
+    with pytest.raises(RuntimeError, match="0.4.0"):
+        benchmark.require_batched_runtime("fused")
+    ext.fused_api_version = 1
+    assert benchmark.require_batched_runtime("fused")["selected_schedule"] == "fused"
+    assert benchmark.parse_args([]).vc_schedule == "fused"
+    configs = []
+    monkeypatch.setattr(vc_attention, "attention", lambda q, k, v, cfg: configs.append(cfg))
+    qkv = (torch.zeros(1, 2, 3, 8),) * 3
+    rows = benchmark.make_backends(["vc"], qkv, True, vc_schedule="fused")
+    for row in rows:
+        row.call()
+    assert len(configs) == 4 and all(cfg.cuda_schedule == "fused" for cfg in configs)
+
+
 @pytest.mark.parametrize("smooth,cast", [(False, False), (False, True), (True, False), (True, True)])
 def test_reference_check_preserves_full_q_and_config_and_exposes_native_error(smooth, cast):
     from vc_attention import Config, attention

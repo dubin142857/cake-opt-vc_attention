@@ -31,8 +31,8 @@ class Config:
     cuda_schedule: str = "batched"
 
     def __post_init__(self):
-        if self.cuda_schedule not in ("serial", "batched"):
-            raise ValueError("cuda_schedule must be serial or batched")
+        if self.cuda_schedule not in ("serial", "batched", "fused"):
+            raise ValueError("cuda_schedule must be serial, batched, or fused")
         for name in ("k_smooth", "qk_hadamard"):
             if not isinstance(getattr(self, name), bool):
                 raise ValueError(f"{name} must be a bool")
@@ -54,6 +54,8 @@ class Config:
         if self.backend in ("npu_fp8", "cuda_fp8") and self.k_quant_block % self.kv_block:
             raise ValueError(f"{self.backend} requires kv_block to divide k_quant_block")
         if self.backend == "cuda_fp8":
+            if self.cuda_schedule == "fused" and self.kv_block != 128:
+                raise ValueError("fused CUDA requires kv_block=128")
             if any(x < 32 or x > 256 or x % 32 for x in (self.q_block, self.kv_block)):
                 raise ValueError("cuda_fp8 q_block/kv_block must be multiples of 32 in [32, 256]")
             if self.k_quant_block > 4096:
@@ -278,7 +280,7 @@ def attention(
     Quantization disabled => exact streaming reference (unless ExpCast enabled).
     """
     cfg = config or Config()
-    _validate(q, k, v, causal, mask, native_finite=cfg.backend == "cuda_fp8" and cfg.cuda_schedule == "batched")
+    _validate(q, k, v, causal, mask, native_finite=cfg.backend == "cuda_fp8" and cfg.cuda_schedule in ("batched", "fused"))
     if cfg.backend == "cuda_fp8":
         from .cuda_backend import _attention
         return _attention(q, k, v, cfg, cache=cache, step=step, total_steps=total_steps,
