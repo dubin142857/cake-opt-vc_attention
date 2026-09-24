@@ -1,0 +1,43 @@
+{
+  "date": "2026-09-24",
+  "vc_version": "0.5.0",
+  "environment": {
+    "platform": "Windows",
+    "gpu": "NVIDIA GeForce RTX 3060 Laptop GPU",
+    "torch": "2.3.1+cu121",
+    "nvcc": "12.4.131",
+    "compiled_architectures": ["sm_86", "sm_90a"]
+  },
+  "suite": {"passed": 236, "skipped": 90},
+  "emulated_pipeline_vs_baseline": {
+    "cases": 24,
+    "bitwise_equal": true,
+    "keys_range": [1, 769],
+    "q_blocks": [32, 96, 128, 256],
+    "k_quant_blocks": [128, 256, 384, 768]
+  },
+  "emulated_kernel_memcheck": {"tests_passed": 48, "errors": 0},
+  "emulated_kernel_racecheck": {"tests_passed": 48, "errors": 0, "warnings": 0},
+  "native_binary": {
+    "verified_in_installed_extension": true,
+    "variants_verified": ["baseline", "pipeline"],
+    "modes_verified": ["e4m3", "expcast"],
+    "instruction": "QGMMA.64x128x32.F32.E4M3.E4M3",
+    "pipeline_async_copy_instruction": "LDGSTS",
+    "fp16_hmma_in_native_functions": false,
+    "pipeline_shared_bytes": 49152,
+    "baseline_shared_bytes": 32768,
+    "registers_per_thread": 255,
+    "spill_load_bytes": 0,
+    "spill_store_bytes": 0,
+    "local_load_instructions": 0,
+    "local_store_instructions": 0
+  },
+  "limitations": [
+    "Hopper native execution and performance were not available locally.",
+    "The diagnostic emulator tests the real cp.async/shared-memory pipeline but replaces WGMMA with scalar arithmetic.",
+    "Native WGMMA correctness, interaction with cp.async, and timing need H200 validation.",
+    "No latency improvement is claimed before same-run remote A/B measurement.",
+    "Register use did not decrease; CUDA 13 may generate different resource counts."
+  ]
+}

@@ -61,17 +61,18 @@ def require_batched_runtime(schedule="batched"):
         "scheduling_version": getattr(ext, "scheduling_version", None),
         "numerical_contract_version": getattr(ext, "numerical_contract_version", None),
         "fused_api_version": getattr(ext, "fused_api_version", None),
+        "fused_pipeline_version": getattr(ext, "fused_pipeline_version", None),
         "selected_schedule": schedule,
     }
     print("Installed VC runtime: " + json.dumps(info), flush=True)
     if info["cuda_schedule"] != "batched" or info["scheduling_version"] != 1 or info["numerical_contract_version"] != 2:
         raise RuntimeError("Stale VC package/extension: git pull does not update the pip installation. "
-                           "Run bash scripts/validate_h800.sh to rebuild/install vc-attention 0.4.0. "
+                           "Run bash scripts/validate_h800.sh to rebuild/install vc-attention 0.5.0. "
                            "Refusing to run the legacy serial implementation as the optimized backend.")
     if schedule == "fused":
-        if info["fused_api_version"] != 1:
-            raise RuntimeError("Rebuild vc-attention 0.4.0 for fused attention: bash scripts/validate_h800.sh. No fallback was used.")
-        vc_attention.Config(cuda_schedule="fused")  # Check Python and native parts together.
+        if info["fused_api_version"] != 1 or info["fused_pipeline_version"] != 1:
+            raise RuntimeError("Rebuild vc-attention 0.5.0 for fused attention: bash scripts/validate_h800.sh. No fallback was used.")
+        vc_attention.Config(cuda_schedule="fused", cuda_fused_pipeline=True)
     return info
 
 
@@ -121,7 +122,8 @@ def external_backend(name, qkv_hnd, qkv_shd):
     return Backend(name, lambda: function(*inputs, **kwargs), layout, info)
 
 
-def make_backends(names, qkv_hnd, vc_ablation, *, vc_schedule_compare=False, vc_reuse_layout=False, vc_schedule="batched"):
+def make_backends(names, qkv_hnd, vc_ablation, *, vc_schedule_compare=False, vc_reuse_layout=False,
+                  vc_schedule="batched", vc_fused_compare=False):
     # Make layout copies once, outside every timed call, for all Flash versions.
     qkv_shd = tuple(x.transpose(1, 2).contiguous() for x in qkv_hnd) if any(
         name in ("flash2", "flash3", "flash4") for name in names
@@ -141,6 +143,10 @@ def make_backends(names, qkv_hnd, vc_ablation, *, vc_schedule_compare=False, vc_
         for label, smooth, cast in variants:
             cfg = Config(backend="cuda_fp8", v_smooth=smooth, expcast=cast, cuda_schedule=vc_schedule)
             schedules = [(label, cfg)]
+            if vc_fused_compare:
+                if vc_schedule != "fused":
+                    raise ValueError("Fused comparison requires vc_schedule='fused'")
+                schedules.append((label + "_fused_baseline", replace(cfg, cuda_fused_pipeline=False)))
             if vc_schedule_compare:
                 schedules.append((label + "_serial", replace(cfg, cuda_schedule="serial")))
             for row_name, row_cfg in schedules:
@@ -272,7 +278,8 @@ def parse_args(argv=None):
     parser.add_argument("--check-queries", type=int, default=128, help="evenly spaced rows for accuracy; 0 checks all")
     parser.add_argument("--reference-chunk", type=int, default=32, help="FP32 oracle query rows per chunk")
     parser.add_argument("--vc-ablation", action="store_true", help="also measure VC control/ExpCast-only/V-Smooth-only")
-    parser.add_argument("--vc-schedule", choices=("fused", "batched"), default="fused", help="VC attention core (default: fused; rebuild 0.4.0)")
+    parser.add_argument("--vc-schedule", choices=("fused", "batched"), default="fused", help="VC attention core (default: fused pipeline; rebuild 0.5.0)")
+    parser.add_argument("--vc-fused-compare", action="store_true", help="also time the retained 0.4.0 fused core, including the same preprocessing")
     parser.add_argument("--vc-schedule-compare", action="store_true", help="also time the original serial CUDA schedule on the same inputs")
     parser.add_argument("--vc-reuse-layout", action="store_true", help="also time active V-Smooth with an already initialized layout cache")
     parser.add_argument("--vc-reference-check", action="store_true", help="compare VC to the same-config Python quantized reference after timing")
@@ -285,8 +292,10 @@ def parse_args(argv=None):
         parser.error("--backends must not contain duplicates")
     if args.vc_ablation and "vc" not in args.backends:
         parser.error("--vc-ablation requires vc in --backends")
-    if (args.vc_schedule_compare or args.vc_reuse_layout) and "vc" not in args.backends:
+    if (args.vc_schedule_compare or args.vc_reuse_layout or args.vc_fused_compare) and "vc" not in args.backends:
         parser.error("VC schedule/cache comparisons require vc in --backends")
+    if args.vc_fused_compare and args.vc_schedule != "fused":
+        parser.error("--vc-fused-compare requires --vc-schedule fused")
     if args.vc_reference_check and "vc" not in args.backends:
         parser.error("--vc-reference-check requires vc in --backends")
     args.baseline = args.baseline or ("flash3" if "flash3" in args.backends else args.backends[0])
@@ -332,7 +341,7 @@ def run(args):
                 for n in (args.queries, args.tokens, args.tokens))
     backends = make_backends(args.backends, qkv, args.vc_ablation,
                              vc_schedule_compare=args.vc_schedule_compare, vc_reuse_layout=args.vc_reuse_layout,
-                             vc_schedule=args.vc_schedule)
+                             vc_schedule=args.vc_schedule, vc_fused_compare=args.vc_fused_compare)
     indices = query_indices(args.queries, args.check_queries)
     print(f"FP32 reference: {len(indices)} query rows, all {args.tokens} keys", flush=True)
     golden = fp32_reference(*qkv, indices, args.reference_chunk)
@@ -369,7 +378,7 @@ def run(args):
                 normalized = output_hnd(output, backend.layout, qkv[0].shape, dtype)
                 sample = normalized.index_select(2, ids).float().cpu()
                 metrics = error_metrics(sample, golden)
-                if args.vc_reference_check and backend.info.get("config", {}).get("backend") == "cuda_fp8":
+                if (args.vc_reference_check or args.vc_fused_compare) and backend.info.get("config", {}).get("backend") == "cuda_fp8":
                     # Overwrite per trial; compare the last timed sample, not a
                     # new native call that might use a different clustering order.
                     native_samples[backend.name] = sample
@@ -393,12 +402,25 @@ def run(args):
             "Synchronized wall time per API call; median of trial means. Not isolated GPU kernel time.",
             "Input layout conversion, output checks and first-use JIT excluded; internal preprocessing included.",
             "VC includes quantization/allocation/validation and first-step clustering; explicitly labeled *_reuse rows alone reuse layout.",
-            "*_serial rows retain the original per-head/per-query-tile schedule; other VC rows use batched head/query scheduling.",
+            "*_serial rows retain per-head/per-query-tile scheduling; *_fused_baseline rows retain the 0.4.0 fused core.",
+            "VC fused rows use the async-copy pipeline by default. Every row includes its API preprocessing unless marked reuse.",
             "Sage uses its public sageattn auto dispatch, including its internal preprocessing.",
             "Different internal precisions; synthetic accuracy is not model quality validation.",
             "speedup_vs_baseline = baseline_ms / row_ms; vc_speedup_vs = other_ms / vc_ms; >1 is faster.",
         ],
     }
+    if args.vc_fused_compare:
+        comparisons = {}
+        for name, sample in native_samples.items():
+            control = native_samples.get(name + "_fused_baseline")
+            if control is not None:
+                metrics = error_metrics(sample, control)
+                comparisons[name] = {"relative_rmse": metrics["relative_rmse_vs_fp32"],
+                                     "max_abs": metrics["max_abs_error_vs_fp32"],
+                                     "exact_match": torch.equal(sample, control)}
+        report["vc_fused_comparison"] = {
+            "scope": "last timed outputs; same query samples and all keys; independently computed preprocessing",
+            "included_in_timing": False, "results": comparisons}
     if args.vc_reference_check:
         report["vc_reference_check"] = {
             "scope": "last output of the final timed trial for each VC variant; same Q/K/V and query indices",
@@ -440,10 +462,16 @@ def print_report(report):
         serial = report["results"].get(name + "_serial")
         if serial is not None:
             print(f"Scheduling speedup {name}: {serial['median_ms'] / row['median_ms']:.4f}x (serial / {row['config']['cuda_schedule']})")
+        fused_baseline = report["results"].get(name + "_fused_baseline")
+        if fused_baseline is not None:
+            print(f"Fused pipeline speedup {name}: {fused_baseline['median_ms'] / row['median_ms']:.4f}x (0.4.0 core / pipeline; both include preprocessing)")
     count = len(report["accuracy"]["query_indices"])
     total = report["arguments"]["queries"]
     scope = "all" if count == total else "sampled"
     print(f"Latency includes each API's internal preprocessing. Error uses {scope} {count}/{total} query rows and all keys.")
+    for name, comparison in report.get("vc_fused_comparison", {}).get("results", {}).items():
+        print(f"Fused pipeline/baseline {name}: sampled relative RMSE {100 * comparison['relative_rmse']:.6f}%, "
+              f"max abs {comparison['max_abs']:.8g}, exact sample match={comparison['exact_match']}")
     if "vc_reference_check" in report:
         print("\nVC reference check: relative RMSE in PERCENT (last timed output; outside timing)")
         print(f"{'backend':<14} {'CUDA/FP32 %':>14} {'REF/FP32 %':>14} {'CUDA/REF %':>14} {'CUDA/REF max abs':>18}")

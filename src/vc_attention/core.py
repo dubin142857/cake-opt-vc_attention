@@ -29,11 +29,12 @@ class Config:
     k_smooth: bool = True
     qk_hadamard: bool = True
     cuda_schedule: str = "batched"
+    cuda_fused_pipeline: bool = True  # False retains the 0.4.0 fused core for A/B tests.
 
     def __post_init__(self):
         if self.cuda_schedule not in ("serial", "batched", "fused"):
             raise ValueError("cuda_schedule must be serial, batched, or fused")
-        for name in ("k_smooth", "qk_hadamard"):
+        for name in ("k_smooth", "qk_hadamard", "cuda_fused_pipeline"):
             if not isinstance(getattr(self, name), bool):
                 raise ValueError(f"{name} must be a bool")
         for name in ("q_block", "k_quant_block", "kv_block", "clusters", "iterations", "refresh_interval"):

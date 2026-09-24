@@ -9,10 +9,10 @@ import subprocess
 
 
 def inspect_sass(sass):
-    modes = {}
+    variants = {"baseline": {}, "pipeline": {}}
     for section in sass.split("Function : ")[1:]:
         name = section.splitlines()[0]
-        match = re.search(r"fused_attentionILb([01])ELb0", name)
+        match = re.search(r"fused_attention(_pipeline)?ILb([01])ELb0", name)
         if not match:
             continue
         fp8 = re.findall(r"QGMMA\.[^;\n]*\.E4M3\.E4M3[^;\n]*", section)
@@ -20,11 +20,18 @@ def inspect_sass(sass):
             continue  # Development sm_86 image contains a trap, never a fallback.
         if re.search(r"\bHMMA\.", section):
             raise RuntimeError("Unexpected FP16 HMMA in native fused core")
-        modes["expcast" if match[1] == "1" else "e4m3"] = {
-            "function": name, "fp8_wgmma_instructions": len(fp8), "instruction": fp8[0].strip()}
-    if set(modes) != {"e4m3", "expcast"}:
-        raise RuntimeError("Both native fused kernels must contain E4M3 QGMMA; rebuild with sm_90a")
-    return modes
+        copies = len(re.findall(r"\bLDGSTS\.", section))
+        variant = "pipeline" if match[1] else "baseline"
+        if variant == "pipeline" and not copies:
+            raise RuntimeError("Pipelined native core must contain async global-to-shared LDGSTS copies")
+        variants[variant]["expcast" if match[2] == "1" else "e4m3"] = {
+            "function": name, "fp8_wgmma_instructions": len(fp8), "instruction": fp8[0].strip(),
+            "async_copy_instructions": copies,
+            "local_load_instructions": len(re.findall(r"\bLDL\b", section)),
+            "local_store_instructions": len(re.findall(r"\bSTL\b", section))}
+    if any(set(modes) != {"e4m3", "expcast"} for modes in variants.values()):
+        raise RuntimeError("Baseline and pipeline modes must contain E4M3 QGMMA; rebuild 0.5.0 with sm_90a")
+    return variants
 
 
 def main():

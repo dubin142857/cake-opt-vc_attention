@@ -1,10 +1,11 @@
 # Hopper (H800/H100/H200) CUDA C++ implementation
 
-Version **0.4.0** adds explicit `cuda_schedule="fused"`: a single native FP8 MMA
+Version **0.5.0** adds async K/V copies to `cuda_schedule="fused"`: a single native FP8 MMA
 attention kernel, with preprocessing still separate. Benchmarks now select it
 by default; Python Config keeps the compatible batched default. **Requires nvcc
->= 12.4 and a rebuild.** See [FUSED_CUDA.md](FUSED_CUDA.md). The cuBLASLt baseline
-described below remains available; fused Hopper runtime/performance needs remote validation.
+>= 12.4 and a rebuild.** See [PIPELINED_CUDA.md](PIPELINED_CUDA.md) for same-run comparisons
+against the retained 0.4.0 fused core (`--vc-fused-compare`). The cuBLASLt baseline
+described below remains available; 0.5.0 Hopper runtime/performance needs remote validation.
 
 This provides `Config(backend="cuda_fp8")` for VC-Attention (V-Smooth + ExpCast).
 Version 0.2.0 adds paper-described K centering and Q/K Hadamard preprocessing,

@@ -42,6 +42,8 @@ def _attention(q, k, v, cfg, *, cache, step, total_steps, request_id, layer_id, 
     ext = _extension()
     if cfg.cuda_schedule == "fused" and getattr(ext, "fused_api_version", None) != 1:
         raise RuntimeError("Rebuild vc-attention 0.4.0 for fused FP8 attention: bash scripts/validate_h800.sh")
+    if cfg.cuda_schedule == "fused" and getattr(ext, "fused_pipeline_version", None) != 1:
+        raise RuntimeError("Rebuild vc-attention 0.5.0 for the fused pipeline and baseline: bash scripts/validate_h800.sh")
     if cache is None:
         cache = LayoutCache(cfg)
         request_id = "one-shot" if request_id is None else request_id
@@ -55,6 +57,8 @@ def _attention(q, k, v, cfg, *, cache, step, total_steps, request_id, layer_id, 
         v = v.gather(-2, pi.unsqueeze(-1).expand_as(v))
     mean_type = {"float32": 0, "float16": 1, "bfloat16": 2}[cfg.mean_dtype]
     launch = ext.forward_fused if cfg.cuda_schedule == "fused" else ext.forward
+    if cfg.cuda_schedule == "fused" and not cfg.cuda_fused_pipeline:
+        launch = ext.forward_fused_baseline
     output = launch(q, k, v, cfg.q_block, cfg.k_quant_block, cfg.kv_block,
                          active, cfg.expcast, mean_type, scale, cfg.k_smooth, cfg.qk_hadamard,
                          cfg.cuda_schedule == "batched")
@@ -71,6 +75,7 @@ def _attention(q, k, v, cfg, *, cache, step, total_steps, request_id, layer_id, 
         "preprocessing_fused": False,
         "native_fp8_matmul": True,
         "cuda_schedule": cfg.cuda_schedule,
+        "cuda_fused_pipeline": cfg.cuda_schedule == "fused" and cfg.cuda_fused_pipeline,
     }
 
 

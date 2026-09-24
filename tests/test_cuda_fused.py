@@ -26,10 +26,13 @@ def launch(request):
     if not has_cuda or (request.param == "native" and not has_hopper):
         pytest.skip("native fused FP8 requires Hopper; emulator requires CUDA")
     ext = _extension()
-    assert ext.fused_api_version == 1, "Rebuild the 0.4.0 extension"
-    fn = ext.forward_fused if request.param == "native" else ext.debug_fused_emulated
+    assert ext.fused_api_version == 1 and ext.fused_pipeline_version == 1, "Rebuild the 0.5.0 extension"
 
-    def call(q, k, v, cfg):
+    def call(q, k, v, cfg, *, baseline=False):
+        if request.param == "native":
+            fn = ext.forward_fused_baseline if baseline else ext.forward_fused
+        else:
+            fn = ext.debug_fused_baseline_emulated if baseline else ext.debug_fused_emulated
         return fn(q, k, v, cfg.q_block, cfg.k_quant_block, cfg.kv_block,
                   cfg.v_smooth, cfg.expcast,
                   {"float32": 0, "float16": 1, "bfloat16": 2}[cfg.mean_dtype],
@@ -39,8 +42,38 @@ def launch(request):
 
 def test_fused_configuration_is_explicit_and_rejects_unsupported_kv_block():
     assert Config(backend="cuda_fp8", cuda_schedule="fused").cuda_schedule == "fused"
+    assert Config().cuda_fused_pipeline is True
+    with pytest.raises(ValueError, match="cuda_fused_pipeline"):
+        Config(cuda_fused_pipeline="false")
     with pytest.raises(ValueError, match="kv_block=128"):
         Config(backend="cuda_fp8", cuda_schedule="fused", kv_block=64)
+
+
+@pytest.mark.parametrize("shape", [
+    (1, 1, 1, 1, 128, 256, "float16"),
+    (33, 128, 32, 32, 32, 128, "float32"),
+    (65, 129, 33, 65, 96, 384, "bfloat16"),
+    (97, 256, 65, 37, 96, 256, "float16"),
+    (129, 641, 128, 128, 256, 768, "float16"),
+    (3, 769, 16, 1, 32, 384, "float32"),
+])
+@pytest.mark.parametrize("smooth,cast", [(False, False), (False, True), (True, False), (True, True)])
+def test_pipeline_matches_retained_core_across_prefetch_tails_and_scale_boundaries(launch, shape, smooth, cast):
+    nq, nk, d, dv, qb, kq, mean_dtype = shape
+    generator = torch.Generator().manual_seed(503)
+    q = torch.randn(1, 1, nq, d, generator=generator).cuda()
+    k = torch.randn(1, 1, nk, d, generator=generator).cuda()
+    v = torch.randn(1, 1, nk, dv, generator=generator).cuda()
+    for start in range(0, nk, 128):
+        k[:, :, start:start + 128] *= 1 + start / 256
+        v[:, :, start:start + 128] += 2 * ((start // 128) % 3 - 1)
+    cfg = Config(backend="cuda_fp8", cuda_schedule="fused", clusters=1,
+                 v_smooth=smooth, expcast=cast, q_block=qb, k_quant_block=kq, mean_dtype=mean_dtype)
+    expected = launch(q, k, v, cfg, baseline=True)
+    actual = launch(q, k, v, cfg)
+    # Same preprocessing, MMA order and scalar arithmetic. Scheduling and
+    # async copies must not alter a single result, including padded channels.
+    torch.testing.assert_close(actual, expected, rtol=0, atol=0)
 
 
 @pytest.mark.parametrize("shape", [(1, 1, 1, 1, 16, 13), (2, 2, 65, 259, 37, 21),
@@ -115,3 +148,7 @@ def test_public_fused_vs_batched_with_fixed_grouping(cast):
     assert error.abs().max() < 0.05
     assert stats["native_fused_attention"] and stats["native_fp8_matmul"]
     assert not stats["preprocessing_fused"]
+    assert stats["cuda_fused_pipeline"]
+    baseline, baseline_stats = attention(q, k, v, replace(cfg, cuda_fused_pipeline=False))
+    torch.testing.assert_close(actual, baseline, rtol=0, atol=0)
+    assert not baseline_stats["cuda_fused_pipeline"]

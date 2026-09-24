@@ -1,6 +1,7 @@
 # 在 H200 / H800 对比五种 Attention
 
-0.4.0 测速默认使用融合主体 `--vc-schedule fused`，见 [FUSED_CUDA.md](FUSED_CUDA.md)。
+0.5.0 测速默认使用异步搬运融合主体 `--vc-schedule fused`，加 `--vc-fused-compare`
+可同场比较保留的 0.4.0 融合核心，见 [PIPELINED_CUDA.md](PIPELINED_CUDA.md)。
 需要 nvcc >= 12.4 并重新编译扩展。旧批量路径可用 `--vc-schedule batched` 选择。
 
 ## `[1,37741,28,128]` 测试场景
@@ -22,7 +23,7 @@ bash scripts/benchmark_37741.sh
 这个入口默认比较五个后端，预热 2 次、每轮重复 5 次、共 3 轮。
 结果保存到 `results/h200_shape_1_37741_28_128.json`，控制台与 JSON 环境字段
 `input_shapes` 会列出两种布局下 Q/K/V 的形状。旧版 0.3.0 扩展不能执行融合主体，
-必须先运行 `bash scripts/validate_h800.sh` 编译安装 0.4.0。
+必须先运行 `bash scripts/validate_h800.sh` 编译安装 0.5.0。
 
 运行前会打印实际安装的 VC 版本、Python 包路径、CUDA 扩展路径和调度版本。
 如果只是拉取了 Git 代码、pip 包仍为旧版，会明确拒绝把旧串行实现当作新版测速。

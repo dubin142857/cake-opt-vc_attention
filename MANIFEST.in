@@ -2,8 +2,10 @@ include README.md CUDA_README.md BENCHMARK.md PAPER_ALIGNMENT.md ACCURACY_DIAGNO
 include PAYLOAD_DIAGNOSTICS.md
 include CUDA_PERFORMANCE.md
 include FUSED_CUDA.md
+include PIPELINED_CUDA.md
 include results/cuda_local_validation.json
 include results/fused_local_validation.json
+include results/pipeline_local_validation.json
 recursive-include src *.py
 recursive-include csrc *.cpp *.cu *.h *.cuh
 recursive-include tests *.py

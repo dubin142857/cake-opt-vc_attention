@@ -224,9 +224,12 @@ def test_fused_benchmark_requires_native_entry_and_dispatches_explicitly(monkeyp
     import vc_attention
     ext = SimpleNamespace(scheduling_version=1, numerical_contract_version=2)
     monkeypatch.setattr(benchmark.importlib, "import_module", lambda _: ext)
-    with pytest.raises(RuntimeError, match="0.4.0"):
+    with pytest.raises(RuntimeError, match="0.5.0"):
         benchmark.require_batched_runtime("fused")
     ext.fused_api_version = 1
+    with pytest.raises(RuntimeError, match="0.5.0"):
+        benchmark.require_batched_runtime("fused")
+    ext.fused_pipeline_version = 1
     assert benchmark.require_batched_runtime("fused")["selected_schedule"] == "fused"
     assert benchmark.parse_args([]).vc_schedule == "fused"
     configs = []
@@ -236,6 +239,25 @@ def test_fused_benchmark_requires_native_entry_and_dispatches_explicitly(monkeyp
     for row in rows:
         row.call()
     assert len(configs) == 4 and all(cfg.cuda_schedule == "fused" for cfg in configs)
+
+
+def test_fused_ab_comparison_preserves_preprocessing_and_selects_both_kernels(monkeypatch):
+    import vc_attention
+    configs = []
+    monkeypatch.setattr(vc_attention, "attention", lambda q, k, v, cfg: configs.append(cfg))
+    qkv = (torch.zeros(1, 2, 3, 8),) * 3
+    rows = benchmark.make_backends(["vc"], qkv, False, vc_schedule="fused", vc_fused_compare=True)
+    assert [r.name for r in rows] == ["vc", "vc_fused_baseline"]
+    for row in rows:
+        row.call()
+    assert configs[0].cuda_fused_pipeline and not configs[1].cuda_fused_pipeline
+    assert replace(configs[1], cuda_fused_pipeline=True) == configs[0]
+    assert all(not r.info["layout_cache_reused"] for r in rows)
+    assert benchmark.parse_args(["--backends", "vc", "--vc-fused-compare"]).vc_fused_compare
+    with pytest.raises(SystemExit):
+        benchmark.parse_args(["--backends", "vc", "--vc-schedule", "batched", "--vc-fused-compare"])
+    with pytest.raises(SystemExit):
+        benchmark.parse_args(["--backends", "sage", "--vc-fused-compare"])
 
 
 @pytest.mark.parametrize("smooth,cast", [(False, False), (False, True), (True, False), (True, True)])

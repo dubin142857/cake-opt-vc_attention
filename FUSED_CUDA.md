@@ -1,5 +1,8 @@
 # 0.4.0：原生 FP8 融合 Attention 主体
 
+本文保留 0.4.0 实现记录。当前 0.5.0 默认融合核心增加异步搬运，
+新旧核心的同场对比和编译验证步骤见 [PIPELINED_CUDA.md](PIPELINED_CUDA.md)。
+
 新增显式 `Config(backend="cuda_fp8", cuda_schedule="fused")`。Attention 主体在一次
 CUDA kernel 启动中完成所有 KV 块的 QK、Softmax/ExpCast、PV、V 均值恢复、在线累加和归一化。
 QK/PV 使用 Hopper `wgmma.mma_async.m64n128k32.f32.e4m3.e4m3` Tensor Core 指令。

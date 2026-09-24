@@ -11,9 +11,10 @@ Q/K、P、V 分阶段精度诊断见 [ACCURACY_DIAGNOSTICS.md](ACCURACY_DIAGNOST
 0.3.0 默认批量处理 head 和 Q 行、缓存 GEMM plan、合并状态更新及输入校验。
 **须重新编译**；新旧路径与缓存复用对比、profiler 命令见 [CUDA_PERFORMANCE.md](CUDA_PERFORMANCE.md)。
 BSHD `[1,37741,28,128]` 的完整长度性能场景：`bash scripts/benchmark_37741.sh`，见 [BENCHMARK.md](BENCHMARK.md)。
-当前 **0.4.0** 新增原生 FP8 融合 Attention 主体，测速默认 `--vc-schedule fused`；
+当前 **0.5.0** 为原生 FP8 融合主体加入 K/V 异步搬运，测速默认 `--vc-schedule fused`；
 Python 中显式选 `Config(backend="cuda_fp8", cuda_schedule="fused")`。需要 nvcc >= 12.4 并重新编译，
-预处理仍未融合，H200 性能待实测。实现范围和验证命令见 [FUSED_CUDA.md](FUSED_CUDA.md)。
+预处理仍未融合。新旧融合核心同场对比加 `--vc-fused-compare`，见 [PIPELINED_CUDA.md](PIPELINED_CUDA.md)。
+0.4.0 融合主体的结构与历史验证见 [FUSED_CUDA.md](FUSED_CUDA.md)。
 下文原有 A5 实验记录和两种后端的说明保留为历史背景；默认后端仍为 `reference`。
 
 当前 Python 包源码位于 `src/vc_attention/`，C++/CUDA 源码位于 `csrc/`。
