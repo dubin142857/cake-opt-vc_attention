@@ -23,6 +23,21 @@ bash scripts/benchmark_37741.sh
 `input_shapes` 会列出两种布局下 Q/K/V 的形状。已经安装 0.3.0 扩展时，
 这次脚本更新不需要重新编译；旧版扩展仍需先运行 `bash scripts/validate_h800.sh`。
 
+运行前会打印实际安装的 VC 版本、Python 包路径、CUDA 扩展路径和调度版本。
+如果只是拉取了 Git 代码、pip 包仍为旧版，会明确拒绝把旧串行实现当作新版测速。
+
+大场景长时间停在 VC 时，先只跑一次并查看阶段耗时：
+
+```bash
+python3 scripts/diagnose_cuda_runtime.py --output results/h200_vc_runtime.json
+```
+
+默认即该完整形状，依次打印 GPU 分配、有限值检查、V 聚类、KV 重排、原生 CUDA forward
+的 START/DONE。每完成一个阶段保存一次 JSON；第一调用包含初始化开销，不能当作稳态加速比。
+这个尺寸的新批量路径每次仍需 21,830 次 GEMM 和 21,830 次更新 kernel 提交，
+不是小形状的 16 次；默认测速每个后端有 2+5×3=17 次完整调用。
+逐阶段脚本不运行旧串行路径或 Python 量化参考。
+
 只测 VC 或增加聚类缓存复用对比：
 
 ```bash

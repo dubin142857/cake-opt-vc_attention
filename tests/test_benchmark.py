@@ -194,6 +194,32 @@ def test_explicit_subset_uses_selected_baseline():
         benchmark.parse_args(["--backends", "sage", "--baseline", "flash3"])
 
 
+@pytest.mark.parametrize("python_schedule,native_version,accepted", [
+    (None, None, False), ("batched", None, False), (None, 1, False), ("batched", 1, True),
+])
+def test_runtime_guard_rejects_old_pip_install_before_large_benchmark(monkeypatch, python_schedule, native_version, accepted):
+    import vc_attention
+    monkeypatch.setattr(vc_attention, "Config", lambda: SimpleNamespace(cuda_schedule=python_schedule))
+    ext = SimpleNamespace(scheduling_version=native_version, numerical_contract_version=2, __file__="test/native.so")
+    monkeypatch.setattr(benchmark.importlib, "import_module", lambda _: ext)
+    monkeypatch.setattr(benchmark, "distribution_version", lambda *a, **kw: "test")
+    if accepted:
+        info = benchmark.require_batched_runtime()
+        assert info["cuda_schedule"] == "batched" and info["extension_file"] == "test/native.so"
+    else:
+        with pytest.raises(RuntimeError, match="git pull does not update"):
+            benchmark.require_batched_runtime()
+
+
+def test_runtime_version_uses_loaded_package_not_stale_checkout_metadata(monkeypatch, tmp_path):
+    monkeypatch.setattr(benchmark.metadata, "version", lambda _: "0.1.0")
+    metadata_dir = tmp_path / "vc_attention-0.3.0.dist-info"
+    metadata_dir.mkdir()
+    (metadata_dir / "METADATA").write_text("Metadata-Version: 2.1\nName: vc-attention\nVersion: 0.3.0\n", encoding="utf-8")
+    package = tmp_path / "vc_attention" / "__init__.py"
+    assert benchmark.distribution_version("vc-attention", package_file=package) == "0.3.0"
+
+
 @pytest.mark.parametrize("smooth,cast", [(False, False), (False, True), (True, False), (True, True)])
 def test_reference_check_preserves_full_q_and_config_and_exposes_native_error(smooth, cast):
     from vc_attention import Config, attention

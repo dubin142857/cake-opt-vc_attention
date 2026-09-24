@@ -34,11 +34,39 @@ class Backend:
     info: dict
 
 
-def distribution_version(name):
+def distribution_version(name, *, package_file=None):
+    if package_file is not None:
+        # A stale checkout .egg-info can shadow the installed wheel's metadata.
+        # Resolve VC metadata next to the package Python actually imported.
+        root = str(Path(package_file).resolve().parent.parent)
+        for dist in metadata.distributions(path=[root]):
+            if dist.metadata.get("Name", "").lower().replace("_", "-") == name.lower().replace("_", "-"):
+                return dist.version
+        return "unknown (metadata next to loaded package unavailable)"
     try:
         return metadata.version(name)
     except metadata.PackageNotFoundError:
         return "unknown (distribution metadata unavailable)"
+
+
+def require_batched_runtime():
+    """A git pull must not accidentally benchmark an old pip-installed serial build."""
+    import vc_attention
+    ext = importlib.import_module("vc_attention._cuda_ext")
+    info = {
+        "version": distribution_version("vc-attention", package_file=vc_attention.__file__),
+        "package_file": str(vc_attention.__file__),
+        "extension_file": str(getattr(ext, "__file__", "unknown")),
+        "cuda_schedule": getattr(vc_attention.Config(), "cuda_schedule", None),
+        "scheduling_version": getattr(ext, "scheduling_version", None),
+        "numerical_contract_version": getattr(ext, "numerical_contract_version", None),
+    }
+    print("Installed VC runtime: " + json.dumps(info), flush=True)
+    if info["cuda_schedule"] != "batched" or info["scheduling_version"] != 1 or info["numerical_contract_version"] != 2:
+        raise RuntimeError("Stale VC package/extension: git pull does not update the pip installation. "
+                           "Run bash scripts/validate_h800.sh to rebuild/install vc-attention 0.3.0. "
+                           "Refusing to run the legacy serial implementation as the optimized backend.")
+    return info
 
 
 def load_external(name):
@@ -97,6 +125,7 @@ def make_backends(names, qkv_hnd, vc_ablation, *, vc_schedule_compare=False, vc_
         if name != "vc":
             backends.append(external_backend(name, qkv_hnd, qkv_shd))
             continue
+        import vc_attention
         from vc_attention import Config, LayoutCache, attention
 
         variants = [("vc", True, True)]
@@ -104,14 +133,14 @@ def make_backends(names, qkv_hnd, vc_ablation, *, vc_schedule_compare=False, vc_
             variants += [("vc_control", False, False), ("vc_expcast", False, True),
                          ("vc_v_smooth", True, False)]
         for label, smooth, cast in variants:
-            cfg = Config(backend="cuda_fp8", v_smooth=smooth, expcast=cast)
+            cfg = Config(backend="cuda_fp8", v_smooth=smooth, expcast=cast, cuda_schedule="batched")
             schedules = [(label, cfg)]
             if vc_schedule_compare:
                 schedules.append((label + "_serial", replace(cfg, cuda_schedule="serial")))
             for row_name, row_cfg in schedules:
                 backends.append(Backend(
                     row_name, lambda cfg=row_cfg: attention(*qkv_hnd, cfg), "BHND",
-                    {"distribution": "vc-attention", "version": distribution_version("vc-attention"),
+                    {"distribution": "vc-attention", "version": distribution_version("vc-attention", package_file=vc_attention.__file__),
                      "interface": "vc_attention.attention", "input_layout": "BHND",
                      "config": asdict(row_cfg), "layout_cache_reused": False},
                 ))
@@ -285,6 +314,7 @@ def run(args):
         "input_shapes": input_shapes(args),
     }
     if "vc" in args.backends:
+        environment["vc_runtime"] = require_batched_runtime()
         from vc_attention.cuda_backend import preflight
         environment["vc_preflight"] = preflight(device)
     print(json.dumps(environment, indent=2), flush=True)
@@ -308,6 +338,7 @@ def run(args):
             for _ in range(args.warmup):
                 output = backend.call()
             torch.cuda.synchronize(device)
+            print(f"Warmup finished: {backend.name}; checking sampled output", flush=True)
             normalized = output_hnd(output, backend.layout, qkv[0].shape, dtype)
             metrics = error_metrics(normalized.index_select(2, ids).float().cpu(), golden)
             del output, normalized
@@ -325,6 +356,7 @@ def run(args):
             print(f"Trial {trial + 1}/{args.trials}: {backend.name}", flush=True)
             try:
                 output, milliseconds = measure_trial(backend.call, args.repeats, device)
+                print(f"Trial {trial + 1}/{args.trials}: {backend.name} finished, {milliseconds:.4f} ms/call", flush=True)
                 # Check a timed output outside the measured interval too.
                 normalized = output_hnd(output, backend.layout, qkv[0].shape, dtype)
                 sample = normalized.index_select(2, ids).float().cpu()

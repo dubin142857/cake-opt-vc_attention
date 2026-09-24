@@ -72,6 +72,17 @@ out, stats = attention(q, k, v, Config(backend="cuda_fp8", expcast=True, v_smoot
 
 ## 定位剩余瓶颈
 
+对于长时间没有输出的大场景，先用单次阶段诊断，默认 BSHD `[1,37741,28,128]`：
+
+```bash
+python3 scripts/diagnose_cuda_runtime.py --output results/h200_vc_runtime.json
+```
+
+它会先核验实际安装包与原生调度接口，然后同步测量一次完整调用各阶段。
+旧 pip 安装不会自动随 `git pull` 更新；版本不匹配时需重跑 `bash scripts/validate_h800.sh`。
+若停在原生 forward，才继续分析 CUDA GEMM、Softmax 和累加；若停在聚类，先定位聚类。
+部分阶段报告会即时保存，但没有远端测量前不能仅凭代码确定实际阻塞位置。
+
 ```bash
 python3 scripts/profile_cuda.py --output-dir results/h200_profile
 ```
