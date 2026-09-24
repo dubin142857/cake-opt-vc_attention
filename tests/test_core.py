@@ -48,6 +48,25 @@ def test_constant_values_are_restored_with_quantized_probabilities(expcast):
     torch.testing.assert_close(got, torch.full_like(got, 3), rtol=1e-6, atol=1e-6)
 
 
+@pytest.mark.parametrize("expcast", [False, True])
+def test_unsmoothed_value_requantization_does_not_preserve_additive_shift(expcast):
+    q = torch.zeros(1, 1, 1, 1)
+    k = torch.zeros(1, 1, 2, 1)
+    v = torch.tensor([1., 3.]).reshape(1, 1, 2, 1)
+    cfg = Config(v_smooth=False, expcast=expcast)
+    original, _ = attention(q, k, v, cfg)
+    shifted, _ = attention(q, k, v + 8, cfg)
+    # Uniform P is exact. V scales are 3/448 and 11/448; the independently
+    # rounded E4M3 payloads are [144, 448] and [352, 448], respectively.
+    expected = torch.tensor([(144 + 448) * (3 / 448) / 2,
+                             (352 + 448) * (11 / 448) / 2])
+    torch.testing.assert_close(torch.cat((original.flatten(), shifted.flatten())),
+                               expected, atol=1e-6, rtol=1e-6)
+    # The change is ~7.839286, disproving even the former CUDA test's 0.13
+    # tolerance around 8 without depending on any CUDA kernel or RNG seed.
+    assert abs((shifted - original).item() - 8) > 0.13
+
+
 def test_grouping_is_a_permutation_and_preserves_attention():
     q, k, v = tensors()
     pi, centers = group_values(v, clusters=4, iterations=3)

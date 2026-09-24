@@ -107,23 +107,35 @@ def test_batched_fp8_matches_serial_signed_inputs_multiple_heads_and_query_chunk
     assert relative < 0.015  # GEMM geometry may change FP8 accumulation/boundary rounding.
     assert err.abs().max() < 0.04
     assert stats["cuda_schedule"] == "batched"
-    # Descriptor reuse must use NEW data and follow the caller's CUDA stream.
+    # Compare the SAME re-quantized input across streams. In unsmoothed FP8,
+    # V + 8 changes the per-channel scale and rounding; output(V + 8) need not
+    # equal output(V) + 8. Ordinary E4M3 P also uses an unquantized denominator.
+    expected_shifted, _ = attention(q, k, v + 8, cfg)
     stream = torch.cuda.Stream()
     stream.wait_stream(torch.cuda.current_stream())
     with torch.cuda.stream(stream):
         shifted, _ = attention(q, k, v + 8, cfg)
     stream.synchronize()
-    torch.testing.assert_close(shifted.float() - actual.float(), torch.full_like(actual.float(), 8), atol=0.13, rtol=0)
+    torch.testing.assert_close(shifted, expected_shifted, atol=0, rtol=0)
 
 
 @hopper
 @pytest.mark.hopper
 @pytest.mark.parametrize("cast", [False, True])
-def test_batched_known_answer_with_distinct_heads_and_tail_chunk(cast):
+@pytest.mark.parametrize("smooth", [False, True])
+def test_batched_known_answer_with_distinct_heads_and_tail_chunk(cast, smooth):
     q = torch.zeros(2, 3, 1057, 16, device="cuda")
     k = torch.zeros(2, 3, 35, 16, device="cuda")
     values = torch.arange(1, 7, device="cuda").reshape(2, 3, 1, 1).float()
     v = values.expand_as(k).contiguous()
-    cfg = Config(backend="cuda_fp8", v_smooth=True, clusters=1, expcast=cast)
+    cfg = Config(backend="cuda_fp8", v_smooth=smooth, clusters=1, expcast=cast)
     result, _ = attention(q, k, v, cfg)
     torch.testing.assert_close(result, values.expand_as(q), atol=1e-5, rtol=1e-5)
+    # Uniform probabilities and constant V give a known answer even in FP8.
+    # Check descriptor reuse with NEW values produced on the caller's stream.
+    stream = torch.cuda.Stream()
+    stream.wait_stream(torch.cuda.current_stream())
+    with torch.cuda.stream(stream):
+        shifted, _ = attention(q, k, v + 8, cfg)
+    stream.synchronize()
+    torch.testing.assert_close(shifted, (values + 8).expand_as(q), atol=1e-5, rtol=1e-5)
