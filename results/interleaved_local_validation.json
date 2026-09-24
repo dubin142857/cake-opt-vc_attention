@@ -1,0 +1,67 @@
+{
+  "date": "2026-09-24",
+  "vc_version": "0.7.0",
+  "environment": {
+    "platform": "Windows",
+    "gpu": "NVIDIA GeForce RTX 3060 Laptop GPU",
+    "torch": "2.3.1+cu121",
+    "nvcc": "12.4.131",
+    "compiled_architectures": ["sm_86", "sm_90a"]
+  },
+  "suite": {"passed": 305, "skipped": 148},
+  "emulated_interleaved_vs_d128_rolling_buffers": {
+    "cases": 20,
+    "bitwise_equal": true,
+    "query_key_lengths": [[64, 1], [64, 127], [64, 128], [65, 129], [128, 256], [129, 257], [64, 384], [64, 385], [129, 512], [193, 641]],
+    "smoothing_modes": [false, true],
+    "expcast": true
+  },
+  "emulated_kernel_memcheck": {"tests_passed": 114, "errors": 0},
+  "emulated_kernel_racecheck": {
+    "tests_passed": 66,
+    "hazards": 0,
+    "errors": 0,
+    "warnings": 0,
+    "scope": "D128 and interleaved emulator tests including rolling buffers, known answers and invalid-configuration guards"
+  },
+  "sanitizer_exit_workaround": "Direct Python executable, torch.cuda.synchronize and flushed stdout before os._exit(test_status). Both recorded sanitizer runs completed with exit code 0 and final sanitizer summaries.",
+  "native_binary": {
+    "verified_in_installed_extension": true,
+    "functions_verified": 9,
+    "variants_and_modes": {
+      "baseline": ["e4m3", "expcast"],
+      "pipeline": ["e4m3", "expcast"],
+      "d128_full": ["e4m3", "expcast"],
+      "d128_tail": ["e4m3", "expcast"],
+      "interleaved": ["expcast"]
+    },
+    "instruction": "QGMMA.64x128x32.F32.E4M3.E4M3",
+    "fp16_hmma_in_native_functions": false,
+    "interleaved": {
+      "static_wgmma_instruction_count": 24,
+      "static_ldgsts_instruction_count": 8,
+      "expcast_f2i_instructions_between_wait_1_and_wait_0": [64, 64],
+      "registers_per_thread": 255,
+      "static_shared_bytes": 49152,
+      "dynamic_shared_bytes": 8192,
+      "stack_frame_bytes": 0,
+      "spill_load_bytes": 0,
+      "spill_store_bytes": 0,
+      "local_load_instructions": 0,
+      "local_store_instructions": 0
+    }
+  },
+  "kernel_profiler_entry": {
+    "cli_and_torch_profiler_api_smoke_check": "passed",
+    "hardware_capture": "not run locally"
+  },
+  "limitations": [
+    "Hopper native execution and performance were unavailable locally; hardware-dependent tests were skipped.",
+    "The diagnostic emulator defers reading old P/V until after next-tile ExpCast but uses scalar arithmetic instead of concurrent native WGMMA.",
+    "Binary checks prove instruction ordering and FP8 instruction presence, not actual overlap duration or native runtime correctness.",
+    "H200 native concurrency, CUDA 13 compilation and same-run performance require remote validation.",
+    "Ordinary Softmax and unsupported geometries retain earlier cores; interleaved dispatch requires ExpCast and the D128 default geometry.",
+    "Shared memory rises from 48 to 56 KiB; register use remains 255 per thread. No residency or latency improvement is claimed before remote measurement.",
+    "Static instruction counts include prologue, main loop, key-tail and drain code and do not imply extra matrix operations per tile."
+  ]
+}

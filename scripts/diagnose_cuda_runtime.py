@@ -106,7 +106,8 @@ def run(args):
             v.gather(-2, pi.unsqueeze(-1).expand_as(v))))
     variant = _fused_variant(args.dim, args.dim, cfg) if args.schedule == "fused" else None
     report["cuda_fused_variant"] = variant
-    launch = (ext.forward_fused_d128 if variant == "d128" else ext.forward_fused) if variant else ext.forward
+    launch = {"interleaved": ext.forward_fused_interleaved, "d128": ext.forward_fused_d128,
+              "pipeline": ext.forward_fused, None: ext.forward}[variant]
     output = phase(f"native_{args.schedule}_CUDA_forward", lambda: launch(
         q, k, v, cfg.q_block, cfg.k_quant_block, cfg.kv_block, active, cfg.expcast,
         {"float32": 0, "float16": 1, "bfloat16": 2}[cfg.mean_dtype], args.dim**-0.5,

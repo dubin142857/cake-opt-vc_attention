@@ -63,17 +63,18 @@ def require_batched_runtime(schedule="batched"):
         "fused_api_version": getattr(ext, "fused_api_version", None),
         "fused_pipeline_version": getattr(ext, "fused_pipeline_version", None),
         "fused_d128_version": getattr(ext, "fused_d128_version", None),
+        "fused_interleaved_version": getattr(ext, "fused_interleaved_version", None),
         "selected_schedule": schedule,
     }
     print("Installed VC runtime: " + json.dumps(info), flush=True)
     if info["cuda_schedule"] != "batched" or info["scheduling_version"] != 1 or info["numerical_contract_version"] != 2:
         raise RuntimeError("Stale VC package/extension: git pull does not update the pip installation. "
-                           "Run bash scripts/validate_h800.sh to rebuild/install vc-attention 0.6.0. "
+                           "Run bash scripts/validate_h800.sh to rebuild/install vc-attention 0.7.0. "
                            "Refusing to run the legacy serial implementation as the optimized backend.")
     if schedule == "fused":
-        if info["fused_api_version"] != 1 or info["fused_pipeline_version"] != 1 or info["fused_d128_version"] != 1:
-            raise RuntimeError("Rebuild vc-attention 0.6.0 for fused attention: bash scripts/validate_h800.sh. No fallback was used.")
-        vc_attention.Config(cuda_schedule="fused", cuda_fused_pipeline=True, cuda_fused_specialize=True)
+        if any(info[key] != 1 for key in ("fused_api_version", "fused_pipeline_version", "fused_d128_version", "fused_interleaved_version")):
+            raise RuntimeError("Rebuild vc-attention 0.7.0 for fused attention: bash scripts/validate_h800.sh. No fallback was used.")
+        vc_attention.Config(cuda_schedule="fused", cuda_fused_pipeline=True, cuda_fused_specialize=True, cuda_fused_interleave=True)
     return info
 
 
@@ -124,7 +125,7 @@ def external_backend(name, qkv_hnd, qkv_shd):
 
 
 def make_backends(names, qkv_hnd, vc_ablation, *, vc_schedule_compare=False, vc_reuse_layout=False,
-                  vc_schedule="batched", vc_fused_compare=False, vc_specialize_compare=False):
+                  vc_schedule="batched", vc_fused_compare=False, vc_specialize_compare=False, vc_interleave_compare=False):
     # Make layout copies once, outside every timed call, for all Flash versions.
     qkv_shd = tuple(x.transpose(1, 2).contiguous() for x in qkv_hnd) if any(
         name in ("flash2", "flash3", "flash4") for name in names
@@ -145,8 +146,14 @@ def make_backends(names, qkv_hnd, vc_ablation, *, vc_schedule_compare=False, vc_
         for label, smooth, cast in variants:
             cfg = Config(backend="cuda_fp8", v_smooth=smooth, expcast=cast, cuda_schedule=vc_schedule)
             schedules = [(label, cfg)]
+            if vc_interleave_compare:
+                if vc_schedule != "fused" or qkv_hnd[0].shape[-1] != 128 or qkv_hnd[2].shape[-1] != 128:
+                    raise ValueError("Interleaved comparison requires fused D128 inputs")
+                # Ordinary Softmax already retains 0.6; compare ExpCast arms.
+                if cast:
+                    schedules.append((label + "_d128", replace(cfg, cuda_fused_interleave=False)))
             if vc_specialize_compare:
-                if vc_schedule != "fused" or _fused_variant(qkv_hnd[0].shape[-1], qkv_hnd[2].shape[-1], cfg) != "d128":
+                if vc_schedule != "fused" or _fused_variant(qkv_hnd[0].shape[-1], qkv_hnd[2].shape[-1], cfg) not in ("d128", "interleaved"):
                     raise ValueError("Specialization comparison requires fused D128 inputs and the default quantization geometry")
                 schedules.append((label + "_generic", replace(cfg, cuda_fused_specialize=False)))
             if vc_fused_compare:
@@ -288,7 +295,8 @@ def parse_args(argv=None):
     parser.add_argument("--check-queries", type=int, default=128, help="evenly spaced rows for accuracy; 0 checks all")
     parser.add_argument("--reference-chunk", type=int, default=32, help="FP32 oracle query rows per chunk")
     parser.add_argument("--vc-ablation", action="store_true", help="also measure VC control/ExpCast-only/V-Smooth-only")
-    parser.add_argument("--vc-schedule", choices=("fused", "batched"), default="fused", help="VC attention core (default: fused, automatic D128 specialization; rebuild 0.6.0)")
+    parser.add_argument("--vc-schedule", choices=("fused", "batched"), default="fused", help="VC attention core (default: fused, D128 ExpCast interleaving; rebuild 0.7.0)")
+    parser.add_argument("--vc-interleave-compare", action="store_true", help="also time the retained 0.6.0 D128 schedule for ExpCast arms")
     parser.add_argument("--vc-specialize-compare", action="store_true", help="also time the retained 0.5.0 generic pipeline on D128 inputs")
     parser.add_argument("--vc-fused-compare", action="store_true", help="also time the retained 0.4.0 fused core, including the same preprocessing")
     parser.add_argument("--vc-schedule-compare", action="store_true", help="also time the original serial CUDA schedule on the same inputs")
@@ -303,12 +311,14 @@ def parse_args(argv=None):
         parser.error("--backends must not contain duplicates")
     if args.vc_ablation and "vc" not in args.backends:
         parser.error("--vc-ablation requires vc in --backends")
-    if (args.vc_schedule_compare or args.vc_reuse_layout or args.vc_fused_compare or args.vc_specialize_compare) and "vc" not in args.backends:
+    if (args.vc_schedule_compare or args.vc_reuse_layout or args.vc_fused_compare or args.vc_specialize_compare or args.vc_interleave_compare) and "vc" not in args.backends:
         parser.error("VC schedule/cache comparisons require vc in --backends")
     if args.vc_fused_compare and args.vc_schedule != "fused":
         parser.error("--vc-fused-compare requires --vc-schedule fused")
     if args.vc_specialize_compare and (args.vc_schedule != "fused" or args.dim != 128):
         parser.error("--vc-specialize-compare requires --vc-schedule fused --dim 128")
+    if args.vc_interleave_compare and (args.vc_schedule != "fused" or args.dim != 128):
+        parser.error("--vc-interleave-compare requires --vc-schedule fused --dim 128")
     if args.vc_reference_check and "vc" not in args.backends:
         parser.error("--vc-reference-check requires vc in --backends")
     args.baseline = args.baseline or ("flash3" if "flash3" in args.backends else args.backends[0])
@@ -355,7 +365,7 @@ def run(args):
     backends = make_backends(args.backends, qkv, args.vc_ablation,
                              vc_schedule_compare=args.vc_schedule_compare, vc_reuse_layout=args.vc_reuse_layout,
                              vc_schedule=args.vc_schedule, vc_fused_compare=args.vc_fused_compare,
-                             vc_specialize_compare=args.vc_specialize_compare)
+                             vc_specialize_compare=args.vc_specialize_compare, vc_interleave_compare=args.vc_interleave_compare)
     indices = query_indices(args.queries, args.check_queries)
     print(f"FP32 reference: {len(indices)} query rows, all {args.tokens} keys", flush=True)
     golden = fp32_reference(*qkv, indices, args.reference_chunk)
@@ -392,7 +402,7 @@ def run(args):
                 normalized = output_hnd(output, backend.layout, qkv[0].shape, dtype)
                 sample = normalized.index_select(2, ids).float().cpu()
                 metrics = error_metrics(sample, golden)
-                if (args.vc_reference_check or args.vc_fused_compare or args.vc_specialize_compare) and backend.info.get("config", {}).get("backend") == "cuda_fp8":
+                if (args.vc_reference_check or args.vc_fused_compare or args.vc_specialize_compare or args.vc_interleave_compare) and backend.info.get("config", {}).get("backend") == "cuda_fp8":
                     # Overwrite per trial; compare the last timed sample, not a
                     # new native call that might use a different clustering order.
                     native_samples[backend.name] = sample
@@ -418,15 +428,16 @@ def run(args):
             "VC includes quantization/allocation/validation and first-step clustering; explicitly labeled *_reuse rows alone reuse layout.",
             "*_serial rows retain per-head/per-query-tile scheduling; *_fused_baseline rows retain the 0.4.0 fused core.",
             "Eligible VC fused rows specialize D128 by default; *_generic retains the 0.5.0 pipeline. Every row includes preprocessing unless marked reuse.",
+            "D128 ExpCast uses lookahead interleaving; *_d128 retains 0.6.0. Ordinary Softmax and Q tails retain 0.6.0.",
             "Sage uses its public sageattn auto dispatch, including its internal preprocessing.",
             "Different internal precisions; synthetic accuracy is not model quality validation.",
             "speedup_vs_baseline = baseline_ms / row_ms; vc_speedup_vs = other_ms / vc_ms; >1 is faster.",
         ],
     }
-    if args.vc_fused_compare or args.vc_specialize_compare:
+    if args.vc_fused_compare or args.vc_specialize_compare or args.vc_interleave_compare:
         comparisons = {}
         for name, sample in native_samples.items():
-            for suffix in ("_fused_baseline", "_generic"):
+            for suffix in ("_fused_baseline", "_generic", "_d128"):
                 control_name = name + suffix
                 control = native_samples.get(control_name)
                 if control is not None:
@@ -483,7 +494,10 @@ def print_report(report):
             print(f"Fused speedup {name}: {fused_baseline['median_ms'] / row['median_ms']:.4f}x (0.4.0 core / selected core; both include preprocessing)")
         generic = report["results"].get(name + "_generic")
         if generic is not None:
-            print(f"D128 specialization speedup {name}: {generic['median_ms'] / row['median_ms']:.4f}x (0.5.0 generic / specialized; both include preprocessing)")
+            print(f"VC fused speedup {name}: {generic['median_ms'] / row['median_ms']:.4f}x (0.5.0 generic / selected core; both include preprocessing)")
+        d128 = report["results"].get(name + "_d128")
+        if d128 is not None:
+            print(f"Interleaving speedup {name}: {d128['median_ms'] / row['median_ms']:.4f}x (0.6.0 D128 / interleaved; both include preprocessing)")
     count = len(report["accuracy"]["query_indices"])
     total = report["arguments"]["queries"]
     scope = "all" if count == total else "sampled"

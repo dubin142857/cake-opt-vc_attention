@@ -224,15 +224,18 @@ def test_fused_benchmark_requires_native_entry_and_dispatches_explicitly(monkeyp
     import vc_attention
     ext = SimpleNamespace(scheduling_version=1, numerical_contract_version=2)
     monkeypatch.setattr(benchmark.importlib, "import_module", lambda _: ext)
-    with pytest.raises(RuntimeError, match="0.6.0"):
+    with pytest.raises(RuntimeError, match="0.7.0"):
         benchmark.require_batched_runtime("fused")
     ext.fused_api_version = 1
-    with pytest.raises(RuntimeError, match="0.6.0"):
+    with pytest.raises(RuntimeError, match="0.7.0"):
         benchmark.require_batched_runtime("fused")
     ext.fused_pipeline_version = 1
-    with pytest.raises(RuntimeError, match="0.6.0"):
+    with pytest.raises(RuntimeError, match="0.7.0"):
         benchmark.require_batched_runtime("fused")
     ext.fused_d128_version = 1
+    with pytest.raises(RuntimeError, match="0.7.0"):
+        benchmark.require_batched_runtime("fused")
+    ext.fused_interleaved_version = 1
     assert benchmark.require_batched_runtime("fused")["selected_schedule"] == "fused"
     assert benchmark.parse_args([]).vc_schedule == "fused"
     configs = []
@@ -271,7 +274,7 @@ def test_specialization_ab_preserves_preprocessing_and_can_include_both_controls
     rows = benchmark.make_backends(["vc"], qkv, False, vc_schedule="fused",
                                     vc_specialize_compare=True, vc_fused_compare=True)
     assert [r.name for r in rows] == ["vc", "vc_generic", "vc_fused_baseline"]
-    assert [r.info["cuda_fused_variant"] for r in rows] == ["d128", "pipeline", "baseline"]
+    assert [r.info["cuda_fused_variant"] for r in rows] == ["interleaved", "pipeline", "baseline"]
     for row in rows:
         row.call()
     assert replace(configs[1], cuda_fused_specialize=True) == configs[0]
@@ -281,6 +284,25 @@ def test_specialization_ab_preserves_preprocessing_and_can_include_both_controls
     for invalid in (["--dim", "64"], ["--vc-schedule", "batched"], ["--backends", "sage"]):
         with pytest.raises(SystemExit):
             benchmark.parse_args(["--vc-specialize-compare", *invalid])
+
+
+def test_interleaved_ab_preserves_all_quantization_settings_and_does_not_duplicate_softmax_arms(monkeypatch):
+    import vc_attention
+    configs = []
+    monkeypatch.setattr(vc_attention, "attention", lambda q, k, v, cfg: configs.append(cfg))
+    qkv = (torch.zeros(1, 2, 65, 128),) * 3
+    rows = benchmark.make_backends(["vc"], qkv, True, vc_schedule="fused", vc_interleave_compare=True)
+    assert [r.name for r in rows] == ["vc", "vc_d128", "vc_control", "vc_expcast", "vc_expcast_d128", "vc_v_smooth"]
+    for row in rows:
+        row.call()
+    assert replace(configs[1], cuda_fused_interleave=True) == configs[0]
+    assert replace(configs[4], cuda_fused_interleave=True) == configs[3]
+    assert [r.info["cuda_fused_variant"] for r in rows] == ["interleaved", "d128", "d128", "interleaved", "d128", "d128"]
+    assert all(not r.info["layout_cache_reused"] for r in rows)
+    assert benchmark.parse_args(["--backends", "vc", "--vc-interleave-compare"]).vc_interleave_compare
+    for invalid in (["--dim", "64"], ["--vc-schedule", "batched"], ["--backends", "sage"]):
+        with pytest.raises(SystemExit):
+            benchmark.parse_args(["--vc-interleave-compare", *invalid])
 
 
 @pytest.mark.parametrize("smooth,cast", [(False, False), (False, True), (True, False), (True, True)])

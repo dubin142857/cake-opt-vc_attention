@@ -26,6 +26,17 @@ def summarize_trace(path):
     return sorted(rows.values(), key=lambda row: row["total_us"], reverse=True)
 
 
+def summarize_gpu(rows, iterations):
+    kernels = [row for row in rows if row["category"] == "kernel"]
+    core_us = sum(row["total_us"] for row in kernels if "fused_attention" in row["name"])
+    all_us = sum(row["total_us"] for row in kernels)
+    return {"core_ms_per_call": core_us / (1000 * iterations),
+            "other_kernels_ms_per_call": (all_us - core_us) / (1000 * iterations),
+            "kernel_sum_ms_per_call": all_us / (1000 * iterations),
+            "core_percent_of_kernel_sum": 100 * core_us / all_us if all_us else 0,
+            "kernel_launches_per_call": sum(row["calls"] for row in kernels) / iterations}
+
+
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--device", default="cuda:0")
@@ -42,6 +53,7 @@ def parse_args(argv=None):
     parser.add_argument("--vc-schedule-compare", action="store_true", help="also profile the expensive legacy serial path")
     parser.add_argument("--vc-fused-compare", action="store_true", help="also profile the retained 0.4.0 fused core")
     parser.add_argument("--vc-specialize-compare", action="store_true", help="also profile the retained 0.5.0 generic pipeline")
+    parser.add_argument("--vc-interleave-compare", action="store_true", help="also profile the retained 0.6.0 D128 schedule")
     parser.add_argument("--vc-reuse-layout", action="store_true")
     parser.add_argument("--output-dir", default="results/h200_profile")
     args = parser.parse_args(argv)
@@ -51,6 +63,8 @@ def parse_args(argv=None):
         parser.error("--vc-fused-compare requires --vc-schedule fused")
     if args.vc_specialize_compare and (args.vc_schedule != "fused" or args.dim != 128):
         parser.error("--vc-specialize-compare requires --vc-schedule fused and --dim 128")
+    if args.vc_interleave_compare and (args.vc_schedule != "fused" or args.dim != 128):
+        parser.error("--vc-interleave-compare requires --vc-schedule fused and --dim 128")
     return args
 
 
@@ -70,7 +84,8 @@ def run(args):
     backends = make_backends(["vc"], qkv, False, vc_schedule_compare=args.vc_schedule_compare,
                              vc_reuse_layout=args.vc_reuse_layout, vc_schedule=args.vc_schedule,
                              vc_fused_compare=args.vc_fused_compare,
-                             vc_specialize_compare=args.vc_specialize_compare)
+                             vc_specialize_compare=args.vc_specialize_compare,
+                             vc_interleave_compare=args.vc_interleave_compare)
     directory = Path(args.output_dir)
     directory.mkdir(parents=True, exist_ok=True)
     report = {"environment": {"torch": torch.__version__, "torch_cuda": torch.version.cuda, **info, "runtime": runtime},
@@ -98,7 +113,9 @@ def run(args):
             raise RuntimeError(f"{trace_path}: no GPU kernel events captured; check CUPTI availability")
         table = profile.key_averages().table(sort_by="self_cpu_time_total", row_limit=30)
         (directory / f"{backend.name}.operators.txt").write_text(table, encoding="utf-8")
-        report["results"][backend.name] = {**backend.info, "trace": str(trace_path), "events": rows}
+        summary = summarize_gpu(rows, args.iterations)
+        report["results"][backend.name] = {**backend.info, "trace": str(trace_path), "events": rows, "gpu_summary": summary}
+        print(f"{backend.name} GPU kernel summary: " + json.dumps(summary), flush=True)
         print("CUDA kernels: calls/call, summed GPU ms/call (profiled)")
         for row in [x for x in rows if x["category"] == "kernel"][:12]:
             print(f"{row['calls'] / args.iterations:8.1f} {row['total_us'] / (1000 * args.iterations):10.4f} {row['name']}")

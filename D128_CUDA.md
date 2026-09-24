@@ -1,5 +1,9 @@
 # 0.6.0：D128 专用融合核心
 
+本文保留 0.6.0 的历史实现和验证记录。当前 0.7.0 对满足条件的 ExpCast 输入
+默认使用交叠调度，设置 `cuda_fused_interleave=False` 可运行本文核心；
+新增对照参数为 `--vc-interleave-compare`，见 [INTERLEAVED_CUDA.md](INTERLEAVED_CUDA.md)。
+
 本轮针对 BSHD `[1,37741,28,128]` 的主要耗时优化 Attention 核心。
 用户提供的同场 H200 测速中，0.5.0 完整 API 为 **129.7160 ms**，
 保留的 0.4.0 核心为 244.9036 ms。另一次三轮 profiler 中，0.5.0

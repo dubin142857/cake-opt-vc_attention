@@ -21,7 +21,7 @@ if os.environ.get("VC_ATTENTION_BUILD_CUDA", "1") != "0":
     compiler_info = subprocess.check_output([compiler, "--version"], text=True)
     compiler_version = re.search(r"release (\d+)\.(\d+)", compiler_info)
     if not compiler_version or tuple(map(int, compiler_version.groups())) < (12, 4):
-        raise RuntimeError("vc-attention 0.6.0 fused WGMMA build requires nvcc >= 12.4. Set CUDA_HOME to a compatible toolkit.")
+        raise RuntimeError("vc-attention 0.7.0 fused WGMMA build requires nvcc >= 12.4. Set CUDA_HOME to a compatible toolkit.")
     # The build host need not have a GPU. H800/H100 are the intended targets.
     # WGMMA requires the architecture-specific sm_90a image. Keep any extra
     # development targets (e.g. sm_86 for diagnostic tests), but always include it.
@@ -33,7 +33,8 @@ if os.environ.get("VC_ATTENTION_BUILD_CUDA", "1") != "0":
     extensions = [CUDAExtension(
         "vc_attention._cuda_ext",
         sources=["csrc/bindings.cpp", "csrc/kernels.cu", "csrc/fused.cu"],
-        depends=["csrc/vc_cuda.h", "csrc/wgmma.cuh", "csrc/fused_pipeline.cuh", "csrc/fused_d128.cuh"],
+        depends=["csrc/vc_cuda.h", "csrc/wgmma.cuh", "csrc/fused_pipeline.cuh", "csrc/fused_d128.cuh",
+                 "csrc/wgmma_async.cuh", "csrc/fused_interleaved.cuh"],
         libraries=["cublasLt"],
         extra_compile_args={
             "cxx": ["/O2", "/std:c++17"] if sys.platform == "win32" else ["-O3", "-std=c++17"],
@@ -46,7 +47,7 @@ if os.environ.get("VC_ATTENTION_BUILD_CUDA", "1") != "0":
 
 setup(
     name="vc-attention",
-    version="0.6.0",
+    version="0.7.0",
     description="VC-Attention reference and CUDA C++ FP8 backend for Hopper",
     packages=["vc_attention"],
     package_dir={"": "src"},

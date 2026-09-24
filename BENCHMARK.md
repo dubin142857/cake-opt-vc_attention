@@ -1,7 +1,8 @@
 # 在 H200 / H800 对比五种 Attention
 
-0.6.0 测速默认使用 `--vc-schedule fused`，默认量化配置和 D128 输入自动选择专用核心。
-加 `--vc-specialize-compare` 可同场比较保留的 0.5.0 通用核心，见 [D128_CUDA.md](D128_CUDA.md)。
+0.7.0 测速默认使用 `--vc-schedule fused`，默认量化配置和 D128 ExpCast 输入自动选择交叠核心。
+加 `--vc-interleave-compare` 可同场比较保留的 0.6.0 D128 核心，见 [INTERLEAVED_CUDA.md](INTERLEAVED_CUDA.md)。
+加 `--vc-specialize-compare` 可比较 0.5.0 通用核心。
 加 `--vc-fused-compare` 还可比较 0.4.0 核心。
 需要 nvcc >= 12.4 并重新编译扩展。旧批量路径可用 `--vc-schedule batched` 选择。
 
@@ -24,7 +25,7 @@ bash scripts/benchmark_37741.sh
 这个入口默认比较五个后端，预热 2 次、每轮重复 5 次、共 3 轮。
 结果保存到 `results/h200_shape_1_37741_28_128.json`，控制台与 JSON 环境字段
 `input_shapes` 会列出两种布局下 Q/K/V 的形状。旧版 0.3.0 扩展不能执行融合主体，
-必须先运行 `bash scripts/validate_h800.sh` 编译安装 0.6.0。
+必须先运行 `bash scripts/validate_h800.sh` 编译安装 0.7.0。
 
 运行前会打印实际安装的 VC 版本、Python 包路径、CUDA 扩展路径和调度版本。
 如果只是拉取了 Git 代码、pip 包仍为旧版，会明确拒绝把旧串行实现当作新版测速。
@@ -37,7 +38,7 @@ python3 scripts/diagnose_cuda_runtime.py --output results/h200_vc_runtime.json
 
 默认即该完整形状，依次打印 GPU 分配、有限值检查、V 聚类、KV 重排、原生 CUDA forward
 的 START/DONE。每完成一个阶段保存一次 JSON；第一调用包含初始化开销，不能当作稳态加速比。
-0.6.0 专用路径在此长度的 Attention 主体启动两次 kernel（完整 Q 分块和 Q 尾块），预处理另外计入。
+0.7.0 在此长度的 Attention 主体启动两次 kernel（交叠的完整 Q 分块和保留的 Q 尾块），预处理另外计入。
 旧批量路径每次仍需 21,830 次 GEMM 和 21,830 次更新 kernel 提交；
 默认测速每个后端有 2+5×3=17 次完整调用。
 逐阶段脚本不运行旧串行路径或 Python 量化参考。
@@ -69,7 +70,7 @@ python3 scripts/benchmark_cuda.py --batch 1 --queries 37741 --tokens 37741 --hea
 | `flash3` | `flash_attn_3.flash_attn_interface.flash_attn_func` | `flash_attn_3 3.0.0` |
 | `flash4` | `flash_attn.cute.flash_attn_func` | `flash-attn-4 4.0.0b31` |
 | `sage` | `sageattention.sageattn` | `sageattention 2.2.0` |
-| `vc` | `vc_attention.attention(..., Config(backend="cuda_fp8", cuda_schedule="fused", expcast=True, v_smooth=True))` | 本仓库当前 `vc-attention 0.6.0` |
+| `vc` | `vc_attention.attention(..., Config(backend="cuda_fp8", cuda_schedule="fused", expcast=True, v_smooth=True))` | 本仓库当前 `vc-attention 0.7.0` |
 
 运行报告会读取实际安装版本，并保存接口路径和参数。老版 FA3 源码安装若没有
 `flash_attn_3.flash_attn_interface`，会尝试同为 FA3 的 `flash_attn_interface`。
@@ -77,7 +78,7 @@ python3 scripts/benchmark_cuda.py --batch 1 --queries 37741 --tokens 37741 --hea
 
 ## 直接运行
 
-当前 0.6.0 新增 D128 专用接口，拉取后须重新编译并自检，再运行测速；
+当前 0.7.0 新增交叠核心接口，拉取后须重新编译并自检，再运行测速；
 已有的四个 Attention 包不需要重装。
 
 ```bash

@@ -1,12 +1,12 @@
 # Hopper (H800/H100/H200) CUDA C++ implementation
 
-Version **0.6.0** specializes the native FP8 core for D128/default quantization geometry,
-with one or two core launches and preprocessing still separate. Benchmarks select it
+Version **0.7.0** overlaps the next D128 ExpCast computation with the current native FP8 PV,
+using two probability buffers. Q tails and ordinary Softmax keep 0.6.0; preprocessing stays separate. Benchmarks select it
 by default; Python Config keeps the compatible batched default. **Requires nvcc
->= 12.4 and a rebuild.** See [D128_CUDA.md](D128_CUDA.md) for same-run comparisons
-against the retained 0.5.0 generic core (`--vc-specialize-compare`). The 0.4.0 core
-(`--vc-fused-compare`) and cuBLASLt baseline remain available. 0.6.0 native execution
-and performance need H200 validation; the user's 0.5.0 API measurement was 129.7160 ms.
+>= 12.4 and a rebuild.** See [INTERLEAVED_CUDA.md](INTERLEAVED_CUDA.md) for same-run comparisons
+against the retained 0.6.0 D128 core (`--vc-interleave-compare`). The 0.5.0 generic core
+(`--vc-specialize-compare`), 0.4.0 core (`--vc-fused-compare`) and cuBLASLt baseline remain available.
+0.7.0 native execution/performance need H200 validation; the user's 0.6.0 API measurement was 93.9205 ms.
 
 This provides `Config(backend="cuda_fp8")` for VC-Attention (V-Smooth + ExpCast).
 Version 0.2.0 adds paper-described K centering and Q/K Hadamard preprocessing,

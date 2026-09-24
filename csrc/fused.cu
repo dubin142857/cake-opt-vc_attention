@@ -204,11 +204,14 @@ __global__ void fused_attention(Shape s, Buffers b) {
 
 #include "fused_pipeline.cuh"
 #include "fused_d128.cuh"
+#include "fused_interleaved.cuh"
 
 template<bool Emulate>
-void launch(const Shape& s, const Buffers& b, cudaStream_t stream, bool pipeline, bool specialized) {
+void launch(const Shape& s, const Buffers& b, cudaStream_t stream, bool pipeline, bool specialized, bool interleaved) {
     const int blocks = s.heads * ((s.nq + 63) / 64);
-    if (specialized) {
+    if (interleaved) {
+        launch_interleaved<true, Emulate>(s, b, stream);
+    } else if (specialized) {
         if (s.expcast) launch_d128<true, Emulate>(s, b, stream);
         else launch_d128<false, Emulate>(s, b, stream);
     } else if (pipeline) {
@@ -223,11 +226,11 @@ void launch(const Shape& s, const Buffers& b, cudaStream_t stream, bool pipeline
 
 void forward_fused(const float* q, const float* k, const float* v,
                    const Shape& s, const Buffers& b, cudaStream_t stream,
-                   bool debug_emulate, bool pipeline, bool specialized) {
+                   bool debug_emulate, bool pipeline, bool specialized, bool interleaved) {
     debug_quantize(q, b.q8, b.qs, s.heads, s.nq, s.pq, s.d, s.dp, s.bq, s.nq_tiles, stream);
     debug_quantize(k, b.k8, b.ks, s.heads, s.nk, s.pk, s.d, s.dp, s.k_quant, s.nk_quant_tiles, stream);
     debug_values(v, s, b, stream);
-    if (debug_emulate) launch<true>(s, b, stream, pipeline, specialized);
-    else launch<false>(s, b, stream, pipeline, specialized);
+    if (debug_emulate) launch<true>(s, b, stream, pipeline, specialized, interleaved);
+    else launch<false>(s, b, stream, pipeline, specialized, interleaved);
 }
 }  // namespace vc

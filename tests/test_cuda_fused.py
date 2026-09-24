@@ -26,11 +26,12 @@ def launch(request):
     if not has_cuda or (request.param == "native" and not has_hopper):
         pytest.skip("native fused FP8 requires Hopper; emulator requires CUDA")
     ext = _extension()
-    assert (ext.fused_api_version, ext.fused_pipeline_version, ext.fused_d128_version) == (1, 1, 1), "Rebuild the 0.6.0 extension"
+    assert (ext.fused_api_version, ext.fused_pipeline_version, ext.fused_d128_version,
+            ext.fused_interleaved_version) == (1, 1, 1, 1), "Rebuild the 0.7.0 extension"
 
     def call(q, k, v, cfg, *, baseline=False):
         variant = "baseline" if baseline else _fused_variant(q.shape[-1], v.shape[-1], cfg)
-        suffix = {"baseline": "_baseline", "pipeline": "", "d128": "_d128"}[variant]
+        suffix = {"baseline": "_baseline", "pipeline": "", "d128": "_d128", "interleaved": "_interleaved"}[variant]
         fn = getattr(ext, "forward_fused" + suffix if request.param == "native"
                      else "debug_fused" + suffix + "_emulated")
         return fn(q, k, v, cfg.q_block, cfg.k_quant_block, cfg.kv_block,
@@ -44,10 +45,13 @@ def test_fused_configuration_is_explicit_and_rejects_unsupported_kv_block():
     assert Config(backend="cuda_fp8", cuda_schedule="fused").cuda_schedule == "fused"
     assert Config().cuda_fused_pipeline is True
     assert Config().cuda_fused_specialize is True
+    assert Config().cuda_fused_interleave is True
     with pytest.raises(ValueError, match="cuda_fused_pipeline"):
         Config(cuda_fused_pipeline="false")
     with pytest.raises(ValueError, match="cuda_fused_specialize"):
         Config(cuda_fused_specialize="false")
+    with pytest.raises(ValueError, match="cuda_fused_interleave"):
+        Config(cuda_fused_interleave="false")
     with pytest.raises(ValueError, match="kv_block=128"):
         Config(backend="cuda_fp8", cuda_schedule="fused", kv_block=64)
 
@@ -152,7 +156,10 @@ def test_public_fused_vs_batched_with_fixed_grouping(cast):
     assert stats["native_fused_attention"] and stats["native_fp8_matmul"]
     assert not stats["preprocessing_fused"]
     assert stats["cuda_fused_pipeline"]
-    assert stats["cuda_fused_variant"] == "d128"
+    assert stats["cuda_fused_variant"] == ("interleaved" if cast else "d128")
+    d128, d128_stats = attention(q, k, v, replace(cfg, cuda_fused_interleave=False))
+    torch.testing.assert_close(actual, d128, rtol=0, atol=0)
+    assert d128_stats["cuda_fused_variant"] == "d128"
     generic, generic_stats = attention(q, k, v, replace(cfg, cuda_fused_specialize=False))
     torch.testing.assert_close(actual, generic, rtol=0, atol=0)
     assert generic_stats["cuda_fused_variant"] == "pipeline"
@@ -214,3 +221,34 @@ def test_d128_incompatible_config_selects_generic_and_direct_emulated_entry_reje
     with pytest.raises(RuntimeError, match="D128 specialization requires"):
         _extension().debug_fused_d128_emulated(q, q, v, cfg.q_block, cfg.k_quant_block, 128,
             True, True, {"float32": 0, "float16": 1, "bfloat16": 2}[cfg.mean_dtype], d**-0.5, True, True, False)
+    with pytest.raises(RuntimeError, match="D128 specialization requires"):
+        _extension().debug_fused_interleaved_emulated(q, q, v, cfg.q_block, cfg.k_quant_block, 128,
+            True, True, {"float32": 0, "float16": 1, "bfloat16": 2}[cfg.mean_dtype], d**-0.5, True, True, False)
+
+
+@pytest.mark.parametrize("nq,nk", [(64, 1), (64, 127), (64, 128), (65, 129), (128, 256),
+                                    (129, 257), (64, 384), (64, 385), (129, 512), (193, 641)])
+@pytest.mark.parametrize("smooth", [False, True])
+def test_interleaved_matches_d128_bitwise_with_rolling_probability_and_value_buffers(launch, nq, nk, smooth):
+    generator = torch.Generator().manual_seed(707)
+    q, k, v = (torch.randn(1, 1, n, 128, generator=generator).cuda() for n in (nq, nk, nk))
+    for start in range(0, nk, 128):
+        k[:, :, start:start + 128] *= 1 + start / 128
+        v[:, :, start:start + 128] += 4 * ((start // 128) % 3 - 1)
+    cfg = Config(backend="cuda_fp8", cuda_schedule="fused", expcast=True, v_smooth=smooth)
+    expected = launch(q, k, v, replace(cfg, cuda_fused_interleave=False))
+    actual = launch(q, k, v, cfg)
+    torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+
+
+def test_interleaved_selects_only_expcast_and_direct_emulated_entry_rejects_softmax():
+    cfg = Config(backend="cuda_fp8", cuda_schedule="fused", expcast=False)
+    assert _fused_variant(128, 128, cfg) == "d128"
+    assert _fused_variant(128, 128, replace(cfg, expcast=True)) == "interleaved"
+    assert _fused_variant(128, 128, replace(cfg, expcast=True, cuda_fused_interleave=False)) == "d128"
+    if not has_cuda:
+        pytest.skip("direct entry validation requires CUDA")
+    q = torch.zeros(1, 1, 64, 128, device="cuda")
+    with pytest.raises(RuntimeError, match="requires expcast=True"):
+        _extension().debug_fused_interleaved_emulated(q, q, q, 128, 256, 128, True, False, 1,
+            128**-0.5, True, True, False)

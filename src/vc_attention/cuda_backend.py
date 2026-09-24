@@ -30,7 +30,7 @@ def _fused_variant(q_dim, v_dim, cfg):
         return "baseline"
     if (cfg.cuda_fused_specialize and q_dim == v_dim == 128 and cfg.q_block == 128
             and cfg.k_quant_block == 256 and cfg.kv_block == 128 and cfg.mean_dtype == "float16"):
-        return "d128"
+        return "interleaved" if cfg.cuda_fused_interleave and cfg.expcast else "d128"
     return "pipeline"
 
 
@@ -55,6 +55,8 @@ def _attention(q, k, v, cfg, *, cache, step, total_steps, request_id, layer_id, 
         raise RuntimeError("Rebuild vc-attention 0.5.0 for the fused pipeline and baseline: bash scripts/validate_h800.sh")
     if cfg.cuda_schedule == "fused" and getattr(ext, "fused_d128_version", None) != 1:
         raise RuntimeError("Rebuild vc-attention 0.6.0 for D128 specialization: bash scripts/validate_h800.sh")
+    if cfg.cuda_schedule == "fused" and getattr(ext, "fused_interleaved_version", None) != 1:
+        raise RuntimeError("Rebuild vc-attention 0.7.0 for the interleaved schedule: bash scripts/validate_h800.sh")
     if cache is None:
         cache = LayoutCache(cfg)
         request_id = "one-shot" if request_id is None else request_id
@@ -71,7 +73,7 @@ def _attention(q, k, v, cfg, *, cache, step, total_steps, request_id, layer_id, 
     launch = ext.forward
     if variant is not None:
         launch = {"baseline": ext.forward_fused_baseline, "pipeline": ext.forward_fused,
-                  "d128": ext.forward_fused_d128}[variant]
+                  "d128": ext.forward_fused_d128, "interleaved": ext.forward_fused_interleaved}[variant]
     output = launch(q, k, v, cfg.q_block, cfg.k_quant_block, cfg.kv_block,
                          active, cfg.expcast, mean_type, scale, cfg.k_smooth, cfg.qk_hadamard,
                          cfg.cuda_schedule == "batched")
@@ -116,7 +118,7 @@ def preflight(device="cuda:0", *, schedule="batched"):
         v = torch.full_like(k, 3)
         for cast in (False, True):
             actual, stats = attention(q, k, v, Config(backend="cuda_fp8", expcast=cast, cuda_schedule="fused"))
-            assert stats["cuda_fused_variant"] == "d128"
+            assert stats["cuda_fused_variant"] == ("interleaved" if cast else "d128")
             torch.testing.assert_close(actual, torch.full_like(actual, 3), rtol=2e-5, atol=2e-5)
     torch.cuda.synchronize(device)
     info = dict(ext.build_info())
