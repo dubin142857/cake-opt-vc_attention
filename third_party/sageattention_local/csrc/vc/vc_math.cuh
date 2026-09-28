@@ -2,10 +2,12 @@
 #pragma once
 #include "expcast.cuh"
 
-__device__ __forceinline__ float vc_decode(uint8_t code) {
-  __nv_fp8_e4m3 value;
-  value.__x = code;
-  return static_cast<float>(value);
+__device__ __forceinline__ float2 vc_decode_pair(uint32_t codes) {
+  // One packed FP8 -> half2 instruction on Hopper, then two exact FP32
+  // conversions. Decoding each byte separately discards half of each result.
+  __half2 pair = __nv_cvt_fp8x2_to_halfraw2(
+      static_cast<__nv_fp8x2_storage_t>(codes), __NV_E4M3);
+  return __half22float2(pair);
 }
 
 template<bool ExpCast, bool BlockValues, uint32_t NQ, uint32_t NK, uint32_t NV>
@@ -44,16 +46,23 @@ __device__ __forceinline__ void vc_probability(
       }
       #pragma unroll
       for (int k = 0; k < NK; ++k) {
-        uint32_t bytes[2] = {0, 0};
         #pragma unroll
-        for (int j = 0; j < 8; ++j) {
-          int r = (j % 4) / 2;
-          uint8_t code = vc_expcast_code(__fsub_rn(scores[q][k][j], maximum[q][r]));
-          scores[q][k][j] = vc_decode(code); // Both denominator and mean restoration use decoded P.
-          bytes[r] |= uint32_t(code) << (8 * ((j / 4) * 2 + j % 2));
+        for (int r = 0; r < 2; ++r) {
+          uint32_t bytes = 0;
+          #pragma unroll
+          for (int pair = 0; pair < 2; ++pair) {
+            int j = r * 2 + pair * 4;
+            uint32_t lo = vc_expcast_nonpositive(__fsub_rn(scores[q][k][j], maximum[q][r]));
+            uint32_t hi = vc_expcast_nonpositive(__fsub_rn(scores[q][k][j + 1], maximum[q][r]));
+            uint32_t codes = lo | (hi << 8);
+            float2 decoded = vc_decode_pair(codes);
+            // Preserve decoded-P denominator, mass and addition order exactly.
+            scores[q][k][j] = decoded.x;
+            scores[q][k][j + 1] = decoded.y;
+            bytes |= codes << (16 * pair);
+          }
+          packed[q][k / 2][(k % 2) * 2 + r] = bytes;
         }
-        packed[q][k / 2][(k % 2) * 2] = bytes[0];
-        packed[q][k / 2][(k % 2) * 2 + 1] = bytes[1];
       }
     }
   } else {
@@ -89,22 +98,33 @@ __device__ __forceinline__ void vc_accumulate(
     int head, int tile, int tiles, int dim, int lane) {
   #pragma unroll
   for (int v = 0; v < NV; ++v) {
-    #pragma unroll
-    for (int j = 0; j < 8; ++j) {
-      float scale = 1, mean = 0;
-      if constexpr (BlockValues) {
-        int channel = v * 16 + (lane % 4) * 2 + (j / 4) * 8 + j % 2;
-        int64_t meta = (int64_t(head) * tiles + tile) * dim + channel;
-        scale = scales[meta];
-        mean = __half2float(means[meta]);
-      }
+    if constexpr (BlockValues) {
       #pragma unroll
-      for (int q = 0; q < NQ; ++q) {
-        if constexpr (BlockValues) {
-          float centered = __fadd_rn(product[q][v][j], __fmul_rn(mass[q][(j % 4) / 2], mean));
-          out[q][v][j] = __fadd_rn(out[q][v][j], __fmul_rn(centered, scale));
-        } else out[q][v][j] += product[q][v][j];
+      for (int pair = 0; pair < 2; ++pair) {
+        int channel = v * 16 + (lane % 4) * 2 + pair * 8;
+        int64_t meta = (int64_t(head) * tiles + tile) * dim + channel;
+        // Both rows share these two channels. Torch allocations and even
+        // channel indices guarantee float2/half2 alignment, including D=64.
+        float2 scale = *reinterpret_cast<const float2*>(scales + meta);
+        float2 mean = __half22float2(*reinterpret_cast<const half2*>(means + meta));
+        #pragma unroll
+        for (int q = 0; q < NQ; ++q) {
+          #pragma unroll
+          for (int r = 0; r < 2; ++r) {
+            int j = pair * 4 + r * 2;
+            float a = __fadd_rn(product[q][v][j], __fmul_rn(mass[q][r], mean.x));
+            float b = __fadd_rn(product[q][v][j + 1], __fmul_rn(mass[q][r], mean.y));
+            // Do not contract these into FMAs: vc3 used separate RN ops.
+            out[q][v][j] = __fadd_rn(out[q][v][j], __fmul_rn(a, scale.x));
+            out[q][v][j + 1] = __fadd_rn(out[q][v][j + 1], __fmul_rn(b, scale.y));
+          }
+        }
       }
+    } else {
+      #pragma unroll
+      for (int j = 0; j < 8; ++j)
+        #pragma unroll
+        for (int q = 0; q < NQ; ++q) out[q][v][j] += product[q][v][j];
     }
   }
 }

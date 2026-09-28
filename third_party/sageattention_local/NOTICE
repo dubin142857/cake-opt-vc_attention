@@ -6,7 +6,7 @@ License: Apache License 2.0 (see LICENSE).
 
 Local integration in vc-attention:
 - Independent sageattention_local Python package and Torch operator namespaces.
-- Independent sageattention-local distribution, version 2.2.0+vc3.
+- Independent sageattention-local distribution, version 2.2.0+vc4.
 - Hopper-only build of the baseline _qattn_sm90 and _fused CUDA extensions.
 - Distinct name for the SM90 fake implementation, avoiding shadowing the CUDA callable.
 - Remove the unused CUDAContext.h include in fused.cu to avoid unnecessary cuSPARSE headers.
@@ -19,4 +19,5 @@ Sage+VC experiment, separate entry sageattn_vc and extension _vc_sm90:
 - Replaces probability conversion with optional VC ExpCast; adds per-block V scale and mean restoration.
 - Adds native V residual quantization, GPU clustering orchestration, and Python API/diagnostic oracle.
 - Keeps Sage INT8 QK: this hybrid is not a full VC-Attention paper reproduction.
+- vc4 pairs FP8 decode and V metadata loads, and overlaps next-V TMA with mean restoration.
 Modified and new experiment files are recorded separately in UPSTREAM.json.

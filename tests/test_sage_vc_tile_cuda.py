@@ -35,3 +35,21 @@ def test_real_expcast_register_packing_online_rescale_and_mean_restore(seed):
     torch.testing.assert_close(maximum,expected_max,rtol=0,atol=0)
     torch.testing.assert_close(denom,d * alpha + mass,rtol=1e-6,atol=1e-5)
     torch.testing.assert_close(actual,expected,rtol=2e-6,atol=2e-5)
+
+
+def test_hot_expcast_boundaries_and_all_nonnegative_fp8_pairs():
+    # Exercise each rounding threshold and both adjacent FP32 inputs, masked
+    # -inf, very negative scores, negative zero, and all 121^2 decoded pairs.
+    device = "cuda"
+    boundaries = ((torch.arange(120,device=device,dtype=torch.float64) + .5 -
+                   119.6500015258789) / 11.541560173034668).float()
+    shifted = torch.cat((torch.linspace(-16,0,65537,device=device), boundaries,
+        torch.nextafter(boundaries, torch.full_like(boundaries,-float("inf"))),
+        torch.nextafter(boundaries, torch.full_like(boundaries,float("inf"))),
+        torch.tensor([-float("inf"), -1e30, -0., 0.],device=device)))
+    ids = torch.arange(shifted.numel(),device=device).remainder(121 * 121)
+    lo, hi = ids.remainder(121), ids // 121
+    encoded, decoded = probe.run_helpers(shifted, (lo | (hi << 8)).int())
+    torch.testing.assert_close(encoded,oracle.expcast_codes(shifted),rtol=0,atol=0)
+    expected = torch.stack((lo,hi),-1).byte().view(torch.float8_e4m3fn).float()
+    torch.testing.assert_close(decoded,expected,rtol=0,atol=0)

@@ -1,11 +1,23 @@
 # SageAttention 主体 + VC 两项改动
 
-`sageattention-local==2.2.0+vc3` 在已经同场测到 25.8055 ms 的本地 Sage 源码上，
+`sageattention-local==2.2.0+vc4` 在已经同场测到 25.8055 ms 的本地 Sage 源码上，
 新增独立 `sageattn_vc`。原版 `sageattn` 的数学与内核保留。
 **25.8055 ms 是用户提供的原版源码构建结果，不是本次新入口的速度。**
 
 这是 **Sage+VC 混合实验**：QK 保留 Sage per-thread INT8；新增 V 聚类/块平滑和 ExpCast。
 没有改为完整 VC 的 FP8 QK/Hadamard，也尚未接入论文的去噪步数调度。
+
+vc4 针对 vc3 的 H200 trace 优化主内核：ExpCast 成对解码 FP8、移除已减行最大值后
+必然冗余的上界裁剪；V 块均值/尺度成对读取并在两行间复用；PV 完成后提前发起下一块 V
+的 TMA 搬运，与均值补偿重叠。保持 ExpCast 编码、分母、均值补偿的运算和舍入顺序。
+这些是实现优化，不改变 INT8 QK、FP8 PV、聚类或对外功能；H200 加速幅度需要重新实测。
+`sage_vc_build_info()` 中 `sage_vc_kernel_version=2` 表示新原生内核已经加载。
+
+本地 CUDA 12.4 交叉编译的 D128/BF16 反汇编中，ExpCast FP8 解码指令由 128 条减为
+64 条，块元数据读取由 128 条减为 64 条（循环体和尾块静态计数，不是运行耗时）。
+两项全开寄存器由 205 降为 170，无 spill；单平滑则由 170 增为 177，仍需远端看综合效果。
+85 项本地测试通过，另与旧版 GPU 辅助函数的 16 组输出逐位一致，Compute Sanitizer
+memcheck 无错误。这些不替代 H200 完整 attention 的远端验证。
 
 ## 远端编译和测试
 
@@ -39,6 +51,12 @@ python3 scripts/validate_sage_vc.py --output results/h200_sage_vc_validation.jso
 ```bash
 python3 scripts/benchmark_cuda.py --backends sage_local sage_vc_control sage_vc_expcast sage_vc_smooth sage_vc --baseline sage_local --queries 1024 --tokens 1024 --heads 2 --dim 128 --check-queries 0 --output results/h200_sage_vc_1024.json
 bash scripts/benchmark_37741.sh --backends flash3 sage sage_local sage_vc_control sage_vc_expcast sage_vc_smooth sage_vc --baseline sage_local --output results/h200_sage_vc_37741.json
+```
+
+与 vc3 的性能诊断同口径比较，不需要 `ncu`：
+
+```bash
+python3 scripts/profile_sage_vc.py --trace-dir results/h200_sage_vc4_traces --output results/h200_sage_vc4_profile.json
 ```
 
 | backend | 入口 | ExpCast | V 聚类 + 块平滑 |

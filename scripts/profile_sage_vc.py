@@ -1,6 +1,6 @@
 """Time public APIs, individual preprocessing stages, and fixed-payload Sage+VC cores.
 
-Works with the installed 2.2.0+vc3 package; no rebuild or algorithm changes.
+Works with installed 2.2.0+vc3 or newer; the profiler itself needs no rebuild.
 CUDA event intervals include stream idle/host launch gaps, not just kernel work.
 Optional CUPTI traces report kernel durations separately. CPU/GPU times overlap.
 """
@@ -211,7 +211,7 @@ def parse_args(argv=None):
 def validate_device(args):
     device = torch.device(args.device)
     if device.type != "cuda" or not torch.cuda.is_available() or torch.cuda.get_device_capability(device) != (9,0):
-        raise RuntimeError("Sage VC profiling requires Hopper, with sageattention-local 2.2.0+vc3 installed")
+        raise RuntimeError("Sage VC profiling requires Hopper, with sageattention-local 2.2.0+vc3 or newer installed")
     torch.cuda.set_device(device)
     if torch.cuda.current_stream(device) != torch.cuda.default_stream(device):
         raise RuntimeError("Use the default CUDA stream, as required by the public Sage VC API")

@@ -50,7 +50,7 @@ if "sdist" not in sys.argv:
     commands = {"build_ext": BuildExtension}
 
 setup(
-    name="sageattention-local", version="2.2.0+vc3",
+    name="sageattention-local", version="2.2.0+vc4",
     description="Independent Hopper source build of SageAttention v2.2.0 for comparison",
     author="SageAttention team (upstream); local build integration in vc-attention",
     url="https://github.com/thu-ml/SageAttention",

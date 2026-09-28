@@ -4,7 +4,7 @@
 
 源自官方 `thu-ml/SageAttention` 的 v2.2.0，commit
 `eb615cf6cf4d221338033340ee2de1c37fbdba4a`。保留 Apache-2.0 许可证及来源，
-以 `sageattention-local==2.2.0+vc3` 安装、`sageattention_local` 导入。
+以 `sageattention-local==2.2.0+vc4` 安装、`sageattention_local` 导入。
 原版入口 `sageattn` 保留；vc3 新增的 Sage+VC 实验见 [SAGE_VC.md](SAGE_VC.md)。
 
 ```bash

@@ -59,4 +59,31 @@ std::vector<torch::Tensor> run(torch::Tensor scores, torch::Tensor out, torch::T
   C10_CUDA_KERNEL_LAUNCH_CHECK();
   return {bytes,output,maximum,denom};
 }
-PYBIND11_MODULE(TORCH_EXTENSION_NAME,m) { m.def("run",&run); }
+__global__ void helpers(const float* shifted, const int32_t* codes,
+    int64_t n, uint8_t* encoded, float* decoded) {
+  int64_t i = int64_t(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (i >= n) return;
+  encoded[i] = vc_expcast_nonpositive(shifted[i]);
+  float2 pair = vc_decode_pair(codes[i]);
+  decoded[i * 2] = pair.x;
+  decoded[i * 2 + 1] = pair.y;
+}
+
+std::vector<torch::Tensor> run_helpers(torch::Tensor shifted, torch::Tensor codes) {
+  TORCH_CHECK(shifted.is_cuda() && codes.device() == shifted.device() &&
+      shifted.scalar_type() == at::kFloat && codes.scalar_type() == at::kInt &&
+      shifted.is_contiguous() && codes.is_contiguous() &&
+      shifted.numel() > 0 && shifted.numel() == codes.numel(), "Probe inputs");
+  auto encoded = torch::empty_like(shifted, shifted.options().dtype(at::kByte));
+  auto decoded = torch::empty({shifted.numel(), 2}, shifted.options());
+  helpers<<<(shifted.numel()+255)/256,256,0,c10::cuda::getCurrentCUDAStream().stream()>>>(
+      shifted.data_ptr<float>(), codes.data_ptr<int32_t>(), shifted.numel(),
+      encoded.data_ptr<uint8_t>(), decoded.data_ptr<float>());
+  C10_CUDA_KERNEL_LAUNCH_CHECK();
+  return {encoded, decoded};
+}
+
+PYBIND11_MODULE(TORCH_EXTENSION_NAME,m) {
+  m.def("run",&run);
+  m.def("run_helpers",&run_helpers);
+}

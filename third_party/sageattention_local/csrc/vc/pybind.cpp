@@ -32,6 +32,7 @@ torch::Tensor group_values(torch::Tensor v, int64_t clusters, int64_t iterations
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.attr("sage_vc_api_version") = 1;
+  m.attr("sage_vc_kernel_version") = 2;
   m.def("forward", &vc_forward);
   m.def("prepare_values", &vc_prepare_values);
   m.def("expcast_codes", &vc_expcast_codes);

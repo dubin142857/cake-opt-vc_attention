@@ -9,7 +9,8 @@ import torch
 
 def _extension():
     from . import _vc_sm90
-    if getattr(_vc_sm90, "sage_vc_api_version", None) != 1:
+    if (getattr(_vc_sm90, "sage_vc_api_version", None) != 1 or
+            getattr(_vc_sm90, "sage_vc_kernel_version", None) != 2):
         raise RuntimeError("Rebuild sageattention-local with bash scripts/build_sage_local.sh")
     return _vc_sm90
 
@@ -21,7 +22,8 @@ def sage_vc_build_info():
             "algorithm": "Sage per-thread INT8 QK + VC block V residual/mean + ExpCast",
             "qk_hadamard": False, "v_block": 128, "mean_dtype": "float16",
             "clustering": "8 clusters, 2 Lloyd iterations, stable order; fresh every call",
-            "paper_equivalent": False, "sage_vc_api_version": 1}
+            "paper_equivalent": False, "sage_vc_api_version": 1,
+            "sage_vc_kernel_version": _extension().sage_vc_kernel_version}
 
 
 def validate_inputs(q, k, v, tensor_layout, is_causal, return_lse, expcast, v_smooth, clusters, iterations):

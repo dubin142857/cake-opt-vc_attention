@@ -111,6 +111,22 @@ def validate(device="cuda:0"):
                             raise AssertionError(f"Derived control differs from original Sage: {row}")
                     report["cases"].append(row)
                     print(json.dumps(row), flush=True)
+    # A contiguous view can still start at an odd element. Reject misaligned
+    # metadata before dispatching the paired-load kernel (vc4 and later).
+    if getattr(ext, "sage_vc_kernel_version", 0) >= 2:
+        for field in ("vs", "means"):
+            original = state[field]
+            view = torch.empty(original.numel()+1,device=device,dtype=original.dtype)[1:].view_as(original)
+            view.copy_(original)
+            bad_state = {**state,field:view}
+            try:
+                vc.forward_prepared(bad_state)
+            except RuntimeError as exc:
+                if "pointer alignment" not in str(exc):
+                    raise
+            else:
+                raise AssertionError(f"Unaligned {field} was not rejected")
+        report["unaligned_metadata_cases"] = 2
     # Uniform attention over three unequal blocks: catches missing mean correction,
     # tail inclusion, incorrect denominator, and applying just the last V scale.
     for dtype in (torch.float16, torch.bfloat16):

@@ -343,15 +343,17 @@ __global__ void sage_vc_attention_kernel(const __grid_constant__ CUtensorMap ten
     wgmma::warpgroup_commit_batch();
     wgmma::warpgroup_wait<0>();
 
-    vc_accumulate<BlockValues>(RO, RO_temp, tile_mass, V_scale, V_mean,
-        batch_id * num_qo_heads + head_id, iter - 1, div_ceil(kv_len, CTA_K), head_dim, lane_id);
-
-    // load V
+    // PV has finished reading sV. Start the next TMA transfer before the
+    // per-block mean/scale restoration, which only touches registers/global
+    // metadata. Keep the existing barrier/phase for the next iteration.
     if (threadIdx.x == 0)
     {
       expect_bytes<(CTA_K * head_dim) * sizeof(int8_t)>(&barrier_V);
       load_async_4D(sV, &tensorMapV, &barrier_V, iter * CTA_K, 0, kv_head_id, batch_id);
     }
+
+    vc_accumulate<BlockValues>(RO, RO_temp, tile_mass, V_scale, V_mean,
+        batch_id * num_qo_heads + head_id, iter - 1, div_ceil(kv_len, CTA_K), head_dim, lane_id);
   }
 
   {
@@ -588,6 +590,9 @@ torch::Tensor vc_forward(torch::Tensor q, torch::Tensor k, torch::Tensor v,
   TORCH_CHECK(ks.sizes() == torch::IntArrayRef({batch,heads,tiles * 4}), "Incorrect K scales");
   if (block_values) {
     TORCH_CHECK(vs.sizes() == torch::IntArrayRef({batch,heads,tiles,dim}) && means.sizes() == vs.sizes(), "Incorrect block V metadata");
+    TORCH_CHECK(reinterpret_cast<uintptr_t>(vs.data_ptr()) % alignof(float2) == 0 &&
+        reinterpret_cast<uintptr_t>(means.data_ptr()) % alignof(half2) == 0,
+        "Block V metadata requires float2/half2 pointer alignment");
   } else TORCH_CHECK(vs.sizes() == torch::IntArrayRef({batch,heads,dim}) && means.numel() == 0, "Incorrect global V metadata");
   TORCH_CHECK(output_type == 0 || output_type == 1, "Output type must be 0 (FP16) or 1 (BF16)");
   TORCH_CHECK(std::isfinite(scale) && scale > 0 && scale <= FLT_MAX, "Scale must be positive finite FP32");

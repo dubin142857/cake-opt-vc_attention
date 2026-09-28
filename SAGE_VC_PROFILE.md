@@ -1,12 +1,24 @@
 # Sage+VC 性能诊断
 
-用户提供的 H200 结果：`sage_local` 25.7734 ms，控制组 25.4204 ms，
-仅 ExpCast 33.5024 ms，仅 V 聚类平滑 45.5963 ms，两项全开 50.6356 ms。
-这些是完整 API 的耗时，目前还不能据此拆出每个阶段的真实成本。
+用户提供的 vc3 / H200 / BF16 `[1,37741,28,128]` 诊断结果：
+
+| 变体 | full API ms | fixed core API ms | trace 主 GPU kernel ms | 其他 kernel 总 ms | 总启动次数 |
+|---|---:|---:|---:|---:|---:|
+| sage_local | 25.6001 | — | — | — | — |
+| sage_vc_control | 26.4194 | 23.8341 | 22.1712 | 1.8459 | 9 |
+| sage_vc_expcast | 32.8908 | 31.3432 | 30.6065 | 1.8445 | 9 |
+| sage_vc_smooth | 45.2558 | 38.0381 | 37.2852 | 7.4322 | 461 |
+| sage_vc | 50.8135 | 42.1577 | 42.1488 | 7.4435 | 461 |
+
+trace 每组只采集一次，带 profiler 开销，用于定位而非稳定速度结论；不能与独立 API
+中位数相减来计算开销。ExpCast 和块均值/尺度补偿使主内核明显变慢，聚类还引入大量
+短 kernel。优先优化主内核，再优化预处理。vc4 的主内核改动见 [SAGE_VC.md](SAGE_VC.md)，
+其 H200 速度尚待实测，以上数据均为改动前 vc3。
 
 ## 直接运行，不用重新编译
 
-诊断只增加仓库脚本，使用已经安装的 `sageattention-local==2.2.0+vc3`。
+诊断脚本兼容已经安装的 `sageattention-local==2.2.0+vc3` 及后续版本。
+仅运行诊断不用重新编译；从 vc3 升级 vc4 则需要执行 `bash scripts/build_sage_local.sh`。
 从仓库根目录执行：
 
 ```bash
@@ -78,21 +90,25 @@ ncu --profile-from-start off --kernel-name regex:sage_vc_attention_kernel --laun
 ## 为什么论文快，当前实现反而慢
 
 [VC-Attention §3.4、§4.3](https://arxiv.org/html/2609.15810v1) 报告 H200 上相对
-SageAttention2 的 attention 加速约为 **1.16 倍**。这是作者在其模型、数据、调度和
-融合实现下的实验结果，不是任意 shape 或任意公式移植的速度保证。
+SageAttention2 的 attention 加速约为 **1.16 倍**。Figure 6 上排明确是 Wan2.2 的
+稳态主 GPU kernel 计时，**排除了所有预处理**，不是 MiniMax 或完整生成端到端提速。
+同图完整生成的 1.13 倍则是相对 BF16 FA4，基线不同。
+这是作者在其数据与内核实现下的实验结果，不是任意 shape 或公式移植的速度保证。
 
 论文将 gather、均值/尺度统计、旋转和量化等预处理融合，并在去噪步骤间复用分组；
 分组/去均值集中在前 25% 步骤。当前 Sage+VC 每次重新聚类，K/V 重排及 QK 量化仍分开，
 QK 还保留 Sage 的 INT8，所以不能视为已经复现这些性能条件。
+预处理融合/复用影响完整 API 和模型端到端时间，不能解释主内核本身的速度差距。
 
 V 平滑主要解决精度；ExpCast 是用来缩短概率处理阶段。只有省下的关键路径时间
 大于新增编码、归约、补偿及预处理成本，整个 attention 才会变快。
-用户结果里**仅 ExpCast 已比控制组慢约 8.08 ms**，说明不能把全部问题都归因于聚类。
+用户 trace 里**仅 ExpCast 的主 GPU kernel 已比控制组慢约 8.44 ms**，
+说明不能把全部问题都归因于聚类。
 
-本地 CUDA 12.4 交叉编译 D128 的寄存器数为：控制组 168、ExpCast 167、平滑 170、
+vc3 的本地 CUDA 12.4 交叉编译 D128 寄存器数为：控制组 168、ExpCast 167、平滑 170、
 两项全开 205，无 spill。这提示全开模式可能存在额外寄存器压力，
 但无法解释 ExpCast 单独变慢，也不能代替 H200/CUDA 13 的硬件计数器结果。
 这仍然是待诊断的实现性能缺口，不应当推导成论文方法没有加速能力。
 
 本地已运行阶段编排/字节对拍/时间单位/trace 汇总测试及实际 CUDA event 测试；
-完整 H200 profiling 尚待远端运行。
+H200 profiling 由用户运行并提供结果，本地无法执行 Hopper attention。
