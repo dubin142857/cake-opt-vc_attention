@@ -79,6 +79,47 @@ def validate_preprocessing(ext, oracle, device="cuda:0"):
 
 
 @torch.no_grad()
+def validate_grouping(ext, device="cuda:0"):
+    """Well-separated Lloyd cases checked with independent FP64 distances.
+
+    Includes unaligned tails and empty centers. Exact labels here do not imply
+    universal equality at FP32 decision boundaries on arbitrary model inputs.
+    """
+    cases = 0
+    for dtype in (torch.float16,torch.bfloat16,torch.float32):
+        for dim in (64,128):
+            for n,count,iterations in ((1,8,2),(127,3,3),(129,8,2),(2049,8,2)):
+                torch.manual_seed(883)
+                ids = torch.linspace(0,n-1,min(n,count),device=device).long()
+                # Give the initialized centers distinct, separated values.
+                labels = torch.arange(n,device=device) % min(n,count)
+                labels[ids] = torch.arange(min(n,count),device=device)
+                v = (labels.view(1,1,n,1)*4 + torch.randn(2,2,n,dim,device=device)*.01).to(dtype)
+                permutation,actual,centers = ext.group_values_debug(v,count,iterations)
+                x = v.double()
+                expected_centers = x.index_select(2,ids)
+                for step in range(iterations):
+                    distance = (x.unsqueeze(-2)-expected_centers.unsqueeze(2)).square().sum(-1)
+                    expected = distance.argmin(-1)
+                    if step+1 < iterations:
+                        expected_centers = torch.stack([
+                            torch.where((expected == c).sum(-1,keepdim=True) > 0,
+                                (x*(expected == c).unsqueeze(-1)).sum(2)/(expected == c).sum(-1,keepdim=True).clamp_min(1),
+                                expected_centers[:,:,c]) for c in range(min(n,count))],2)
+                assert torch.equal(actual,expected)
+                assert torch.equal(permutation,expected.argsort(dim=-1,stable=True))
+                torch.testing.assert_close(centers.double(),expected_centers,rtol=2e-5,atol=2e-6)
+                assert torch.equal(permutation,ext.group_values_legacy(v,count,iterations))
+                cases += 1
+    v = torch.full((2,2,257,128),2.,device=device)
+    permutation,labels,centers = ext.group_values_debug(v,8,3)
+    assert torch.count_nonzero(labels).item() == 0
+    assert torch.equal(permutation,torch.arange(257,device=device).expand(2,2,257))
+    assert (centers == 2).all().item()
+    return {"fp64_lloyd_cases":cases,"empty_clusters_and_stable_ties":"passed"}
+
+
+@torch.no_grad()
 def validate(device="cuda:0"):
     if not torch.cuda.is_available() or torch.cuda.get_device_capability(device) != (9, 0):
         raise RuntimeError("Full Sage VC validation requires Hopper")
@@ -92,6 +133,8 @@ def validate(device="cuda:0"):
               "gpu": torch.cuda.get_device_name(device)}, "preprocessing": validate_preprocessing(ext, oracle, device),
               "cases": [], "implementation_rel_rmse_limit": 0.01,
               "scope": "Synthetic implementation regression only; no model quality or speed acceptance."}
+    if getattr(ext,"sage_vc_preprocess_version",0) >= 1:
+        report["grouping"] = validate_grouping(ext,device)
     for dtype in (torch.float16, torch.bfloat16):
         for dim in (64, 128):
             for nq, nk in ((1,1), (63,127), (64,128), (65,129), (129,257), (257,385)):

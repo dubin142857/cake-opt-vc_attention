@@ -4,7 +4,7 @@
   "commit": "eb615cf6cf4d221338033340ee2de1c37fbdba4a",
   "license": "Apache-2.0",
   "local_distribution": "sageattention-local",
-  "local_version": "2.2.0+vc8",
+  "local_version": "2.2.0+vc9",
   "scope": "Baseline CUDA/C++ bodies and Triton sources unchanged, with a build-only CUDAContext.h removal; isolated package/operator namespaces and SM90 fake-name fix. Separate Sage+VC experiment in csrc/vc, retaining INT8 QK and adding optional V clustering/block smoothing and ExpCast.",
   "files": [
     {
@@ -355,6 +355,12 @@
   "hash_normalization": "CRLF normalized to LF; all other source bytes preserved",
   "experiment_files": [
     {
+      "local_path": "csrc/vc/clustering.cu",
+      "local_sha256": "0cc079793280cca02a04f9505a3798f20961f180dd8080888db3329a7c613f2c",
+      "license": "Apache-2.0",
+      "origin": "New VC integration/diagnostic code in vc-attention"
+    },
+    {
       "local_path": "csrc/vc/expcast.cuh",
       "local_sha256": "d48f5468e516b9b3d3d4b2935d1479cb92e55619e432dd2a497387df7c4bac27",
       "license": "Apache-2.0",
@@ -368,13 +374,13 @@
     },
     {
       "local_path": "csrc/vc/pybind.cpp",
-      "local_sha256": "e65753b092857f30801cc17c5b0e4f0ad6e4af83a869cce795a4ec43edce3266",
+      "local_sha256": "ec234e5a5667931babb117260d14203fcc1776f8a5c9ae11850c87e9a8c34809",
       "license": "Apache-2.0",
       "origin": "New VC integration/diagnostic code in vc-attention"
     },
     {
       "local_path": "csrc/vc/vc_api.h",
-      "local_sha256": "f1b56c488800e4d4add65039d8955adf39d1c9f1f10bdd8162d7d617cf18030a",
+      "local_sha256": "32c18462f7d719b5b801fc6cca3d87b21e6d8aed4bc0242f4542db04feebb103",
       "license": "Apache-2.0",
       "origin": "New VC integration/diagnostic code in vc-attention"
     },
@@ -394,7 +400,7 @@
     },
     {
       "local_path": "sageattention_local/vc.py",
-      "local_sha256": "9854c8452ee9560c360f457f8bc039b356b1b0d13a96f633909058fbdaf45021",
+      "local_sha256": "9e24efe752073ad79df476e490d153dfd1a7eac3ee6b9d5f15e3f1697331ee1b",
       "license": "Apache-2.0",
       "origin": "New VC integration/diagnostic code in vc-attention"
     },

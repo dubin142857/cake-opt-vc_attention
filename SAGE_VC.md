@@ -1,13 +1,25 @@
 # SageAttention 主体 + VC 两项改动
 
-`sageattention-local==2.2.0+vc8` 在已经同场测到 25.8055 ms 的本地 Sage 源码上，
+`sageattention-local==2.2.0+vc9` 在已经同场测到 25.8055 ms 的本地 Sage 源码上，
 新增独立 `sageattn_vc`。原版 `sageattn` 的数学与内核保留。
 **25.8055 ms 是用户提供的原版源码构建结果，不是本次新入口的速度。**
 
 这是 **Sage+VC 混合实验**：QK 保留 Sage per-thread INT8；新增 V 聚类/块平滑和 ExpCast。
 没有改为完整 VC 的 FP8 QK/Hadamard，也尚未接入论文的去噪步数调度。
 
-vc8 针对 H200 trace 中 D128 平滑路径的寄存器压力：
+vc9 优化每次调用的聚类预处理。此前 H200 的 `cluster_sort` 约为 5.55 ms，
+本轮将每 2048 行重复执行的平方、距离、argmin、scatter 等 ATen 操作改成 CUDA kernel：
+
+- 每次加载一行 V，在寄存器中计算它到所有中心的距离，同时累积块内统计；再归约各块统计更新中心。
+- 保留 FP32 linspace 初始化、两轮 Lloyd、空簇中心保留和组内稳定排序。
+- 最后一轮只生成标签，省掉返回标签后不再使用的中心更新；每次调用仍重新聚类。
+- 默认 `grouping_mode="fused"`，最多 8 个有效中心；更多中心走旧路径。
+  `grouping_mode="legacy"` 明确选择 vc8 的 ATen 实现，attention 主体与量化配置不变。
+
+FP32 求和顺序变化可能改变边界附近的分组，从而改变 QK/V 量化数据。
+`--compare-grouping` 同时报告标签差异、完整 API 耗时及双方的 dense FP32 误差，
+不把不同分组的输出套用“相同量化数据”的 0.1% 实现门槛。
+当前 attention 内核保持 vc8 的实现：
 
 - 在同一个 attention kernel 内将 PV 的 128 个输出通道分成两个 N64 WGMMA fragment，
   每次只保存一半临时结果。每个输出元素仍执行原来的四个 K32 累加。
@@ -40,7 +52,8 @@ QK 仍是 Sage INT8，**不是完整 VC 论文复现**。
 `v_scale_mode="block", kernel_mode="vc4"` 对照此前 vc4；均由当前工具链重新编译。
 切换 `kernel_mode` 不改变准备好的 Q/K/V；切换 `v_scale_mode` 会改变 V 量化。
 
-`sage_vc_build_info()` 中 `sage_vc_kernel_version=6`、包版本 `2.2.0+vc8` 表示新扩展已加载。
+`sage_vc_build_info()` 中 `sage_vc_kernel_version=6`、`sage_vc_preprocess_version=1`、
+包版本 `2.2.0+vc9` 表示新扩展已加载。
 
 ## 远端编译和测试
 
@@ -58,6 +71,7 @@ bash scripts/build_sage_local.sh
 脚本先测原版，再运行 `validate_sage_vc.py`：
 
 - V 编码、均值、尺度、尾块和稳定聚类检查；ExpCast 编码与独立 FP32-FMA 参考逐字节比较。
+- 24 组聚类用独立 FP64 Lloyd 参考检查，并验证空簇、稳定 tie 和旧路径的已知分组。
 - FP16/BF16、D64/128、Q/K 边界长度、四种开关及两种 V scale 粒度共 144 组 attention 对拍。
 - 量化数据固定后，对比 CUDA 与独立 Python 参考，relative RMSE <=1% 是实现回归门槛。
 - 双关闭入口与原版 Sage 比较，relative RMSE <=0.1%；另有非零均值已知答案和 HND/NHD 布局检查。
@@ -78,11 +92,16 @@ python3 scripts/benchmark_cuda.py --backends sage_local sage_vc_control sage_vc_
 bash scripts/benchmark_37741.sh --backends flash3 sage sage_local sage_vc_control sage_vc_expcast sage_vc_smooth sage_vc --baseline sage_local --output results/h200_sage_vc_37741.json
 ```
 
-新旧内核同进程、同量化输入比较，不需要 `ncu`：
+本轮先比较旧／新聚类和完整 API，不需要 `ncu`：
 
 ```bash
-python3 scripts/profile_sage_vc.py --compare-kernels --kernel-baseline vc7 --trials 5 --repeats 10 --trace-dir results/h200_sage_vc8_traces --output results/h200_sage_vc8_profile.json
+python3 scripts/profile_sage_vc.py --compare-grouping --trials 5 --repeats 10 --trace-dir results/h200_sage_vc9_traces --output results/h200_sage_vc9_profile.json
 ```
+
+默认测试 BSHD `[1,37741,28,128]`，完整计算所有行，dense FP32 抽查 128 个 query、使用全部 keys。
+`Grouping comparison` 的 `old/new > 1` 表示新路径更快，完整 API 每次重新聚类；
+标签差异和 accuracy 使用同一次记录的分组，计时外计算。`--check-queries 0` 可检查全部输出行。
+历史主内核仍可用 `--compare-kernels --kernel-baseline vc7` 做同量化数据对照。
 
 | backend | 入口 | ExpCast | V 聚类 + 块平滑 |
 |---|---|---|---|
@@ -185,10 +204,24 @@ CUDA 12.4 的 D128/BF16 下，单 ExpCast 寄存器 167→168，全开 209→208
 `--compare-kernels --kernel-baseline vc7` 比较同一份量化数据的全部输出，
 relative RMSE <=0.1% 是实现回归门槛。`--trace-dir` 现在直接输出寄存器数、共享内存、
 线程块大小和估计 occupancy；不需要手工解析 trace。occupancy 是估计值，不是利用率计数器。
-先看新旧 core 是否提速，再看完整 API；本次不减少聚类的数百次 kernel 下发。
+先看新旧 core 是否提速，再看完整 API；vc8 没有减少聚类的数百次 kernel 下发。
 
 profiling 开头还会打印 `compiled_d128_channel_resources`：通过 CUDA runtime 读取
 当前安装二进制的寄存器、每线程 local memory、共享内存和预测驻留块数。
 它覆盖当前输出 dtype 的 vc7/optimized 平滑及全开四个入口，不执行 attention，不计入计时。
 `local_bytes_per_thread` 是静态局部存储量（含 stack/spill），不是动态流量。
 此查询能区分远端 CUDA 13 是否生成了更多 spill，无需 ncu 或额外编译日志。
+
+## vc9 本地验证范围
+
+本地 RTX 3060 上 234 项测试通过，包含 50 项原生聚类测试和独立 FP64 Lloyd 对拍；
+覆盖尾块、多个 batch/head、FP16/BF16/FP32、空簇、稳定排序、非默认 stream 和非法输入。
+Compute Sanitizer memcheck 为 0 错误。60 个 Hopper attention 变体均编译、链接成功，
+SASS 指令流全部与 vc8 相同。
+新增聚类 kernel 的定向 racecheck 覆盖上述 50 项测试，0 错误、0 警告。
+
+同一 BHND `[1,28,37741,128]` 的本地聚类含排序 smoke 测量约为旧版 34.4 ms、新版 6.27 ms。
+这是 RTX 3060 的局部结果，按先旧后新顺序采样，不代表 H200 或完整 API 加速。
+该随机输入中 1,056,748 个 token 有 11 个标签不同；量化后 attention 的误差需远端检查。
+完整记录见 [results/sage_vc9_local_validation.json](results/sage_vc9_local_validation.json)。
+远端 `--compare-grouping` 会交错新旧计时，同时检查 dense FP32 误差。

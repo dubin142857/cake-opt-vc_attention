@@ -372,6 +372,60 @@ def test_target_shape_and_argument_validation():
         profile.parse_args(["--repeats","0"])
     with pytest.raises(SystemExit):
         profile.parse_args(["--ncu-variant","sage_vc","--trace-dir","results/x"])
+    assert profile.parse_args(["--compare-grouping"]).compare_grouping
+    with pytest.raises(SystemExit):
+        profile.parse_args(["--ncu-variant","sage_vc","--compare-grouping"])
+
+
+def test_grouping_comparison_uses_recorded_labels_and_permutations(monkeypatch):
+    ops = fake_ops()
+    with pytest.raises(RuntimeError,match="vc9"):
+        profile.require_fused_grouping(ops)
+    ops.ext.sage_vc_preprocess_version = 1
+    permutations = [torch.tensor([0,2,1,3]).view(1,1,4),torch.tensor([0,1,2,3]).view(1,1,4)]
+    labels = [torch.tensor([0,1,0,1]).view(1,1,4),torch.tensor([0,0,1,1]).view(1,1,4)]
+    ops.ext.group_values_legacy_debug = lambda *a:(permutations[0],labels[0],None)
+    ops.ext.group_values_debug = lambda *a:(permutations[1],labels[1],None)
+    ops.ext.group_values = lambda *a:pytest.fail("Must use the debug permutation without reclustering")
+    qkv = tuple(torch.randn(1,1,4,64).half() for _ in range(3))
+    states,agreement = profile.grouping_states(ops,qkv)
+    assert agreement == dict(label_mismatch_fraction=.5,permutation_exact_match=False,checked_tokens=4)
+    for index,mode in enumerate(("legacy","fused")):
+        assert states[mode]["permutation"] is permutations[index]
+    vc = load_installed_prepare(monkeypatch,ops)
+    ops.ext.group_values_legacy = lambda *a:permutations[0]
+    state = vc.prepare(*qkv,grouping_mode="legacy")
+    profile.assert_payload_equal(state,{**states["legacy"],"expcast":True})
+    with pytest.raises(ValueError,match="grouping_mode"):
+        vc.prepare(*qkv,grouping_mode="unknown")
+
+
+def test_grouping_comparison_times_fresh_api_and_reports_quality_separately(monkeypatch):
+    ops = fake_ops()
+    ops.ext.sage_vc_preprocess_version = 1
+    permutation = torch.arange(4).view(1,1,4)
+    debug = lambda *a:(permutation,permutation,None)
+    ops.ext.group_values_legacy_debug = ops.ext.group_values_debug = debug
+    ops.ext.group_values_legacy = ops.ext.group_values = lambda *a:permutation
+    seen = []
+    def api(*qkv,**kwargs):
+        seen.append(kwargs)
+        return qkv[0]
+    # Deliberately large output discrepancy: grouping comparison reports this
+    # independently, rather than applying a same-quantized-payload gate.
+    qkv = tuple(torch.ones(1,1,4,64).half() for _ in range(3))
+    outputs = iter([torch.ones_like(qkv[0])*factor for factor in (1,2,1,2)])
+    ops.vc = SimpleNamespace(sageattn_vc=api,forward_prepared=lambda state:next(outputs))
+    monkeypatch.setattr(profile,"fp32_reference",lambda *a:torch.zeros(1,1,4,64))
+    monkeypatch.setattr(torch.cuda,"synchronize",lambda *a:None)
+    monkeypatch.setattr(profile,"measure_trial",lambda fn,*a:(fn(),2.))
+    args = profile.parse_args(["--compare-grouping","--warmup","1","--trials","1","--repeats","1","--check-queries","0"])
+    report = profile.compare_grouping(ops,qkv,args,"cpu")
+    assert set(report["rows"]) == {"cluster_sort","sage_vc_smooth","sage_vc"}
+    assert report["rows"]["sage_vc"]["legacy_over_fused"] == 1
+    assert report["rows"]["sage_vc"]["fused_vs_legacy_all_outputs"]["rel_rmse"] == 1
+    assert {x["grouping_mode"] for x in seen} == {"legacy","fused"}
+    assert all(x["v_smooth"] for x in seen)
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(),reason="CUDA event execution requires a GPU")

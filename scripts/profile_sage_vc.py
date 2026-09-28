@@ -213,7 +213,9 @@ def parse_args(argv=None):
                         help="Same-payload baseline; defaults to vc7 on vc8+, vc6 on vc7, otherwise vc4")
     parser.add_argument("--compare-v-scales", action="store_true",
                         help="vc6+: compare old block and new channel V quantization, including API time and dense FP32 errors")
-    parser.add_argument("--check-queries", type=int, default=128, help="Dense FP32 check rows for --compare-v-scales; 0 means all")
+    parser.add_argument("--compare-grouping", action="store_true",
+                        help="vc9+: compare legacy/fused clustering and full APIs, label agreement and dense FP32 errors")
+    parser.add_argument("--check-queries", type=int, default=128, help="Dense FP32 check rows for optional comparisons; 0 means all")
     parser.add_argument("--reference-chunk", type=int, default=32)
     parser.add_argument("--ncu-variant", choices=tuple(SAGE_VC_VARIANTS),
                         help="Only capture one warmed fixed-payload native call inside cudaProfilerStart/Stop")
@@ -224,7 +226,7 @@ def parse_args(argv=None):
         parser.error("check-queries must be nonnegative and reference-chunk positive")
     if args.kernel_baseline and not args.compare_kernels:
         parser.error("--kernel-baseline requires --compare-kernels")
-    if args.ncu_variant and (args.trace_dir or args.compare_kernels or args.compare_v_scales):
+    if args.ncu_variant and (args.trace_dir or args.compare_kernels or args.compare_v_scales or args.compare_grouping):
         parser.error("--ncu-variant uses a separate profiler run")
     return args
 
@@ -282,6 +284,80 @@ def value_scale_states(ops, qkv, base):
     v = qkv[2].gather(2, base["permutation"].unsqueeze(-1).expand_as(qkv[2])).contiguous()
     payload, scales, means = ops.ext.prepare_values(v, channel_scale=False)
     return {"channel": base, "block": {**base, "v": payload, "vs": scales, "means": means}}
+
+
+def require_fused_grouping(ops):
+    if getattr(ops.ext,"sage_vc_preprocess_version",0) < 1:
+        raise RuntimeError("--compare-grouping needs vc9; rebuild with bash scripts/build_sage_local.sh")
+
+
+def grouping_states(ops, qkv):
+    """Labels and accuracy payloads must describe the exact same grouping run."""
+    require_fused_grouping(ops)
+    states, labels, permutations = {}, {}, {}
+    for mode,group in (("legacy",ops.ext.group_values_legacy_debug),("fused",ops.ext.group_values_debug)):
+        permutation, label, _ = group(qkv[2],8,2)
+        states[mode] = staged_prepare(*qkv,ops,DirectStages(),expcast=False,smooth=True,
+                                     fixed_permutation=permutation)
+        labels[mode], permutations[mode] = label, permutation
+    agreement = {"label_mismatch_fraction": (labels["fused"] != labels["legacy"]).double().mean().item(),
+                 "permutation_exact_match": torch.equal(permutations["fused"],permutations["legacy"]),
+                 "checked_tokens": labels["fused"].numel()}
+    return states, agreement
+
+
+@torch.no_grad()
+def compare_grouping(ops, qkv, args, device):
+    states, agreement = grouping_states(ops,qkv)
+    indices = query_indices(qkv[0].shape[2],args.check_queries)
+    ids = torch.tensor(indices,device=device)
+    print(f"Grouping comparison: dense FP32 for {ids.numel()} query rows, ALL keys; outside timing",flush=True)
+    golden = fp32_reference(*qkv,indices,args.reference_chunk)
+    calls, accuracy, differences = {}, {}, {}
+    for mode,group in (("legacy",ops.ext.group_values_legacy),("fused",ops.ext.group_values)):
+        calls["cluster_sort",mode] = lambda group=group: group(qkv[2],8,2)
+    for cast in (False,True):
+        name = "sage_vc" if cast else "sage_vc_smooth"
+        outputs = {}
+        for mode,base in states.items():
+            # Accuracy uses the recorded permutation. Timed API calls redo
+            # clustering from original QKV, with no frozen layout or cache.
+            outputs[mode] = ops.vc.forward_prepared({**base,"expcast":cast})
+            accuracy[name,mode] = error_metrics(outputs[mode].index_select(2,ids).float().cpu(),golden)
+            calls[name,mode] = lambda cast=cast,mode=mode: ops.vc.sageattn_vc(
+                *qkv,expcast=cast,v_smooth=True,grouping_mode=mode)
+        differences[name] = output_difference(outputs["fused"],outputs["legacy"])
+        del outputs
+    for call in calls.values():
+        for _ in range(args.warmup): call()
+    torch.cuda.synchronize(device)
+    times, orders, rng = {key:[] for key in calls}, [], random.Random(args.seed)
+    for trial in range(args.trials):
+        order = list(calls)
+        rng.shuffle(order)
+        orders.append(order)
+        for key in order:
+            _, elapsed = measure_trial(calls[key],args.repeats,device)
+            times[key].append(elapsed)
+        print(f"Grouping comparison trial {trial+1}/{args.trials} complete",flush=True)
+    rows = {}
+    print("\nLegacy vs fused grouping: same original QKV, unchanged attention kernel")
+    print(f"Label mismatch {100*agreement['label_mismatch_fraction']:.6f}%; exact permutation={agreement['permutation_exact_match']}")
+    print(f"{'scope':<20} {'legacy ms':>12} {'fused ms':>12} {'old/new':>10} {'legacy FP32 %':>15} {'fused FP32 %':>15}")
+    for name in ("cluster_sort","sage_vc_smooth","sage_vc"):
+        old,new = (stats(times[name,mode]) for mode in ("legacy","fused"))
+        speedup = old["median_ms"]/new["median_ms"]
+        row = {"legacy":old,"fused":new,"legacy_over_fused":speedup}
+        errors = ""
+        if name != "cluster_sort":
+            row["vs_dense_fp32"] = {mode:accuracy[name,mode] for mode in ("legacy","fused")}
+            row["fused_vs_legacy_all_outputs"] = differences[name]
+            errors = "".join(f"{100*accuracy[name,mode]['relative_rmse_vs_fp32']:>15.6f}" for mode in ("legacy","fused"))
+        rows[name] = row
+        print(f"{name:<20} {old['median_ms']:>12.4f} {new['median_ms']:>12.4f} {speedup:>9.3f}x {errors}")
+    print("API includes fresh grouping; cluster_sort includes stable sorting/allocation. Grouping can change quantized payloads; no same-payload regression gate or model-quality claim.")
+    return {"rows":rows,"grouping_agreement":agreement,"trial_order":orders,"query_indices":indices,
+            "scope":"Same original QKV; final accuracy uses exact debug permutations. API reclusters every call. FP32 summation order can change grouping and quantization."}
 
 
 @torch.no_grad()
@@ -413,6 +489,8 @@ def run(args):
         kernel_baseline(ops,args)
     if args.compare_v_scales and getattr(ops.ext,"sage_vc_kernel_version",0) < 4:
         raise RuntimeError("--compare-v-scales needs vc6; rebuild with bash scripts/build_sage_local.sh")
+    if args.compare_grouping:
+        require_fused_grouping(ops)
     torch.manual_seed(args.seed)
     dtype = getattr(torch,args.dtype)
     qkv = tuple(torch.randn(args.batch,args.heads,n,args.dim,device=device,dtype=dtype)
@@ -495,7 +573,7 @@ def run(args):
                         "No synchronization between stages. CUDA-event intervals include device idle/host launch gaps.",
                         "CPU enqueue times overlap GPU time; never sum them. Instrumentation changes latency.",
                         "Fixed payloads exclude ALL preprocessing, reuse the same quantized tensors within each ExpCast pair, and still include native host dispatch/output allocation.",
-                        "No layout-cache speedup or model-quality claim is made. No FP32 dense oracle is computed by this diagnostic."]}
+                        "No layout-cache speedup or model-quality claim is made. Optional grouping/V-scale comparisons compute a sampled dense FP32 oracle."]}
     # Write useful timing results before optional CUPTI tracing, which can be unavailable.
     path = Path(args.output)
     path.parent.mkdir(parents=True,exist_ok=True)
@@ -507,6 +585,9 @@ def run(args):
         path.write_text(json.dumps(report,indent=2,allow_nan=False)+"\n",encoding="utf-8")
     if args.compare_v_scales:
         report["value_scale_comparison"] = compare_v_scales(ops,qkv,bases[True],args,device)
+        path.write_text(json.dumps(report,indent=2,allow_nan=False)+"\n",encoding="utf-8")
+    if args.compare_grouping:
+        report["grouping_comparison"] = compare_grouping(ops,qkv,args,device)
         path.write_text(json.dumps(report,indent=2,allow_nan=False)+"\n",encoding="utf-8")
     if args.trace_dir:
         directory = Path(args.trace_dir)

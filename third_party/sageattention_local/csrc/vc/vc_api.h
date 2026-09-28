@@ -10,3 +10,4 @@ torch::Tensor vc_forward(torch::Tensor q, torch::Tensor k, torch::Tensor v,
     bool expcast, bool block_values, int64_t output_type, double scale, bool optimized, bool packed_probability, bool compact_values);
 
 std::map<std::string, std::map<std::string, int64_t>> vc_kernel_resources(int64_t output_type);
+std::vector<torch::Tensor> vc_group_values_fused(torch::Tensor v, int64_t clusters, int64_t iterations);

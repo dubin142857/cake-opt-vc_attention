@@ -40,7 +40,7 @@ if "sdist" not in sys.argv:
     for name, sources in (
         ("_qattn_sm90", ["csrc/qattn/pybind_sm90.cpp", "csrc/qattn/qk_int_sv_f8_cuda_sm90.cu"]),
         ("_fused", ["csrc/fused/pybind.cpp", "csrc/fused/fused.cu"]),
-        ("_vc_sm90", ["csrc/vc/pybind.cpp", "csrc/vc/preprocess.cu", "csrc/vc/vc_sm90.cu"]),
+        ("_vc_sm90", ["csrc/vc/pybind.cpp", "csrc/vc/preprocess.cu", "csrc/vc/clustering.cu", "csrc/vc/vc_sm90.cu"]),
     ):
         extensions.append(CUDAExtension(
             "sageattention_local." + name, sources=sources, depends=headers,
@@ -50,7 +50,7 @@ if "sdist" not in sys.argv:
     commands = {"build_ext": BuildExtension}
 
 setup(
-    name="sageattention-local", version="2.2.0+vc8",
+    name="sageattention-local", version="2.2.0+vc9",
     description="Independent Hopper source build of SageAttention v2.2.0 for comparison",
     author="SageAttention team (upstream); local build integration in vc-attention",
     url="https://github.com/thu-ml/SageAttention",

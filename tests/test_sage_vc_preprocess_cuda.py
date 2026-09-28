@@ -42,6 +42,7 @@ def test_both_native_value_quantizers_against_independent_statistics():
     validator = load("vc_preprocess_validator",ROOT / "scripts/validate_sage_vc.py")
     result = validator.validate_preprocessing(ext,oracle)
     assert result["value_cases"] == 60
+    assert validator.validate_grouping(ext)["fp64_lloyd_cases"] == 24
 
 
 @pytest.mark.parametrize("n",[1,129,4097])

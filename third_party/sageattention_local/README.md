@@ -6,10 +6,15 @@
 `sageattn` 是原版内核的独立源码构建。`2.2.0+vc3` 新增独立的
 `sageattn_vc` 实验入口：Sage INT8 QK + VC 的 V 聚类/分块平滑、ExpCast，
 不能称为完整 VC 论文复现。使用与对照见仓库根目录 [SAGE_VC.md](../../SAGE_VC.md)。
-当前版本 `2.2.0+vc8` 针对 D128/channel 平滑路径，将 PV 临时结果分成两个 N64 fragment，
+当前版本 `2.2.0+vc9` 将默认 8 中心聚类的距离计算、分组和块内统计融合成 CUDA kernel，
+减少中间张量与 kernel 下发；最后一次分组不再更新无后续用途的中心。
+保留初始化、Lloyd 轮数、空簇策略和稳定排序。`grouping_mode="legacy"` 可切回旧路径；
+FP32 求和顺序变化可能改变少量分组，使用 `--compare-grouping` 同场检查速度和 dense FP32 误差。
+主内核沿用 vc8：针对 D128/channel 平滑路径，将 PV 临时结果分成两个 N64 fragment，
 配对恢复 V 均值，并以 168 个寄存器为编译目标。保留 vc7 的 ExpCast、共享通道 V scale
 和两级 FP32 PV 累加；`kernel_mode="vc7"` 执行上一版内核，`vc6`、`vc4` 也保留。
-同输入对照不改变 Q/K/V 量化；完整 H200 attention 正确性与速度需远端验证。
+切换主内核模式不改变准备好的量化输入；切换聚类方式则可能改变它。
+完整 H200 attention 正确性与速度需远端验证。
 
 ## 构建与导入
 

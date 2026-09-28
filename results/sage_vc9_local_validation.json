@@ -1,0 +1,87 @@
+{
+  "scope": "Fused grouping execution on RTX 3060, CPU orchestration, SM90 cross-compilation; NOT full Hopper attention validation or latency",
+  "package": "sageattention-local==2.2.0+vc9",
+  "native_kernel_version": 6,
+  "native_preprocess_version": 1,
+  "environment": {
+    "os": "Windows",
+    "gpu": "NVIDIA GeForce RTX 3060 Laptop GPU",
+    "python": "3.10.16",
+    "torch": "2.3.1+cu121",
+    "nvcc": "12.4"
+  },
+  "tests": {
+    "passed": 234,
+    "files": [
+      "tests/test_sage_vc_grouping_cuda.py",
+      "tests/test_sage_vc_preprocess_cuda.py",
+      "tests/test_sage_vc_tile_cuda.py",
+      "tests/test_sage_vc.py",
+      "tests/test_sage_local_source.py",
+      "tests/test_benchmark.py",
+      "tests/test_profile_sage_vc.py"
+    ],
+    "native_grouping_tests": 50,
+    "remote_validator_fp64_lloyd_cases_executed_locally": 24,
+    "legacy_helper_golden_cases_exact": 16,
+    "memcheck_errors": 0,
+    "python_syntax": "passed",
+    "source_provenance": "49 upstream/integration files and 9 experiment files verified",
+    "profiler_tests_after_final_test_change": 32,
+    "grouping_racecheck": {
+      "passed_tests": 50,
+      "errors": 0,
+      "warnings": 0,
+      "scope": "initialize_centers, assign_values and update_centers kernels; one racecheck worker; explicit device synchronization before exit",
+      "note": "Unfiltered attempts completed test assertions but hung during Windows tool shutdown; filtered run completed normally."
+    },
+    "sdist": "passed: includes clustering.cu, native sources, LICENSE and NOTICE"
+  },
+  "cross_compile": {
+    "target": "sm_90a",
+    "attention_variants": 60,
+    "linked": true,
+    "vc8_sass_instruction_streams_identical": 60,
+    "note": "All 60 attention kernels unchanged; only clustering preprocessing changes in vc9"
+  },
+  "local_grouping_smoke": {
+    "gpu": "NVIDIA GeForce RTX 3060 Laptop GPU",
+    "scope": "Clustering plus stable sorting/allocation only; NOT H200 attention timing",
+    "shape_BHND": [
+      1,
+      28,
+      37741,
+      128
+    ],
+    "trials": {
+      "legacy": {
+        "median_ms": 34.40908999182284,
+        "trial_mean_ms": [
+          34.40914999227971,
+          34.41665999125689,
+          34.40908999182284,
+          33.64512000698596,
+          33.36939001455903
+        ]
+      },
+      "fused": {
+        "median_ms": 6.271549989469349,
+        "trial_mean_ms": [
+          6.131869996897876,
+          6.1835299944505095,
+          6.271549989469349,
+          6.287050014361739,
+          6.27880000974983
+        ]
+      }
+    },
+    "preprocess_version": 1,
+    "label_mismatch_fraction": 1.0409293417162844e-05,
+    "permutation_exact_match": false,
+    "speedup": 5.486536828949724,
+    "trial_order_note": "Legacy trials then fused trials; local smoke measurement only. The remote --compare-grouping diagnostic interleaves jobs."
+  },
+  "hopper_attention_validation": "pending_remote: 144 decoded-payload reference cases, grouping/legacy comparison and dense FP32 errors",
+  "hopper_latency_ms": null,
+  "model_quality_validation": "not_run"
+}

@@ -10,7 +10,8 @@ import torch
 def _extension():
     from . import _vc_sm90
     if (getattr(_vc_sm90, "sage_vc_api_version", None) != 1 or
-            getattr(_vc_sm90, "sage_vc_kernel_version", None) != 6):
+            getattr(_vc_sm90, "sage_vc_kernel_version", None) != 6 or
+            getattr(_vc_sm90, "sage_vc_preprocess_version", None) != 1):
         raise RuntimeError("Rebuild sageattention-local with bash scripts/build_sage_local.sh")
     return _vc_sm90
 
@@ -22,6 +23,10 @@ def sage_vc_build_info():
             "algorithm": "Sage per-thread INT8 QK + VC block V residual/mean + ExpCast",
             "qk_hadamard": False, "v_block": 128, "mean_dtype": "float16",
             "clustering": "8 clusters, 2 Lloyd iterations, stable order; fresh every call",
+            "grouping_modes": ["fused", "legacy"], "default_grouping_mode": "fused",
+            "grouping_implementation": "fused assignment/statistics for <=8 effective clusters; legacy otherwise",
+            "grouping_rounding": "FP32 reduction order changes; labels near boundaries can differ",
+            "sage_vc_preprocess_version": _extension().sage_vc_preprocess_version,
             "paper_equivalent": False, "sage_vc_api_version": 1,
             "default_kernel_mode": "optimized", "kernel_modes": ["optimized", "vc7", "vc6", "vc4"],
             "expcast_probability": "saturating u8 RNE + byte permutation + streamed FP32 reduction",
@@ -53,16 +58,19 @@ def validate_inputs(q, k, v, tensor_layout, is_causal, return_lse, expcast, v_sm
 
 
 @torch.no_grad()
-def prepare(q, k, v, *, expcast=True, v_smooth=True, clusters=8, iterations=2, sm_scale=None, v_scale_mode="channel"):
+def prepare(q, k, v, *, expcast=True, v_smooth=True, clusters=8, iterations=2, sm_scale=None, v_scale_mode="channel", grouping_mode="fused"):
     """Private HND preparation, also returned to the independent diagnostic oracle."""
     if v_scale_mode not in ("channel", "block"):
         raise ValueError("v_scale_mode must be 'channel' or 'block'")
+    if grouping_mode not in ("fused", "legacy"):
+        raise ValueError("grouping_mode must be 'fused' or 'legacy'")
     from .triton.quant_per_thread import per_thread_int8
     from .quant import per_channel_fp8
     ext = _extension()
     permutation = None
     if v_smooth:
-        permutation = ext.group_values(v, clusters, iterations)
+        group = ext.group_values if grouping_mode == "fused" else ext.group_values_legacy
+        permutation = group(v, clusters, iterations)
         k = k.gather(2, permutation.unsqueeze(-1).expand_as(k))
         v = v.gather(2, permutation.unsqueeze(-1).expand_as(v))
     # Keep Sage's K centering and INT8 quantizer, including its input-dtype subtraction.
@@ -92,11 +100,13 @@ def forward_prepared(state, *, kernel_mode="optimized"):
 
 @torch.no_grad()
 def sageattn_vc(q, k, v, tensor_layout="HND", is_causal=False, sm_scale=None, return_lse=False,
-               *, expcast=True, v_smooth=True, clusters=8, iterations=2, kernel_mode="optimized", v_scale_mode="channel"):
+               *, expcast=True, v_smooth=True, clusters=8, iterations=2, kernel_mode="optimized", v_scale_mode="channel", grouping_mode="fused"):
     if kernel_mode not in ("optimized", "vc7", "vc6", "vc4"):
         raise ValueError("kernel_mode must be 'optimized', 'vc7', 'vc6' or 'vc4'")
     if v_scale_mode not in ("channel", "block"):
         raise ValueError("v_scale_mode must be 'channel' or 'block'")
+    if grouping_mode not in ("fused", "legacy"):
+        raise ValueError("grouping_mode must be 'fused' or 'legacy'")
     validate_inputs(q, k, v, tensor_layout, is_causal, return_lse, expcast, v_smooth, clusters, iterations)
     if q.device.type != "cuda" or torch.cuda.get_device_capability(q.device) != (9, 0):
         raise ValueError("Sage VC requires Hopper; no CPU/reference fallback")
@@ -110,6 +120,6 @@ def sageattn_vc(q, k, v, tensor_layout="HND", is_causal=False, sm_scale=None, re
             q, k, v = (x.transpose(1, 2) for x in (q, k, v))
         q, k, v = (x.contiguous() for x in (q, k, v))
         state = prepare(q, k, v, expcast=expcast, v_smooth=v_smooth, clusters=clusters, iterations=iterations,
-                        sm_scale=sm_scale, v_scale_mode=v_scale_mode)
+                        sm_scale=sm_scale, v_scale_mode=v_scale_mode, grouping_mode=grouping_mode)
         output = forward_prepared(state,kernel_mode=kernel_mode)
         return output.transpose(1, 2).contiguous() if tensor_layout == "NHD" else output
