@@ -10,7 +10,7 @@ __device__ __forceinline__ float2 vc_decode_pair(uint32_t codes) {
   return __half22float2(pair);
 }
 
-template<bool ExpCast, bool BlockValues, uint32_t NQ, uint32_t NK, uint32_t NV>
+template<bool ExpCast, bool BlockValues, bool Optimized=false, uint32_t NQ, uint32_t NK, uint32_t NV>
 __device__ __forceinline__ void vc_probability(
     float (&scores)[NQ][NK][8], float (&out)[NQ][NV][8],
     float (&maximum)[NQ][2], float (&denom)[NQ][2], float scale,
@@ -21,14 +21,28 @@ __device__ __forceinline__ void vc_probability(
       #pragma unroll
       for (int r = 0; r < 2; ++r) {
         float local_max = -CUDART_INF_F;
-        #pragma unroll
-        for (int k = 0; k < NK; ++k) {
+        if constexpr (Optimized) {
+          // Four independent max chains instead of one 32-element chain.
+          // Scale is nonnegative and identical within each lane: RN(scale*x)
+          // is monotone, so scale(max(x)) == max(scale(x)). Other lanes can
+          // have different K scales; multiply BEFORE the cross-lane shuffle.
+          float partial[4] = {-CUDART_INF_F,-CUDART_INF_F,-CUDART_INF_F,-CUDART_INF_F};
           #pragma unroll
-          for (int j = 0; j < 4; ++j) {
-            int slot = r * 2 + (j / 2) * 4 + j % 2;
-            float value = __fmul_rn(scores[q][k][slot], scale);
-            scores[q][k][slot] = value;
-            local_max = fmaxf(local_max, value);
+          for (int k = 0; k < NK; ++k)
+            #pragma unroll
+            for (int j = 0; j < 4; ++j)
+              partial[j] = fmaxf(partial[j], scores[q][k][r*2+(j/2)*4+j%2]);
+          local_max = __fmul_rn(fmaxf(fmaxf(partial[0],partial[1]),fmaxf(partial[2],partial[3])),scale);
+        } else {
+          #pragma unroll
+          for (int k = 0; k < NK; ++k) {
+            #pragma unroll
+            for (int j = 0; j < 4; ++j) {
+              int slot = r * 2 + (j / 2) * 4 + j % 2;
+              float value = __fmul_rn(scores[q][k][slot], scale);
+              scores[q][k][slot] = value;
+              local_max = fmaxf(local_max, value);
+            }
           }
         }
         local_max = fmaxf(local_max, __shfl_xor_sync(0xffffffff, local_max, 1));
@@ -52,8 +66,10 @@ __device__ __forceinline__ void vc_probability(
           #pragma unroll
           for (int pair = 0; pair < 2; ++pair) {
             int j = r * 2 + pair * 4;
-            uint32_t lo = vc_expcast_nonpositive(__fsub_rn(scores[q][k][j], maximum[q][r]));
-            uint32_t hi = vc_expcast_nonpositive(__fsub_rn(scores[q][k][j + 1], maximum[q][r]));
+            float a = scores[q][k][j], b = scores[q][k][j + 1];
+            if constexpr (Optimized) { a = __fmul_rn(a,scale); b = __fmul_rn(b,scale); }
+            uint32_t lo = vc_expcast_nonpositive(__fsub_rn(a, maximum[q][r]));
+            uint32_t hi = vc_expcast_nonpositive(__fsub_rn(b, maximum[q][r]));
             uint32_t codes = lo | (hi << 8);
             float2 decoded = vc_decode_pair(codes);
             // Preserve decoded-P denominator, mass and addition order exactly.
@@ -91,7 +107,7 @@ __device__ __forceinline__ void vc_probability(
   }
 }
 
-template<bool BlockValues, uint32_t NQ, uint32_t NV>
+template<bool BlockValues, bool Optimized=false, uint32_t NQ, uint32_t NV>
 __device__ __forceinline__ void vc_accumulate(
     float (&out)[NQ][NV][8], const float (&product)[NQ][NV][8],
     const float (&mass)[NQ][2], const float* scales, const half* means,
@@ -112,11 +128,19 @@ __device__ __forceinline__ void vc_accumulate(
           #pragma unroll
           for (int r = 0; r < 2; ++r) {
             int j = pair * 4 + r * 2;
-            float a = __fadd_rn(product[q][v][j], __fmul_rn(mass[q][r], mean.x));
-            float b = __fadd_rn(product[q][v][j + 1], __fmul_rn(mass[q][r], mean.y));
-            // Do not contract these into FMAs: vc3 used separate RN ops.
-            out[q][v][j] = __fadd_rn(out[q][v][j], __fmul_rn(a, scale.x));
-            out[q][v][j + 1] = __fadd_rn(out[q][v][j + 1], __fmul_rn(b, scale.y));
+            if constexpr (Optimized) {
+              // Same algebra, two FMA instructions instead of four mul/adds.
+              // Rounds once per FMA; intentionally not bitwise vc4 arithmetic.
+              float a = __fmaf_rn(mass[q][r], mean.x, product[q][v][j]);
+              float b = __fmaf_rn(mass[q][r], mean.y, product[q][v][j + 1]);
+              out[q][v][j] = __fmaf_rn(a, scale.x, out[q][v][j]);
+              out[q][v][j + 1] = __fmaf_rn(b, scale.y, out[q][v][j + 1]);
+            } else {
+              float a = __fadd_rn(product[q][v][j], __fmul_rn(mass[q][r], mean.x));
+              float b = __fadd_rn(product[q][v][j + 1], __fmul_rn(mass[q][r], mean.y));
+              out[q][v][j] = __fadd_rn(out[q][v][j], __fmul_rn(a, scale.x));
+              out[q][v][j + 1] = __fadd_rn(out[q][v][j + 1], __fmul_rn(b, scale.y));
+            }
           }
         }
       }

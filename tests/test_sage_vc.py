@@ -83,6 +83,7 @@ def test_query_sampling_keeps_original_scale_indices():
     ({"is_causal": True}, "noncausal"), ({"return_lse": True}, "LSE"),
     ({"tensor_layout": "XYZ"}, "tensor_layout"), ({"expcast": 1}, "bool"),
     ({"clusters": 0}, "clustering"), ({"iterations": True}, "clustering"),
+    ({"kernel_mode": "unknown"}, "kernel_mode"),
 ])
 def test_unsupported_modes_rejected_before_native_dispatch(kwargs,match):
     q = torch.zeros(1,2,5,64,dtype=torch.float16)

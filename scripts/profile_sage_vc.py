@@ -7,6 +7,7 @@ Optional CUPTI traces report kernel durations separately. CPU/GPU times overlap.
 import argparse
 from contextlib import nullcontext
 import json
+import math
 from pathlib import Path
 import platform
 import random
@@ -198,13 +199,15 @@ def parse_args(argv=None):
     parser.add_argument("--seed", type=int, default=1234)
     parser.add_argument("--output", default="results/h200_sage_vc_profile.json")
     parser.add_argument("--trace-dir", help="Optional CUPTI CPU/GPU timelines, one staged call per variant")
+    parser.add_argument("--compare-kernels", action="store_true",
+                        help="vc5+: compare vc4/optimized cores on identical payloads; validate ALL output rows")
     parser.add_argument("--ncu-variant", choices=tuple(SAGE_VC_VARIANTS),
                         help="Only capture one warmed fixed-payload native call inside cudaProfilerStart/Stop")
     args = parser.parse_args(argv)
     if min(args.batch,args.heads,args.queries,args.tokens,args.warmup,args.repeats,args.trials) < 1:
         parser.error("shapes, warmup, repeats and trials must be positive")
-    if args.ncu_variant and args.trace_dir:
-        parser.error("--ncu-variant and --trace-dir use separate profiler runs")
+    if args.ncu_variant and (args.trace_dir or args.compare_kernels):
+        parser.error("--ncu-variant uses a separate profiler run")
     return args
 
 
@@ -218,6 +221,72 @@ def validate_device(args):
     if args.trace_dir and torch.profiler.ProfilerActivity.CUDA not in torch.profiler.supported_activities():
         raise RuntimeError("CUDA profiling/CUPTI unavailable; omit --trace-dir for event/wall timing")
     return device
+
+
+def output_difference(actual, reference, chunk=512):
+    """All query rows, bounded scratch memory; no timing or dense oracle."""
+    if actual.shape != reference.shape or actual.ndim != 4 or chunk < 1:
+        raise ValueError("Expected matching BHND outputs and positive chunk")
+    sums = torch.zeros(2,device=actual.device,dtype=torch.float64)
+    peak = torch.zeros((),device=actual.device,dtype=torch.float64)
+    for begin in range(0,actual.shape[2],chunk):
+        a = actual[:,:,begin:begin+chunk].double()
+        b = reference[:,:,begin:begin+chunk].double()
+        diff = a-b
+        sums += torch.stack((diff.square().sum(),b.square().sum()))
+        peak = torch.maximum(peak,diff.abs().amax())
+    error, norm = sums.sqrt().tolist()
+    maximum = peak.item()
+    if not all(math.isfinite(x) for x in (error,norm,maximum)):
+        raise RuntimeError("Nonfinite output in optimized/vc4 comparison")
+    return {"rel_rmse": error/max(norm,1e-12), "max_abs": maximum,
+            "checked_queries": actual.shape[2], "exact_match": maximum == 0}
+
+
+def kernel_calls(ops, fixed):
+    # Each pair closes over the very same state object, including every scale.
+    return {(name,mode): lambda state=state,mode=mode: ops.vc.forward_prepared(state,kernel_mode=mode)
+            for name,state in fixed.items() for mode in ("vc4","optimized")}
+
+
+@torch.no_grad()
+def compare_kernels(ops, fixed, args, device):
+    if getattr(ops.ext,"sage_vc_kernel_version",0) < 3:
+        raise RuntimeError("--compare-kernels needs vc5; rebuild with bash scripts/build_sage_local.sh")
+    calls = kernel_calls(ops,fixed)
+    for key,call in calls.items():
+        for _ in range(args.warmup):
+            call()
+    torch.cuda.synchronize(device)
+    errors = {}
+    for name in fixed:
+        old, new = calls[name,"vc4"](), calls[name,"optimized"]()
+        errors[name] = output_difference(new,old)
+        if errors[name]["rel_rmse"] > .001:
+            raise AssertionError(f"Optimized/vc4 relative RMSE exceeds 0.1%: {name}, {errors[name]}")
+        del old,new
+    times = {key: [] for key in calls}
+    rng, orders = random.Random(args.seed), []
+    for trial in range(args.trials):
+        order = list(calls)
+        rng.shuffle(order)
+        orders.append(order)
+        for key in order:
+            _, elapsed = measure_trial(calls[key],args.repeats,device)
+            times[key].append(elapsed)
+        print(f"Kernel comparison trial {trial+1}/{args.trials} complete",flush=True)
+    rows = {}
+    print("\nSame-payload native APIs: vc4 vs optimized (ms; excludes all preprocessing)")
+    print(f"{'variant':<23} {'vc4 ms':>11} {'optimized ms':>14} {'old/new':>10} {'output rel RMSE %':>19} {'max abs':>12}")
+    for name in fixed:
+        old, new = stats(times[name,"vc4"]), stats(times[name,"optimized"])
+        ratio = old["median_ms"]/new["median_ms"]
+        rows[name] = {"vc4":old,"optimized":new,"speedup":ratio,"output_difference":errors[name]}
+        print(f"{name:<23} {old['median_ms']:>11.4f} {new['median_ms']:>14.4f} {ratio:>9.3f}x "
+              f"{errors[name]['rel_rmse']*100:>19.6f} {errors[name]['max_abs']:>12.8f}")
+    print("Accuracy compares ALL output rows on identical quantized tensors; 0.1% is an implementation regression gate, not model quality.")
+    return {"variants":rows,"trial_order":orders,"implementation_rel_rmse_limit":.001,
+            "scope":"Same process/payload; synchronized native API wall time; includes dispatch/allocation; no preprocessing or dense FP32 oracle."}
 
 
 def print_report(report):
@@ -246,6 +315,8 @@ def run(args):
     torch.backends.cuda.matmul.allow_tf32 = False
     from sageattention_local import sage_vc_build_info
     info, ops = sage_vc_build_info(), load_ops()
+    if args.compare_kernels and getattr(ops.ext,"sage_vc_kernel_version",0) < 3:
+        raise RuntimeError("--compare-kernels needs vc5; rebuild with bash scripts/build_sage_local.sh")
     torch.manual_seed(args.seed)
     dtype = getattr(torch,args.dtype)
     qkv = tuple(torch.randn(args.batch,args.heads,n,args.dim,device=device,dtype=dtype)
@@ -333,6 +404,9 @@ def run(args):
     path.write_text(json.dumps(report,indent=2,allow_nan=False)+"\n",encoding="utf-8")
     print_report(report)
     print(f"Timing report: {path}",flush=True)
+    if args.compare_kernels:
+        report["kernel_comparison"] = compare_kernels(ops,fixed,args,device)
+        path.write_text(json.dumps(report,indent=2,allow_nan=False)+"\n",encoding="utf-8")
     if args.trace_dir:
         directory = Path(args.trace_dir)
         directory.mkdir(parents=True,exist_ok=True)

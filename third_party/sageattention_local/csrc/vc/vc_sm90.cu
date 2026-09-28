@@ -135,7 +135,7 @@ __device__ __forceinline__ void arrive(uint64_t* bar) {
     );
 }
 
-template<uint32_t CTA_Q, uint32_t CTA_K, uint32_t NUM_THREADS, uint32_t head_dim, QuantGranularity Q_GRAN, QuantGranularity K_GRAN, typename DTypeOut, MaskMode mask_mode = MaskMode::kNone, bool return_lse = false, bool fuse_v_scale=false, bool ExpCast=false, bool BlockValues=false>
+template<uint32_t CTA_Q, uint32_t CTA_K, uint32_t NUM_THREADS, uint32_t head_dim, QuantGranularity Q_GRAN, QuantGranularity K_GRAN, typename DTypeOut, MaskMode mask_mode = MaskMode::kNone, bool return_lse = false, bool fuse_v_scale=false, bool ExpCast=false, bool BlockValues=false, bool Optimized=false>
 __global__ void sage_vc_attention_kernel(const __grid_constant__ CUtensorMap tensorMapQ,
                                         const __grid_constant__ CUtensorMap tensorMapK,
                                         const __grid_constant__ CUtensorMap tensorMapV,
@@ -322,7 +322,7 @@ __global__ void sage_vc_attention_kernel(const __grid_constant__ CUtensorMap ten
 
     uint32_t RS_f8[num_tiles_q][num_tiles_pv_inner][4];
     float tile_mass[num_tiles_q][2];
-    vc_probability<ExpCast, BlockValues>(RS_f32, RO, m, d, sm_scale, RS_f8, tile_mass);
+    vc_probability<ExpCast, BlockValues, Optimized>(RS_f32, RO, m, d, sm_scale, RS_f8, tile_mass);
 
     // wait for V
     wait(&barrier_V, p);
@@ -352,7 +352,7 @@ __global__ void sage_vc_attention_kernel(const __grid_constant__ CUtensorMap ten
       load_async_4D(sV, &tensorMapV, &barrier_V, iter * CTA_K, 0, kv_head_id, batch_id);
     }
 
-    vc_accumulate<BlockValues>(RO, RO_temp, tile_mass, V_scale, V_mean,
+    vc_accumulate<BlockValues, Optimized>(RO, RO_temp, tile_mass, V_scale, V_mean,
         batch_id * num_qo_heads + head_id, iter - 1, div_ceil(kv_len, CTA_K), head_dim, lane_id);
   }
 
@@ -431,7 +431,7 @@ __global__ void sage_vc_attention_kernel(const __grid_constant__ CUtensorMap ten
 
     uint32_t RS_f8[num_tiles_q][num_tiles_pv_inner][4];
     float tile_mass[num_tiles_q][2];
-    vc_probability<ExpCast, BlockValues>(RS_f32, RO, m, d, sm_scale, RS_f8, tile_mass);
+    vc_probability<ExpCast, BlockValues, Optimized>(RS_f32, RO, m, d, sm_scale, RS_f8, tile_mass);
 
     // wait for V
     wait(&barrier_V, p);
@@ -452,7 +452,7 @@ __global__ void sage_vc_attention_kernel(const __grid_constant__ CUtensorMap ten
     wgmma::warpgroup_commit_batch();
     wgmma::warpgroup_wait<0>();
 
-    vc_accumulate<BlockValues>(RO, RO_temp, tile_mass, V_scale, V_mean,
+    vc_accumulate<BlockValues, Optimized>(RO, RO_temp, tile_mass, V_scale, V_mean,
         batch_id * num_qo_heads + head_id, num_iterations - 1, div_ceil(kv_len, CTA_K), head_dim, lane_id);
   }
 
@@ -540,7 +540,7 @@ __global__ void sage_vc_attention_kernel(const __grid_constant__ CUtensorMap ten
 } // namespace sage_vc
 
 namespace {
-template<int Dim, typename Out, bool ExpCast, bool BlockValues>
+template<int Dim, typename Out, bool ExpCast, bool BlockValues, bool Optimized>
 void launch_vc(torch::Tensor q, torch::Tensor k, torch::Tensor v, torch::Tensor qs,
     torch::Tensor ks, torch::Tensor vs, torch::Tensor means, torch::Tensor out, float scale) {
   auto qm = sage_vc::create_tensor_map_4D<64, Dim>(reinterpret_cast<int8_t*>(q.data_ptr()),
@@ -550,7 +550,7 @@ void launch_vc(torch::Tensor q, torch::Tensor k, torch::Tensor v, torch::Tensor 
   auto vm = sage_vc::create_tensor_map_4D<Dim, 128>(reinterpret_cast<int8_t*>(v.data_ptr()),
       v.size(0), v.size(1), Dim, v.size(3), v.stride(0), v.stride(1), v.stride(2));
   auto kernel = sage_vc::sage_vc_attention_kernel<64, 128, 128, Dim,
-      QuantGranularity::kPerThread, QuantGranularity::kPerThread, Out, MaskMode::kNone, false, true, ExpCast, BlockValues>;
+      QuantGranularity::kPerThread, QuantGranularity::kPerThread, Out, MaskMode::kNone, false, true, ExpCast, BlockValues, Optimized>;
   constexpr int shared_bytes = (64 + 128 + 128) * Dim;
   C10_CUDA_CHECK(cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, shared_bytes));
   dim3 grid((q.size(2) + 63) / 64, q.size(1), q.size(0));
@@ -561,19 +561,31 @@ void launch_vc(torch::Tensor q, torch::Tensor k, torch::Tensor v, torch::Tensor 
       q.size(2), k.size(2), 1, scale);
   C10_CUDA_KERNEL_LAUNCH_CHECK();
 }
-template<int Dim, typename Out>
+template<int Dim, typename Out, bool Optimized>
 void dispatch_vc(torch::Tensor q, torch::Tensor k, torch::Tensor v, torch::Tensor qs,
     torch::Tensor ks, torch::Tensor vs, torch::Tensor means, torch::Tensor out, float scale, bool cast, bool smooth) {
-  if (cast && smooth) launch_vc<Dim, Out, true, true>(q,k,v,qs,ks,vs,means,out,scale);
-  else if (cast) launch_vc<Dim, Out, true, false>(q,k,v,qs,ks,vs,means,out,scale);
-  else if (smooth) launch_vc<Dim, Out, false, true>(q,k,v,qs,ks,vs,means,out,scale);
-  else launch_vc<Dim, Out, false, false>(q,k,v,qs,ks,vs,means,out,scale);
+  if (cast && smooth) launch_vc<Dim, Out, true, true, Optimized>(q,k,v,qs,ks,vs,means,out,scale);
+  else if (cast) launch_vc<Dim, Out, true, false, Optimized>(q,k,v,qs,ks,vs,means,out,scale);
+  else if (smooth) launch_vc<Dim, Out, false, true, Optimized>(q,k,v,qs,ks,vs,means,out,scale);
+  else launch_vc<Dim, Out, false, false, false>(q,k,v,qs,ks,vs,means,out,scale);
+}
+template<bool Optimized>
+void dispatch_output(torch::Tensor q, torch::Tensor k, torch::Tensor v, torch::Tensor qs,
+    torch::Tensor ks, torch::Tensor vs, torch::Tensor means, torch::Tensor out, float scale,
+    int64_t output_type, bool cast, bool smooth) {
+  if (q.size(3) == 64) {
+    if (output_type == 0) dispatch_vc<64, half, Optimized>(q,k,v,qs,ks,vs,means,out,scale,cast,smooth);
+    else dispatch_vc<64, nv_bfloat16, Optimized>(q,k,v,qs,ks,vs,means,out,scale,cast,smooth);
+  } else {
+    if (output_type == 0) dispatch_vc<128, half, Optimized>(q,k,v,qs,ks,vs,means,out,scale,cast,smooth);
+    else dispatch_vc<128, nv_bfloat16, Optimized>(q,k,v,qs,ks,vs,means,out,scale,cast,smooth);
+  }
 }
 }
 
 torch::Tensor vc_forward(torch::Tensor q, torch::Tensor k, torch::Tensor v,
     torch::Tensor qs, torch::Tensor ks, torch::Tensor vs, torch::Tensor means,
-    bool expcast, bool block_values, int64_t output_type, double scale) {
+    bool expcast, bool block_values, int64_t output_type, double scale, bool optimized) {
   TORCH_CHECK(q.is_cuda() && q.dim() == 4 && q.numel() > 0, "Q requires nonempty CUDA BHND");
   for (const auto& x : {q,k,v,qs,ks,vs,means})
     TORCH_CHECK(x.device() == q.device() && x.is_contiguous(), "Payloads must be contiguous on the same CUDA device");
@@ -603,12 +615,7 @@ torch::Tensor vc_forward(torch::Tensor q, torch::Tensor k, torch::Tensor v,
   C10_CUDA_CHECK(cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, q.get_device()));
   TORCH_CHECK(major == 9 && minor == 0, "Sage VC native attention requires Hopper; no fallback");
   auto out = torch::empty(q.sizes(), q.options().dtype(output_type == 0 ? at::kHalf : at::kBFloat16));
-  if (dim == 64) {
-    if (output_type == 0) dispatch_vc<64, half>(q,k,v,qs,ks,vs,means,out,scale,expcast,block_values);
-    else dispatch_vc<64, nv_bfloat16>(q,k,v,qs,ks,vs,means,out,scale,expcast,block_values);
-  } else {
-    if (output_type == 0) dispatch_vc<128, half>(q,k,v,qs,ks,vs,means,out,scale,expcast,block_values);
-    else dispatch_vc<128, nv_bfloat16>(q,k,v,qs,ks,vs,means,out,scale,expcast,block_values);
-  }
+  if (optimized) dispatch_output<true>(q,k,v,qs,ks,vs,means,out,scale,output_type,expcast,block_values);
+  else dispatch_output<false>(q,k,v,qs,ks,vs,means,out,scale,output_type,expcast,block_values);
   return out;
 }

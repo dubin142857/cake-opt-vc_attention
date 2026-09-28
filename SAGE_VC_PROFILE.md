@@ -12,13 +12,13 @@
 
 trace 每组只采集一次，带 profiler 开销，用于定位而非稳定速度结论；不能与独立 API
 中位数相减来计算开销。ExpCast 和块均值/尺度补偿使主内核明显变慢，聚类还引入大量
-短 kernel。优先优化主内核，再优化预处理。vc4 的主内核改动见 [SAGE_VC.md](SAGE_VC.md)，
-其 H200 速度尚待实测，以上数据均为改动前 vc3。
+短 kernel。优先优化主内核，再优化预处理。以上数据均为 vc3；后续 vc4 结果和 vc5
+对照方法见文末，当前改动见 [SAGE_VC.md](SAGE_VC.md)。
 
 ## 直接运行，不用重新编译
 
 诊断脚本兼容已经安装的 `sageattention-local==2.2.0+vc3` 及后续版本。
-仅运行诊断不用重新编译；从 vc3 升级 vc4 则需要执行 `bash scripts/build_sage_local.sh`。
+仅运行诊断不用重新编译；升级 vc5 则需要执行 `bash scripts/build_sage_local.sh`。
 从仓库根目录执行：
 
 ```bash
@@ -112,3 +112,27 @@ vc3 的本地 CUDA 12.4 交叉编译 D128 寄存器数为：控制组 168、ExpC
 
 本地已运行阶段编排/字节对拍/时间单位/trace 汇总测试及实际 CUDA event 测试；
 H200 profiling 由用户运行并提供结果，本地无法执行 Hopper attention。
+
+## vc4 结果与 vc5 同场对照
+
+用户 vc4 的完整 API 为：控制组 27.0946 ms、ExpCast 32.4597 ms、平滑 41.8509 ms、
+全开 51.1880 ms；trace 主内核分别为 23.0391、29.7912、34.0194、42.7132 ms。
+单平滑有所下降，全开没有提速；指令和寄存器数减少不等于运行更快。
+两轮控制组时间也有变化，因此后续使用同进程对照。
+
+升级 vc5 后运行：
+
+```bash
+git pull --ff-only origin master
+bash scripts/build_sage_local.sh
+python3 scripts/profile_sage_vc.py --compare-kernels --trace-dir results/h200_sage_vc5_traces --output results/h200_sage_vc5_profile.json
+```
+
+原有 full API、分阶段和 trace 表使用默认 optimized 模式。新增对照表将四种开关下的
+`vc4` / `optimized` 放在同一进程中预热、随机交错计时。每对复用同一份量化数据及尺度。
+`old/new > 1` 才表示新内核更快；两边计时均为固定数据的原生 API wall time，包含下发和
+输出分配，排除全部预处理，不能当成完整 API 提速。vc4 模式是旧数学/调度在当前工具链下重编译。
+
+计时前比较全部输出 query/heads/channels，FP64 分块计算误差，避免只看抽样；
+新旧相对 RMSE 超过 0.1% 或存在非有限结果即报错。这不替代 FP32 dense 参考或模型质量验证。
+`optimized` 的 FMA 舍入与 vc4 有意不同，具体改动见 [SAGE_VC.md](SAGE_VC.md)。

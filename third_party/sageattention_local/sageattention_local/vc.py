@@ -10,7 +10,7 @@ import torch
 def _extension():
     from . import _vc_sm90
     if (getattr(_vc_sm90, "sage_vc_api_version", None) != 1 or
-            getattr(_vc_sm90, "sage_vc_kernel_version", None) != 2):
+            getattr(_vc_sm90, "sage_vc_kernel_version", None) != 3):
         raise RuntimeError("Rebuild sageattention-local with bash scripts/build_sage_local.sh")
     return _vc_sm90
 
@@ -23,6 +23,8 @@ def sage_vc_build_info():
             "qk_hadamard": False, "v_block": 128, "mean_dtype": "float16",
             "clustering": "8 clusters, 2 Lloyd iterations, stable order; fresh every call",
             "paper_equivalent": False, "sage_vc_api_version": 1,
+            "default_kernel_mode": "optimized", "kernel_modes": ["optimized", "vc4"],
+            "value_restore_rounding": "two FP32 FMAs in optimized; separate RN mul/add in vc4",
             "sage_vc_kernel_version": _extension().sage_vc_kernel_version}
 
 
@@ -73,14 +75,19 @@ def prepare(q, k, v, *, expcast=True, v_smooth=True, clusters=8, iterations=2, s
             "scale": q.shape[-1]**-0.5 if sm_scale is None else sm_scale, "permutation": permutation}
 
 
-def forward_prepared(state):
+def forward_prepared(state, *, kernel_mode="optimized"):
+    if kernel_mode not in ("optimized", "vc4"):
+        raise ValueError("kernel_mode must be 'optimized' or 'vc4'")
     return _extension().forward(*(state[name] for name in ("q", "k", "v", "qs", "ks", "vs", "means",
-                                                          "expcast", "block_values", "output_type", "scale")))
+                                                          "expcast", "block_values", "output_type", "scale")),
+                                optimized=kernel_mode == "optimized")
 
 
 @torch.no_grad()
 def sageattn_vc(q, k, v, tensor_layout="HND", is_causal=False, sm_scale=None, return_lse=False,
-               *, expcast=True, v_smooth=True, clusters=8, iterations=2):
+               *, expcast=True, v_smooth=True, clusters=8, iterations=2, kernel_mode="optimized"):
+    if kernel_mode not in ("optimized", "vc4"):
+        raise ValueError("kernel_mode must be 'optimized' or 'vc4'")
     validate_inputs(q, k, v, tensor_layout, is_causal, return_lse, expcast, v_smooth, clusters, iterations)
     if q.device.type != "cuda" or torch.cuda.get_device_capability(q.device) != (9, 0):
         raise ValueError("Sage VC requires Hopper; no CPU/reference fallback")
@@ -94,5 +101,5 @@ def sageattn_vc(q, k, v, tensor_layout="HND", is_causal=False, sm_scale=None, re
             q, k, v = (x.transpose(1, 2) for x in (q, k, v))
         q, k, v = (x.contiguous() for x in (q, k, v))
         state = prepare(q, k, v, expcast=expcast, v_smooth=v_smooth, clusters=clusters, iterations=iterations, sm_scale=sm_scale)
-        output = forward_prepared(state)
+        output = forward_prepared(state,kernel_mode=kernel_mode)
         return output.transpose(1, 2).contiguous() if tensor_layout == "NHD" else output

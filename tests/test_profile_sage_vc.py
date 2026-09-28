@@ -98,6 +98,72 @@ def test_frozen_permutation_skips_clustering_only_in_parity_check():
     assert torch.equal(state["k"],(expected_k-expected_k.mean(2,keepdim=True)).round().to(torch.int8))
 
 
+def test_kernel_comparison_reuses_identical_state_and_selects_both_modes():
+    calls = []
+    def forward(state, *, kernel_mode):
+        calls.append((state,kernel_mode))
+    a, b = {"q":object()}, {"q":object()}
+    ops = SimpleNamespace(vc=SimpleNamespace(forward_prepared=forward))
+    functions = profile.kernel_calls(ops,{"a":a,"b":b})
+    for fn in functions.values():
+        fn()
+    assert [mode for _,mode in calls] == ["vc4","optimized","vc4","optimized"]
+    assert calls[0][0] is calls[1][0] is a
+    assert calls[2][0] is calls[3][0] is b
+
+
+def test_output_difference_checks_tail_and_all_heads_and_rejects_nonfinite():
+    ref = torch.ones(2,3,1025,4)
+    actual = ref.clone()
+    actual[-1,-1,-1,-1] += 2
+    result = profile.output_difference(actual,ref,chunk=512)
+    assert result["checked_queries"] == 1025
+    assert result["max_abs"] == 2
+    assert result["rel_rmse"] == pytest.approx(2/ref.numel()**.5)
+    assert not result["exact_match"]
+    assert profile.output_difference(ref,ref)["exact_match"]
+    actual[-1,-1,-1,-1] = float("nan")
+    with pytest.raises(RuntimeError,match="Nonfinite"):
+        profile.output_difference(actual,ref)
+
+
+def test_kernel_comparison_cli_and_missing_native_support():
+    args = profile.parse_args(["--compare-kernels"])
+    assert args.compare_kernels
+    with pytest.raises(RuntimeError,match="needs vc5"):
+        profile.compare_kernels(SimpleNamespace(ext=SimpleNamespace()),{},args,"cpu")
+    with pytest.raises(SystemExit):
+        profile.parse_args(["--compare-kernels","--ncu-variant","sage_vc"])
+
+
+def test_kernel_comparison_reports_interleaved_trials_and_full_output_errors(monkeypatch):
+    seen = []
+    def forward(state, *, kernel_mode):
+        seen.append(kernel_mode)
+        return state[kernel_mode]
+    def measure(call,repeats,device):
+        for _ in range(repeats):
+            out = call()
+        return out, (2. if seen[-1] == "vc4" else 1.)
+    monkeypatch.setattr(profile,"measure_trial",measure)
+    monkeypatch.setattr(profile.torch.cuda,"synchronize",lambda *_: None)
+    ops = SimpleNamespace(ext=SimpleNamespace(sage_vc_kernel_version=3),
+                          vc=SimpleNamespace(forward_prepared=forward))
+    state = {"vc4":torch.ones(1,2,7,4),"optimized":torch.ones(1,2,7,4)+1e-5}
+    args = SimpleNamespace(warmup=1,trials=3,repeats=2,seed=17)
+    report = profile.compare_kernels(ops,{"test":state},args,"cpu")
+    row = report["variants"]["test"]
+    assert row["speedup"] == 2
+    assert row["output_difference"]["checked_queries"] == 7
+    assert 0 < row["output_difference"]["rel_rmse"] < .001
+    assert len(report["trial_order"]) == 3
+    for order in report["trial_order"]:
+        assert set(order) == {("test","vc4"),("test","optimized")}
+    state["optimized"].fill_(2)
+    with pytest.raises(AssertionError,match="exceeds"):
+        profile.compare_kernels(ops,{"test":state},args,"cpu")
+
+
 def test_payload_parity_checks_used_scales_and_bytes_but_ignores_unused_padding():
     qkv = [torch.randn(1,1,1,64).half() for _ in range(3)]
     state = profile.staged_prepare(*qkv,fake_ops(),Recorder(),expcast=False,smooth=False)

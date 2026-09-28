@@ -105,6 +105,12 @@ def validate(device="cuda:0"):
                     row = {"dtype": str(dtype), "dim": dim, "batch": batch, "heads": heads, "queries": nq, "keys": nk,
                            "expcast": cast, "v_smooth": smooth, "native_vs_payload_reference": agreement,
                            "native_vs_dense_fp32": metrics(actual,dense)}
+                    if getattr(ext,"sage_vc_kernel_version",0) >= 3:
+                        old = vc.forward_prepared(state,kernel_mode="vc4")
+                        delta = metrics(actual,old)
+                        if not torch.isfinite(old).all().item() or delta["rel_rmse"] > 0.001:
+                            raise AssertionError(f"Optimized/vc4 regression: {row}, delta={delta}")
+                        row["optimized_vs_vc4"] = delta
                     if not cast and not smooth:
                         row["control_vs_sage_local"] = metrics(actual,baseline)
                         if row["control_vs_sage_local"]["rel_rmse"] > 0.001:

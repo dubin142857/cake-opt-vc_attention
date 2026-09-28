@@ -1,23 +1,30 @@
 # SageAttention 主体 + VC 两项改动
 
-`sageattention-local==2.2.0+vc4` 在已经同场测到 25.8055 ms 的本地 Sage 源码上，
+`sageattention-local==2.2.0+vc5` 在已经同场测到 25.8055 ms 的本地 Sage 源码上，
 新增独立 `sageattn_vc`。原版 `sageattn` 的数学与内核保留。
 **25.8055 ms 是用户提供的原版源码构建结果，不是本次新入口的速度。**
 
 这是 **Sage+VC 混合实验**：QK 保留 Sage per-thread INT8；新增 V 聚类/块平滑和 ExpCast。
 没有改为完整 VC 的 FP8 QK/Hadamard，也尚未接入论文的去噪步数调度。
 
-vc4 针对 vc3 的 H200 trace 优化主内核：ExpCast 成对解码 FP8、移除已减行最大值后
-必然冗余的上界裁剪；V 块均值/尺度成对读取并在两行间复用；PV 完成后提前发起下一块 V
-的 TMA 搬运，与均值补偿重叠。保持 ExpCast 编码、分母、均值补偿的运算和舍入顺序。
-这些是实现优化，不改变 INT8 QK、FP8 PV、聚类或对外功能；H200 加速幅度需要重新实测。
-`sage_vc_build_info()` 中 `sage_vc_kernel_version=2` 表示新原生内核已经加载。
+vc4 的成对 FP8 解码、V 元数据读取和提前搬运，在用户 H200 上让单平滑 API 从
+45.2558 ms 降到 41.8509 ms，但全开仍为 51.1880 ms，没有实现全开提速。
+因此 vc5 保留 vc4 内核作为同场对照，并进行两项可验证的优化：
 
-本地 CUDA 12.4 交叉编译的 D128/BF16 反汇编中，ExpCast FP8 解码指令由 128 条减为
-64 条，块元数据读取由 128 条减为 64 条（循环体和尾块静态计数，不是运行耗时）。
-两项全开寄存器由 205 降为 170，无 spill；单平滑则由 170 增为 177，仍需远端看综合效果。
-85 项本地测试通过，另与旧版 GPU 辅助函数的 16 组输出逐位一致，Compute Sanitizer
-memcheck 无错误。这些不替代 H200 完整 attention 的远端验证。
+- ExpCast 的行最大值改成四条独立归约链，再做 lane 间归约。每 lane 的正尺度在跨 lane
+  归约前应用，保留 per-thread K scale；P 字节编码、分母和概率量化方式不变。
+- V 补偿 `(product + mass * mean) * scale + history` 改成两个 FP32 FMA，减少标量运算。
+  数学公式不变，但每次乘加只舍入一次，**不再要求与 vc4 逐位相同**。
+  [NVIDIA 浮点说明](https://docs.nvidia.com/cuda/floating-point/index.html)解释了这一区别。
+
+默认入口使用 `kernel_mode="optimized"`，`kernel_mode="vc4"` 保留此前数学和调度，
+在当前工具链下重新编译。关闭两项时两种模式调用同一控制内核。
+`sage_vc_build_info()` 中 `sage_vc_kernel_version=3` 表示已加载支持两种模式的原生扩展。
+这些改动不改变 INT8 QK、FP8 PV 或聚类，H200 加速幅度需要同场实测。
+
+本地验证：102 项测试通过（包括 GPU 辅助函数、混合 lane 尺度、FMA 独立参考和
+同场比较脚本）；Compute Sanitizer memcheck 无错误。28 种新旧 Hopper 内核配置
+交叉编译通过，无 spill。本地不能执行 Hopper 完整 attention，远端验证仍需运行。
 
 ## 远端编译和测试
 
@@ -38,6 +45,7 @@ bash scripts/build_sage_local.sh
 - FP16/BF16、D64/128、Q/K 边界长度、四种开关共 96 组 attention 对拍。
 - 量化数据固定后，对比 CUDA 与独立 Python 参考，relative RMSE <=1% 是实现回归门槛。
 - 双关闭入口与原版 Sage 比较，relative RMSE <=0.1%；另有非零均值已知答案和 HND/NHD 布局检查。
+- 96 组还会在相同量化数据上对照 optimized/vc4，relative RMSE <=0.1%。这仅是实现回归门槛。
 - FP32 dense 误差单独记录，不把上述实现门槛当成模型质量结论。测试失败即中止。
 
 可以单独重跑：
@@ -53,10 +61,10 @@ python3 scripts/benchmark_cuda.py --backends sage_local sage_vc_control sage_vc_
 bash scripts/benchmark_37741.sh --backends flash3 sage sage_local sage_vc_control sage_vc_expcast sage_vc_smooth sage_vc --baseline sage_local --output results/h200_sage_vc_37741.json
 ```
 
-与 vc3 的性能诊断同口径比较，不需要 `ncu`：
+新旧内核同进程、同量化输入比较，不需要 `ncu`：
 
 ```bash
-python3 scripts/profile_sage_vc.py --trace-dir results/h200_sage_vc4_traces --output results/h200_sage_vc4_profile.json
+python3 scripts/profile_sage_vc.py --compare-kernels --trace-dir results/h200_sage_vc5_traces --output results/h200_sage_vc5_profile.json
 ```
 
 | backend | 入口 | ExpCast | V 聚类 + 块平滑 |
@@ -80,6 +88,9 @@ from sageattention_local import sageattn_vc
 # q/k/v: [1, 37741, 28, 128]，CUDA BF16 或 FP16
 out = sageattn_vc(q, k, v, tensor_layout="NHD", expcast=True, v_smooth=True)
 
+# 保留 vc4 作对照；量化/聚类逻辑相同，执行旧内核
+old = sageattn_vc(q, k, v, tensor_layout="NHD", kernel_mode="vc4")
+
 # [batch, heads, tokens, dim] 则用 tensor_layout="HND"
 ```
 
@@ -101,6 +112,7 @@ out = sageattn_vc(q, k, v, tensor_layout="NHD", expcast=True, v_smooth=True)
 3. Sage TMA 搬运、INT8 QK WGMMA、FP8 PV WGMMA 主体保留。
    每块 PV 在寄存器里执行 `(PV_residual + rowmass * scaled_mean) * block_scale`，
    随在线最大值调整历史分子/分母。块 scale 不能沿用原版的最后统一乘一次。
+   optimized 模式使用两个 FP32 FMA；vc4 模式使用分别舍入的乘法/加法。
 4. ExpCast 直接把减去在线 rowmax 的自然对数分数编码为 E4M3 字节：
    `RNE(clamp(FMA(x, 8*log2(e), 119.65), 0, 120))`。
    PV、分母和均值补偿共同使用解码后的权重；最大编码 120 对应 256，公共尺度在归一化抵消。
