@@ -122,6 +122,12 @@ def validate(device="cuda:0"):
                         if not torch.isfinite(old).all().item() or delta["rel_rmse"] > 0.001:
                             raise AssertionError(f"Optimized/vc4 regression: {row}, delta={delta}")
                         row["optimized_vs_vc4"] = delta
+                    if getattr(ext,"sage_vc_kernel_version",0) >= 5:
+                        previous = vc.forward_prepared(state,kernel_mode="vc6")
+                        delta = metrics(actual,previous)
+                        if not torch.isfinite(previous).all().item() or delta["rel_rmse"] > 0.001:
+                            raise AssertionError(f"Optimized/vc6 regression: {row}, delta={delta}")
+                        row["optimized_vs_vc6"] = {**delta,"exact_match":torch.equal(actual,previous)}
                     if not cast and not smooth:
                         row["control_vs_sage_local"] = metrics(actual,baseline)
                         if row["control_vs_sage_local"]["rel_rmse"] > 0.001:

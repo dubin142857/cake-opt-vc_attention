@@ -105,6 +105,20 @@ def test_shared_scale_nonzero_mean_known_answer(expcast):
     torch.testing.assert_close(out,torch.full_like(out,expected),rtol=2e-6,atol=1e-6)
 
 
+@pytest.mark.parametrize("mode,flags",[("optimized",(True,True)),("vc6",(True,False)),("vc4",(False,False))])
+def test_kernel_mode_dispatch_preserves_previous_schedules(monkeypatch,mode,flags):
+    from types import SimpleNamespace
+    calls = []
+    def forward(*args,**kwargs):
+        calls.append((args,kwargs))
+        return "output"
+    monkeypatch.setattr(api,"_extension",lambda:SimpleNamespace(forward=forward))
+    keys = ("q","k","v","qs","ks","vs","means","expcast","block_values","output_type","scale")
+    state = {key:object() for key in keys}
+    assert api.forward_prepared(state,kernel_mode=mode) == "output"
+    assert calls == [(tuple(state[key] for key in keys),dict(optimized=flags[0],packed_probability=flags[1]))]
+
+
 @pytest.mark.parametrize("kwargs,match", [
     ({"is_causal": True}, "noncausal"), ({"return_lse": True}, "LSE"),
     ({"tensor_layout": "XYZ"}, "tensor_layout"), ({"expcast": 1}, "bool"),

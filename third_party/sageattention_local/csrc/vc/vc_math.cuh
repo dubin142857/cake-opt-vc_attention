@@ -10,7 +10,7 @@ __device__ __forceinline__ float2 vc_decode_pair(uint32_t codes) {
   return __half22float2(pair);
 }
 
-template<bool ExpCast, bool BlockValues, bool Optimized=false, uint32_t NQ, uint32_t NK, uint32_t NV>
+template<bool ExpCast, bool BlockValues, bool Optimized=false, bool PackedProbability=false, uint32_t NQ, uint32_t NK, uint32_t NV>
 __device__ __forceinline__ void vc_probability(
     float (&scores)[NQ][NK][8], float (&out)[NQ][NV][8],
     float (&maximum)[NQ][2], float (&denom)[NQ][2], float scale,
@@ -58,26 +58,45 @@ __device__ __forceinline__ void vc_probability(
             out[q][v][r * 2 + (j / 2) * 4 + j % 2] *= alpha;
         }
       }
+      if constexpr (PackedProbability) mass[q][0] = mass[q][1] = 0.0f;
       #pragma unroll
       for (int k = 0; k < NK; ++k) {
         #pragma unroll
         for (int r = 0; r < 2; ++r) {
-          uint32_t bytes = 0;
-          #pragma unroll
-          for (int pair = 0; pair < 2; ++pair) {
-            int j = r * 2 + pair * 4;
-            float a = scores[q][k][j], b = scores[q][k][j + 1];
-            if constexpr (Optimized) { a = __fmul_rn(a,scale); b = __fmul_rn(b,scale); }
-            uint32_t lo = vc_expcast_nonpositive(__fsub_rn(a, maximum[q][r]));
-            uint32_t hi = vc_expcast_nonpositive(__fsub_rn(b, maximum[q][r]));
-            uint32_t codes = lo | (hi << 8);
-            float2 decoded = vc_decode_pair(codes);
-            // Preserve decoded-P denominator, mass and addition order exactly.
-            scores[q][k][j] = decoded.x;
-            scores[q][k][j + 1] = decoded.y;
-            bytes |= codes << (16 * pair);
+          if constexpr (PackedProbability) {
+            // Decode only four probabilities at a time, then immediately
+            // consume them. Preserve vc6's left-to-right additions exactly.
+            float a = scores[q][k][r*2], b = scores[q][k][r*2+1];
+            float c = scores[q][k][r*2+4], e = scores[q][k][r*2+5];
+            if constexpr (Optimized) {
+              a = __fmul_rn(a,scale); b = __fmul_rn(b,scale);
+              c = __fmul_rn(c,scale); e = __fmul_rn(e,scale);
+            }
+            uint32_t low = vc_expcast_pair(__fsub_rn(a,maximum[q][r]),__fsub_rn(b,maximum[q][r]));
+            uint32_t high = vc_expcast_pair(__fsub_rn(c,maximum[q][r]),__fsub_rn(e,maximum[q][r]));
+            float2 first = vc_decode_pair(low), second = vc_decode_pair(high);
+            float sum = __fadd_rn(__fadd_rn(__fadd_rn(first.x,first.y),second.x),second.y);
+            denom[q][r] = __fadd_rn(denom[q][r],sum);
+            if constexpr (BlockValues) mass[q][r] = __fadd_rn(mass[q][r],sum);
+            packed[q][k/2][(k%2)*2+r] = __byte_perm(low,high,0x5410);
+          } else {
+            uint32_t bytes = 0;
+            #pragma unroll
+            for (int pair = 0; pair < 2; ++pair) {
+              int j = r * 2 + pair * 4;
+              float a = scores[q][k][j], b = scores[q][k][j + 1];
+              if constexpr (Optimized) { a = __fmul_rn(a,scale); b = __fmul_rn(b,scale); }
+              uint32_t lo = vc_expcast_nonpositive(__fsub_rn(a, maximum[q][r]));
+              uint32_t hi = vc_expcast_nonpositive(__fsub_rn(b, maximum[q][r]));
+              uint32_t codes = lo | (hi << 8);
+              float2 decoded = vc_decode_pair(codes);
+              // Preserve decoded-P denominator, mass and addition order exactly.
+              scores[q][k][j] = decoded.x;
+              scores[q][k][j + 1] = decoded.y;
+              bytes |= codes << (16 * pair);
+            }
+            packed[q][k / 2][(k % 2) * 2 + r] = bytes;
           }
-          packed[q][k / 2][(k % 2) * 2 + r] = bytes;
         }
       }
     }
@@ -88,14 +107,16 @@ __device__ __forceinline__ void vc_probability(
   }
   #pragma unroll
   for (int q = 0; q < NQ; ++q) {
-    mass[q][0] = mass[q][1] = 0.0f;
-    #pragma unroll
-    for (int k = 0; k < NK; ++k) {
-      float a = scores[q][k][0] + scores[q][k][1] + scores[q][k][4] + scores[q][k][5];
-      float b = scores[q][k][2] + scores[q][k][3] + scores[q][k][6] + scores[q][k][7];
-      denom[q][0] += a;
-      denom[q][1] += b;
-      if constexpr (BlockValues) { mass[q][0] += a; mass[q][1] += b; }
+    if constexpr (!(ExpCast && PackedProbability)) {
+      mass[q][0] = mass[q][1] = 0.0f;
+      #pragma unroll
+      for (int k = 0; k < NK; ++k) {
+        float a = scores[q][k][0] + scores[q][k][1] + scores[q][k][4] + scores[q][k][5];
+        float b = scores[q][k][2] + scores[q][k][3] + scores[q][k][6] + scores[q][k][7];
+        denom[q][0] += a;
+        denom[q][1] += b;
+        if constexpr (BlockValues) { mass[q][0] += a; mass[q][1] += b; }
+      }
     }
     if constexpr (BlockValues) {
       #pragma unroll

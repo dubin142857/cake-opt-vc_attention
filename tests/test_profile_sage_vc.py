@@ -221,6 +221,31 @@ def test_kernel_comparison_reports_interleaved_trials_and_full_output_errors(mon
         profile.compare_kernels(ops,{"test":state},args,"cpu")
 
 
+def test_vc7_comparison_selects_vc6_and_keeps_explicit_vc4_available(monkeypatch):
+    seen = []
+    def forward(state,*,kernel_mode):
+        seen.append((state,kernel_mode))
+        return state[kernel_mode]
+    ops = SimpleNamespace(ext=SimpleNamespace(sage_vc_kernel_version=5),
+                          vc=SimpleNamespace(forward_prepared=forward))
+    args = SimpleNamespace(warmup=1,trials=2,repeats=1,seed=17,kernel_baseline=None)
+    assert profile.kernel_baseline(ops,args) == "vc6"
+    monkeypatch.setattr(profile,"measure_trial",lambda call,repeats,device:(call(),1.))
+    monkeypatch.setattr(profile.torch.cuda,"synchronize",lambda *_:None)
+    state = {mode:torch.ones(1,1,7,4) for mode in ("vc4","vc6","optimized")}
+    report = profile.compare_kernels(ops,{"test":state},args,"cpu")
+    assert report["baseline_mode"] == "vc6"
+    assert report["variants"]["test"]["output_difference"]["exact_match"]
+    assert set(mode for _,mode in seen) == {"vc6","optimized"}
+    assert all(x is state for x,_ in seen)
+    args.kernel_baseline = "vc4"
+    assert profile.kernel_baseline(ops,args) == "vc4"
+    args.kernel_baseline = "vc6"
+    ops.ext.sage_vc_kernel_version = 4
+    with pytest.raises(RuntimeError,match="needs vc7"): profile.kernel_baseline(ops,args)
+    with pytest.raises(SystemExit): profile.parse_args(["--kernel-baseline","vc6"])
+
+
 def test_payload_parity_checks_used_scales_and_bytes_but_ignores_unused_padding():
     qkv = [torch.randn(1,1,1,64).half() for _ in range(3)]
     state = profile.staged_prepare(*qkv,fake_ops(),Recorder(),expcast=False,smooth=False)

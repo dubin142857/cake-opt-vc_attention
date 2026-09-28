@@ -15,3 +15,19 @@ __device__ __forceinline__ uint32_t vc_expcast_nonpositive(float shifted) {
   float u = __fmaf_rn(shifted, 11.541560173034668f, 119.6500015258789f);
   return __float2uint_rn(fmaxf(0.0f, u));
 }
+
+// Same FMA and ties-to-even byte as above for shifted <= 0, including -inf.
+// PTX's saturating u8 conversion supplies the lower clamp, and zero-extends
+// into the 32-bit destination. u <= 119.65 so its upper bound is never active.
+__device__ __forceinline__ uint32_t vc_expcast_u8(float shifted) {
+  float u = __fmaf_rn(shifted, 11.541560173034668f, 119.6500015258789f);
+  uint32_t code;
+  asm("cvt.rni.sat.u8.f32 %0, %1;" : "=r"(code) : "f"(u));
+  return code;
+}
+
+__device__ __forceinline__ uint32_t vc_expcast_pair(float a, float b) {
+  uint32_t lo = vc_expcast_u8(a), hi = vc_expcast_u8(b);
+  // Select the low byte of each zero-extended code, then two zero bytes.
+  return __byte_perm(lo, hi, 0x1140);
+}

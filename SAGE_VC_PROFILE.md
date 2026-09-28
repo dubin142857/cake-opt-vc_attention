@@ -18,7 +18,7 @@ trace 每组只采集一次，带 profiler 开销，用于定位而非稳定速�
 ## 直接运行，不用重新编译
 
 诊断脚本兼容已经安装的 `sageattention-local==2.2.0+vc3` 及后续版本。
-仅运行诊断不用重新编译；升级 vc6 则需要执行 `bash scripts/build_sage_local.sh`。
+仅运行诊断不用重新编译；升级 vc7 则需要执行 `bash scripts/build_sage_local.sh`。
 从仓库根目录执行：
 
 ```bash
@@ -168,3 +168,34 @@ python3 scripts/profile_sage_vc.py --compare-kernels --compare-v-scales --trace-
   `full API`、`fixed core API` 和 `FP32 rel RMSE %`。不将 kernel-only 收益称为端到端收益。
 
 共享尺度预处理为三个 GPU pass，主循环开销降低是否抵得上新增预处理，需要这次实测回答。
+
+## vc7：ExpCast 同输入对照
+
+用户 vc6 的同场结果：全开 block/channel API 为 49.3169/44.4655 ms，固定主体为
+41.0172/36.1118 ms；FP32 relative RMSE 为 4.167050%/4.205950%。这是 vc6 的测量，
+不能作为 vc7 的性能或精度结果。vc7 默认保留 channel V，只修改 ExpCast 编码与求和调度。
+
+编译会自动运行 144 组完整 attention 正确性检查，并新增 optimized/vc6 对拍：
+
+```bash
+git pull --ff-only origin master
+bash scripts/build_sage_local.sh
+python3 scripts/profile_sage_vc.py --queries 1024 --tokens 1024 --heads 2 --compare-kernels --kernel-baseline vc6 --output results/h200_sage_vc7_small.json
+```
+
+实际长序列性能（默认 BSHD `[1,37741,28,128]`），增加轮数减少计时波动：
+
+```bash
+python3 scripts/profile_sage_vc.py --compare-kernels --kernel-baseline vc6 --trials 5 --repeats 10 --trace-dir results/h200_sage_vc7_traces --output results/h200_sage_vc7_profile.json
+```
+
+`--compare-kernels` 在 vc7+ 默认用 vc6，在旧安装上仍默认 vc4。显式指定
+`--kernel-baseline vc6` 可拒绝旧安装；`--kernel-baseline vc4` 保留历史对照。
+新表写明实际 baseline，JSON 记录 `baseline_mode`、全部轮次、全部输出误差及 exact_match。
+vc6/optimized 共用同一对象的 Q/K/V、尺度、块均值与排列，量化不变。
+关闭 ExpCast 的 control 和 smooth 两组调用同一个编译内核，用于观察计时波动。
+表内 0.1% 是实现门槛；本地 helper 虽逐位一致，仍需看 H200 全输出对拍。
+
+主表 full API 包含全部预处理；同量化数据表只测原生 API，不能称作端到端加速。
+无需再次运行 `--compare-v-scales` 来定位本次改动；此选项仍可对照 V 量化粒度，
+但两组默认都用 vc7 概率路径。

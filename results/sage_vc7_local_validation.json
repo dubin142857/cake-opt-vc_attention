@@ -1,0 +1,51 @@
+{
+  "scope": "Local CUDA helpers/preprocessing and Hopper cross-compilation; NOT full Hopper attention or a speed measurement",
+  "package": "sageattention-local==2.2.0+vc7",
+  "native_kernel_version": 5,
+  "environment": {
+    "os": "Windows",
+    "gpu": "NVIDIA GeForce RTX 3060 Laptop GPU",
+    "python": "3.10.16",
+    "torch": "2.3.1+cu121",
+    "nvcc": "12.4"
+  },
+  "tests": {
+    "passed": 169,
+    "files": [
+      "tests/test_sage_vc_preprocess_cuda.py",
+      "tests/test_sage_vc_tile_cuda.py",
+      "tests/test_sage_vc.py",
+      "tests/test_sage_local_source.py",
+      "tests/test_benchmark.py",
+      "tests/test_profile_sage_vc.py"
+    ],
+    "legacy_helper_golden_cases_exact": 16,
+    "packed_vs_previous_helper_cases_exact": 32,
+    "continuous_online_tiles_exact": 64,
+    "rounding_boundary_and_range_samples_per_encoding_path": 65901,
+    "nonnegative_fp8_pairs_covered": 14641,
+    "native_value_preprocessing_cases": 64,
+    "memcheck_errors": 0
+  },
+  "cross_compile": {
+    "target": "sm_90a",
+    "attention_variants": 56,
+    "linked": true,
+    "register_spill_bytes": 0,
+    "d128_bf16_registers": {
+      "vc6_expcast_only": 167,
+      "vc7_expcast_only": 168,
+      "vc6_expcast_channel_smooth": 209,
+      "vc7_expcast_channel_smooth": 208
+    },
+    "sass_findings": [
+      "Independent lower clamps removed from ExpCast encoding; saturating F2IP.U8 used",
+      "PRMT byte packing replaces shift/or combinations",
+      "TMA, INT8 IGMMA, FP8 QGMMA and two-level PV accumulation retained"
+    ],
+    "note": "Register usage is nearly unchanged. Static instruction reductions do not establish speedup; CUDA 13 may schedule differently."
+  },
+  "hopper_attention_validation": "pending_remote: 144 cases with optimized/vc6 and optimized/vc4 comparisons",
+  "hopper_latency_ms": null,
+  "model_quality_validation": "not_run"
+}

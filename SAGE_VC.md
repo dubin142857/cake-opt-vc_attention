@@ -1,34 +1,42 @@
 # SageAttention 主体 + VC 两项改动
 
-`sageattention-local==2.2.0+vc6` 在已经同场测到 25.8055 ms 的本地 Sage 源码上，
+`sageattention-local==2.2.0+vc7` 在已经同场测到 25.8055 ms 的本地 Sage 源码上，
 新增独立 `sageattn_vc`。原版 `sageattn` 的数学与内核保留。
 **25.8055 ms 是用户提供的原版源码构建结果，不是本次新入口的速度。**
 
 这是 **Sage+VC 混合实验**：QK 保留 Sage per-thread INT8；新增 V 聚类/块平滑和 ExpCast。
 没有改为完整 VC 的 FP8 QK/Hadamard，也尚未接入论文的去噪步数调度。
 
-vc6 修正 V 量化尺度的粒度：默认 `v_scale_mode="channel"`，每个 batch/head/channel
-共享一个尺度，块均值仍按 128 个有效 token 计算。主内核在统一尺度下累加残差及均值
-补偿，归一化后只乘一次 V scale；不再在每个 K/V 块读取尺度并恢复缩放。
-这对应 [VC 论文附录 B 的 8-bit 描述](https://arxiv.org/html/2609.15810v1)。
-**这是尺度/恢复方式的对齐，不代表完整复现论文，也不预先承诺 H200 加速。**
+vc7 集中优化 ExpCast 概率路径，默认继续使用 vc6 的通道共享 V scale：
 
-保留 Sage 的两级 PV 累加：每块 WGMMA 的临时结果转入 FP32 历史缓冲。
-Hopper FP8 硬件累加的精度限制使这个缓冲不能随意删除，见
-[SageAttention2 论文](https://arxiv.org/abs/2411.10958)。ExpCast 本版没有新增数学改动。
+- 使用 `cvt.rni.sat.u8.f32` 合并下界截断和整数 RNE 转换；移除独立 `max(0,u)`。
+  attention 中 shifted <=0，FMA 结果 <=119.65，u8 的上界不会触发。
+- 两个字节和两对字节均用 byte permutation 打包。
+- 每四个概率解码后立即加入分母和块权重和，不再将整块解码概率写回 scores 数组。
+  保留原来的左结合加法次序、FP32 FMA 常数、量化尺度及 mean 补偿。
 
-两种对照含义不同：
+饱和转换的语义见 [NVIDIA PTX cvt 文档](https://docs.nvidia.com/cuda/archive/13.0.0/parallel-thread-execution/index.html#data-movement-and-conversion-instructions-cvt)。
+本地实际 helper 检查逐位一致，但 **减少指令不等于确认 H200 加速**。
 
-- `v_scale_mode="block"` 保留 vc5 的逐块尺度量化。它与默认路径的 V 字节/均值会不同，
-  必须分别对比 dense FP32 误差；不能把差异当成纯执行误差。
-- `kernel_mode="vc4"` 保留逐块恢复的参考执行方式。对于新的共享尺度输入，每块都读取
-  同一个通道尺度；与 optimized 使用完全相同的量化数据，检查移出缩放及 FMA 的实现误差。
-  因此共享尺度上的 vc4 是参考调度，不是旧版包的原样端到端结果。
-- `v_scale_mode="block", kernel_mode="optimized"` 对应此前 vc5 的路径；
-  `v_scale_mode="block", kernel_mode="vc4"` 对应此前 vc4 的路径，均由当前工具链编译。
+保留三种主内核模式，用相同安装包、相同量化数据作同场比较：
 
-`sage_vc_build_info()` 中 `sage_vc_kernel_version=4`、包版本 `2.2.0+vc6` 表示新扩展已加载。
-QK INT8、聚类和原版 `sageattn` 内核保持原有计算方式；原版与混合实验有独立入口。
+| kernel_mode | 概率路径 | V 恢复 |
+|---|---|---|
+| `optimized`（默认） | vc7 饱和转换、字节打包、流式求和 | 与 vc6 相同 |
+| `vc6` | 上一版 ExpCast | 共享通道 scale 在输出末尾恢复 |
+| `vc4` | 更早的概率实现 | 即使 scale 共享，也逐块恢复，作历史参考 |
+
+`optimized` 和 `vc6` 在 ExpCast 关闭时调用同一个内核，作为计时波动的控制组。
+两者保留 Sage 的两级 FP32 PV 累加，不把完整历史送回 FP8 WGMMA 累加器。
+默认通道尺度对应 [VC 论文附录 B 的 8-bit 恢复方式](https://arxiv.org/html/2609.15810v1)，
+QK 仍是 Sage INT8，**不是完整 VC 论文复现**。
+
+`v_scale_mode="block"` 保留旧的逐块量化；与 channel 的 V 字节不同。
+用 `v_scale_mode="block", kernel_mode="vc6"` 对照此前 vc5，
+`v_scale_mode="block", kernel_mode="vc4"` 对照此前 vc4；均由当前工具链重新编译。
+切换 `kernel_mode` 不改变准备好的 Q/K/V；切换 `v_scale_mode` 会改变 V 量化。
+
+`sage_vc_build_info()` 中 `sage_vc_kernel_version=5`、包版本 `2.2.0+vc7` 表示新扩展已加载。
 
 ## 远端编译和测试
 
@@ -49,7 +57,8 @@ bash scripts/build_sage_local.sh
 - FP16/BF16、D64/128、Q/K 边界长度、四种开关及两种 V scale 粒度共 144 组 attention 对拍。
 - 量化数据固定后，对比 CUDA 与独立 Python 参考，relative RMSE <=1% 是实现回归门槛。
 - 双关闭入口与原版 Sage 比较，relative RMSE <=0.1%；另有非零均值已知答案和 HND/NHD 布局检查。
-- 144 组还会在相同量化数据上对照 optimized/vc4，relative RMSE <=0.1%。这仅是实现回归门槛。
+- 144 组还会在相同量化数据上对照 optimized/vc4 和 optimized/vc6，relative RMSE <=0.1%。
+  另外记录是否逐位一致。这是实现回归门槛，不是模型质量门槛。
 - FP32 dense 误差单独记录，不把上述实现门槛当成模型质量结论。测试失败即中止。
 
 可以单独重跑：
@@ -68,7 +77,7 @@ bash scripts/benchmark_37741.sh --backends flash3 sage sage_local sage_vc_contro
 新旧内核同进程、同量化输入比较，不需要 `ncu`：
 
 ```bash
-python3 scripts/profile_sage_vc.py --compare-kernels --compare-v-scales --trace-dir results/h200_sage_vc6_traces --output results/h200_sage_vc6_profile.json
+python3 scripts/profile_sage_vc.py --compare-kernels --kernel-baseline vc6 --trials 5 --repeats 10 --trace-dir results/h200_sage_vc7_traces --output results/h200_sage_vc7_profile.json
 ```
 
 | backend | 入口 | ExpCast | V 聚类 + 块平滑 |
@@ -92,11 +101,11 @@ from sageattention_local import sageattn_vc
 # q/k/v: [1, 37741, 28, 128]，CUDA BF16 或 FP16
 out = sageattn_vc(q, k, v, tensor_layout="NHD", expcast=True, v_smooth=True)
 
-# 相同量化方式，用逐块恢复的参考调度作对照
-old_schedule = sageattn_vc(q, k, v, tensor_layout="NHD", kernel_mode="vc4")
+# 相同量化方式，执行上一版 vc6 的概率路径
+previous = sageattn_vc(q, k, v, tensor_layout="NHD", kernel_mode="vc6")
 
 # 旧 vc5 的逐块量化 + optimized 内核
-old_quantization = sageattn_vc(q, k, v, tensor_layout="NHD", v_scale_mode="block")
+old_quantization = sageattn_vc(q, k, v, tensor_layout="NHD", v_scale_mode="block", kernel_mode="vc6")
 
 # [batch, heads, tokens, dim] 则用 tensor_layout="HND"
 ```
@@ -146,11 +155,12 @@ old_quantization = sageattn_vc(q, k, v, tensor_layout="NHD", v_scale_mode="block
 不能执行 Hopper WGMMA attention。完整 Linux CUDA 13 编译、H200 attention 数值和性能
 仍需上面的远端脚本；本地检查不替代这些结果。
 
-本次本地 131 项测试通过，包括 60 组新旧 V 预处理、额外长块归约/大均值用例、
-ExpCast 编码、实际 CUDA helper、独立参考、脚本与来源检查；此前 16 组 helper
-保存结果仍逐位一致。Compute Sanitizer memcheck 为 0 errors。
-44 种 Hopper 配置交叉编译、链接成功，无 spill，SASS 含 TMA、INT8 IGMMA、FP8 QGMMA。
-CUDA 12.4 下 D128/BF16 默认平滑和全开使用 208/209 个寄存器，高于旧 block 模式
-的 180/181；因此不能只凭少了尺度读取就断言提速，远端 CUDA 13 的编译与计时为准。
-记录见 [results/sage_vc6_local_validation.json](results/sage_vc6_local_validation.json)。
+本次本地 169 项测试通过，包括原有预处理、独立参考、脚本、来源检查，以及新旧
+概率路径的逐位比较。64 块连续在线历史、极小/极大历史分母、极短尾块、所有 E4M3
+非负概率字节对、RNE 边界相邻浮点数均已覆盖；原先保存的 16 组 helper 结果仍逐位一致。
+Compute Sanitizer memcheck 为 0 errors。
+56 种 Hopper 配置交叉编译、链接成功，无 spill，TMA/INT8 IGMMA/FP8 QGMMA 保留。
+CUDA 12.4 的 D128/BF16 下，单 ExpCast 寄存器 167→168，全开 209→208；
+没有明显降低寄存器占用。减少的截断/移位指令是否带来净收益，仍需 H200 CUDA 13 实测。
+检查记录见 [results/sage_vc7_local_validation.json](results/sage_vc7_local_validation.json)。
 本地没有 Hopper GPU，144 组完整 attention 及 H200 性能仍待远端验证。

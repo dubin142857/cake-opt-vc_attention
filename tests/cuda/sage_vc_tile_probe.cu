@@ -8,7 +8,7 @@
 #include "../../third_party/sageattention_local/csrc/qattn/attn_utils.cuh"
 #include "../../third_party/sageattention_local/csrc/vc/vc_math.cuh"
 
-template<bool Optimized, bool ChannelScale=false>
+template<bool Optimized, bool ChannelScale=false, bool PackedProbability=false>
 __global__ void probe(const float* scores, const float* prev_out, const float* product,
     const float* prev_max, const float* prev_d, const float* scale, const half* mean,
     uint8_t* bytes, float* output, float* maximum, float* denom, bool mixed_scales) {
@@ -27,7 +27,7 @@ __global__ void probe(const float* scores, const float* prev_out, const float* p
       s[0][t][j] = scores[pos]; o[0][t][j] = prev_out[pos]; pv[0][t][j] = product[pos];
     }
   float score_scale = mixed_scales ? 0.137f * (1 + lane % 4) : 0.25f;
-  vc_probability<true, true, Optimized>(s,o,m,d,score_scale,packed,mass);
+  vc_probability<true, true, Optimized, PackedProbability>(s,o,m,d,score_scale,packed,mass);
   if constexpr (ChannelScale && Optimized) {
     vc_accumulate<true, true, true>(o,pv,mass,scale,mean,0,0,1,128,lane);
     for (int t = 0; t < 8; ++t)
@@ -58,12 +58,14 @@ __global__ void probe(const float* scores, const float* prev_out, const float* p
 
 std::vector<torch::Tensor> run(torch::Tensor scores, torch::Tensor out, torch::Tensor product,
     torch::Tensor m, torch::Tensor d, torch::Tensor scale, torch::Tensor mean,
-    bool optimized, bool mixed_scales, bool channel_scale) {
+    bool optimized, bool mixed_scales, bool channel_scale, bool packed_probability) {
   TORCH_CHECK(scores.is_cuda() && scores.sizes() == at::IntArrayRef({64,128}), "Probe shape");
   auto bytes = torch::empty_like(scores,scores.options().dtype(at::kByte));
   auto output = torch::empty_like(out), maximum = torch::empty_like(m), denom = torch::empty_like(d);
   auto kernel = channel_scale ? (optimized ? probe<true,true> : probe<false,true>)
       : (optimized ? probe<true> : probe<false>);
+  if (packed_probability) kernel = channel_scale ? (optimized ? probe<true,true,true> : probe<false,true,true>)
+      : (optimized ? probe<true,false,true> : probe<false,false,true>);
   kernel<<<1,128,0,c10::cuda::getCurrentCUDAStream().stream()>>>(scores.data_ptr<float>(),out.data_ptr<float>(),
       product.data_ptr<float>(),m.data_ptr<float>(),d.data_ptr<float>(),scale.data_ptr<float>(),
       reinterpret_cast<half*>(mean.data_ptr()),bytes.data_ptr<uint8_t>(),output.data_ptr<float>(),
@@ -72,16 +74,16 @@ std::vector<torch::Tensor> run(torch::Tensor scores, torch::Tensor out, torch::T
   return {bytes,output,maximum,denom};
 }
 __global__ void helpers(const float* shifted, const int32_t* codes,
-    int64_t n, uint8_t* encoded, float* decoded) {
+    int64_t n, uint8_t* encoded, float* decoded, bool packed_probability) {
   int64_t i = int64_t(blockIdx.x) * blockDim.x + threadIdx.x;
   if (i >= n) return;
-  encoded[i] = vc_expcast_nonpositive(shifted[i]);
+  encoded[i] = packed_probability ? vc_expcast_u8(shifted[i]) : vc_expcast_nonpositive(shifted[i]);
   float2 pair = vc_decode_pair(codes[i]);
   decoded[i * 2] = pair.x;
   decoded[i * 2 + 1] = pair.y;
 }
 
-std::vector<torch::Tensor> run_helpers(torch::Tensor shifted, torch::Tensor codes) {
+std::vector<torch::Tensor> run_helpers(torch::Tensor shifted, torch::Tensor codes, bool packed_probability) {
   TORCH_CHECK(shifted.is_cuda() && codes.device() == shifted.device() &&
       shifted.scalar_type() == at::kFloat && codes.scalar_type() == at::kInt &&
       shifted.is_contiguous() && codes.is_contiguous() &&
@@ -90,7 +92,7 @@ std::vector<torch::Tensor> run_helpers(torch::Tensor shifted, torch::Tensor code
   auto decoded = torch::empty({shifted.numel(), 2}, shifted.options());
   helpers<<<(shifted.numel()+255)/256,256,0,c10::cuda::getCurrentCUDAStream().stream()>>>(
       shifted.data_ptr<float>(), codes.data_ptr<int32_t>(), shifted.numel(),
-      encoded.data_ptr<uint8_t>(), decoded.data_ptr<float>());
+      encoded.data_ptr<uint8_t>(), decoded.data_ptr<float>(), packed_probability);
   C10_CUDA_KERNEL_LAUNCH_CHECK();
   return {encoded, decoded};
 }
@@ -99,6 +101,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME,m) {
   m.def("run",&run,pybind11::arg("scores"),pybind11::arg("out"),pybind11::arg("product"),
       pybind11::arg("m"),pybind11::arg("d"),pybind11::arg("scale"),pybind11::arg("mean"),
       pybind11::arg("optimized")=false,pybind11::arg("mixed_scales")=false,
-      pybind11::arg("channel_scale")=false);
-  m.def("run_helpers",&run_helpers);
+      pybind11::arg("channel_scale")=false,pybind11::arg("packed_probability")=false);
+  m.def("run_helpers",&run_helpers,pybind11::arg("shifted"),pybind11::arg("codes"),pybind11::arg("packed_probability")=false);
 }

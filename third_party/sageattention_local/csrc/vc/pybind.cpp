@@ -32,11 +32,11 @@ torch::Tensor group_values(torch::Tensor v, int64_t clusters, int64_t iterations
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.attr("sage_vc_api_version") = 1;
-  m.attr("sage_vc_kernel_version") = 4;
+  m.attr("sage_vc_kernel_version") = 5;
   m.def("forward", &vc_forward, pybind11::arg("q"), pybind11::arg("k"), pybind11::arg("v"),
       pybind11::arg("qs"), pybind11::arg("ks"), pybind11::arg("vs"), pybind11::arg("means"),
       pybind11::arg("expcast"), pybind11::arg("block_values"), pybind11::arg("output_type"),
-      pybind11::arg("scale"), pybind11::arg("optimized") = true);
+      pybind11::arg("scale"), pybind11::arg("optimized") = true, pybind11::arg("packed_probability") = true);
   m.def("prepare_values", &vc_prepare_values, pybind11::arg("v"), pybind11::arg("channel_scale") = true);
   m.def("expcast_codes", &vc_expcast_codes);
   m.def("group_values", &group_values);

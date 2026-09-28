@@ -10,7 +10,7 @@ import torch
 def _extension():
     from . import _vc_sm90
     if (getattr(_vc_sm90, "sage_vc_api_version", None) != 1 or
-            getattr(_vc_sm90, "sage_vc_kernel_version", None) != 4):
+            getattr(_vc_sm90, "sage_vc_kernel_version", None) != 5):
         raise RuntimeError("Rebuild sageattention-local with bash scripts/build_sage_local.sh")
     return _vc_sm90
 
@@ -23,7 +23,9 @@ def sage_vc_build_info():
             "qk_hadamard": False, "v_block": 128, "mean_dtype": "float16",
             "clustering": "8 clusters, 2 Lloyd iterations, stable order; fresh every call",
             "paper_equivalent": False, "sage_vc_api_version": 1,
-            "default_kernel_mode": "optimized", "kernel_modes": ["optimized", "vc4"],
+            "default_kernel_mode": "optimized", "kernel_modes": ["optimized", "vc6", "vc4"],
+            "expcast_probability": "saturating u8 RNE + byte permutation + streamed FP32 reduction",
+            "expcast_numerical_contract": "vc6 FMA, encoding, decode and sum order unchanged",
             "v_scale_mode": "channel", "v_scale_modes": ["channel", "block"],
             "value_restore_rounding": "channel: mean FMA + FP32 buffer, epilogue scale; vc4: per-tile scale",
             "sage_vc_kernel_version": _extension().sage_vc_kernel_version}
@@ -79,18 +81,18 @@ def prepare(q, k, v, *, expcast=True, v_smooth=True, clusters=8, iterations=2, s
 
 
 def forward_prepared(state, *, kernel_mode="optimized"):
-    if kernel_mode not in ("optimized", "vc4"):
-        raise ValueError("kernel_mode must be 'optimized' or 'vc4'")
+    if kernel_mode not in ("optimized", "vc6", "vc4"):
+        raise ValueError("kernel_mode must be 'optimized', 'vc6' or 'vc4'")
     return _extension().forward(*(state[name] for name in ("q", "k", "v", "qs", "ks", "vs", "means",
                                                           "expcast", "block_values", "output_type", "scale")),
-                                optimized=kernel_mode == "optimized")
+                                optimized=kernel_mode != "vc4", packed_probability=kernel_mode == "optimized")
 
 
 @torch.no_grad()
 def sageattn_vc(q, k, v, tensor_layout="HND", is_causal=False, sm_scale=None, return_lse=False,
                *, expcast=True, v_smooth=True, clusters=8, iterations=2, kernel_mode="optimized", v_scale_mode="channel"):
-    if kernel_mode not in ("optimized", "vc4"):
-        raise ValueError("kernel_mode must be 'optimized' or 'vc4'")
+    if kernel_mode not in ("optimized", "vc6", "vc4"):
+        raise ValueError("kernel_mode must be 'optimized', 'vc6' or 'vc4'")
     if v_scale_mode not in ("channel", "block"):
         raise ValueError("v_scale_mode must be 'channel' or 'block'")
     validate_inputs(q, k, v, tensor_layout, is_causal, return_lse, expcast, v_smooth, clusters, iterations)

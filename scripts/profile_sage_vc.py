@@ -201,7 +201,9 @@ def parse_args(argv=None):
     parser.add_argument("--output", default="results/h200_sage_vc_profile.json")
     parser.add_argument("--trace-dir", help="Optional CUPTI CPU/GPU timelines, one staged call per variant")
     parser.add_argument("--compare-kernels", action="store_true",
-                        help="vc5+: compare vc4/optimized cores on identical payloads; validate ALL output rows")
+                        help="Compare previous/optimized cores on identical payloads; validate ALL output rows")
+    parser.add_argument("--kernel-baseline",choices=("vc4","vc6"),
+                        help="Same-payload baseline; defaults to vc6 on vc7+, otherwise vc4")
     parser.add_argument("--compare-v-scales", action="store_true",
                         help="vc6+: compare old block and new channel V quantization, including API time and dense FP32 errors")
     parser.add_argument("--check-queries", type=int, default=128, help="Dense FP32 check rows for --compare-v-scales; 0 means all")
@@ -213,6 +215,8 @@ def parse_args(argv=None):
         parser.error("shapes, warmup, repeats and trials must be positive")
     if args.check_queries < 0 or args.reference_chunk < 1:
         parser.error("check-queries must be nonnegative and reference-chunk positive")
+    if args.kernel_baseline and not args.compare_kernels:
+        parser.error("--kernel-baseline requires --compare-kernels")
     if args.ncu_variant and (args.trace_dir or args.compare_kernels or args.compare_v_scales):
         parser.error("--ncu-variant uses a separate profiler run")
     return args
@@ -245,15 +249,22 @@ def output_difference(actual, reference, chunk=512):
     error, norm = sums.sqrt().tolist()
     maximum = peak.item()
     if not all(math.isfinite(x) for x in (error,norm,maximum)):
-        raise RuntimeError("Nonfinite output in optimized/vc4 comparison")
+        raise RuntimeError("Nonfinite output in same-payload kernel comparison")
     return {"rel_rmse": error/max(norm,1e-12), "max_abs": maximum,
             "checked_queries": actual.shape[2], "exact_match": maximum == 0}
 
 
-def kernel_calls(ops, fixed):
+def kernel_calls(ops, fixed, baseline="vc4"):
     # Each pair closes over the very same state object, including every scale.
     return {(name,mode): lambda state=state,mode=mode: ops.vc.forward_prepared(state,kernel_mode=mode)
-            for name,state in fixed.items() for mode in ("vc4","optimized")}
+            for name,state in fixed.items() for mode in (baseline,"optimized")}
+
+
+def kernel_baseline(ops,args):
+    baseline = getattr(args,"kernel_baseline",None) or ("vc6" if getattr(ops.ext,"sage_vc_kernel_version",0) >= 5 else "vc4")
+    if baseline == "vc6" and getattr(ops.ext,"sage_vc_kernel_version",0) < 5:
+        raise RuntimeError("--kernel-baseline vc6 needs vc7; rebuild with bash scripts/build_sage_local.sh")
+    return baseline
 
 
 def value_scale_states(ops, qkv, base):
@@ -317,17 +328,18 @@ def compare_v_scales(ops, qkv, base, args, device):
 def compare_kernels(ops, fixed, args, device):
     if getattr(ops.ext,"sage_vc_kernel_version",0) < 3:
         raise RuntimeError("--compare-kernels needs vc5; rebuild with bash scripts/build_sage_local.sh")
-    calls = kernel_calls(ops,fixed)
+    baseline = kernel_baseline(ops,args)
+    calls = kernel_calls(ops,fixed,baseline)
     for key,call in calls.items():
         for _ in range(args.warmup):
             call()
     torch.cuda.synchronize(device)
     errors = {}
     for name in fixed:
-        old, new = calls[name,"vc4"](), calls[name,"optimized"]()
+        old, new = calls[name,baseline](), calls[name,"optimized"]()
         errors[name] = output_difference(new,old)
         if errors[name]["rel_rmse"] > .001:
-            raise AssertionError(f"Optimized/vc4 relative RMSE exceeds 0.1%: {name}, {errors[name]}")
+            raise AssertionError(f"Optimized/{baseline} relative RMSE exceeds 0.1%: {name}, {errors[name]}")
         del old,new
     times = {key: [] for key in calls}
     rng, orders = random.Random(args.seed), []
@@ -340,18 +352,20 @@ def compare_kernels(ops, fixed, args, device):
             times[key].append(elapsed)
         print(f"Kernel comparison trial {trial+1}/{args.trials} complete",flush=True)
     rows = {}
-    print("\nSame-payload native APIs: vc4 vs optimized (ms; excludes all preprocessing)")
-    if getattr(ops.ext,"sage_vc_kernel_version",0) >= 4:
+    print(f"\nSame-payload native APIs: {baseline} vs optimized (ms; excludes all preprocessing)")
+    if baseline == "vc6":
+        print("vc6/optimized differ only in ExpCast encoding/reduction scheduling; V scales and two-level PV accumulation are identical.")
+    elif getattr(ops.ext,"sage_vc_kernel_version",0) >= 4:
         print("Channel V: vc4 applies the shared scale per tile; optimized applies it once in the epilogue. Both retain two-level FP32 accumulation.")
-    print(f"{'variant':<23} {'vc4 ms':>11} {'optimized ms':>14} {'old/new':>10} {'output rel RMSE %':>19} {'max abs':>12}")
+    print(f"{'variant':<23} {baseline+' ms':>11} {'optimized ms':>14} {'old/new':>10} {'output rel RMSE %':>19} {'max abs':>12}")
     for name in fixed:
-        old, new = stats(times[name,"vc4"]), stats(times[name,"optimized"])
+        old, new = stats(times[name,baseline]), stats(times[name,"optimized"])
         ratio = old["median_ms"]/new["median_ms"]
-        rows[name] = {"vc4":old,"optimized":new,"speedup":ratio,"output_difference":errors[name]}
+        rows[name] = {baseline:old,"optimized":new,"speedup":ratio,"output_difference":errors[name]}
         print(f"{name:<23} {old['median_ms']:>11.4f} {new['median_ms']:>14.4f} {ratio:>9.3f}x "
               f"{errors[name]['rel_rmse']*100:>19.6f} {errors[name]['max_abs']:>12.8f}")
     print("Accuracy compares ALL output rows on identical quantized tensors; 0.1% is an implementation regression gate, not model quality.")
-    return {"variants":rows,"trial_order":orders,"implementation_rel_rmse_limit":.001,
+    return {"variants":rows,"baseline_mode":baseline,"trial_order":orders,"implementation_rel_rmse_limit":.001,
             "scope":"Same process/payload; synchronized native API wall time; includes dispatch/allocation; no preprocessing or dense FP32 oracle."}
 
 
@@ -383,6 +397,8 @@ def run(args):
     info, ops = sage_vc_build_info(), load_ops()
     if args.compare_kernels and getattr(ops.ext,"sage_vc_kernel_version",0) < 3:
         raise RuntimeError("--compare-kernels needs vc5; rebuild with bash scripts/build_sage_local.sh")
+    if args.compare_kernels:
+        kernel_baseline(ops,args)
     if args.compare_v_scales and getattr(ops.ext,"sage_vc_kernel_version",0) < 4:
         raise RuntimeError("--compare-v-scales needs vc6; rebuild with bash scripts/build_sage_local.sh")
     torch.manual_seed(args.seed)
