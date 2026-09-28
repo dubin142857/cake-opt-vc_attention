@@ -6,14 +6,14 @@
 `sageattn` 是原版内核的独立源码构建。`2.2.0+vc3` 新增独立的
 `sageattn_vc` 实验入口：Sage INT8 QK + VC 的 V 聚类/分块平滑、ExpCast，
 不能称为完整 VC 论文复现。使用与对照见仓库根目录 [SAGE_VC.md](../../SAGE_VC.md)。
-当前版本 `2.2.0+vc7` 优化 ExpCast 的饱和整数转换、字节打包与概率求和调度。
-保留 vc6 的共享通道 V scale 和两级 FP32 PV 累加；`kernel_mode="vc6"` 可执行上一版路径，
-`kernel_mode="vc4"` 和 `v_scale_mode="block"` 也保留作对照。
-同一量化数据下，本地辅助函数逐位一致；完整 H200 attention 与速度仍需远端验证。
+当前版本 `2.2.0+vc8` 针对 D128/channel 平滑路径，将 PV 临时结果分成两个 N64 fragment，
+配对恢复 V 均值，并以 168 个寄存器为编译目标。保留 vc7 的 ExpCast、共享通道 V scale
+和两级 FP32 PV 累加；`kernel_mode="vc7"` 执行上一版内核，`vc6`、`vc4` 也保留。
+同输入对照不改变 Q/K/V 量化；完整 H200 attention 正确性与速度需远端验证。
 
 ## 构建与导入
 
-目标：Linux H100/H800/H200，CUDA Toolkit >=12.3，PyTorch >=2.4、Triton >=3.0。
+目标：Linux H100/H800/H200，CUDA Toolkit >=12.4，PyTorch >=2.4、Triton >=3.0。
 用户当前 H200 / PyTorch 2.13 + CUDA 13 环境需要实际编译验证。
 安装依赖沿用当前环境，脚本不会升级 torch 或覆盖已安装的 `sageattention`。
 所有编译源文件都已放入本仓库；远端无需再次从 GitHub 下载。

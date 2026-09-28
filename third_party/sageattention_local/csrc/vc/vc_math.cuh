@@ -128,49 +128,83 @@ __device__ __forceinline__ void vc_probability(
   }
 }
 
-template<bool BlockValues, bool Optimized=false, bool ChannelScale=false, uint32_t NQ, uint32_t NV>
+// Keep one half2 mean and its four output updates together. Fully unrolled
+// C++ lets the compiler expand many FP32 means before consuming any of them.
+// Explicit RN instructions retain vc7's FMA then FP32-history-add contract.
+__device__ __forceinline__ void vc_mean_pair(
+    float& o0, float& o1, float& o2, float& o3,
+    float p0, float p1, float p2, float p3, float m0, float m1,
+    const half* mean) {
+  asm volatile(
+      "{\n"
+      " .reg .b32 packed; .reg .b16 lo, hi;\n"
+      " .reg .f32 a, b, x0, x1, x2, x3;\n"
+      " ld.global.b32 packed, [%10];\n"
+      " mov.b32 {lo, hi}, packed;\n"
+      " cvt.f32.f16 a, lo; cvt.f32.f16 b, hi;\n"
+      " fma.rn.f32 x0, %8, a, %4; fma.rn.f32 x1, %8, b, %5;\n"
+      " fma.rn.f32 x2, %9, a, %6; fma.rn.f32 x3, %9, b, %7;\n"
+      " add.rn.f32 %0, %0, x0; add.rn.f32 %1, %1, x1;\n"
+      " add.rn.f32 %2, %2, x2; add.rn.f32 %3, %3, x3;\n"
+      "}\n"
+      : "+f"(o0), "+f"(o1), "+f"(o2), "+f"(o3)
+      : "f"(p0), "f"(p1), "f"(p2), "f"(p3), "f"(m0), "f"(m1), "l"(mean)
+      : "memory");
+}
+
+template<bool BlockValues, bool Optimized=false, bool ChannelScale=false, bool StreamMean=false, uint32_t NQ, uint32_t NV, uint32_t NP>
 __device__ __forceinline__ void vc_accumulate(
-    float (&out)[NQ][NV][8], const float (&product)[NQ][NV][8],
+    float (&out)[NQ][NV][8], const float (&product)[NQ][NP][8],
     const float (&mass)[NQ][2], const float* scales, const half* means,
-    int head, int tile, int tiles, int dim, int lane) {
+    int head, int tile, int tiles, int dim, int lane, int value_offset=0) {
   #pragma unroll
-  for (int v = 0; v < NV; ++v) {
+  for (int v = 0; v < NP; ++v) {
     if constexpr (BlockValues) {
       #pragma unroll
       for (int pair = 0; pair < 2; ++pair) {
-        int channel = v * 16 + (lane % 4) * 2 + pair * 8;
+        int channel = (v + value_offset) * 16 + (lane % 4) * 2 + pair * 8;
         int64_t meta = (int64_t(head) * tiles + tile) * dim + channel;
-        // Both rows share these two channels. Torch allocations and even
-        // channel indices guarantee float2/half2 alignment, including D=64.
-        int64_t scale_meta = ChannelScale ? int64_t(head) * dim + channel : meta;
-        float2 scale;
-        if constexpr (!(ChannelScale && Optimized))
-          scale = *reinterpret_cast<const float2*>(scales + scale_meta);
-        float2 mean = __half22float2(*reinterpret_cast<const half2*>(means + meta));
-        #pragma unroll
-        for (int q = 0; q < NQ; ++q) {
+        if constexpr (StreamMean && Optimized && ChannelScale) {
           #pragma unroll
-          for (int r = 0; r < 2; ++r) {
-            int j = pair * 4 + r * 2;
-            if constexpr (Optimized) {
-              // Fuse the mean correction; legacy block scales need a second FMA.
-              // Rounds once per FMA; intentionally not bitwise vc4 arithmetic.
-              float a = __fmaf_rn(mass[q][r], mean.x, product[q][v][j]);
-              float b = __fmaf_rn(mass[q][r], mean.y, product[q][v][j + 1]);
-              if constexpr (ChannelScale) {
-                // Shared scale is applied once after online normalization.
-                // Keep the FP32 history outside the FP8 WGMMA accumulator.
-                out[q][v][j] = __fadd_rn(out[q][v][j], a);
-                out[q][v][j + 1] = __fadd_rn(out[q][v][j + 1], b);
+          for (int q = 0; q < NQ; ++q) {
+            int j = pair * 4;
+            vc_mean_pair(out[q][v + value_offset][j], out[q][v + value_offset][j+1], out[q][v + value_offset][j+2], out[q][v + value_offset][j+3],
+                product[q][v][j], product[q][v][j+1], product[q][v][j+2], product[q][v][j+3],
+                mass[q][0], mass[q][1], means + meta);
+          }
+        } else {
+          // Both rows share these two channels. Torch allocations and even
+          // channel indices guarantee float2/half2 alignment, including D=64.
+          int64_t scale_meta = ChannelScale ? int64_t(head) * dim + channel : meta;
+          float2 scale;
+          if constexpr (!(ChannelScale && Optimized))
+            scale = *reinterpret_cast<const float2*>(scales + scale_meta);
+          float2 mean = __half22float2(*reinterpret_cast<const half2*>(means + meta));
+          #pragma unroll
+          for (int q = 0; q < NQ; ++q) {
+            #pragma unroll
+            for (int r = 0; r < 2; ++r) {
+              int j = pair * 4 + r * 2;
+              if constexpr (Optimized) {
+                // Fuse the mean correction; legacy block scales need a second FMA.
+                // Rounds once per FMA; intentionally not bitwise vc4 arithmetic.
+                float a = __fmaf_rn(mass[q][r], mean.x, product[q][v][j]);
+                float b = __fmaf_rn(mass[q][r], mean.y, product[q][v][j + 1]);
+                if constexpr (ChannelScale) {
+                  // Shared scale is applied once after online normalization.
+                  // Keep the FP32 history outside the FP8 WGMMA accumulator.
+                  out[q][v + value_offset][j] = __fadd_rn(out[q][v + value_offset][j], a);
+                  out[q][v + value_offset][j + 1] = __fadd_rn(out[q][v + value_offset][j + 1], b);
+                } else {
+                  out[q][v + value_offset][j] = __fmaf_rn(a, scale.x, out[q][v + value_offset][j]);
+                  out[q][v + value_offset][j + 1] = __fmaf_rn(b, scale.y, out[q][v + value_offset][j + 1]);
+                }
               } else {
-                out[q][v][j] = __fmaf_rn(a, scale.x, out[q][v][j]);
-                out[q][v][j + 1] = __fmaf_rn(b, scale.y, out[q][v][j + 1]);
+                float a = __fadd_rn(product[q][v][j], __fmul_rn(mass[q][r], mean.x));
+                float b = __fadd_rn(product[q][v][j + 1], __fmul_rn(mass[q][r], mean.y));
+                out[q][v + value_offset][j] = __fadd_rn(out[q][v + value_offset][j], __fmul_rn(a, scale.x));
+                out[q][v + value_offset][j + 1] = __fadd_rn(out[q][v + value_offset][j + 1], __fmul_rn(b, scale.y));
               }
-            } else {
-              float a = __fadd_rn(product[q][v][j], __fmul_rn(mass[q][r], mean.x));
-              float b = __fadd_rn(product[q][v][j + 1], __fmul_rn(mass[q][r], mean.y));
-              out[q][v][j] = __fadd_rn(out[q][v][j], __fmul_rn(a, scale.x));
-              out[q][v][j + 1] = __fadd_rn(out[q][v][j + 1], __fmul_rn(b, scale.y));
             }
           }
         }
@@ -179,7 +213,7 @@ __device__ __forceinline__ void vc_accumulate(
       #pragma unroll
       for (int j = 0; j < 8; ++j)
         #pragma unroll
-        for (int q = 0; q < NQ; ++q) out[q][v][j] += product[q][v][j];
+        for (int q = 0; q < NQ; ++q) out[q][v + value_offset][j] += product[q][v][j];
     }
   }
 }

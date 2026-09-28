@@ -96,3 +96,46 @@ def test_streamed_probability_matches_vc6_across_long_online_history():
         new = probe.run(scores,out,product,maximum,denominator,scale,mean,True,True,True,True)
         for a,b in zip(new,old): torch.testing.assert_close(a,b,rtol=0,atol=0)
         _,out,maximum,denominator = old
+
+
+@pytest.mark.parametrize("seed", [0, 1, 2, 3])
+@pytest.mark.parametrize("packed_probability", [False, True])
+def test_streamed_mean_matches_vc7_with_extreme_half_metadata(seed, packed_probability):
+    torch.manual_seed(1200 + seed)
+    device = "cuda"
+    scores = torch.randn(64,128,device=device) * 7
+    scores[:16,1:] = -float("inf")
+    scores[16:32,117:] = -float("inf")
+    scores[32:48] = 0
+    out, product = (torch.randn_like(scores) * 100 for _ in range(2))
+    # Exercise signed, zero, half subnormal, and largest finite stored means.
+    mean = torch.randn(128,device=device).half()
+    mean[:8] = torch.tensor([0., -0., 2**-24, -2**-24, 2**-14, -2**-14, 65504., -65504.],device=device).half()
+    scale = torch.logspace(-5,3,128,device=device)
+    maximum = torch.linspace(-20,20,64,device=device)
+    denom = torch.logspace(-6,8,64,device=device)
+    args = (scores,out,product,maximum,denom,scale,mean,True,True,True,packed_probability)
+    old = probe.run(*args,False)
+    new = probe.run(*args,True)
+    for actual, expected in zip(new,old):
+        torch.testing.assert_close(actual,expected,rtol=0,atol=0)
+
+
+def test_streamed_mean_preserves_long_online_history():
+    torch.manual_seed(921)
+    device = "cuda"
+    out = torch.randn(64,128,device=device)
+    maximum = torch.linspace(-20,20,64,device=device)
+    denom = torch.logspace(-6,8,64,device=device)
+    scale = torch.ones(128,device=device)
+    for tile in range(64):
+        scores = torch.randn_like(out) * (1 + tile % 11)
+        scores[:32,1 if tile % 2 else 117:] = -float("inf")
+        product = torch.randn_like(out)
+        mean = (torch.randn(128,device=device) * (tile + 1)).half()
+        args = (scores,out,product,maximum,denom,scale,mean,True,True,True,True)
+        old = probe.run(*args,False)
+        new = probe.run(*args,True)
+        for actual, expected in zip(new,old):
+            torch.testing.assert_close(actual,expected,rtol=0,atol=0)
+        _,out,maximum,denom = old

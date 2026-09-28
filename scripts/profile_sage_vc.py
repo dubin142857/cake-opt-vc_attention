@@ -164,6 +164,7 @@ def summarize_stages(trials):
 def trace_summary(events):
     """Keep device and host-runtime events separate; exclude nested CPU operators."""
     groups = {}
+    resources = []
     for event in events:
         category = event.get("cat")
         if event.get("ph") != "X" or category not in ("kernel", "gpu_memcpy", "gpu_memset", "cuda_runtime"):
@@ -172,6 +173,12 @@ def trace_summary(events):
         row = groups.setdefault(key, {"category": category, "name": key[1], "calls": 0, "total_us": 0.})
         row["calls"] += 1
         row["total_us"] += event.get("dur", 0.)
+        if category == "kernel" and "sage_vc_attention_kernel" in key[1]:
+            metadata = event.get("args", {})
+            resources.append({"name": key[1], "duration_ms": event.get("dur", 0.) / 1000,
+                              **{key: metadata.get(key) for key in (
+                                  "registers per thread", "shared memory", "grid", "block",
+                                  "est. achieved occupancy %")}})
     rows = sorted(groups.values(), key=lambda x: x["total_us"], reverse=True)
     kernels = [x for x in rows if x["category"] == "kernel"]
     if not kernels:
@@ -182,7 +189,7 @@ def trace_summary(events):
     total = sum(x["total_us"] for x in kernels)
     return {"core_kernel_ms": core / 1000, "other_kernel_sum_ms": (total-core) / 1000,
             "kernel_sum_ms": total / 1000, "kernel_launches": sum(x["calls"] for x in kernels),
-            "events": rows}
+            "events": rows, "core_resources": resources}
 
 
 def parse_args(argv=None):
@@ -202,8 +209,8 @@ def parse_args(argv=None):
     parser.add_argument("--trace-dir", help="Optional CUPTI CPU/GPU timelines, one staged call per variant")
     parser.add_argument("--compare-kernels", action="store_true",
                         help="Compare previous/optimized cores on identical payloads; validate ALL output rows")
-    parser.add_argument("--kernel-baseline",choices=("vc4","vc6"),
-                        help="Same-payload baseline; defaults to vc6 on vc7+, otherwise vc4")
+    parser.add_argument("--kernel-baseline",choices=("vc4","vc6","vc7"),
+                        help="Same-payload baseline; defaults to vc7 on vc8+, vc6 on vc7, otherwise vc4")
     parser.add_argument("--compare-v-scales", action="store_true",
                         help="vc6+: compare old block and new channel V quantization, including API time and dense FP32 errors")
     parser.add_argument("--check-queries", type=int, default=128, help="Dense FP32 check rows for --compare-v-scales; 0 means all")
@@ -261,7 +268,10 @@ def kernel_calls(ops, fixed, baseline="vc4"):
 
 
 def kernel_baseline(ops,args):
-    baseline = getattr(args,"kernel_baseline",None) or ("vc6" if getattr(ops.ext,"sage_vc_kernel_version",0) >= 5 else "vc4")
+    version = getattr(ops.ext,"sage_vc_kernel_version",0)
+    baseline = getattr(args,"kernel_baseline",None) or ("vc7" if version >= 6 else "vc6" if version >= 5 else "vc4")
+    if baseline == "vc7" and version < 6:
+        raise RuntimeError("--kernel-baseline vc7 needs vc8; rebuild with bash scripts/build_sage_local.sh")
     if baseline == "vc6" and getattr(ops.ext,"sage_vc_kernel_version",0) < 5:
         raise RuntimeError("--kernel-baseline vc6 needs vc7; rebuild with bash scripts/build_sage_local.sh")
     return baseline
@@ -353,8 +363,10 @@ def compare_kernels(ops, fixed, args, device):
         print(f"Kernel comparison trial {trial+1}/{args.trials} complete",flush=True)
     rows = {}
     print(f"\nSame-payload native APIs: {baseline} vs optimized (ms; excludes all preprocessing)")
-    if baseline == "vc6":
-        print("vc6/optimized differ only in ExpCast encoding/reduction scheduling; V scales and two-level PV accumulation are identical.")
+    if baseline == "vc7":
+        print("vc7/optimized differ in D128 channel-V PV fragmentation/mean scheduling; Q/K/V payloads, ExpCast and two-level FP32 accumulation are unchanged.")
+    elif baseline == "vc6":
+        print("vc6/optimized compare ExpCast scheduling and, on vc8+, compact D128 channel-V accumulation; quantized payloads are identical.")
     elif getattr(ops.ext,"sage_vc_kernel_version",0) >= 4:
         print("Channel V: vc4 applies the shared scale per tile; optimized applies it once in the epilogue. Both retain two-level FP32 accumulation.")
     print(f"{'variant':<23} {baseline+' ms':>11} {'optimized ms':>14} {'old/new':>10} {'output rel RMSE %':>19} {'max abs':>12}")
@@ -423,6 +435,8 @@ def run(args):
     environment = {"python": platform.python_version(), "torch": torch.__version__, "torch_cuda": torch.version.cuda,
                    "gpu": torch.cuda.get_device_name(device), "device": str(device), "tf32_enabled": False,
                    "input_shapes": input_shapes(args), "build": info}
+    if args.dim == 128 and getattr(ops.ext,"sage_vc_kernel_version",0) >= 6:
+        environment["compiled_d128_channel_resources"] = ops.ext.kernel_resources(0 if dtype == torch.float16 else 1)
     print(json.dumps(environment,indent=2),flush=True)
     bases = {}
     for smooth in (False,True):
@@ -510,6 +524,11 @@ def run(args):
             summary = trace_summary(json.loads(trace.read_text(encoding="utf-8"))["traceEvents"])
             report["traces"][name] = {"path": str(trace), **summary}
             print(f"Trace {name}: core GPU {summary['core_kernel_ms']:.4f} ms; other kernels {summary['other_kernel_sum_ms']:.4f} ms; {summary['kernel_launches']} launches",flush=True)
+            for resource in summary["core_resources"]:
+                print(f"  Registers/thread: {resource['registers per thread']}; "
+                      f"shared bytes: {resource['shared memory']}; block: {resource['block']}; "
+                      f"estimated occupancy: {resource['est. achieved occupancy %']}% "
+                      "(estimate, not a hardware utilization counter)", flush=True)
         path.write_text(json.dumps(report,indent=2,allow_nan=False)+"\n",encoding="utf-8")
     return report
 

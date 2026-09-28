@@ -135,10 +135,10 @@ __device__ __forceinline__ void arrive(uint64_t* bar) {
     );
 }
 
-template<uint32_t CTA_Q, uint32_t CTA_K, uint32_t NUM_THREADS, uint32_t head_dim, QuantGranularity Q_GRAN, QuantGranularity K_GRAN, typename DTypeOut, MaskMode mask_mode = MaskMode::kNone, bool return_lse = false, bool fuse_v_scale=false, bool ExpCast=false, bool BlockValues=false, bool Optimized=false, bool ChannelScale=false, bool PackedProbability=false>
-__global__ void sage_vc_attention_kernel(const __grid_constant__ CUtensorMap tensorMapQ,
-                                        const __grid_constant__ CUtensorMap tensorMapK,
-                                        const __grid_constant__ CUtensorMap tensorMapV,
+template<uint32_t CTA_Q, uint32_t CTA_K, uint32_t NUM_THREADS, uint32_t head_dim, QuantGranularity Q_GRAN, QuantGranularity K_GRAN, typename DTypeOut, MaskMode mask_mode = MaskMode::kNone, bool return_lse = false, bool fuse_v_scale=false, bool ExpCast=false, bool BlockValues=false, bool Optimized=false, bool ChannelScale=false, bool PackedProbability=false, bool CompactValues=false>
+__device__ __forceinline__ void sage_vc_attention_body(const CUtensorMap& tensorMapQ,
+                                        const CUtensorMap& tensorMapK,
+                                        const CUtensorMap& tensorMapV,
                                         float *__restrict__ Q_scale, float *__restrict__ K_scale, float *__restrict__ V_scale, const half* __restrict__ V_mean,
                                         DTypeOut* O, float *__restrict__ Lse, uint32_t stride_bz_o, uint32_t stride_h_o, uint32_t stride_seq_o,
                                         const uint32_t qo_len, const uint32_t kv_len, const uint32_t num_kv_groups,
@@ -148,6 +148,7 @@ __global__ void sage_vc_attention_kernel(const __grid_constant__ CUtensorMap ten
   asm volatile("trap;");
 #else
   static_assert(NUM_THREADS == 128);
+  static_assert(!CompactValues || (head_dim == 128 && BlockValues && Optimized && ChannelScale));
   static_assert(CTA_Q <= CTA_K);
 
   const uint32_t warp_idx = (threadIdx.x % 128) / 32;
@@ -327,35 +328,43 @@ __global__ void sage_vc_attention_kernel(const __grid_constant__ CUtensorMap ten
     // wait for V
     wait(&barrier_V, p);
 
-    float RO_temp[num_tiles_q][num_tiles_v][8];
-    // Keep Sage's two-level FP32 accumulation: FP8 WGMMA must not
-    // repeatedly round the long-lived output history or mean compensation.
-    wgmma::warpgroup_arrive();
-#pragma unroll
-    for (uint32_t fq = 0; fq < num_tiles_q; fq++)
-    {
-      wgmma::wgmma_f8f8f32<head_dim, 0, CTA_K>(RO_temp[fq], RS_f8[fq][0], &sV[0]);
-#pragma unroll
-      for (uint32_t v_it = 1; v_it < num_tiles_pv_inner; v_it++)
+    // D128 channel smoothing: consume one 64-channel PV fragment at a time.
+    // This halves the short-lived WGMMA accumulator, retaining the full FP32
+    // output history and the original four K32 operations per output element.
+    constexpr uint32_t pv_parts = CompactValues ? 2 : 1;
+    #pragma unroll
+    for (uint32_t part = 0; part < pv_parts; ++part) {
+      float RO_temp[num_tiles_q][num_tiles_v / pv_parts][8];
+      // Keep Sage's two-level FP32 accumulation: FP8 WGMMA must not
+      // repeatedly round the long-lived output history or mean compensation.
+      wgmma::warpgroup_arrive();
+  #pragma unroll
+      for (uint32_t fq = 0; fq < num_tiles_q; fq++)
       {
-        wgmma::wgmma_f8f8f32<head_dim, 1, CTA_K>(RO_temp[fq], RS_f8[fq][v_it], &sV[v_it * 32]);
+        wgmma::wgmma_f8f8f32<head_dim / pv_parts, 0, CTA_K>(RO_temp[fq], RS_f8[fq][0], &sV[part * (head_dim / pv_parts) * CTA_K]);
+  #pragma unroll
+        for (uint32_t v_it = 1; v_it < num_tiles_pv_inner; v_it++)
+        {
+          wgmma::wgmma_f8f8f32<head_dim / pv_parts, 1, CTA_K>(RO_temp[fq], RS_f8[fq][v_it], &sV[part * (head_dim / pv_parts) * CTA_K + v_it * 32]);
+        }
       }
+
+      wgmma::warpgroup_commit_batch();
+      wgmma::warpgroup_wait<0>();
+
+      // Start the next V transfer only after the last fragment has finished
+      // reading sV. Overlap that transfer with the remaining mean restoration.
+      // per-block mean/scale restoration, which only touches registers/global
+      // metadata. Keep the existing barrier/phase for the next iteration.
+      if (threadIdx.x == 0 && part + 1 == pv_parts)
+      {
+        expect_bytes<(CTA_K * head_dim) * sizeof(int8_t)>(&barrier_V);
+        load_async_4D(sV, &tensorMapV, &barrier_V, iter * CTA_K, 0, kv_head_id, batch_id);
+      }
+
+      vc_accumulate<BlockValues, Optimized, ChannelScale, CompactValues>(RO, RO_temp, tile_mass, V_scale, V_mean,
+          batch_id * num_qo_heads + head_id, iter - 1, div_ceil(kv_len, CTA_K), head_dim, lane_id, part * (num_tiles_v / pv_parts));
     }
-
-    wgmma::warpgroup_commit_batch();
-    wgmma::warpgroup_wait<0>();
-
-    // PV has finished reading sV. Start the next TMA transfer before the
-    // per-block mean/scale restoration, which only touches registers/global
-    // metadata. Keep the existing barrier/phase for the next iteration.
-    if (threadIdx.x == 0)
-    {
-      expect_bytes<(CTA_K * head_dim) * sizeof(int8_t)>(&barrier_V);
-      load_async_4D(sV, &tensorMapV, &barrier_V, iter * CTA_K, 0, kv_head_id, batch_id);
-    }
-
-    vc_accumulate<BlockValues, Optimized, ChannelScale>(RO, RO_temp, tile_mass, V_scale, V_mean,
-        batch_id * num_qo_heads + head_id, iter - 1, div_ceil(kv_len, CTA_K), head_dim, lane_id);
   }
 
   {
@@ -438,26 +447,33 @@ __global__ void sage_vc_attention_kernel(const __grid_constant__ CUtensorMap ten
     // wait for V
     wait(&barrier_V, p);
 
-    float RO_temp[num_tiles_q][num_tiles_v][8];
-    // Keep Sage's two-level FP32 accumulation: FP8 WGMMA must not
-    // repeatedly round the long-lived output history or mean compensation.
-    wgmma::warpgroup_arrive();
-#pragma unroll
-    for (uint32_t fq = 0; fq < num_tiles_q; fq++)
-    {
-      wgmma::wgmma_f8f8f32<head_dim, 0, CTA_K>(RO_temp[fq], RS_f8[fq][0], &sV[0]);
-#pragma unroll
-      for (uint32_t v_it = 1; v_it < num_tiles_pv_inner; v_it++)
+    // D128 channel smoothing: consume one 64-channel PV fragment at a time.
+    // This halves the short-lived WGMMA accumulator, retaining the full FP32
+    // output history and the original four K32 operations per output element.
+    constexpr uint32_t pv_parts = CompactValues ? 2 : 1;
+    #pragma unroll
+    for (uint32_t part = 0; part < pv_parts; ++part) {
+      float RO_temp[num_tiles_q][num_tiles_v / pv_parts][8];
+      // Keep Sage's two-level FP32 accumulation: FP8 WGMMA must not
+      // repeatedly round the long-lived output history or mean compensation.
+      wgmma::warpgroup_arrive();
+  #pragma unroll
+      for (uint32_t fq = 0; fq < num_tiles_q; fq++)
       {
-        wgmma::wgmma_f8f8f32<head_dim, 1, CTA_K>(RO_temp[fq], RS_f8[fq][v_it], &sV[v_it * 32]);
+        wgmma::wgmma_f8f8f32<head_dim / pv_parts, 0, CTA_K>(RO_temp[fq], RS_f8[fq][0], &sV[part * (head_dim / pv_parts) * CTA_K]);
+  #pragma unroll
+        for (uint32_t v_it = 1; v_it < num_tiles_pv_inner; v_it++)
+        {
+          wgmma::wgmma_f8f8f32<head_dim / pv_parts, 1, CTA_K>(RO_temp[fq], RS_f8[fq][v_it], &sV[part * (head_dim / pv_parts) * CTA_K + v_it * 32]);
+        }
       }
+
+      wgmma::warpgroup_commit_batch();
+      wgmma::warpgroup_wait<0>();
+
+      vc_accumulate<BlockValues, Optimized, ChannelScale, CompactValues>(RO, RO_temp, tile_mass, V_scale, V_mean,
+          batch_id * num_qo_heads + head_id, num_iterations - 1, div_ceil(kv_len, CTA_K), head_dim, lane_id, part * (num_tiles_v / pv_parts));
     }
-
-    wgmma::warpgroup_commit_batch();
-    wgmma::warpgroup_wait<0>();
-
-    vc_accumulate<BlockValues, Optimized, ChannelScale>(RO, RO_temp, tile_mass, V_scale, V_mean,
-        batch_id * num_qo_heads + head_id, num_iterations - 1, div_ceil(kv_len, CTA_K), head_dim, lane_id);
   }
 
   normalize_d<num_tiles_q, num_tiles_v, ComputeUnit::kCudaCore>(RO, m, d);
@@ -541,10 +557,75 @@ __global__ void sage_vc_attention_kernel(const __grid_constant__ CUtensorMap ten
 }
 
 
+template<uint32_t CTA_Q, uint32_t CTA_K, uint32_t NUM_THREADS, uint32_t head_dim, QuantGranularity Q_GRAN, QuantGranularity K_GRAN, typename DTypeOut, MaskMode mask_mode = MaskMode::kNone, bool return_lse = false, bool fuse_v_scale=false, bool ExpCast=false, bool BlockValues=false, bool Optimized=false, bool ChannelScale=false, bool PackedProbability=false>
+__global__ void sage_vc_attention_kernel(const __grid_constant__ CUtensorMap tensorMapQ,
+                                        const __grid_constant__ CUtensorMap tensorMapK,
+                                        const __grid_constant__ CUtensorMap tensorMapV,
+                                        float *__restrict__ Q_scale, float *__restrict__ K_scale, float *__restrict__ V_scale, const half* __restrict__ V_mean,
+                                        DTypeOut* O, float *__restrict__ Lse, uint32_t stride_bz_o, uint32_t stride_h_o, uint32_t stride_seq_o,
+                                        const uint32_t qo_len, const uint32_t kv_len, const uint32_t num_kv_groups,
+                                        float sm_scale) {
+  sage_vc_attention_body<CTA_Q, CTA_K, NUM_THREADS, head_dim, Q_GRAN, K_GRAN, DTypeOut,
+      mask_mode, return_lse, fuse_v_scale, ExpCast, BlockValues, Optimized, ChannelScale, PackedProbability, false>(tensorMapQ, tensorMapK, tensorMapV, Q_scale, K_scale, V_scale, V_mean,
+      O, Lse, stride_bz_o, stride_h_o, stride_seq_o, qo_len, kv_len, num_kv_groups, sm_scale);
+}
+
+// Separate entry keeps the register target off every vc7/reference kernel.
+// 168 registers at 128 threads permits three register-resident CTAs on SM90.
+// Actual speed and spills remain toolchain-dependent; compare against vc7.
+template<uint32_t CTA_Q, uint32_t CTA_K, uint32_t NUM_THREADS, uint32_t head_dim, QuantGranularity Q_GRAN, QuantGranularity K_GRAN, typename DTypeOut, MaskMode mask_mode = MaskMode::kNone, bool return_lse = false, bool fuse_v_scale=false, bool ExpCast=false, bool BlockValues=false, bool Optimized=false, bool ChannelScale=false, bool PackedProbability=false>
+__global__ __maxnreg__(168) void sage_vc_attention_kernel_compact(const __grid_constant__ CUtensorMap tensorMapQ,
+                                        const __grid_constant__ CUtensorMap tensorMapK,
+                                        const __grid_constant__ CUtensorMap tensorMapV,
+                                        float *__restrict__ Q_scale, float *__restrict__ K_scale, float *__restrict__ V_scale, const half* __restrict__ V_mean,
+                                        DTypeOut* O, float *__restrict__ Lse, uint32_t stride_bz_o, uint32_t stride_h_o, uint32_t stride_seq_o,
+                                        const uint32_t qo_len, const uint32_t kv_len, const uint32_t num_kv_groups,
+                                        float sm_scale) {
+  sage_vc_attention_body<CTA_Q, CTA_K, NUM_THREADS, head_dim, Q_GRAN, K_GRAN, DTypeOut,
+      mask_mode, return_lse, fuse_v_scale, ExpCast, BlockValues, Optimized, ChannelScale, PackedProbability, true>(tensorMapQ, tensorMapK, tensorMapV, Q_scale, K_scale, V_scale, V_mean,
+      O, Lse, stride_bz_o, stride_h_o, stride_seq_o, qo_len, kv_len, num_kv_groups, sm_scale);
+}
+
 } // namespace sage_vc
 
 namespace {
-template<int Dim, typename Out, bool ExpCast, bool BlockValues, bool Optimized, bool ChannelScale=false, bool PackedProbability=false>
+template<int Dim, typename Out, bool ExpCast, bool BlockValues, bool Optimized, bool ChannelScale, bool PackedProbability, bool CompactValues>
+auto select_vc_kernel() {
+  if constexpr (CompactValues)
+    return sage_vc::sage_vc_attention_kernel_compact<64, 128, 128, Dim,
+        QuantGranularity::kPerThread, QuantGranularity::kPerThread, Out, MaskMode::kNone, false, true,
+        ExpCast, BlockValues, Optimized, ChannelScale, PackedProbability>;
+  else
+    return sage_vc::sage_vc_attention_kernel<64, 128, 128, Dim,
+        QuantGranularity::kPerThread, QuantGranularity::kPerThread, Out, MaskMode::kNone, false, true,
+        ExpCast, BlockValues, Optimized, ChannelScale, PackedProbability>;
+}
+
+// Read compiled resources on the current Hopper device, outside timing.
+// Local memory includes stack/spill storage; it is not a measured traffic count.
+template<typename Out, bool ExpCast, bool CompactValues>
+std::map<std::string, int64_t> channel_resources() {
+  auto kernel = select_vc_kernel<128, Out, ExpCast, true, true, true, ExpCast, CompactValues>();
+  constexpr int dynamic_bytes = (64 + 128 + 128) * 128;
+  C10_CUDA_CHECK(cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, dynamic_bytes));
+  cudaFuncAttributes attr{};
+  C10_CUDA_CHECK(cudaFuncGetAttributes(&attr, kernel));
+  int active_blocks = 0;
+  C10_CUDA_CHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&active_blocks, kernel, 128, dynamic_bytes));
+  return {{"registers_per_thread", attr.numRegs}, {"local_bytes_per_thread", int64_t(attr.localSizeBytes)},
+          {"static_shared_bytes", int64_t(attr.sharedSizeBytes)}, {"dynamic_shared_bytes", dynamic_bytes},
+          {"threads_per_block", 128}, {"predicted_active_blocks_per_sm", active_blocks}};
+}
+
+template<typename Out>
+std::map<std::string, std::map<std::string, int64_t>> channel_resource_variants() {
+  return {{"smooth_vc7", channel_resources<Out, false, false>()},
+          {"smooth_optimized", channel_resources<Out, false, true>()},
+          {"full_vc7", channel_resources<Out, true, false>()},
+          {"full_optimized", channel_resources<Out, true, true>()}};
+}
+
+template<int Dim, typename Out, bool ExpCast, bool BlockValues, bool Optimized, bool ChannelScale=false, bool PackedProbability=false, bool CompactValues=false>
 void launch_vc(torch::Tensor q, torch::Tensor k, torch::Tensor v, torch::Tensor qs,
     torch::Tensor ks, torch::Tensor vs, torch::Tensor means, torch::Tensor out, float scale) {
   auto qm = sage_vc::create_tensor_map_4D<64, Dim>(reinterpret_cast<int8_t*>(q.data_ptr()),
@@ -553,8 +634,7 @@ void launch_vc(torch::Tensor q, torch::Tensor k, torch::Tensor v, torch::Tensor 
       k.size(0), k.size(1), k.size(2), Dim, k.stride(0), k.stride(1), k.stride(2));
   auto vm = sage_vc::create_tensor_map_4D<Dim, 128>(reinterpret_cast<int8_t*>(v.data_ptr()),
       v.size(0), v.size(1), Dim, v.size(3), v.stride(0), v.stride(1), v.stride(2));
-  auto kernel = sage_vc::sage_vc_attention_kernel<64, 128, 128, Dim,
-      QuantGranularity::kPerThread, QuantGranularity::kPerThread, Out, MaskMode::kNone, false, true, ExpCast, BlockValues, Optimized, ChannelScale, PackedProbability>;
+  auto kernel = select_vc_kernel<Dim, Out, ExpCast, BlockValues, Optimized, ChannelScale, PackedProbability, CompactValues>();
   constexpr int shared_bytes = (64 + 128 + 128) * Dim;
   C10_CUDA_CHECK(cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, shared_bytes));
   dim3 grid((q.size(2) + 63) / 64, q.size(1), q.size(0));
@@ -565,35 +645,35 @@ void launch_vc(torch::Tensor q, torch::Tensor k, torch::Tensor v, torch::Tensor 
       q.size(2), k.size(2), 1, scale);
   C10_CUDA_KERNEL_LAUNCH_CHECK();
 }
-template<int Dim, typename Out, bool Optimized, bool PackedProbability>
+template<int Dim, typename Out, bool Optimized, bool PackedProbability, bool CompactValues>
 void dispatch_vc(torch::Tensor q, torch::Tensor k, torch::Tensor v, torch::Tensor qs,
     torch::Tensor ks, torch::Tensor vs, torch::Tensor means, torch::Tensor out, float scale, bool cast, bool smooth) {
   if (smooth && vs.dim() == 3) {
-    if (cast) launch_vc<Dim, Out, true, true, Optimized, true, PackedProbability>(q,k,v,qs,ks,vs,means,out,scale);
-    else launch_vc<Dim, Out, false, true, Optimized, true>(q,k,v,qs,ks,vs,means,out,scale);
+    if (cast) launch_vc<Dim, Out, true, true, Optimized, true, PackedProbability, (CompactValues && Dim == 128)>(q,k,v,qs,ks,vs,means,out,scale);
+    else launch_vc<Dim, Out, false, true, Optimized, true, false, (CompactValues && Dim == 128)>(q,k,v,qs,ks,vs,means,out,scale);
   }
   else if (cast && smooth) launch_vc<Dim, Out, true, true, Optimized, false, PackedProbability>(q,k,v,qs,ks,vs,means,out,scale);
   else if (cast) launch_vc<Dim, Out, true, false, Optimized, false, PackedProbability>(q,k,v,qs,ks,vs,means,out,scale);
   else if (smooth) launch_vc<Dim, Out, false, true, Optimized>(q,k,v,qs,ks,vs,means,out,scale);
   else launch_vc<Dim, Out, false, false, false>(q,k,v,qs,ks,vs,means,out,scale);
 }
-template<bool Optimized, bool PackedProbability=false>
+template<bool Optimized, bool PackedProbability=false, bool CompactValues=false>
 void dispatch_output(torch::Tensor q, torch::Tensor k, torch::Tensor v, torch::Tensor qs,
     torch::Tensor ks, torch::Tensor vs, torch::Tensor means, torch::Tensor out, float scale,
     int64_t output_type, bool cast, bool smooth) {
   if (q.size(3) == 64) {
-    if (output_type == 0) dispatch_vc<64, half, Optimized, PackedProbability>(q,k,v,qs,ks,vs,means,out,scale,cast,smooth);
-    else dispatch_vc<64, nv_bfloat16, Optimized, PackedProbability>(q,k,v,qs,ks,vs,means,out,scale,cast,smooth);
+    if (output_type == 0) dispatch_vc<64, half, Optimized, PackedProbability, CompactValues>(q,k,v,qs,ks,vs,means,out,scale,cast,smooth);
+    else dispatch_vc<64, nv_bfloat16, Optimized, PackedProbability, CompactValues>(q,k,v,qs,ks,vs,means,out,scale,cast,smooth);
   } else {
-    if (output_type == 0) dispatch_vc<128, half, Optimized, PackedProbability>(q,k,v,qs,ks,vs,means,out,scale,cast,smooth);
-    else dispatch_vc<128, nv_bfloat16, Optimized, PackedProbability>(q,k,v,qs,ks,vs,means,out,scale,cast,smooth);
+    if (output_type == 0) dispatch_vc<128, half, Optimized, PackedProbability, CompactValues>(q,k,v,qs,ks,vs,means,out,scale,cast,smooth);
+    else dispatch_vc<128, nv_bfloat16, Optimized, PackedProbability, CompactValues>(q,k,v,qs,ks,vs,means,out,scale,cast,smooth);
   }
 }
 }
 
 torch::Tensor vc_forward(torch::Tensor q, torch::Tensor k, torch::Tensor v,
     torch::Tensor qs, torch::Tensor ks, torch::Tensor vs, torch::Tensor means,
-    bool expcast, bool block_values, int64_t output_type, double scale, bool optimized, bool packed_probability) {
+    bool expcast, bool block_values, int64_t output_type, double scale, bool optimized, bool packed_probability, bool compact_values) {
   TORCH_CHECK(q.is_cuda() && q.dim() == 4 && q.numel() > 0, "Q requires nonempty CUDA BHND");
   for (const auto& x : {q,k,v,qs,ks,vs,means})
     TORCH_CHECK(x.device() == q.device() && x.is_contiguous(), "Payloads must be contiguous on the same CUDA device");
@@ -625,8 +705,19 @@ torch::Tensor vc_forward(torch::Tensor q, torch::Tensor k, torch::Tensor v,
   C10_CUDA_CHECK(cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, q.get_device()));
   TORCH_CHECK(major == 9 && minor == 0, "Sage VC native attention requires Hopper; no fallback");
   auto out = torch::empty(q.sizes(), q.options().dtype(output_type == 0 ? at::kHalf : at::kBFloat16));
-  if (optimized && packed_probability) dispatch_output<true, true>(q,k,v,qs,ks,vs,means,out,scale,output_type,expcast,block_values);
+  if (optimized && packed_probability && compact_values) dispatch_output<true, true, true>(q,k,v,qs,ks,vs,means,out,scale,output_type,expcast,block_values);
+  else if (optimized && packed_probability) dispatch_output<true, true>(q,k,v,qs,ks,vs,means,out,scale,output_type,expcast,block_values);
   else if (optimized) dispatch_output<true>(q,k,v,qs,ks,vs,means,out,scale,output_type,expcast,block_values);
   else dispatch_output<false>(q,k,v,qs,ks,vs,means,out,scale,output_type,expcast,block_values);
   return out;
+}
+
+std::map<std::string, std::map<std::string, int64_t>> vc_kernel_resources(int64_t output_type) {
+  TORCH_CHECK(output_type == 0 || output_type == 1, "Output type must be 0 (FP16) or 1 (BF16)");
+  int device, major, minor;
+  C10_CUDA_CHECK(cudaGetDevice(&device));
+  C10_CUDA_CHECK(cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, device));
+  C10_CUDA_CHECK(cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, device));
+  TORCH_CHECK(major == 9 && minor == 0, "Compiled attention resource query requires Hopper");
+  return output_type == 0 ? channel_resource_variants<half>() : channel_resource_variants<nv_bfloat16>();
 }

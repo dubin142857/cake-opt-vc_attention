@@ -1,0 +1,77 @@
+{
+  "scope": "Local CUDA helpers/preprocessing and Hopper cross-compilation; NOT full Hopper attention or a speed measurement",
+  "package": "sageattention-local==2.2.0+vc8",
+  "native_kernel_version": 6,
+  "environment": {
+    "os": "Windows",
+    "gpu": "NVIDIA GeForce RTX 3060 Laptop GPU",
+    "python": "3.10.16",
+    "torch": "2.3.1+cu121",
+    "nvcc": "12.4"
+  },
+  "tests": {
+    "passed": 182,
+    "files": [
+      "tests/test_sage_vc_preprocess_cuda.py",
+      "tests/test_sage_vc_tile_cuda.py",
+      "tests/test_sage_vc.py",
+      "tests/test_sage_local_source.py",
+      "tests/test_benchmark.py",
+      "tests/test_profile_sage_vc.py"
+    ],
+    "legacy_helper_golden_cases_exact": 16,
+    "compact_mean_extreme_half_metadata_cases_exact": 8,
+    "compact_mean_continuous_online_tiles_exact": 64,
+    "fragment_output_offsets_tested": [
+      0,
+      64
+    ],
+    "native_value_preprocessing_cases": 64,
+    "memcheck_errors": 0,
+    "python_syntax": "passed",
+    "source_provenance": "49 upstream/integration files and 8 experiment files verified"
+  },
+  "cross_compile": {
+    "target": "sm_90a",
+    "attention_variants": 60,
+    "linked": true,
+    "legacy_sass_instruction_streams_identical": 56,
+    "legacy_attention_variants": 56,
+    "d128_bf16": {
+      "vc7_smooth": {
+        "registers": 208,
+        "stack_bytes": 0,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      },
+      "optimized_smooth": {
+        "registers": 168,
+        "stack_bytes": 0,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      },
+      "vc7_full": {
+        "registers": 208,
+        "stack_bytes": 0,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      },
+      "optimized_full": {
+        "registers": 168,
+        "stack_bytes": 8,
+        "spill_store_bytes": 8,
+        "spill_load_bytes": 8
+      }
+    },
+    "sass_findings": [
+      "All 56 legacy kernel SASS instruction streams identical to vc7 local record",
+      "New D128/channel kernels use two N64 PV fragments inside the same attention kernel",
+      "Two-level FP32 accumulation and K32 reduction order per output element retained",
+      "Smooth has no local loads/stores; full has two 32-bit stores and two loads in the final output region, none in the repeated key loop"
+    ],
+    "note": "168-register target trades smaller PV temporaries for more WGMMA issue/wait operations. Eight-byte full-path tail spill is not a hot-loop spill under this compiler. CUDA 13 resource query and same-payload timing are required."
+  },
+  "hopper_attention_validation": "pending_remote: 144 cases with optimized/vc7, optimized/vc6 and optimized/vc4 comparisons",
+  "hopper_latency_ms": null,
+  "model_quality_validation": "not_run"
+}

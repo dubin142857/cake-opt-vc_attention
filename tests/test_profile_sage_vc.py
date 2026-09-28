@@ -246,6 +246,43 @@ def test_vc7_comparison_selects_vc6_and_keeps_explicit_vc4_available(monkeypatch
     with pytest.raises(SystemExit): profile.parse_args(["--kernel-baseline","vc6"])
 
 
+def test_vc8_comparison_uses_vc7_identical_payload_and_rejects_stale_native(monkeypatch):
+    seen = []
+    def forward(state, *, kernel_mode):
+        seen.append((state, kernel_mode))
+        return state[kernel_mode]
+    ops = SimpleNamespace(ext=SimpleNamespace(sage_vc_kernel_version=6),
+                          vc=SimpleNamespace(forward_prepared=forward))
+    args = profile.parse_args(["--compare-kernels", "--warmup", "1", "--trials", "2", "--repeats", "1"])
+    assert profile.kernel_baseline(ops,args) == "vc7"
+    monkeypatch.setattr(profile,"measure_trial",lambda call,repeats,device:(call(),1.))
+    monkeypatch.setattr(profile.torch.cuda,"synchronize",lambda *_:None)
+    state = {mode:torch.randn(1,1,7,4) for mode in ("vc7","optimized")}
+    state["optimized"] = state["vc7"].clone()
+    report = profile.compare_kernels(ops,{"test":state},args,"cpu")
+    assert report["baseline_mode"] == "vc7"
+    assert report["variants"]["test"]["output_difference"]["exact_match"]
+    assert set(mode for _,mode in seen) == {"vc7","optimized"}
+    assert all(payload is state for payload,_ in seen)
+    args.kernel_baseline = "vc7"
+    ops.ext.sage_vc_kernel_version = 5
+    with pytest.raises(RuntimeError,match="needs vc8"):
+        profile.kernel_baseline(ops,args)
+
+
+def test_trace_keeps_resource_metadata_and_marks_missing_values():
+    event = {"ph":"X", "cat":"kernel", "name":"sage_vc_attention_kernel_compact", "dur":2500,
+             "args":{"registers per thread":168,"shared memory":41088,"block":[128,1,1],
+                     "grid":[590,28,1],"est. achieved occupancy %":19}}
+    result = profile.trace_summary([event])
+    resource = result["core_resources"][0]
+    assert resource["duration_ms"] == 2.5
+    assert resource["registers per thread"] == 168
+    assert resource["est. achieved occupancy %"] == 19
+    result = profile.trace_summary([{**event,"args":{}}])
+    assert result["core_resources"][0]["registers per thread"] is None
+
+
 def test_payload_parity_checks_used_scales_and_bytes_but_ignores_unused_padding():
     qkv = [torch.randn(1,1,1,64).half() for _ in range(3)]
     state = profile.staged_prepare(*qkv,fake_ops(),Recorder(),expcast=False,smooth=False)

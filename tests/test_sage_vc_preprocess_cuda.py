@@ -18,6 +18,26 @@ def load(name,path):
 oracle = load("vc_preprocess_oracle",ROOT / "third_party/sageattention_local/sageattention_local/vc_reference.py")
 
 
+def test_compiled_resource_query_validates_dtype_and_device():
+    # The local MSVC/PyTorch 2.3 cross-build can translate c10 errors without
+    # their message (also true of existing guards); require the exception type.
+    with pytest.raises(RuntimeError):
+        ext.kernel_resources(2)
+    if torch.cuda.get_device_capability() != (9,0):
+        with pytest.raises(RuntimeError):
+            ext.kernel_resources(1)
+        return
+    for output_type in (0,1):
+        resources = ext.kernel_resources(output_type)
+        assert set(resources) == {"smooth_vc7","full_vc7","smooth_optimized","full_optimized"}
+        for name, row in resources.items():
+            assert row["dynamic_shared_bytes"] == 40960
+            assert row["threads_per_block"] == 128
+            assert row["predicted_active_blocks_per_sm"] > 0
+            if "optimized" in name:
+                assert row["registers_per_thread"] <= 168
+
+
 def test_both_native_value_quantizers_against_independent_statistics():
     validator = load("vc_preprocess_validator",ROOT / "scripts/validate_sage_vc.py")
     result = validator.validate_preprocessing(ext,oracle)

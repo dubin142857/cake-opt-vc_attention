@@ -8,7 +8,7 @@
 #include "../../third_party/sageattention_local/csrc/qattn/attn_utils.cuh"
 #include "../../third_party/sageattention_local/csrc/vc/vc_math.cuh"
 
-template<bool Optimized, bool ChannelScale=false, bool PackedProbability=false>
+template<bool Optimized, bool ChannelScale=false, bool PackedProbability=false, bool StreamMean=false>
 __global__ void probe(const float* scores, const float* prev_out, const float* product,
     const float* prev_max, const float* prev_d, const float* scale, const half* mean,
     uint8_t* bytes, float* output, float* maximum, float* denom, bool mixed_scales) {
@@ -29,7 +29,17 @@ __global__ void probe(const float* scores, const float* prev_out, const float* p
   float score_scale = mixed_scales ? 0.137f * (1 + lane % 4) : 0.25f;
   vc_probability<true, true, Optimized, PackedProbability>(s,o,m,d,score_scale,packed,mass);
   if constexpr (ChannelScale && Optimized) {
-    vc_accumulate<true, true, true>(o,pv,mass,scale,mean,0,0,1,128,lane);
+    if constexpr (StreamMean) {
+      #pragma unroll
+      for (int part = 0; part < 2; ++part) {
+        float half_pv[1][4][8];
+        #pragma unroll
+        for (int t = 0; t < 4; ++t)
+          #pragma unroll
+          for (int j = 0; j < 8; ++j) half_pv[0][t][j] = pv[0][part*4+t][j];
+        vc_accumulate<true, true, true, true>(o,half_pv,mass,scale,mean,0,0,1,128,lane,part*4);
+      }
+    } else vc_accumulate<true, true, true>(o,pv,mass,scale,mean,0,0,1,128,lane);
     for (int t = 0; t < 8; ++t)
       for (int j = 0; j < 8; ++j) {
         int column = t * 16 + (lane % 4) * 2 + (j / 4) * 8 + j % 2;
@@ -58,7 +68,7 @@ __global__ void probe(const float* scores, const float* prev_out, const float* p
 
 std::vector<torch::Tensor> run(torch::Tensor scores, torch::Tensor out, torch::Tensor product,
     torch::Tensor m, torch::Tensor d, torch::Tensor scale, torch::Tensor mean,
-    bool optimized, bool mixed_scales, bool channel_scale, bool packed_probability) {
+    bool optimized, bool mixed_scales, bool channel_scale, bool packed_probability, bool stream_mean) {
   TORCH_CHECK(scores.is_cuda() && scores.sizes() == at::IntArrayRef({64,128}), "Probe shape");
   auto bytes = torch::empty_like(scores,scores.options().dtype(at::kByte));
   auto output = torch::empty_like(out), maximum = torch::empty_like(m), denom = torch::empty_like(d);
@@ -66,6 +76,7 @@ std::vector<torch::Tensor> run(torch::Tensor scores, torch::Tensor out, torch::T
       : (optimized ? probe<true> : probe<false>);
   if (packed_probability) kernel = channel_scale ? (optimized ? probe<true,true,true> : probe<false,true,true>)
       : (optimized ? probe<true,false,true> : probe<false,false,true>);
+  if (stream_mean && optimized && channel_scale) kernel = packed_probability ? probe<true,true,true,true> : probe<true,true,false,true>;
   kernel<<<1,128,0,c10::cuda::getCurrentCUDAStream().stream()>>>(scores.data_ptr<float>(),out.data_ptr<float>(),
       product.data_ptr<float>(),m.data_ptr<float>(),d.data_ptr<float>(),scale.data_ptr<float>(),
       reinterpret_cast<half*>(mean.data_ptr()),bytes.data_ptr<uint8_t>(),output.data_ptr<float>(),
@@ -101,6 +112,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME,m) {
   m.def("run",&run,pybind11::arg("scores"),pybind11::arg("out"),pybind11::arg("product"),
       pybind11::arg("m"),pybind11::arg("d"),pybind11::arg("scale"),pybind11::arg("mean"),
       pybind11::arg("optimized")=false,pybind11::arg("mixed_scales")=false,
-      pybind11::arg("channel_scale")=false,pybind11::arg("packed_probability")=false);
+      pybind11::arg("channel_scale")=false,pybind11::arg("packed_probability")=false,pybind11::arg("stream_mean")=false);
   m.def("run_helpers",&run_helpers,pybind11::arg("shifted"),pybind11::arg("codes"),pybind11::arg("packed_probability")=false);
 }

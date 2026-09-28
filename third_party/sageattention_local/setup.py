@@ -19,13 +19,13 @@ if "sdist" not in sys.argv:
     from torch.utils.cpp_extension import BuildExtension, CUDAExtension, CUDA_HOME
 
     if CUDA_HOME is None or torch.version.cuda is None:
-        raise RuntimeError("CUDA-enabled PyTorch and nvcc >=12.3 are required; build on the H200 host.")
+        raise RuntimeError("CUDA-enabled PyTorch and nvcc >=12.4 are required; build on the H200 host.")
     if not hasattr(torch.library, "custom_op"):
         raise RuntimeError("This pinned SageAttention wrapper requires torch.library.custom_op (PyTorch >=2.4).")
     nvcc = str(Path(CUDA_HOME) / "bin" / ("nvcc.exe" if sys.platform == "win32" else "nvcc"))
     version = re.search(r"release (\d+)\.(\d+)", subprocess.check_output([nvcc, "--version"], text=True))
-    if not version or tuple(map(int, version.groups())) < (12, 3):
-        raise RuntimeError("Hopper SageAttention requires nvcc >=12.3")
+    if not version or tuple(map(int, version.groups())) < (12, 4):
+        raise RuntimeError("Hopper SageAttention requires nvcc >=12.4")
     # Explicit target makes cross-compilation independent of the build host GPU.
     os.environ["TORCH_CUDA_ARCH_LIST"] = "9.0a"
     threads = int(os.environ.get("SAGE_LOCAL_NVCC_THREADS", "2"))
@@ -50,7 +50,7 @@ if "sdist" not in sys.argv:
     commands = {"build_ext": BuildExtension}
 
 setup(
-    name="sageattention-local", version="2.2.0+vc7",
+    name="sageattention-local", version="2.2.0+vc8",
     description="Independent Hopper source build of SageAttention v2.2.0 for comparison",
     author="SageAttention team (upstream); local build integration in vc-attention",
     url="https://github.com/thu-ml/SageAttention",

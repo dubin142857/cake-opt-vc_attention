@@ -199,3 +199,34 @@ vc6/optimized 共用同一对象的 Q/K/V、尺度、块均值与排列，量化
 主表 full API 包含全部预处理；同量化数据表只测原生 API，不能称作端到端加速。
 无需再次运行 `--compare-v-scales` 来定位本次改动；此选项仍可对照 V 量化粒度，
 但两组默认都用 vc7 概率路径。
+
+## vc8：D128 平滑路径的寄存器与 PV 临时缓冲
+
+用户 vc7 trace（单次诊断）：control/ExpCast/smooth/full 主内核为
+23.7116/27.5053/30.7571/32.9326 ms，寄存器为 168/168/208/209，
+共享内存均为 41088 字节。估计 occupancy 为 19/19/13/13%。
+这支持检查平滑路径的寄存器限制，但不证明所有额外耗时都来自 occupancy。
+
+vc8 新路径见 [SAGE_VC.md](SAGE_VC.md)。在两个 N64 fragment 之间保持完整输出历史；
+每个 fragment 的 PV 仍使用临时 FP32 累加器，等待 WGMMA 完成后再恢复均值。
+关平滑、D64、block V scale 均复用 vc7 内核作为控制。
+
+```bash
+git pull --ff-only origin master
+bash scripts/build_sage_local.sh
+python3 scripts/profile_sage_vc.py --compare-kernels --kernel-baseline vc7 --trials 5 --repeats 10 --trace-dir results/h200_sage_vc8_traces --output results/h200_sage_vc8_profile.json
+```
+
+构建脚本的 144 组 attention 检查增加 optimized/vc7 的全输出对照。
+profile 的比较表也检查全部输出，门槛为 0.1% relative RMSE；不改变模型质量标准。
+默认比较基线在 vc8 上为 vc7，显式指定 vc7 可在开始长序列计算前拒绝旧安装。
+
+trace 汇总现在保留并打印主内核的寄存器、共享内存、grid/block 和估计 occupancy。
+缺失字段显示 None，不能当成零。估计 occupancy 不是硬件实测 GPU 利用率。
+本地 CUDA 12.4 下新路径为 168 寄存器；全开末尾输出阶段存在 8 字节 spill，
+主循环未见 spill。远端需同时观察新旧耗时与编译资源，不能仅凭 19% occupancy 判定成功。
+本次没有更改聚类预处理，预处理时间仍计入完整 API。
+
+此外，D128 运行的环境信息包含 `compiled_d128_channel_resources`，由 CUDA runtime
+查询当前 dtype 的新旧平滑/全开入口，给出寄存器、local memory 和预测驻留块数。
+这是静态资源查询，排除在计时外；local memory 包含 stack/spill，不能解释为实测内存流量。
