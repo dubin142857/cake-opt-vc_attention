@@ -4,8 +4,8 @@
   "commit": "eb615cf6cf4d221338033340ee2de1c37fbdba4a",
   "license": "Apache-2.0",
   "local_distribution": "sageattention-local",
-  "local_version": "2.2.0+vc1",
-  "scope": "Upstream CUDA/C++ and Triton sources unchanged; isolated Python/Torch namespace and fixed SM90 fake-function name collision. New Hopper-only build configuration.",
+  "local_version": "2.2.0+vc2",
+  "scope": "Upstream CUDA/C++ kernel bodies and Triton sources unchanged. Build-only removal of unused CUDAContext.h in fused.cu; isolated Python/Torch namespace and fixed SM90 fake-function name collision. Hopper-only build configuration.",
   "files": [
     {
       "upstream_path": "LICENSE",
@@ -46,8 +46,9 @@
       "upstream_path": "csrc/fused/fused.cu",
       "local_path": "csrc/fused/fused.cu",
       "upstream_sha256": "71edcb594551dfba46f4c07b7ff6e04ac5779917040b1ddb76a155582aa09d99",
-      "local_sha256": "71edcb594551dfba46f4c07b7ff6e04ac5779917040b1ddb76a155582aa09d99",
-      "modified": false
+      "local_sha256": "0ac626ea6050ad4756dbb990e851206468ef9beb475734ac7e7a08024f801fad",
+      "modified": true,
+      "modification": "Remove unused ATen/cuda/CUDAContext.h include; no kernel body changes."
     },
     {
       "upstream_path": "csrc/fused/fused.h",

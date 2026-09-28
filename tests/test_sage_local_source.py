@@ -1,5 +1,6 @@
 """Packaging and entrypoint regressions; Hopper execution uses validate_sage_local.py."""
 import importlib.util
+import hashlib
 import json
 from pathlib import Path
 import shutil
@@ -24,12 +25,30 @@ def test_vendored_kernels_match_pinned_sources_and_detect_edits(tmp_path):
     result = verifier.verify(VENDOR)
     assert result["verified_files"] == 49
     assert result["unchanged_kernel_files"] > 20
+    assert result["build_only_patches"] == ["csrc/fused/fused.cu"]
     copy = tmp_path / "source"
     shutil.copytree(VENDOR, copy, ignore=shutil.ignore_patterns("build", "*.egg-info", "__pycache__"))
     target = copy / "csrc/qattn/qk_int_sv_f8_cuda_sm90.cu"
     with target.open("a", encoding="utf-8") as file:
         file.write("\n// changed\n")
     with pytest.raises(RuntimeError, match="Source hash mismatch"):
+        verifier.verify(copy)
+
+
+def test_include_patch_cannot_hide_kernel_body_edits(tmp_path):
+    verifier = load_file("verify_sage_local_source", ROOT / "scripts/verify_sage_local_source.py")
+    copy = tmp_path / "source"
+    shutil.copytree(VENDOR, copy, ignore=shutil.ignore_patterns("build", "*.egg-info", "__pycache__"))
+    target = copy / "csrc/fused/fused.cu"
+    data = target.read_bytes().replace(b"\r\n", b"\n") + b"\n// unintended kernel edit\n"
+    target.write_bytes(data)
+    manifest = json.loads((copy / "UPSTREAM.json").read_text(encoding="utf-8"))
+    for row in manifest["files"]:
+        if row["local_path"] == "csrc/fused/fused.cu":
+            row["local_sha256"] = hashlib.sha256(data).hexdigest()
+    for path in (copy / "UPSTREAM.json", copy / "sageattention_local/UPSTREAM.json"):
+        path.write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(RuntimeError, match="Kernel body differs from upstream"):
         verifier.verify(copy)
 
 
@@ -80,4 +99,5 @@ def test_source_provenance_describes_rebuild_not_new_algorithm():
     assert {row["upstream_path"] for row in manifest["files"] if row["modified"]} == {
         "sageattention/__init__.py", "sageattention/sm80_compile.py",
         "sageattention/sm89_compile.py", "sageattention/sm90_compile.py",
+        "csrc/fused/fused.cu",
     }

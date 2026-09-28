@@ -67,12 +67,16 @@ Hopper 自动分派使用 `sageattn_qk_int8_pv_fp8_cuda_sm90`：
 - K 沿序列方向减均值；默认 Q/K 做 per-thread INT8 量化，预处理是原版 Triton。
 - QK 用 INT8 Tensor Core；Softmax 的权重 P 与按通道量化的 V 用 FP8 E4M3 PV。
 - PV 采用原版 `fp32+fp32` 分级累加。此 Hopper 默认路径不做 VC 的 V 聚类/ExpCast。
-- CUDA/C++ 和 Triton 内核源码保持原样，量化/attention 数学未改。
+- CUDA/C++ 内核计算代码和 Triton 源码保持原样，量化/attention 数学未改。
 
-本地修改只有：独立包名、Torch 算子注册命名空间、构建脚本和一个 Python 包装层修复。
+本地修改包括：独立包名、Torch 算子注册命名空间、构建脚本、一个 Python 包装层修复和一处头文件依赖修复。
 固定的上游标签在 `sm90_compile.py` 将第二个 fake implementation 定义为与真实 callable
 相同的 Python 名称；此处给 fake 函数加 `_fake_impl` 后缀，防止覆盖真实入口。
 这不意味着你的现有安装一定有此问题；你的既有精度结果应与本轮实测一起判断。
 原版 setup/manifest/README 留在 `upstream/` 方便审阅。
+
+`2.2.0+vc2` 去掉 `csrc/fused/fused.cu` 未使用的 `ATen/cuda/CUDAContext.h`，
+避免它间接引入 `cusparse.h` 等本内核不使用的库头文件。此修复不改变计算代码；
+来源校验会逆向还原该 include 并检查上游哈希，确保只有这处构建改动。
 
 本地验证范围与远端待验证项见仓库根目录 `SAGE_LOCAL.md`。

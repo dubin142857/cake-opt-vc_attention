@@ -22,5 +22,7 @@ def local_build_info():
         "extensions": {"qattn_sm90": _qattn_sm90.__file__, "fused": _fused.__file__},
         "torch_operator": "sageattention_local_sm90::qk_int8_sv_f8_accum_f32_fuse_v_scale_attn_inst_buf",
         "hopper_path": "Q/K per-thread INT8 (Triton), P/V FP8 (CUDA), fp32+fp32 accumulation",
-        "kernel_source_modified": False,
+        "kernel_source_modified": True,
+        "kernel_math_modified": False,
+        "build_only_patches": ["fused.cu: remove unused CUDAContext.h include"],
     }

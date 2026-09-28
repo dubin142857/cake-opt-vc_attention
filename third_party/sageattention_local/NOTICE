@@ -6,9 +6,10 @@ License: Apache License 2.0 (see LICENSE).
 
 Local integration in vc-attention:
 - Independent sageattention_local Python package and Torch operator namespaces.
-- Independent sageattention-local distribution, version 2.2.0+vc1.
+- Independent sageattention-local distribution, version 2.2.0+vc2.
 - Hopper-only build of the original _qattn_sm90 and _fused CUDA extensions.
 - Distinct name for the SM90 fake implementation, avoiding shadowing the CUDA callable.
+- Remove the unused CUDAContext.h include in fused.cu to avoid unnecessary cuSPARSE headers.
 - Build provenance, validation and same-process comparison scripts.
-CUDA/C++ and Triton kernel source content is unchanged.
+CUDA/C++ kernel bodies and Triton kernel source content are unchanged; the one CUDA include edit is recorded in UPSTREAM.json.
 This is a source rebuild with integration fixes, not a new attention algorithm.

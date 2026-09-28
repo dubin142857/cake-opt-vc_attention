@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include <ATen/cuda/CUDAContext.h>
+// Modified for vc-attention: omit unused CUDAContext.h (avoids cuSPARSE headers).
 #include <torch/extension.h>
 
 #include "../dispatch_utils.h"
