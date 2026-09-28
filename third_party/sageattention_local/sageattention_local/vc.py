@@ -1,0 +1,96 @@
+"""Sage INT8 QK + optional VC V grouping/smoothing and ExpCast.
+
+Dense noncausal MHA, D=64/128, eager inference on Hopper's default stream.
+Each call recomputes grouping; this entry has no denoising-step layout cache.
+"""
+import math
+import torch
+
+
+def _extension():
+    from . import _vc_sm90
+    if getattr(_vc_sm90, "sage_vc_api_version", None) != 1:
+        raise RuntimeError("Rebuild sageattention-local with bash scripts/build_sage_local.sh")
+    return _vc_sm90
+
+
+def sage_vc_build_info():
+    from .local_info import local_build_info
+    return {**local_build_info(), "vc_extension": _extension().__file__,
+            "kernel_math_modified": True,
+            "algorithm": "Sage per-thread INT8 QK + VC block V residual/mean + ExpCast",
+            "qk_hadamard": False, "v_block": 128, "mean_dtype": "float16",
+            "clustering": "8 clusters, 2 Lloyd iterations, stable order; fresh every call",
+            "paper_equivalent": False, "sage_vc_api_version": 1}
+
+
+def validate_inputs(q, k, v, tensor_layout, is_causal, return_lse, expcast, v_smooth, clusters, iterations):
+    if is_causal or return_lse:
+        raise ValueError("Sage VC supports noncausal forward without LSE only")
+    if tensor_layout not in ("HND", "NHD"):
+        raise ValueError("tensor_layout must be HND or NHD")
+    if not isinstance(expcast, bool) or not isinstance(v_smooth, bool):
+        raise ValueError("expcast and v_smooth must be bool")
+    if any(isinstance(x, bool) or not isinstance(x, int) for x in (clusters, iterations)) or not (1 <= clusters <= 256 and 1 <= iterations <= 100):
+        raise ValueError("Invalid clustering parameters")
+    if any(x.ndim != 4 or x.numel() == 0 for x in (q, k, v)):
+        raise ValueError("Expected nonempty four-dimensional Q/K/V")
+    if q.dtype not in (torch.float16, torch.bfloat16) or any(x.dtype != q.dtype or x.device != q.device for x in (k, v)):
+        raise ValueError("Q/K/V require matching FP16/BF16 dtype and device")
+    head_axis = 1 if tensor_layout == "HND" else 2
+    if k.shape != v.shape or q.shape[0] != k.shape[0] or q.shape[head_axis] != k.shape[head_axis] or q.shape[-1] != k.shape[-1]:
+        raise ValueError("Q/K/V batch/heads/dim must match; GQA is unsupported")
+    if q.shape[-1] not in (64, 128):
+        raise ValueError("Sage VC requires D=64/128")
+
+
+@torch.no_grad()
+def prepare(q, k, v, *, expcast=True, v_smooth=True, clusters=8, iterations=2, sm_scale=None):
+    """Private HND preparation, also returned to the independent diagnostic oracle."""
+    from .triton.quant_per_thread import per_thread_int8
+    from .quant import per_channel_fp8
+    ext = _extension()
+    permutation = None
+    if v_smooth:
+        permutation = ext.group_values(v, clusters, iterations)
+        k = k.gather(2, permutation.unsqueeze(-1).expand_as(k))
+        v = v.gather(2, permutation.unsqueeze(-1).expand_as(v))
+    # Keep Sage's K centering and INT8 quantizer, including its input-dtype subtraction.
+    km = k.mean(dim=2, keepdim=True)
+    q8, qs, k8, ks = per_thread_int8(q, k, km, BLKQ=64, WARPQ=16, BLKK=128, WARPK=128, tensor_layout="HND")
+    if v_smooth:
+        v8, vs, means = ext.prepare_values(v.contiguous())
+    else:
+        pad = (-v.shape[2]) % 128
+        if pad:
+            v = torch.cat((v, torch.zeros(v.shape[0], v.shape[1], pad, v.shape[3], device=v.device, dtype=v.dtype)), dim=2)
+        v8, vs, _ = per_channel_fp8(v, tensor_layout="HND", smooth_v=False)
+        means = torch.empty(0, device=v.device, dtype=torch.float16)
+    return {"q": q8, "k": k8, "v": v8, "qs": qs, "ks": ks, "vs": vs, "means": means,
+            "expcast": expcast, "block_values": v_smooth, "output_type": 0 if q.dtype == torch.float16 else 1,
+            "scale": q.shape[-1]**-0.5 if sm_scale is None else sm_scale, "permutation": permutation}
+
+
+def forward_prepared(state):
+    return _extension().forward(*(state[name] for name in ("q", "k", "v", "qs", "ks", "vs", "means",
+                                                          "expcast", "block_values", "output_type", "scale")))
+
+
+@torch.no_grad()
+def sageattn_vc(q, k, v, tensor_layout="HND", is_causal=False, sm_scale=None, return_lse=False,
+               *, expcast=True, v_smooth=True, clusters=8, iterations=2):
+    validate_inputs(q, k, v, tensor_layout, is_causal, return_lse, expcast, v_smooth, clusters, iterations)
+    if q.device.type != "cuda" or torch.cuda.get_device_capability(q.device) != (9, 0):
+        raise ValueError("Sage VC requires Hopper; no CPU/reference fallback")
+    if sm_scale is not None and (not math.isfinite(sm_scale) or not 0 < sm_scale <= 3.4028234663852886e38):
+        raise ValueError("sm_scale must be positive and finite FP32")
+    with torch.cuda.device(q.device):
+        # Upstream global-V preprocessing launches on the default stream.
+        if torch.cuda.current_stream(q.device) != torch.cuda.default_stream(q.device):
+            raise ValueError("Sage VC currently requires the default CUDA stream")
+        if tensor_layout == "NHD":
+            q, k, v = (x.transpose(1, 2) for x in (q, k, v))
+        q, k, v = (x.contiguous() for x in (q, k, v))
+        state = prepare(q, k, v, expcast=expcast, v_smooth=v_smooth, clusters=clusters, iterations=iterations, sm_scale=sm_scale)
+        output = forward_prepared(state)
+        return output.transpose(1, 2).contiguous() if tensor_layout == "NHD" else output

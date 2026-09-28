@@ -26,6 +26,7 @@ def test_vendored_kernels_match_pinned_sources_and_detect_edits(tmp_path):
     assert result["verified_files"] == 49
     assert result["unchanged_kernel_files"] > 20
     assert result["build_only_patches"] == ["csrc/fused/fused.cu"]
+    assert result["verified_experiment_files"] == 8
     copy = tmp_path / "source"
     shutil.copytree(VENDOR, copy, ignore=shutil.ignore_patterns("build", "*.egg-info", "__pycache__"))
     target = copy / "csrc/qattn/qk_int_sv_f8_cuda_sm90.cu"
@@ -92,12 +93,25 @@ def test_sm90_fake_registration_does_not_shadow_native_entry_or_original_namespa
     assert calls == [arguments]
 
 
-def test_source_provenance_describes_rebuild_not_new_algorithm():
+def test_source_provenance_separates_baseline_and_vc_derivative():
     manifest = json.loads((VENDOR / "UPSTREAM.json").read_text(encoding="utf-8"))
     assert manifest["commit"] == "eb615cf6cf4d221338033340ee2de1c37fbdba4a"
     assert manifest["local_distribution"] == "sageattention-local"
+    assert manifest["local_version"] == "2.2.0+vc3"
+    kernel = next(row for row in manifest["experiment_files"] if row["local_path"] == "csrc/vc/vc_sm90.cu")
+    assert kernel["derived_from"] == "csrc/qattn/qk_int_sv_f8_cuda_sm90.cu"
     assert {row["upstream_path"] for row in manifest["files"] if row["modified"]} == {
         "sageattention/__init__.py", "sageattention/sm80_compile.py",
         "sageattention/sm89_compile.py", "sageattention/sm90_compile.py",
         "csrc/fused/fused.cu",
     }
+
+
+def test_vc_derivative_source_edits_are_detected(tmp_path):
+    verifier = load_file("verify_sage_local_source", ROOT / "scripts/verify_sage_local_source.py")
+    copy = tmp_path / "source"
+    shutil.copytree(VENDOR,copy,ignore=shutil.ignore_patterns("build","*.egg-info","__pycache__"))
+    with (copy / "csrc/vc/vc_math.cuh").open("a",encoding="utf-8") as file:
+        file.write("\n// changed\n")
+    with pytest.raises(RuntimeError,match="Experiment source hash mismatch"):
+        verifier.verify(copy)

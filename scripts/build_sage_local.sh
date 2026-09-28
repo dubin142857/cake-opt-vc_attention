@@ -11,3 +11,4 @@ export SAGE_LOCAL_NVCC_THREADS="${SAGE_LOCAL_NVCC_THREADS:-2}"
 # Independent package and extension names; no uninstall/upgrade of sageattention.
 python3 -m pip install ./third_party/sageattention_local --no-build-isolation --no-deps
 python3 scripts/validate_sage_local.py --output results/sage_local_validation.json
+python3 scripts/validate_sage_vc.py --output results/sage_vc_validation.json

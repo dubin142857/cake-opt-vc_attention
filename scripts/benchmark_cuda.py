@@ -24,6 +24,14 @@ EXTERNAL = {
     "sage": ("sageattention", "sageattention", "sageattn", "BHND"),
     "sage_local": ("sageattention-local", "sageattention_local", "sageattn", "BHND"),
 }
+SAGE_VC_VARIANTS = {
+    "sage_vc_control": (False, False),
+    "sage_vc_expcast": (True, False),
+    "sage_vc_smooth": (False, True),
+    "sage_vc": (True, True),
+}
+EXTERNAL.update({name: ("sageattention-local", "sageattention_local", "sageattn_vc", "BHND")
+                 for name in SAGE_VC_VARIANTS})
 DEFAULT_BACKENDS = ("flash2", "flash3", "flash4", "sage", "vc")
 ALL_BACKENDS = (*EXTERNAL, "vc")
 
@@ -112,14 +120,20 @@ def load_external(name):
     }
     if name == "sage_local":
         info["source_build"] = module.local_build_info()
+    elif name in SAGE_VC_VARIANTS:
+        info["source_build"] = module.sage_vc_build_info()
+        info["layout_cache_reused"] = False
     return function, layout, info
 
 
 def external_backend(name, qkv_hnd, qkv_shd):
     function, layout, info = load_external(name)
     scale = qkv_hnd[0].shape[-1] ** -0.5
-    if name in ("sage", "sage_local"):
+    if name in ("sage", "sage_local") or name in SAGE_VC_VARIANTS:
         kwargs = dict(tensor_layout="HND", is_causal=False, sm_scale=scale, return_lse=False)
+        if name in SAGE_VC_VARIANTS:
+            cast, smooth = SAGE_VC_VARIANTS[name]
+            kwargs.update(expcast=cast, v_smooth=smooth)
     else:
         kwargs = dict(softmax_scale=scale, causal=False)
         if name == "flash2":

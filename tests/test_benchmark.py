@@ -21,7 +21,7 @@ sys.modules[spec.name] = benchmark
 spec.loader.exec_module(benchmark)
 
 
-@pytest.mark.parametrize("name", ["flash2", "flash3", "flash4", "sage", "sage_local"])
+@pytest.mark.parametrize("name", list(benchmark.EXTERNAL))
 def test_adapter_preserves_values_layout_scale_and_output(monkeypatch, name):
     torch.manual_seed(12)
     qkv = tuple(torch.randn(2, 3, n, 8) for n in (5, 7, 7))
@@ -31,8 +31,12 @@ def test_adapter_preserves_values_layout_scale_and_output(monkeypatch, name):
     def installed_function(q, k, v, **kwargs):
         calls.append(kwargs)
         assert all(x.is_contiguous() for x in (q, k, v))
-        if name in ("sage", "sage_local"):
-            assert kwargs == dict(tensor_layout="HND", is_causal=False, sm_scale=8**-0.5, return_lse=False)
+        if name in ("sage", "sage_local") or name in benchmark.SAGE_VC_VARIANTS:
+            expected_kwargs = dict(tensor_layout="HND", is_causal=False, sm_scale=8**-0.5, return_lse=False)
+            if name in benchmark.SAGE_VC_VARIANTS:
+                cast, smooth = benchmark.SAGE_VC_VARIANTS[name]
+                expected_kwargs.update(expcast=cast, v_smooth=smooth)
+            assert kwargs == expected_kwargs
         else:
             assert kwargs["causal"] is False
             assert kwargs["softmax_scale"] == 8**-0.5
@@ -45,13 +49,14 @@ def test_adapter_preserves_values_layout_scale_and_output(monkeypatch, name):
         for actual, expected in zip((q, k, v), qkv):
             torch.testing.assert_close(actual, expected, rtol=0, atol=0)
         result = F.scaled_dot_product_attention(q, k, v)
-        if name not in ("sage", "sage_local"):
+        if name not in ("sage", "sage_local") and name not in benchmark.SAGE_VC_VARIANTS:
             result = result.transpose(1, 2).contiguous()
         return (result, "unused lse") if name in ("flash3", "flash4") else result
 
     distribution, module_name, function_name, _ = benchmark.EXTERNAL[name]
     module = SimpleNamespace(__file__="installed/interface.py", **{function_name: installed_function})
     module.local_build_info = lambda: {"upstream_commit": "pinned", "extensions": {"qattn_sm90": "local/native.so"}}
+    module.sage_vc_build_info = lambda: {"sage_vc_api_version": 1, "vc_extension": "local/vc.so"}
     monkeypatch.setattr(benchmark.importlib, "import_module", lambda path: module if path == module_name else None)
     monkeypatch.setattr(benchmark.metadata, "version", lambda package: "test-version" if package == distribution else None)
     backend = benchmark.external_backend(name, qkv, shd)

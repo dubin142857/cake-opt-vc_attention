@@ -4,8 +4,8 @@
   "commit": "eb615cf6cf4d221338033340ee2de1c37fbdba4a",
   "license": "Apache-2.0",
   "local_distribution": "sageattention-local",
-  "local_version": "2.2.0+vc2",
-  "scope": "Upstream CUDA/C++ kernel bodies and Triton sources unchanged. Build-only removal of unused CUDAContext.h in fused.cu; isolated Python/Torch namespace and fixed SM90 fake-function name collision. Hopper-only build configuration.",
+  "local_version": "2.2.0+vc3",
+  "scope": "Baseline CUDA/C++ bodies and Triton sources unchanged, with a build-only CUDAContext.h removal; isolated package/operator namespaces and SM90 fake-name fix. Separate Sage+VC experiment in csrc/vc, retaining INT8 QK and adding optional V clustering/block smoothing and ExpCast.",
   "files": [
     {
       "upstream_path": "LICENSE",
@@ -243,7 +243,7 @@
       "upstream_path": "sageattention/__init__.py",
       "local_path": "sageattention_local/__init__.py",
       "upstream_sha256": "9b178247cd22cc2c00114f445ee711c229745193ecda98d397a051e6f889326a",
-      "local_sha256": "eb0448906c107973bf414652372a3708b87ec916451981f3e7298f0d243a26b3",
+      "local_sha256": "5288a00800b320b8e7f3ab7328d4a65425009ebe5708ae66264c3151b9d74ef6",
       "modified": true
     },
     {
@@ -352,5 +352,57 @@
       "modified": false
     }
   ],
-  "hash_normalization": "CRLF normalized to LF; all other source bytes preserved"
+  "hash_normalization": "CRLF normalized to LF; all other source bytes preserved",
+  "experiment_files": [
+    {
+      "local_path": "csrc/vc/expcast.cuh",
+      "local_sha256": "fe8b517089664ef4a2021cbf20e53128f5d3ba7199f5729e17debe66e7bd7725",
+      "license": "Apache-2.0",
+      "origin": "New VC integration/diagnostic code in vc-attention"
+    },
+    {
+      "local_path": "csrc/vc/preprocess.cu",
+      "local_sha256": "377dae8703a334b27ed6fe5c38fe035945eef1217523f8b0e93287cd536bf641",
+      "license": "Apache-2.0",
+      "origin": "New VC integration/diagnostic code in vc-attention"
+    },
+    {
+      "local_path": "csrc/vc/pybind.cpp",
+      "local_sha256": "7b652a9cfaf3c11c9e662238099dd1a85419fed96debff23bad048d145e3f43c",
+      "license": "Apache-2.0",
+      "origin": "New VC integration/diagnostic code in vc-attention"
+    },
+    {
+      "local_path": "csrc/vc/vc_api.h",
+      "local_sha256": "7b2139583a77dbef36287e45e090fccb3e3e44c46927726ec6b7329189dcf411",
+      "license": "Apache-2.0",
+      "origin": "New VC integration/diagnostic code in vc-attention"
+    },
+    {
+      "local_path": "csrc/vc/vc_math.cuh",
+      "local_sha256": "c01ff7ba7a5f2cefc4456818127c5b9b8e029f67ec6985f3e93f61a55b9f4d39",
+      "license": "Apache-2.0",
+      "origin": "New VC integration/diagnostic code in vc-attention"
+    },
+    {
+      "local_path": "csrc/vc/vc_sm90.cu",
+      "local_sha256": "551e067243fdcb3f66f4312af26ee7db0b0426d26ac4f783a6b147657bf08503",
+      "license": "Apache-2.0",
+      "derived_from": "csrc/qattn/qk_int_sv_f8_cuda_sm90.cu",
+      "upstream_sha256": "ad2b0ff7c5f171ad524f2e529dc7eb7d9f167f29094563d99a3d9da888d22572",
+      "modifications": "Separate namespace/dispatch, VC probability packing and block mean/scale restoration; native Hopper core retained."
+    },
+    {
+      "local_path": "sageattention_local/vc.py",
+      "local_sha256": "65f2f0947b6396a9a0c0e0e60c38ddfbb61064a374feb585e7d3909ae16e791b",
+      "license": "Apache-2.0",
+      "origin": "New VC integration/diagnostic code in vc-attention"
+    },
+    {
+      "local_path": "sageattention_local/vc_reference.py",
+      "local_sha256": "69112ade0564c8f8a90358659d24aebfd2e4eb5a2f62d650caa5a08b9d6f3baa",
+      "license": "Apache-2.0",
+      "origin": "New VC integration/diagnostic code in vc-attention"
+    }
+  ]
 }

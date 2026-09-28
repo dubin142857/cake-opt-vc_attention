@@ -1,0 +1,39 @@
+{
+  "scope": "Local cross-compilation and helper verification; NOT Hopper attention execution or performance",
+  "environment": {
+    "os": "Windows",
+    "gpu": "NVIDIA GeForce RTX 3060 Laptop GPU",
+    "python": "3.10.16",
+    "torch": "2.3.1+cu121",
+    "nvcc": "12.4",
+    "production_package_requires": "Linux Hopper, PyTorch >=2.4, Triton >=3.0, nvcc >=12.3"
+  },
+  "package": "sageattention-local==2.2.0+vc3",
+  "cpu_tests": {
+    "files": ["tests/test_sage_local_source.py", "tests/test_sage_vc.py", "tests/test_benchmark.py"],
+    "passed": 60
+  },
+  "native_preprocessing": {
+    "value_cases_passed": 30,
+    "expcast_bytes_checked": 65540,
+    "stable_clustering": "passed",
+    "memcheck_errors": 0
+  },
+  "native_device_helpers": {
+    "test": "tests/test_sage_vc_tile_cuda.py",
+    "passed": 4,
+    "scope": "Actual shared CUDA helpers: ExpCast register packing, online max/denominator update and block V scale/mean restoration; matrix instructions excluded",
+    "memcheck_errors": 0
+  },
+  "cross_compile": {
+    "target": "sm_90a",
+    "attention_variants": 16,
+    "linked": true,
+    "register_spill_bytes": 0,
+    "sass_verified": ["UTMALDG.4D", "IGMMA.64x128x32.S8.S8", "QGMMA.64x128x32.F32.E4M3.E4M3"]
+  },
+  "source_distribution": "New CUDA/Python files, license and provenance present; no prebuilt binaries",
+  "hopper_attention_validation": "pending_remote",
+  "hopper_latency_ms": null,
+  "model_quality_validation": "not_run"
+}

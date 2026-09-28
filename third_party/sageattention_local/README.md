@@ -3,7 +3,9 @@
 此目录复用 [thu-ml/SageAttention v2.2.0](https://github.com/thu-ml/SageAttention/tree/v2.2.0)，
 固定 commit `eb615cf6cf4d221338033340ee2de1c37fbdba4a`，遵循 Apache-2.0。
 原作者与许可证见 `NOTICE`、`LICENSE`；每份源文件及其哈希见 `UPSTREAM.json`。
-这是原版内核的独立源码构建，不能把它称为自行设计的新算法，也不是 VC 算法。
+`sageattn` 是原版内核的独立源码构建。`2.2.0+vc3` 新增独立的
+`sageattn_vc` 实验入口：Sage INT8 QK + VC 的 V 聚类/分块平滑、ExpCast，
+不能称为完整 VC 论文复现。使用与对照见仓库根目录 [SAGE_VC.md](../../SAGE_VC.md)。
 
 ## 构建与导入
 
@@ -19,8 +21,9 @@ git pull --ff-only origin master
 bash scripts/build_sage_local.sh
 ```
 
-脚本编译 `sageattention_local._qattn_sm90` 与 `sageattention_local._fused`，
-目标固定 `sm_90a`，然后执行 16 组随机输入与 2 组已知答案检查。
+脚本编译 `sageattention_local._qattn_sm90`、`sageattention_local._fused`、
+`sageattention_local._vc_sm90`，目标固定 `sm_90a`。
+先执行原版的 16 组随机输入与 2 组已知答案检查，再验证新入口的四种开关组合。
 若当前环境安装了原版，还会同进程导入并输出双方误差。
 随机测试的 relative RMSE <=0.10 仅作执行回归门槛，不能代表模型质量。
 
@@ -67,7 +70,8 @@ Hopper 自动分派使用 `sageattn_qk_int8_pv_fp8_cuda_sm90`：
 - K 沿序列方向减均值；默认 Q/K 做 per-thread INT8 量化，预处理是原版 Triton。
 - QK 用 INT8 Tensor Core；Softmax 的权重 P 与按通道量化的 V 用 FP8 E4M3 PV。
 - PV 采用原版 `fp32+fp32` 分级累加。此 Hopper 默认路径不做 VC 的 V 聚类/ExpCast。
-- CUDA/C++ 内核计算代码和 Triton 源码保持原样，量化/attention 数学未改。
+- 原版 `sageattn` 的 CUDA/C++ 内核计算代码和 Triton 源码保持原样。
+  新增 `csrc/vc/` 只供 `sageattn_vc` 使用。
 
 本地修改包括：独立包名、Torch 算子注册命名空间、构建脚本、一个 Python 包装层修复和一处头文件依赖修复。
 固定的上游标签在 `sm90_compile.py` 将第二个 fake implementation 定义为与真实 callable

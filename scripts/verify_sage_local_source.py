@@ -26,11 +26,16 @@ def verify(root=None):
                 build_patches.append(row["local_path"])
             else:
                 native += 1
+    for row in manifest.get("experiment_files", []):
+        data = (root / row["local_path"]).read_bytes().replace(b"\r\n", b"\n")
+        if hashlib.sha256(data).hexdigest() != row["local_sha256"]:
+            raise RuntimeError(f"Experiment source hash mismatch: {row['local_path']}")
     packaged = json.loads((root / "sageattention_local/UPSTREAM.json").read_text(encoding="utf-8"))
     if packaged != manifest:
         raise RuntimeError("Packaged provenance differs from source provenance")
     return {"status": "passed", "commit": manifest["commit"], "verified_files": len(manifest["files"]),
-            "unchanged_kernel_files": native, "build_only_patches": build_patches}
+            "unchanged_kernel_files": native, "build_only_patches": build_patches,
+            "verified_experiment_files": len(manifest.get("experiment_files", []))}
 
 
 if __name__ == "__main__":

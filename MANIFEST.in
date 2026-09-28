@@ -6,14 +6,17 @@ include PIPELINED_CUDA.md
 include D128_CUDA.md
 include INTERLEAVED_CUDA.md
 include SAGE_LOCAL.md
+include SAGE_VC.md
 include results/cuda_local_validation.json
 include results/fused_local_validation.json
 include results/pipeline_local_validation.json
 include results/d128_local_validation.json
 include results/interleaved_local_validation.json
+include results/sage_vc_local_validation.json
 recursive-include src *.py
 recursive-include csrc *.cpp *.cu *.h *.cuh
 recursive-include tests *.py
+recursive-include tests/cuda *.cu
 recursive-include scripts *.py *.sh
 recursive-include third_party/sageattention_local *.py *.cu *.cpp *.h *.cuh *.json *.md *.toml LICENSE NOTICE MANIFEST.in
 global-exclude *.pyd *.so *.pyc *.obj *.ptx

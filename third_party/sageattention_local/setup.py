@@ -1,7 +1,7 @@
 """Independent Hopper build of the pinned SageAttention sources; see UPSTREAM.json.
 
-The upstream setup.py is retained under upstream/. Kernel math is unchanged.
-Only _qattn_sm90 and _fused are built; no installed sageattention code is linked.
+The upstream setup.py is retained under upstream/. Baseline kernel math is unchanged.
+Retains the baseline and builds a separate _vc_sm90 experiment; no installed sageattention code is linked.
 """
 import os
 from pathlib import Path
@@ -40,16 +40,17 @@ if "sdist" not in sys.argv:
     for name, sources in (
         ("_qattn_sm90", ["csrc/qattn/pybind_sm90.cpp", "csrc/qattn/qk_int_sv_f8_cuda_sm90.cu"]),
         ("_fused", ["csrc/fused/pybind.cpp", "csrc/fused/fused.cu"]),
+        ("_vc_sm90", ["csrc/vc/pybind.cpp", "csrc/vc/preprocess.cu", "csrc/vc/vc_sm90.cu"]),
     ):
         extensions.append(CUDAExtension(
             "sageattention_local." + name, sources=sources, depends=headers,
-            libraries=["cuda"] if name == "_qattn_sm90" else [],
+            libraries=["cuda"] if name in ("_qattn_sm90", "_vc_sm90") else [],
             extra_compile_args={"cxx": cxx, "nvcc": nvcc_flags},
         ))
     commands = {"build_ext": BuildExtension}
 
 setup(
-    name="sageattention-local", version="2.2.0+vc2",
+    name="sageattention-local", version="2.2.0+vc3",
     description="Independent Hopper source build of SageAttention v2.2.0 for comparison",
     author="SageAttention team (upstream); local build integration in vc-attention",
     url="https://github.com/thu-ml/SageAttention",
