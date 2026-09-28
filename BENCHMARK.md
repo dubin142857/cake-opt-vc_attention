@@ -227,3 +227,15 @@ python3 scripts/diagnose_cuda_accuracy.py --output results/h200_vc_stages.json
 [FA3 接口源码](https://github.com/Dao-AILab/flash-attention/blob/main/hopper/flash_attn_interface.py)、
 [FA4 接口源码](https://github.com/Dao-AILab/flash-attention/blob/main/flash_attn/cute/interface.py)、
 [SageAttention 2.2.0 接口源码](https://github.com/thu-ml/SageAttention/blob/v2.2.0/sageattention/core.py)。
+## SageAttention 独立源码构建对照
+
+`sage_local` 是可选后端，使用本仓库固定的官方 2.2.0 CUDA/Triton 源码单独编译，
+安装说明见 [SAGE_LOCAL.md](SAGE_LOCAL.md)。默认测速列表不要求安装它。
+
+```bash
+bash scripts/build_sage_local.sh
+bash scripts/benchmark_37741.sh --backends flash3 sage sage_local --baseline sage --output results/h200_sage_local_compare.json
+```
+
+报告包括各自对 FP32 的误差、自编译版与已安装版的输出差异，以及
+`Sage local speedup vs installed = installed_ms / local_ms`。两者都包含内部量化预处理。

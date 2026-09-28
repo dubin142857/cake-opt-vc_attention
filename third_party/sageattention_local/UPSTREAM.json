@@ -1,0 +1,355 @@
+{
+  "repository": "https://github.com/thu-ml/SageAttention",
+  "tag": "v2.2.0",
+  "commit": "eb615cf6cf4d221338033340ee2de1c37fbdba4a",
+  "license": "Apache-2.0",
+  "local_distribution": "sageattention-local",
+  "local_version": "2.2.0+vc1",
+  "scope": "Upstream CUDA/C++ and Triton sources unchanged; isolated Python/Torch namespace and fixed SM90 fake-function name collision. New Hopper-only build configuration.",
+  "files": [
+    {
+      "upstream_path": "LICENSE",
+      "local_path": "LICENSE",
+      "upstream_sha256": "178f46f58127373d449565589a32c2b5b60c082934618c17b7ce6890c61ef394",
+      "local_sha256": "178f46f58127373d449565589a32c2b5b60c082934618c17b7ce6890c61ef394",
+      "modified": false
+    },
+    {
+      "upstream_path": "MANIFEST.in",
+      "local_path": "upstream/MANIFEST.in",
+      "upstream_sha256": "d36cf6ef3e7c0175221a948db914f2f51fef5eab5bcdd5689782728c6a41e596",
+      "local_sha256": "d36cf6ef3e7c0175221a948db914f2f51fef5eab5bcdd5689782728c6a41e596",
+      "modified": false
+    },
+    {
+      "upstream_path": "README.md",
+      "local_path": "upstream/README.md",
+      "upstream_sha256": "a316a92b389056e0c088658edfbcc1f43df69818fe50c79e280bfb5f404306d4",
+      "local_sha256": "a316a92b389056e0c088658edfbcc1f43df69818fe50c79e280bfb5f404306d4",
+      "modified": false
+    },
+    {
+      "upstream_path": "csrc/cp_async.cuh",
+      "local_path": "csrc/cp_async.cuh",
+      "upstream_sha256": "26822f5737962b11048aad28225a3b5d5fb624116feb4a5bbb107188173e71c2",
+      "local_sha256": "26822f5737962b11048aad28225a3b5d5fb624116feb4a5bbb107188173e71c2",
+      "modified": false
+    },
+    {
+      "upstream_path": "csrc/dispatch_utils.h",
+      "local_path": "csrc/dispatch_utils.h",
+      "upstream_sha256": "495530b01f786c43ec56f79a7bdbb11f42872ec9efa5d612b84d42afbd2ea28c",
+      "local_sha256": "495530b01f786c43ec56f79a7bdbb11f42872ec9efa5d612b84d42afbd2ea28c",
+      "modified": false
+    },
+    {
+      "upstream_path": "csrc/fused/fused.cu",
+      "local_path": "csrc/fused/fused.cu",
+      "upstream_sha256": "71edcb594551dfba46f4c07b7ff6e04ac5779917040b1ddb76a155582aa09d99",
+      "local_sha256": "71edcb594551dfba46f4c07b7ff6e04ac5779917040b1ddb76a155582aa09d99",
+      "modified": false
+    },
+    {
+      "upstream_path": "csrc/fused/fused.h",
+      "local_path": "csrc/fused/fused.h",
+      "upstream_sha256": "4939aa5ed5225df9bfb9bf2a53c6a30ccf19b9e12b80c97d958d10e7dae2ba4e",
+      "local_sha256": "4939aa5ed5225df9bfb9bf2a53c6a30ccf19b9e12b80c97d958d10e7dae2ba4e",
+      "modified": false
+    },
+    {
+      "upstream_path": "csrc/fused/pybind.cpp",
+      "local_path": "csrc/fused/pybind.cpp",
+      "upstream_sha256": "b08f3638b5bb41476c53945a3639a61218e9522d65bf4865c4aa765c06eca48a",
+      "local_sha256": "b08f3638b5bb41476c53945a3639a61218e9522d65bf4865c4aa765c06eca48a",
+      "modified": false
+    },
+    {
+      "upstream_path": "csrc/math.cuh",
+      "local_path": "csrc/math.cuh",
+      "upstream_sha256": "84dd5b41df8d3c4e20e8cc3152c14719e1261f338f317ff4d1d6951e18544c60",
+      "local_sha256": "84dd5b41df8d3c4e20e8cc3152c14719e1261f338f317ff4d1d6951e18544c60",
+      "modified": false
+    },
+    {
+      "upstream_path": "csrc/mma.cuh",
+      "local_path": "csrc/mma.cuh",
+      "upstream_sha256": "841a0b028e25b48fd83ad042d7bf817f84bfd5e5630d19d08510b0b797914231",
+      "local_sha256": "841a0b028e25b48fd83ad042d7bf817f84bfd5e5630d19d08510b0b797914231",
+      "modified": false
+    },
+    {
+      "upstream_path": "csrc/numeric_conversion.cuh",
+      "local_path": "csrc/numeric_conversion.cuh",
+      "upstream_sha256": "bb7edb348764a13827bb025c326784a609a416ba7758a5f69d9ac2460a26aa3d",
+      "local_sha256": "bb7edb348764a13827bb025c326784a609a416ba7758a5f69d9ac2460a26aa3d",
+      "modified": false
+    },
+    {
+      "upstream_path": "csrc/permuted_smem.cuh",
+      "local_path": "csrc/permuted_smem.cuh",
+      "upstream_sha256": "339e07ae005e35d9d3850eeca70e75c22c8adb2ee0122450789ee2b15911a950",
+      "local_sha256": "339e07ae005e35d9d3850eeca70e75c22c8adb2ee0122450789ee2b15911a950",
+      "modified": false
+    },
+    {
+      "upstream_path": "csrc/qattn/attn_cuda_sm80.h",
+      "local_path": "csrc/qattn/attn_cuda_sm80.h",
+      "upstream_sha256": "38315c1db9a5f71cd82192f91a3e4c9a505c88c9d56bc3a6a9dc1cf162c00385",
+      "local_sha256": "38315c1db9a5f71cd82192f91a3e4c9a505c88c9d56bc3a6a9dc1cf162c00385",
+      "modified": false
+    },
+    {
+      "upstream_path": "csrc/qattn/attn_cuda_sm89.h",
+      "local_path": "csrc/qattn/attn_cuda_sm89.h",
+      "upstream_sha256": "7372fbf05d5a25fc8fd4403ed187ec857fdf2e8d662e295181e48c9dc6ed3f7d",
+      "local_sha256": "7372fbf05d5a25fc8fd4403ed187ec857fdf2e8d662e295181e48c9dc6ed3f7d",
+      "modified": false
+    },
+    {
+      "upstream_path": "csrc/qattn/attn_cuda_sm90.h",
+      "local_path": "csrc/qattn/attn_cuda_sm90.h",
+      "upstream_sha256": "8083a0c9f13d1c671fe7334a7caed30e00502ecbc96abe0ed1a387d39af93f91",
+      "local_sha256": "8083a0c9f13d1c671fe7334a7caed30e00502ecbc96abe0ed1a387d39af93f91",
+      "modified": false
+    },
+    {
+      "upstream_path": "csrc/qattn/attn_utils.cuh",
+      "local_path": "csrc/qattn/attn_utils.cuh",
+      "upstream_sha256": "9317f7e56cfab0d293eebc9b5253b2d3897ed0478df7f40c90182c830362e4d8",
+      "local_sha256": "9317f7e56cfab0d293eebc9b5253b2d3897ed0478df7f40c90182c830362e4d8",
+      "modified": false
+    },
+    {
+      "upstream_path": "csrc/qattn/pybind_sm80.cpp",
+      "local_path": "csrc/qattn/pybind_sm80.cpp",
+      "upstream_sha256": "4cec1d9d03e61b2fca0d1b5442838478e017a6b3670284222d3a08290868e297",
+      "local_sha256": "4cec1d9d03e61b2fca0d1b5442838478e017a6b3670284222d3a08290868e297",
+      "modified": false
+    },
+    {
+      "upstream_path": "csrc/qattn/pybind_sm89.cpp",
+      "local_path": "csrc/qattn/pybind_sm89.cpp",
+      "upstream_sha256": "6de181e603e5bd6ae3a5bc4e818ac527d898926a7f6cceb06b2b198ea6a62198",
+      "local_sha256": "6de181e603e5bd6ae3a5bc4e818ac527d898926a7f6cceb06b2b198ea6a62198",
+      "modified": false
+    },
+    {
+      "upstream_path": "csrc/qattn/pybind_sm90.cpp",
+      "local_path": "csrc/qattn/pybind_sm90.cpp",
+      "upstream_sha256": "61771928e3e52c024d5c548e9d9ac7192a9dcff4a62c2e9efee468c74da7cac6",
+      "local_sha256": "61771928e3e52c024d5c548e9d9ac7192a9dcff4a62c2e9efee468c74da7cac6",
+      "modified": false
+    },
+    {
+      "upstream_path": "csrc/qattn/qk_int_sv_f16_cuda_sm80.cu",
+      "local_path": "csrc/qattn/qk_int_sv_f16_cuda_sm80.cu",
+      "upstream_sha256": "c4b64b76c32d517fe48788a25d578986d70f13a7b68f3ec550058f04b4d9214c",
+      "local_sha256": "c4b64b76c32d517fe48788a25d578986d70f13a7b68f3ec550058f04b4d9214c",
+      "modified": false
+    },
+    {
+      "upstream_path": "csrc/qattn/qk_int_sv_f8_cuda_sm89.cuh",
+      "local_path": "csrc/qattn/qk_int_sv_f8_cuda_sm89.cuh",
+      "upstream_sha256": "9dfe17b60fb02047ed6ac03ca9af24565d7b6e773fd62526c6a89bf539e180f0",
+      "local_sha256": "9dfe17b60fb02047ed6ac03ca9af24565d7b6e773fd62526c6a89bf539e180f0",
+      "modified": false
+    },
+    {
+      "upstream_path": "csrc/qattn/qk_int_sv_f8_cuda_sm90.cu",
+      "local_path": "csrc/qattn/qk_int_sv_f8_cuda_sm90.cu",
+      "upstream_sha256": "ad2b0ff7c5f171ad524f2e529dc7eb7d9f167f29094563d99a3d9da888d22572",
+      "local_sha256": "ad2b0ff7c5f171ad524f2e529dc7eb7d9f167f29094563d99a3d9da888d22572",
+      "modified": false
+    },
+    {
+      "upstream_path": "csrc/qattn/sm89_qk_int8_sv_f8_accum_f16_attn_inst_buf.cu",
+      "local_path": "csrc/qattn/sm89_qk_int8_sv_f8_accum_f16_attn_inst_buf.cu",
+      "upstream_sha256": "08e3931844ae4a20311d2eb387845214ee694461ecfbcc5721b74b58feae718f",
+      "local_sha256": "08e3931844ae4a20311d2eb387845214ee694461ecfbcc5721b74b58feae718f",
+      "modified": false
+    },
+    {
+      "upstream_path": "csrc/qattn/sm89_qk_int8_sv_f8_accum_f16_fuse_v_scale_attn_inst_buf.cu",
+      "local_path": "csrc/qattn/sm89_qk_int8_sv_f8_accum_f16_fuse_v_scale_attn_inst_buf.cu",
+      "upstream_sha256": "2d9651036aa0ce2769985055024ba944f197186ebf1db9b102af2f3560027260",
+      "local_sha256": "2d9651036aa0ce2769985055024ba944f197186ebf1db9b102af2f3560027260",
+      "modified": false
+    },
+    {
+      "upstream_path": "csrc/qattn/sm89_qk_int8_sv_f8_accum_f32_attn.cu",
+      "local_path": "csrc/qattn/sm89_qk_int8_sv_f8_accum_f32_attn.cu",
+      "upstream_sha256": "b2e42ada0001c22e9699ac9beebdf771b8d40e8df2106aaba8b352bea32148d2",
+      "local_sha256": "b2e42ada0001c22e9699ac9beebdf771b8d40e8df2106aaba8b352bea32148d2",
+      "modified": false
+    },
+    {
+      "upstream_path": "csrc/qattn/sm89_qk_int8_sv_f8_accum_f32_attn_inst_buf.cu",
+      "local_path": "csrc/qattn/sm89_qk_int8_sv_f8_accum_f32_attn_inst_buf.cu",
+      "upstream_sha256": "78442fb3dc94b0976569adb87a1316b30e1e7324531a46c2748e17d1d4f33050",
+      "local_sha256": "78442fb3dc94b0976569adb87a1316b30e1e7324531a46c2748e17d1d4f33050",
+      "modified": false
+    },
+    {
+      "upstream_path": "csrc/qattn/sm89_qk_int8_sv_f8_accum_f32_fuse_v_scale_attn.cu",
+      "local_path": "csrc/qattn/sm89_qk_int8_sv_f8_accum_f32_fuse_v_scale_attn.cu",
+      "upstream_sha256": "0a6a0592543953be55e759364e85d4c1e9f538cd2b8da597f3d20603b5ba9ee9",
+      "local_sha256": "0a6a0592543953be55e759364e85d4c1e9f538cd2b8da597f3d20603b5ba9ee9",
+      "modified": false
+    },
+    {
+      "upstream_path": "csrc/qattn/sm89_qk_int8_sv_f8_accum_f32_fuse_v_scale_attn_inst_buf.cu",
+      "local_path": "csrc/qattn/sm89_qk_int8_sv_f8_accum_f32_fuse_v_scale_attn_inst_buf.cu",
+      "upstream_sha256": "cbb3d4a8e84b0ac3d6814f227130088c35ad4b0919dca7118cc6b57b2ab04858",
+      "local_sha256": "cbb3d4a8e84b0ac3d6814f227130088c35ad4b0919dca7118cc6b57b2ab04858",
+      "modified": false
+    },
+    {
+      "upstream_path": "csrc/qattn/sm89_qk_int8_sv_f8_accum_f32_fuse_v_scale_fuse_v_mean_attn.cu",
+      "local_path": "csrc/qattn/sm89_qk_int8_sv_f8_accum_f32_fuse_v_scale_fuse_v_mean_attn.cu",
+      "upstream_sha256": "4aea1e82208df256babdde7ab2cb750cc2ab3c2be8c6ac440cb585f57cc25e00",
+      "local_sha256": "4aea1e82208df256babdde7ab2cb750cc2ab3c2be8c6ac440cb585f57cc25e00",
+      "modified": false
+    },
+    {
+      "upstream_path": "csrc/reduction_utils.cuh",
+      "local_path": "csrc/reduction_utils.cuh",
+      "upstream_sha256": "e07a550e43b566c5e224262ce3cc5c9d9f6e2a1238a5b4044129d4144585be75",
+      "local_sha256": "e07a550e43b566c5e224262ce3cc5c9d9f6e2a1238a5b4044129d4144585be75",
+      "modified": false
+    },
+    {
+      "upstream_path": "csrc/utils.cuh",
+      "local_path": "csrc/utils.cuh",
+      "upstream_sha256": "7537c4be65077441743b5fe060b542c4fa7cd11e743925da902d4b9bacea5a25",
+      "local_sha256": "7537c4be65077441743b5fe060b542c4fa7cd11e743925da902d4b9bacea5a25",
+      "modified": false
+    },
+    {
+      "upstream_path": "csrc/wgmma.cuh",
+      "local_path": "csrc/wgmma.cuh",
+      "upstream_sha256": "9520e9561072b48c10a80156ebc953050e63476ca59f766f34bef08c74859ddc",
+      "local_sha256": "9520e9561072b48c10a80156ebc953050e63476ca59f766f34bef08c74859ddc",
+      "modified": false
+    },
+    {
+      "upstream_path": "pyproject.toml",
+      "local_path": "upstream/pyproject.toml",
+      "upstream_sha256": "676956f48414bc31c4c2ad83b1a38d18041c69facac20aee23199c925abfa7d3",
+      "local_sha256": "676956f48414bc31c4c2ad83b1a38d18041c69facac20aee23199c925abfa7d3",
+      "modified": false
+    },
+    {
+      "upstream_path": "sageattention/__init__.py",
+      "local_path": "sageattention_local/__init__.py",
+      "upstream_sha256": "9b178247cd22cc2c00114f445ee711c229745193ecda98d397a051e6f889326a",
+      "local_sha256": "eb0448906c107973bf414652372a3708b87ec916451981f3e7298f0d243a26b3",
+      "modified": true
+    },
+    {
+      "upstream_path": "sageattention/core.py",
+      "local_path": "sageattention_local/core.py",
+      "upstream_sha256": "eb5ca9e8047583cc3a139f788f4bf48857aa1134d47a36ad5021b153690beaf4",
+      "local_sha256": "eb5ca9e8047583cc3a139f788f4bf48857aa1134d47a36ad5021b153690beaf4",
+      "modified": false
+    },
+    {
+      "upstream_path": "sageattention/fa3_wrapper.py",
+      "local_path": "sageattention_local/fa3_wrapper.py",
+      "upstream_sha256": "53813a192b9d64b49cf72179aadbce39c67c70c00cae2331ed273887c6a58af9",
+      "local_sha256": "53813a192b9d64b49cf72179aadbce39c67c70c00cae2331ed273887c6a58af9",
+      "modified": false
+    },
+    {
+      "upstream_path": "sageattention/quant.py",
+      "local_path": "sageattention_local/quant.py",
+      "upstream_sha256": "86bf415d4d24793a591c2a056e60f41b4bc579519ac7a875e484a65816940bf7",
+      "local_sha256": "86bf415d4d24793a591c2a056e60f41b4bc579519ac7a875e484a65816940bf7",
+      "modified": false
+    },
+    {
+      "upstream_path": "sageattention/sm80_compile.py",
+      "local_path": "sageattention_local/sm80_compile.py",
+      "upstream_sha256": "b307d836a8580f3731cfd8a7774f70faec984c869e5cac1af9086d43fcdff29b",
+      "local_sha256": "bc0a73cbd283df67cc9d7d6f7caa68cdfeb0864021ac983d90167562d8764881",
+      "modified": true
+    },
+    {
+      "upstream_path": "sageattention/sm89_compile.py",
+      "local_path": "sageattention_local/sm89_compile.py",
+      "upstream_sha256": "dd5e0ebf92f2662a85d24cee5c984fe6ba114e610253b4bd339af5e3d5da97c9",
+      "local_sha256": "83b619020d6b945a6c906f346ef1df11d5584ad53d7cbec8e191c688f026696d",
+      "modified": true
+    },
+    {
+      "upstream_path": "sageattention/sm90_compile.py",
+      "local_path": "sageattention_local/sm90_compile.py",
+      "upstream_sha256": "d9b64c81fd0a8993647200a8be238db7b31d89b3673fdf470eea99798224c454",
+      "local_sha256": "fba3348e6e35d309deca3c7eafd377f333406f8a4295a9b7686724b395e3b49e",
+      "modified": true
+    },
+    {
+      "upstream_path": "sageattention/triton/__init__.py",
+      "local_path": "sageattention_local/triton/__init__.py",
+      "upstream_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "local_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "modified": false
+    },
+    {
+      "upstream_path": "sageattention/triton/attn_qk_int8_block_varlen.py",
+      "local_path": "sageattention_local/triton/attn_qk_int8_block_varlen.py",
+      "upstream_sha256": "d95ef1c80e68cb11e39900ea9b2a41a96c7106544f3f0d0df45cf196dc821543",
+      "local_sha256": "d95ef1c80e68cb11e39900ea9b2a41a96c7106544f3f0d0df45cf196dc821543",
+      "modified": false
+    },
+    {
+      "upstream_path": "sageattention/triton/attn_qk_int8_per_block.py",
+      "local_path": "sageattention_local/triton/attn_qk_int8_per_block.py",
+      "upstream_sha256": "f7563994203a2bb95282ac3474beb8df59391d2b1c268b8757477cc59203250b",
+      "local_sha256": "f7563994203a2bb95282ac3474beb8df59391d2b1c268b8757477cc59203250b",
+      "modified": false
+    },
+    {
+      "upstream_path": "sageattention/triton/attn_qk_int8_per_block_causal.py",
+      "local_path": "sageattention_local/triton/attn_qk_int8_per_block_causal.py",
+      "upstream_sha256": "3ade134aca600b863ae00cd59773d1e3d7823f055523aa71bb69acf6c35c3ded",
+      "local_sha256": "3ade134aca600b863ae00cd59773d1e3d7823f055523aa71bb69acf6c35c3ded",
+      "modified": false
+    },
+    {
+      "upstream_path": "sageattention/triton/attn_qk_int8_per_block_causal_varlen.py",
+      "local_path": "sageattention_local/triton/attn_qk_int8_per_block_causal_varlen.py",
+      "upstream_sha256": "a458da1f01e55a401897269d97da679c1e96b85e56b7fac15aeb8e5ad2b2bb6e",
+      "local_sha256": "a458da1f01e55a401897269d97da679c1e96b85e56b7fac15aeb8e5ad2b2bb6e",
+      "modified": false
+    },
+    {
+      "upstream_path": "sageattention/triton/quant_per_block.py",
+      "local_path": "sageattention_local/triton/quant_per_block.py",
+      "upstream_sha256": "990b4881fb5e8d70b59fa7b796dab20693c82761175ee51fc4c5329d51e1d377",
+      "local_sha256": "990b4881fb5e8d70b59fa7b796dab20693c82761175ee51fc4c5329d51e1d377",
+      "modified": false
+    },
+    {
+      "upstream_path": "sageattention/triton/quant_per_block_varlen.py",
+      "local_path": "sageattention_local/triton/quant_per_block_varlen.py",
+      "upstream_sha256": "8b4934304dcd59b202a67c8b668487f69caa9567c3e0a6dcb539fd0c24424e4f",
+      "local_sha256": "8b4934304dcd59b202a67c8b668487f69caa9567c3e0a6dcb539fd0c24424e4f",
+      "modified": false
+    },
+    {
+      "upstream_path": "sageattention/triton/quant_per_thread.py",
+      "local_path": "sageattention_local/triton/quant_per_thread.py",
+      "upstream_sha256": "e8aa4dfc16780326b90a9235439a0cb77875ff75d7c5376a1aac6adc82f4d643",
+      "local_sha256": "e8aa4dfc16780326b90a9235439a0cb77875ff75d7c5376a1aac6adc82f4d643",
+      "modified": false
+    },
+    {
+      "upstream_path": "setup.py",
+      "local_path": "upstream/setup.py",
+      "upstream_sha256": "50213b02a99365e8907d98c2c8607d368cf1197098a3612ea695cfcef95403b9",
+      "local_sha256": "50213b02a99365e8907d98c2c8607d368cf1197098a3612ea695cfcef95403b9",
+      "modified": false
+    }
+  ],
+  "hash_normalization": "CRLF normalized to LF; all other source bytes preserved"
+}

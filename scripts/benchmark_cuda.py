@@ -22,8 +22,10 @@ EXTERNAL = {
     "flash3": ("flash-attn-3", "flash_attn_3.flash_attn_interface", "flash_attn_func", "BSHD"),
     "flash4": ("flash-attn-4", "flash_attn.cute", "flash_attn_func", "BSHD"),
     "sage": ("sageattention", "sageattention", "sageattn", "BHND"),
+    "sage_local": ("sageattention-local", "sageattention_local", "sageattn", "BHND"),
 }
-DEFAULT_BACKENDS = (*EXTERNAL, "vc")
+DEFAULT_BACKENDS = ("flash2", "flash3", "flash4", "sage", "vc")
+ALL_BACKENDS = (*EXTERNAL, "vc")
 
 
 @dataclass
@@ -101,19 +103,22 @@ def load_external(name):
             "Fix this installation or explicitly choose a subset with --backends. "
             "No substitute backend is used."
         ) from exc
-    return function, layout, {
+    info = {
         "distribution": distribution,
         "version": distribution_version(distribution),
         "interface": f"{module_name}.{function_name}",
         "module_file": str(getattr(module, "__file__", "unknown")),
         "input_layout": layout,
     }
+    if name == "sage_local":
+        info["source_build"] = module.local_build_info()
+    return function, layout, info
 
 
 def external_backend(name, qkv_hnd, qkv_shd):
     function, layout, info = load_external(name)
     scale = qkv_hnd[0].shape[-1] ** -0.5
-    if name == "sage":
+    if name in ("sage", "sage_local"):
         kwargs = dict(tensor_layout="HND", is_causal=False, sm_scale=scale, return_lse=False)
     else:
         kwargs = dict(softmax_scale=scale, causal=False)
@@ -277,10 +282,22 @@ def add_speedups(results, baseline):
             for name in EXTERNAL if name in results}
 
 
+def compare_sage_outputs(samples, results):
+    metrics = error_metrics(samples["sage_local"], samples["sage"])
+    return {
+        "scope": "last timed outputs; same query samples and all keys; independent preprocessing and binaries",
+        "local_speedup_vs_installed": results["sage"]["median_ms"] / results["sage_local"]["median_ms"],
+        "relative_rmse_local_vs_installed": metrics["relative_rmse_vs_fp32"],
+        "max_abs_local_vs_installed": metrics["max_abs_error_vs_fp32"],
+        "exact_sample_match": torch.equal(samples["sage_local"], samples["sage"]),
+        "acceptance_threshold": None,
+    }
+
+
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--backends", nargs="+", choices=DEFAULT_BACKENDS, default=list(DEFAULT_BACKENDS))
-    parser.add_argument("--baseline", choices=DEFAULT_BACKENDS, help="reference latency for speedup (default: flash3, or first selected)")
+    parser.add_argument("--backends", nargs="+", choices=ALL_BACKENDS, default=list(DEFAULT_BACKENDS))
+    parser.add_argument("--baseline", choices=ALL_BACKENDS, help="reference latency for speedup (default: flash3, or first selected)")
     parser.add_argument("--batch", type=int, default=1)
     parser.add_argument("--queries", type=int, default=1024)
     parser.add_argument("--tokens", type=int, default=1024, help="K/V sequence length")
@@ -366,6 +383,11 @@ def run(args):
                              vc_schedule_compare=args.vc_schedule_compare, vc_reuse_layout=args.vc_reuse_layout,
                              vc_schedule=args.vc_schedule, vc_fused_compare=args.vc_fused_compare,
                              vc_specialize_compare=args.vc_specialize_compare, vc_interleave_compare=args.vc_interleave_compare)
+    compare_sage = "sage" in args.backends and "sage_local" in args.backends
+    if compare_sage:
+        original, local = (next(b for b in backends if b.name == name) for name in ("sage", "sage_local"))
+        if Path(original.info["module_file"]).resolve() == Path(local.info["module_file"]).resolve():
+            raise RuntimeError("Sage comparison resolved to the same Python package")
     indices = query_indices(args.queries, args.check_queries)
     print(f"FP32 reference: {len(indices)} query rows, all {args.tokens} keys", flush=True)
     golden = fp32_reference(*qkv, indices, args.reference_chunk)
@@ -402,7 +424,9 @@ def run(args):
                 normalized = output_hnd(output, backend.layout, qkv[0].shape, dtype)
                 sample = normalized.index_select(2, ids).float().cpu()
                 metrics = error_metrics(sample, golden)
-                if (args.vc_reference_check or args.vc_fused_compare or args.vc_specialize_compare or args.vc_interleave_compare) and backend.info.get("config", {}).get("backend") == "cuda_fp8":
+                vc_sample = ((args.vc_reference_check or args.vc_fused_compare or args.vc_specialize_compare or args.vc_interleave_compare)
+                             and backend.info.get("config", {}).get("backend") == "cuda_fp8")
+                if vc_sample or (compare_sage and backend.name in ("sage", "sage_local")):
                     # Overwrite per trial; compare the last timed sample, not a
                     # new native call that might use a different clustering order.
                     native_samples[backend.name] = sample
@@ -434,6 +458,8 @@ def run(args):
             "speedup_vs_baseline = baseline_ms / row_ms; vc_speedup_vs = other_ms / vc_ms; >1 is faster.",
         ],
     }
+    if compare_sage:
+        report["sage_source_comparison"] = compare_sage_outputs(native_samples, results)
     if args.vc_fused_compare or args.vc_specialize_compare or args.vc_interleave_compare:
         comparisons = {}
         for name, sample in native_samples.items():
@@ -457,7 +483,7 @@ def run(args):
             "acceptance_threshold": None, "results": {},
         }
         for backend in backends:
-            if backend.name not in native_samples:
+            if backend.info.get("config", {}).get("backend") != "cuda_fp8" or backend.name not in native_samples:
                 continue
             print(f"Python quantized reference: {backend.name} (all Q/K/V; outside timing)", flush=True)
             try:
@@ -483,6 +509,12 @@ def print_report(report):
               f"{row['max_ms']:12.4f} {row['speedup_vs_baseline']:9.3f}x "
               f"{row['relative_rmse_vs_fp32']:12.6f} {row['max_abs_error_vs_fp32']:12.6f}")
     print(f"speedup = {baseline} latency / row latency; >1 means this row is faster.")
+    if "sage_source_comparison" in report:
+        comparison = report["sage_source_comparison"]
+        print(f"Sage local speedup vs installed: {comparison['local_speedup_vs_installed']:.4f}x "
+              "(installed_ms / local_ms; >1 means local is faster)")
+        print(f"Sage local/installed output: relative RMSE {100 * comparison['relative_rmse_local_vs_installed']:.6f}%, "
+              f"max abs {comparison['max_abs_local_vs_installed']:.8g}, exact sample match={comparison['exact_sample_match']}")
     for name, speedup in report["vc_speedup_vs"].items():
         print(f"VC speedup vs {name}: {speedup:.4f}x (other_ms / vc_ms; >1 means VC is faster)")
     for name, row in report["results"].items():

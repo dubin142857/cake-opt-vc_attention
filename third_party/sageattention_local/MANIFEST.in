@@ -1,0 +1,5 @@
+include README.md LICENSE NOTICE UPSTREAM.json
+recursive-include upstream *
+recursive-include sageattention_local *.py *.json
+recursive-include csrc *.h *.hpp *.cuh *.cu *.cpp
+global-exclude *.pyd *.so *.obj *.pyc *.ptx

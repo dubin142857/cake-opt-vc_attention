@@ -6,6 +6,7 @@ cuBLASLt FP8 矩阵乘；用户提供的 H200 日志中，旧版 0.1.0 已通过
 0.2.0 增加论文数值对齐，见 [PAPER_ALIGNMENT.md](PAPER_ALIGNMENT.md)。
 旧路径尚不是融合内核。与 FlashAttention 2/3/4、SageAttention
 的对比命令见 [BENCHMARK.md](BENCHMARK.md)。
+另提供 SageAttention 2.2.0 的独立源码编译包 `sageattention_local`，可与已安装原版同场比较，见 [SAGE_LOCAL.md](SAGE_LOCAL.md)。
 Q/K、P、V 分阶段精度诊断见 [ACCURACY_DIAGNOSTICS.md](ACCURACY_DIAGNOSTICS.md)，已有 0.2.0 安装可直接运行。
 0.2.1 修正参考 scale 除法的舍入，并增加固定量化字节的 CUDA 对拍，见 [PAYLOAD_DIAGNOSTICS.md](PAYLOAD_DIAGNOSTICS.md)。
 0.3.0 默认批量处理 head 和 Q 行、缓存 GEMM plan、合并状态更新及输入校验。

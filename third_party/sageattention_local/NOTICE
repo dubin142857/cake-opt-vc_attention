@@ -1,0 +1,14 @@
+This distribution includes SageAttention v2.2.0 by the SageAttention team.
+Copyright 2024 Jintao Zhang, Haofeng Huang.
+Source: https://github.com/thu-ml/SageAttention
+Pinned commit: eb615cf6cf4d221338033340ee2de1c37fbdba4a
+License: Apache License 2.0 (see LICENSE).
+
+Local integration in vc-attention:
+- Independent sageattention_local Python package and Torch operator namespaces.
+- Independent sageattention-local distribution, version 2.2.0+vc1.
+- Hopper-only build of the original _qattn_sm90 and _fused CUDA extensions.
+- Distinct name for the SM90 fake implementation, avoiding shadowing the CUDA callable.
+- Build provenance, validation and same-process comparison scripts.
+CUDA/C++ and Triton kernel source content is unchanged.
+This is a source rebuild with integration fixes, not a new attention algorithm.

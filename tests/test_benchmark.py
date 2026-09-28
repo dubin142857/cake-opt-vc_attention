@@ -21,7 +21,7 @@ sys.modules[spec.name] = benchmark
 spec.loader.exec_module(benchmark)
 
 
-@pytest.mark.parametrize("name", ["flash2", "flash3", "flash4", "sage"])
+@pytest.mark.parametrize("name", ["flash2", "flash3", "flash4", "sage", "sage_local"])
 def test_adapter_preserves_values_layout_scale_and_output(monkeypatch, name):
     torch.manual_seed(12)
     qkv = tuple(torch.randn(2, 3, n, 8) for n in (5, 7, 7))
@@ -31,7 +31,7 @@ def test_adapter_preserves_values_layout_scale_and_output(monkeypatch, name):
     def installed_function(q, k, v, **kwargs):
         calls.append(kwargs)
         assert all(x.is_contiguous() for x in (q, k, v))
-        if name == "sage":
+        if name in ("sage", "sage_local"):
             assert kwargs == dict(tensor_layout="HND", is_causal=False, sm_scale=8**-0.5, return_lse=False)
         else:
             assert kwargs["causal"] is False
@@ -45,12 +45,13 @@ def test_adapter_preserves_values_layout_scale_and_output(monkeypatch, name):
         for actual, expected in zip((q, k, v), qkv):
             torch.testing.assert_close(actual, expected, rtol=0, atol=0)
         result = F.scaled_dot_product_attention(q, k, v)
-        if name != "sage":
+        if name not in ("sage", "sage_local"):
             result = result.transpose(1, 2).contiguous()
         return (result, "unused lse") if name in ("flash3", "flash4") else result
 
     distribution, module_name, function_name, _ = benchmark.EXTERNAL[name]
     module = SimpleNamespace(__file__="installed/interface.py", **{function_name: installed_function})
+    module.local_build_info = lambda: {"upstream_commit": "pinned", "extensions": {"qattn_sm90": "local/native.so"}}
     monkeypatch.setattr(benchmark.importlib, "import_module", lambda path: module if path == module_name else None)
     monkeypatch.setattr(benchmark.metadata, "version", lambda package: "test-version" if package == distribution else None)
     backend = benchmark.external_backend(name, qkv, shd)
@@ -60,6 +61,35 @@ def test_adapter_preserves_values_layout_scale_and_output(monkeypatch, name):
     assert len(calls) == 1
     assert backend.info["version"] == "test-version"
     assert backend.info["interface"] == f"{module_name}.{function_name}"
+    if name == "sage_local":
+        assert backend.info["source_build"]["extensions"]["qattn_sm90"] == "local/native.so"
+
+
+def test_local_sage_is_optional_and_never_substitutes_installed_sage(monkeypatch):
+    assert "sage_local" not in benchmark.parse_args([]).backends
+    args = benchmark.parse_args(["--backends", "sage", "sage_local", "--baseline", "sage"])
+    assert args.backends == ["sage", "sage_local"]
+    seen = []
+
+    def missing(name):
+        seen.append(name)
+        raise ModuleNotFoundError("not built", name="sageattention_local")
+
+    monkeypatch.setattr(benchmark.importlib, "import_module", missing)
+    with pytest.raises(RuntimeError, match="sage_local: cannot load"):
+        benchmark.load_external("sage_local")
+    assert seen == ["sageattention_local"]
+
+
+def test_sage_comparison_uses_installed_output_as_reference_and_correct_speed_ratio():
+    samples = {"sage": torch.tensor([2., 2.]), "sage_local": torch.tensor([3., 3.])}
+    times = {"sage": {"median_ms": 24.}, "sage_local": {"median_ms": 30.}}
+    comparison = benchmark.compare_sage_outputs(samples, times)
+    assert comparison["local_speedup_vs_installed"] == pytest.approx(0.8)
+    assert comparison["relative_rmse_local_vs_installed"] == pytest.approx(0.5)
+    assert comparison["max_abs_local_vs_installed"] == pytest.approx(1.)
+    assert not comparison["exact_sample_match"]
+    assert comparison["acceptance_threshold"] is None
 
 
 def test_fa3_legacy_interface_only_when_modern_module_is_absent(monkeypatch):
