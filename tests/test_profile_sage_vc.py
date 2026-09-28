@@ -1,0 +1,203 @@
+"""Profiling contracts: stage coverage/parity, identical core inputs, timing units."""
+import importlib.util
+from pathlib import Path
+import sys
+from types import SimpleNamespace
+
+import pytest
+import torch
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0,str(ROOT / "scripts"))
+try:
+    import profile_sage_vc as profile
+finally:
+    sys.path.remove(str(ROOT / "scripts"))
+
+
+class Recorder:
+    def __init__(self):
+        self.names = []
+
+    def call(self,name,fn):
+        self.names.append(name)
+        return fn()
+
+
+def fake_ops():
+    def group(v,clusters,iters):
+        assert (clusters,iters) == (8,2)
+        return torch.arange(v.shape[2]-1,-1,-1).expand(*v.shape[:2],v.shape[2])
+
+    def qk(q,k,km,**kwargs):
+        assert kwargs == dict(BLKQ=64,WARPQ=16,BLKK=128,WARPK=128,tensor_layout="HND")
+        shape = q.shape[:2]
+        return q.round().to(torch.int8), torch.ones(*shape,((q.shape[2]+63)//64)*32), \
+            (k-km).round().to(torch.int8), torch.ones(*shape,((k.shape[2]+127)//128)*4)
+
+    def global_v(v,**kwargs):
+        assert kwargs == dict(tensor_layout="HND",smooth_v=False)
+        return v.transpose(-1,-2).contiguous().to(torch.float8_e4m3fn), torch.ones(*v.shape[:2],v.shape[-1]),None
+
+    def block_v(v):
+        b,h,n,d = v.shape
+        # Deliberately identifiable data; these mocks test orchestration, not CUDA quantization.
+        return v.transpose(-1,-2).contiguous().to(torch.float8_e4m3fn), \
+            torch.full((b,h,(n+127)//128,d),2.), torch.full((b,h,(n+127)//128,d),3.,dtype=torch.float16)
+
+    return SimpleNamespace(qk=qk,v_global=global_v,ext=SimpleNamespace(group_values=group,prepare_values=block_v))
+
+
+def load_installed_prepare(monkeypatch,ops):
+    # Execute the actual vendored Python prepare with injectable CPU primitive doubles.
+    spec = importlib.util.spec_from_file_location("sageattention_local.vc",ROOT / "third_party/sageattention_local/sageattention_local/vc.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    monkeypatch.setattr(module,"_extension",lambda: ops.ext)
+    monkeypatch.setitem(sys.modules,"sageattention_local.triton.quant_per_thread",SimpleNamespace(per_thread_int8=ops.qk))
+    monkeypatch.setitem(sys.modules,"sageattention_local.quant",SimpleNamespace(per_channel_fp8=ops.v_global))
+    return module
+
+
+@pytest.mark.parametrize("smooth",[False,True])
+@pytest.mark.parametrize("cast",[False,True])
+@pytest.mark.parametrize("n",[1,128,129])
+def test_staged_mirror_matches_production_preparation(monkeypatch,smooth,cast,n):
+    torch.manual_seed(407)
+    qkv = [torch.randn(2,3,t,64).half() for t in (65,n,n)]
+    ops = fake_ops()
+    vc = load_installed_prepare(monkeypatch,ops)
+    expected = vc.prepare(*qkv,expcast=cast,v_smooth=smooth)
+    recorder = Recorder()
+    actual = profile.staged_prepare(*qkv,ops,recorder,expcast=cast,smooth=smooth)
+    profile.assert_payload_equal(actual,expected)
+    names = (["cluster_sort","reorder_kv"] if smooth else []) + ["k_mean","qk_int8"]
+    if not smooth and n % 128:
+        names.append("v_pad")
+    assert recorder.names == names + ["v_quantize"]
+    if smooth:
+        assert torch.equal(actual["permutation"], torch.arange(n-1,-1,-1).expand(2,3,n))
+    # Input tensors must not be modified, and the attention dispatch receives the staged state.
+    ops.vc = SimpleNamespace(forward_prepared=lambda state: state)
+    recorder = Recorder()
+    output = profile.staged_forward(qkv,ops,recorder,expcast=cast,smooth=smooth)
+    profile.assert_payload_equal(output,expected)
+    assert recorder.names[-1] == "attention"
+
+
+def test_frozen_permutation_skips_clustering_only_in_parity_check():
+    qkv = [torch.randn(1,2,5,64).half() for _ in range(3)]
+    ops = fake_ops()
+    permutation = torch.tensor([2,4,0,3,1]).expand(1,2,5)
+    ops.ext.group_values = lambda *args: pytest.fail("Parity check must reuse the exact permutation")
+    recorder = Recorder()
+    state = profile.staged_prepare(*qkv,ops,recorder,expcast=False,smooth=True,fixed_permutation=permutation)
+    assert "cluster_sort" not in recorder.names
+    assert state["permutation"] is permutation
+    expected_k = qkv[1].gather(2,permutation.unsqueeze(-1).expand_as(qkv[1]))
+    assert torch.equal(state["k"],(expected_k-expected_k.mean(2,keepdim=True)).round().to(torch.int8))
+
+
+def test_payload_parity_checks_used_scales_and_bytes_but_ignores_unused_padding():
+    qkv = [torch.randn(1,1,1,64).half() for _ in range(3)]
+    state = profile.staged_prepare(*qkv,fake_ops(),Recorder(),expcast=False,smooth=False)
+    clone = {key:value.clone() if isinstance(value,torch.Tensor) else value for key,value in state.items()}
+    clone["qs"][...,1:] = float("nan")
+    clone["ks"][...,1:] = 14
+    profile.assert_payload_equal(clone,state)
+    clone["qs"][...,0] += 1
+    with pytest.raises(AssertionError,match="qs"):
+        profile.assert_payload_equal(clone,state)
+    clone["qs"] = state["qs"]
+    clone["v"].view(torch.uint8)[...,0] = 127
+    with pytest.raises(AssertionError,match="v"):
+        profile.assert_payload_equal(clone,state)
+
+
+def test_fixed_core_pairs_share_all_tensors_without_repreparing():
+    bases = {False:{"q":torch.tensor([1]),"v":torch.tensor([2]),"expcast":False,"block_values":False},
+             True:{"q":torch.tensor([3]),"v":torch.tensor([4]),"expcast":False,"block_values":True}}
+    fixed = profile.fixed_variants(bases)
+    for a,b in (("sage_vc_control","sage_vc_expcast"),("sage_vc_smooth","sage_vc")):
+        assert fixed[a]["q"] is fixed[b]["q"]
+        assert fixed[a]["v"] is fixed[b]["v"]
+        assert fixed[a]["expcast"] is False and fixed[b]["expcast"] is True
+    assert bases[False]["expcast"] is False and bases[True]["expcast"] is False
+
+
+def test_stage_summary_uses_trial_means_and_keeps_cpu_gpu_separate():
+    def sample(x):
+        return {"wall_ms":x+3,"stages":{"k_mean":{"cuda_event_ms":x,"cpu_enqueue_ms":x/10},
+                                        "attention":{"cuda_event_ms":2*x,"cpu_enqueue_ms":x/20}}}
+    report = profile.summarize_stages([[sample(1),sample(3)],[sample(10),sample(14)]])
+    assert report["stages"]["k_mean"]["cuda_event_ms"]["trial_mean_ms"] == [2,12]
+    assert report["stages"]["k_mean"]["cpu_enqueue_ms"]["median_ms"] == pytest.approx(0.7)
+    assert report["event_sum"]["median_ms"] == 21
+    assert report["instrumented_wall"]["median_ms"] == 10
+
+
+def test_trace_summary_excludes_nested_cpu_and_async_markers():
+    rows = [{"cat":cat,"ph":"X","name":name,"dur":dur}
+            for cat,name,dur in (("kernel","void sage_vc::sage_vc_attention_kernel<...>",12000),
+                                 ("kernel","gather",1500),("kernel","gather",2500),
+                                 ("cuda_runtime","cudaDeviceSynchronize",18000),
+                                 ("cpu_op","aten::gather",99999),("gpu_memcpy","copy",100))]
+    rows.append({"cat":"kernel","ph":"s","name":"flow","dur":5000})
+    result = profile.trace_summary(rows)
+    assert result["core_kernel_ms"] == 12
+    assert result["other_kernel_sum_ms"] == 4
+    assert result["kernel_sum_ms"] == 16
+    assert result["kernel_launches"] == 3
+    assert all(row["category"] != "cpu_op" for row in result["events"])
+    with pytest.raises(RuntimeError,match="No GPU"):
+        profile.trace_summary([])
+    with pytest.raises(RuntimeError,match="native core"):
+        profile.trace_summary([{"cat":"kernel","ph":"X","name":"gather","dur":3}])
+
+
+def test_timer_does_not_synchronize_between_stages(monkeypatch):
+    events = []
+    class Event:
+        def __init__(self,**kwargs): pass
+        def record(self): events.append("record")
+        def elapsed_time(self,other):
+            assert events[-1] == "sync"
+            return 2.0
+    monkeypatch.setattr(torch.cuda,"Event",Event)
+    monkeypatch.setattr(torch.cuda,"synchronize",lambda device:events.append("sync"))
+    ticks = iter([1.,1.005,2.,2.009])
+    monkeypatch.setattr(profile.time,"perf_counter",lambda:next(ticks))
+    recorder = profile.EventStages("cuda:0")
+    events.clear()
+    recorder.call("k_mean",lambda:events.append("mean"))
+    recorder.call("attention",lambda:events.append("core"))
+    assert events == ["record","mean","record","record","core","record"]
+    result = recorder.finish()
+    assert events[-1] == "sync"
+    assert result["k_mean"]["cuda_event_ms"] == 2
+    assert result["k_mean"]["cpu_enqueue_ms"] == pytest.approx(5)
+    assert result["attention"]["cpu_enqueue_ms"] == pytest.approx(9)
+
+
+def test_target_shape_and_argument_validation():
+    args = profile.parse_args([])
+    assert profile.input_shapes(args)["BSHD"]["q"] == [1,37741,28,128]
+    assert args.trace_dir is None and args.ncu_variant is None
+    with pytest.raises(SystemExit):
+        profile.parse_args(["--repeats","0"])
+    with pytest.raises(SystemExit):
+        profile.parse_args(["--ncu-variant","sage_vc","--trace-dir","results/x"])
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(),reason="CUDA event execution requires a GPU")
+def test_real_cuda_stage_events_and_output():
+    device = torch.device("cuda:0")
+    with torch.cuda.device(device):
+        x = torch.arange(4096,device=device,dtype=torch.float32)
+        timer = profile.EventStages(device)
+        y = timer.call("k_mean",lambda:x * 2)
+        out = timer.call("attention",lambda:y + 1)
+        values = timer.finish()
+        torch.testing.assert_close(out,x * 2 + 1,rtol=0,atol=0)
+        assert set(values) == {"k_mean","attention"}
+        assert all(row["cuda_event_ms"] > 0 and row["cpu_enqueue_ms"] >= 0 for row in values.values())

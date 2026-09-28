@@ -92,6 +92,10 @@ out = sageattn_vc(q, k, v, tensor_layout="NHD", expcast=True, v_smooth=True)
 聚类、重排、QK/V 量化仍是预处理，整个 Python API 会调用多个 GPU kernel。
 启用两项不能保证比 Sage 更快，也不能保证随机输入精度提高；四组实验用于测量实际影响。
 
+已有 vc3 安装可以直接运行分阶段诊断，不用重新编译：
+`python3 scripts/profile_sage_vc.py`。默认就是 `[1,37741,28,128]` 场景，
+同时比较端到端、各预处理阶段和固定量化输入的主体耗时，见 [SAGE_VC_PROFILE.md](SAGE_VC_PROFILE.md)。
+
 ## 来源和本地验证范围
 
 原始 Sage v2.2.0 commit `eb615cf6cf4d221338033340ee2de1c37fbdba4a`，Apache-2.0。

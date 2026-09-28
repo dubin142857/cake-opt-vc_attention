@@ -1,0 +1,357 @@
+"""Time public APIs, individual preprocessing stages, and fixed-payload Sage+VC cores.
+
+Works with the installed 2.2.0+vc3 package; no rebuild or algorithm changes.
+CUDA event intervals include stream idle/host launch gaps, not just kernel work.
+Optional CUPTI traces report kernel durations separately. CPU/GPU times overlap.
+"""
+import argparse
+from contextlib import nullcontext
+import json
+from pathlib import Path
+import platform
+import random
+import statistics
+import time
+from types import SimpleNamespace
+
+import torch
+
+from benchmark_cuda import SAGE_VC_VARIANTS, external_backend, input_shapes, measure_trial, output_hnd
+
+
+STAGES = ("cluster_sort", "reorder_kv", "k_mean", "qk_int8", "v_pad", "v_quantize", "attention")
+
+
+class DirectStages:
+    def __init__(self, trace=False):
+        self.trace = trace
+
+    def call(self, name, function):
+        with torch.profiler.record_function("sage_vc/" + name) if self.trace else nullcontext():
+            return function()
+
+
+class EventStages:
+    """Events are primed before timing; never synchronize between stages."""
+    def __init__(self, device):
+        self.device = device
+        self.events = {name: (torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True))
+                       for name in STAGES}
+        for pair in self.events.values():
+            for event in pair:
+                event.record()
+        torch.cuda.synchronize(device)
+        self.reset()
+
+    def reset(self):
+        self.cpu_ms = {}
+
+    def call(self, name, function):
+        if name in self.cpu_ms:
+            raise RuntimeError(f"Stage recorded twice: {name}")
+        begin, end = self.events[name]
+        begin.record()
+        start = time.perf_counter()
+        result = function()
+        self.cpu_ms[name] = (time.perf_counter() - start) * 1000
+        end.record()
+        return result
+
+    def finish(self):
+        torch.cuda.synchronize(self.device)
+        return {name: {"cuda_event_ms": self.events[name][0].elapsed_time(self.events[name][1]),
+                       "cpu_enqueue_ms": elapsed} for name, elapsed in self.cpu_ms.items()}
+
+
+def load_ops():
+    from sageattention_local import vc
+    from sageattention_local.triton.quant_per_thread import per_thread_int8
+    from sageattention_local.quant import per_channel_fp8
+    return SimpleNamespace(vc=vc, ext=vc._extension(), qk=per_thread_int8, v_global=per_channel_fp8)
+
+
+@torch.no_grad()
+def staged_prepare(q, k, v, ops, recorder, *, expcast, smooth, fixed_permutation=None):
+    """Mirror vc3 prepare, with parity checked against the installed implementation.
+
+fixed_permutation is used ONLY for the untimed parity check. Timed stage calls
+always recompute clustering; the production package is never monkey-patched.
+"""
+    call = recorder.call
+    permutation = None
+    if smooth:
+        permutation = fixed_permutation
+        if permutation is None:
+            permutation = call("cluster_sort", lambda: ops.ext.group_values(v, 8, 2))
+        def reorder():
+            index = permutation.unsqueeze(-1)
+            return k.gather(2, index.expand_as(k)), v.gather(2, index.expand_as(v))
+        k, v = call("reorder_kv", reorder)
+    km = call("k_mean", lambda: k.mean(dim=2, keepdim=True))
+    q8, qs, k8, ks = call("qk_int8", lambda: ops.qk(q, k, km, BLKQ=64, WARPQ=16,
+                                                 BLKK=128, WARPK=128, tensor_layout="HND"))
+    if smooth:
+        v8, vs, means = call("v_quantize", lambda: ops.ext.prepare_values(v.contiguous()))
+    else:
+        pad = (-v.shape[2]) % 128
+        if pad:
+            v = call("v_pad", lambda: torch.cat((v, torch.zeros(v.shape[0], v.shape[1], pad, v.shape[3],
+                                                              device=v.device, dtype=v.dtype)), dim=2))
+        v8, vs, _ = call("v_quantize", lambda: ops.v_global(v, tensor_layout="HND", smooth_v=False))
+        means = torch.empty(0, device=v.device, dtype=torch.float16)
+    return {"q": q8, "k": k8, "v": v8, "qs": qs, "ks": ks, "vs": vs, "means": means,
+            "expcast": expcast, "block_values": smooth, "output_type": 0 if q.dtype == torch.float16 else 1,
+            "scale": q.shape[-1] ** -0.5, "permutation": permutation}
+
+
+def staged_forward(qkv, ops, recorder, *, expcast, smooth):
+    state = staged_prepare(*qkv, ops, recorder, expcast=expcast, smooth=smooth)
+    return recorder.call("attention", lambda: ops.vc.forward_prepared(state))
+
+
+def assert_payload_equal(actual, expected):
+    """Compare all consumed bytes/scales; ignore unused padded Q/K scale slots."""
+    for key in ("q", "k", "v", "qs", "ks", "vs", "means", "permutation"):
+        a, e = actual[key], expected[key]
+        if a is None or e is None:
+            if a is not e:
+                raise AssertionError(f"Staged/installed payload differs: {key}")
+            continue
+        if a.shape != e.shape or a.dtype != e.dtype or a.device != e.device:
+            raise AssertionError(f"Staged/installed metadata differs: {key}")
+        if key in ("qs", "ks"):
+            rows = torch.arange(expected["q" if key == "qs" else "k"].shape[2], device=e.device)
+            ids = (rows // 16) * 8 + rows % 8 if key == "qs" else (rows // 128) * 4 + (rows % 8) // 2
+            a, e = (x.index_select(2, ids.unique()) for x in (a, e))
+        if not torch.equal(a.contiguous().view(torch.uint8), e.contiguous().view(torch.uint8)):
+            raise AssertionError(f"Staged/installed payload bytes differ: {key}; refusing misleading stage timings")
+    for key in ("expcast", "block_values", "output_type", "scale"):
+        if actual[key] != expected[key]:
+            raise AssertionError(f"Staged/installed configuration differs: {key}")
+
+
+def fixed_variants(bases):
+    # All tensor objects (including QK scales and V metadata) are shared by the
+    # two ExpCast settings within a V mode. Only the scalar switch changes.
+    return {name: {**bases[smooth], "expcast": cast}
+            for name, (cast, smooth) in SAGE_VC_VARIANTS.items()}
+
+
+def stats(samples):
+    return {"median_ms": statistics.median(samples), "min_ms": min(samples), "max_ms": max(samples),
+            "trial_mean_ms": samples}
+
+
+def summarize_stages(trials):
+    names = set(trials[0][0]["stages"])
+    rows = {}
+    for name in STAGES:
+        if name not in names:
+            continue
+        rows[name] = {}
+        for metric in ("cuda_event_ms", "cpu_enqueue_ms"):
+            values = [statistics.mean(sample["stages"][name][metric] for sample in trial) for trial in trials]
+            rows[name][metric] = stats(values)
+    return {"stages": rows,
+            "instrumented_wall": stats([statistics.mean(x["wall_ms"] for x in trial) for trial in trials]),
+            "event_sum": stats([statistics.mean(sum(s["cuda_event_ms"] for s in x["stages"].values())
+                                                for x in trial) for trial in trials]),
+            "raw_trials": trials}
+
+
+def trace_summary(events):
+    """Keep device and host-runtime events separate; exclude nested CPU operators."""
+    groups = {}
+    for event in events:
+        category = event.get("cat")
+        if event.get("ph") != "X" or category not in ("kernel", "gpu_memcpy", "gpu_memset", "cuda_runtime"):
+            continue
+        key = (category, event.get("name", "unknown"))
+        row = groups.setdefault(key, {"category": category, "name": key[1], "calls": 0, "total_us": 0.})
+        row["calls"] += 1
+        row["total_us"] += event.get("dur", 0.)
+    rows = sorted(groups.values(), key=lambda x: x["total_us"], reverse=True)
+    kernels = [x for x in rows if x["category"] == "kernel"]
+    if not kernels:
+        raise RuntimeError("No GPU kernel events captured; check CUPTI/PyTorch profiler availability")
+    core = sum(x["total_us"] for x in kernels if "sage_vc_attention_kernel" in x["name"])
+    if not core:
+        raise RuntimeError("Trace does not contain the Sage VC native core; refusing a zero-time result")
+    total = sum(x["total_us"] for x in kernels)
+    return {"core_kernel_ms": core / 1000, "other_kernel_sum_ms": (total-core) / 1000,
+            "kernel_sum_ms": total / 1000, "kernel_launches": sum(x["calls"] for x in kernels),
+            "events": rows}
+
+
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--batch", type=int, default=1)
+    parser.add_argument("--heads", type=int, default=28)
+    parser.add_argument("--queries", type=int, default=37741)
+    parser.add_argument("--tokens", type=int, default=37741)
+    parser.add_argument("--dim", type=int, choices=(64,128), default=128)
+    parser.add_argument("--dtype", choices=("float16","bfloat16"), default="bfloat16")
+    parser.add_argument("--device", default="cuda:0")
+    parser.add_argument("--warmup", type=int, default=2)
+    parser.add_argument("--repeats", type=int, default=5)
+    parser.add_argument("--trials", type=int, default=3)
+    parser.add_argument("--seed", type=int, default=1234)
+    parser.add_argument("--output", default="results/h200_sage_vc_profile.json")
+    parser.add_argument("--trace-dir", help="Optional CUPTI CPU/GPU timelines, one staged call per variant")
+    parser.add_argument("--ncu-variant", choices=tuple(SAGE_VC_VARIANTS),
+                        help="Only capture one warmed fixed-payload native call inside cudaProfilerStart/Stop")
+    args = parser.parse_args(argv)
+    if min(args.batch,args.heads,args.queries,args.tokens,args.warmup,args.repeats,args.trials) < 1:
+        parser.error("shapes, warmup, repeats and trials must be positive")
+    if args.ncu_variant and args.trace_dir:
+        parser.error("--ncu-variant and --trace-dir use separate profiler runs")
+    return args
+
+
+def validate_device(args):
+    device = torch.device(args.device)
+    if device.type != "cuda" or not torch.cuda.is_available() or torch.cuda.get_device_capability(device) != (9,0):
+        raise RuntimeError("Sage VC profiling requires Hopper, with sageattention-local 2.2.0+vc3 installed")
+    torch.cuda.set_device(device)
+    if torch.cuda.current_stream(device) != torch.cuda.default_stream(device):
+        raise RuntimeError("Use the default CUDA stream, as required by the public Sage VC API")
+    if args.trace_dir and torch.profiler.ProfilerActivity.CUDA not in torch.profiler.supported_activities():
+        raise RuntimeError("CUDA profiling/CUPTI unavailable; omit --trace-dir for event/wall timing")
+    return device
+
+
+def print_report(report):
+    print("\nUninstrumented API wall time and fixed-payload native API wall time (ms):")
+    print(f"{'variant':<23} {'full API':>12} {'fixed core API':>16}")
+    for name, row in report["end_to_end"].items():
+        fixed = report["fixed_payload_core"].get(name)
+        value = f"{fixed['median_ms']:.4f}" if fixed else "--"
+        print(f"{name:<23} {row['median_ms']:>12.4f} {value:>16}")
+    print("\nStaged pipeline: CUDA-event intervals in ms (includes stream gaps; not pure kernel durations):")
+    print(f"{'variant':<23}" + "".join(f"{name:>13}" for name in STAGES))
+    for name, row in report["pipeline"].items():
+        values = [f"{row['stages'][s]['cuda_event_ms']['median_ms']:.4f}" if s in row["stages"] else "--" for s in STAGES]
+        print(f"{name:<23}" + "".join(f"{value:>13}" for value in values))
+    print("\nFixed-payload ExpCast comparison; identical Q/K/V payloads within each pair:")
+    for plain, cast in (("sage_vc_control","sage_vc_expcast"),("sage_vc_smooth","sage_vc")):
+        a, b = (report["fixed_payload_core"][key]["median_ms"] for key in (plain,cast))
+        print(f"  {plain} -> {cast}: {a:.4f} -> {b:.4f} ms, delta {b-a:+.4f} ms, plain/cast={a/b:.4f}x")
+    print("CPU enqueue times and raw trials are in JSON. Do not add CPU and GPU times.")
+    print("Fixed core excludes all preprocessing and still includes native dispatch/allocation. It is NOT end-to-end speedup.")
+
+
+@torch.no_grad()
+def run(args):
+    device = validate_device(args)
+    torch.backends.cuda.matmul.allow_tf32 = False
+    from sageattention_local import sage_vc_build_info
+    info, ops = sage_vc_build_info(), load_ops()
+    torch.manual_seed(args.seed)
+    dtype = getattr(torch,args.dtype)
+    qkv = tuple(torch.randn(args.batch,args.heads,n,args.dim,device=device,dtype=dtype)
+                for n in (args.queries,args.tokens,args.tokens))
+    if args.ncu_variant:
+        cast, smooth = SAGE_VC_VARIANTS[args.ncu_variant]
+        state = ops.vc.prepare(*qkv,expcast=cast,v_smooth=smooth)
+        for _ in range(args.warmup):
+            ops.vc.forward_prepared(state)
+        torch.cuda.synchronize(device)
+        print(f"NCU: one warmed {args.ncu_variant} core, BHND={list(qkv[0].shape)}; preprocessing excluded",flush=True)
+        torch.cuda.profiler.start()
+        try:
+            output = ops.vc.forward_prepared(state)
+            torch.cuda.synchronize(device)
+        finally:
+            torch.cuda.profiler.stop()
+        output_hnd(output,"BHND",qkv[0].shape,dtype)
+        return {"ncu_variant": args.ncu_variant, "build": info, "finite": True}
+    environment = {"python": platform.python_version(), "torch": torch.__version__, "torch_cuda": torch.version.cuda,
+                   "gpu": torch.cuda.get_device_name(device), "device": str(device), "tf32_enabled": False,
+                   "input_shapes": input_shapes(args), "build": info}
+    print(json.dumps(environment,indent=2),flush=True)
+    bases = {}
+    for smooth in (False,True):
+        print(f"Checking stage/public payload parity, v_smooth={smooth} (outside timing)",flush=True)
+        base = ops.vc.prepare(*qkv,expcast=False,v_smooth=smooth)
+        staged = staged_prepare(*qkv,ops,DirectStages(),expcast=False,smooth=smooth,fixed_permutation=base["permutation"])
+        assert_payload_equal(staged,base)
+        del staged
+        bases[smooth] = base
+    fixed = fixed_variants(bases)
+    backends = {name: external_backend(name,qkv,None) for name in ("sage_local",*SAGE_VC_VARIANTS)}
+    for name, backend in backends.items():
+        print(f"Warmup {name}",flush=True)
+        for _ in range(args.warmup):
+            output = backend.call()
+            if name in fixed:
+                ops.vc.forward_prepared(fixed[name])
+        output_hnd(output,"BHND",qkv[0].shape,dtype)
+    recorder = EventStages(device)
+    times = {name: [] for name in backends}
+    core_times = {name: [] for name in fixed}
+    pipelines = {name: [] for name in fixed}
+    rng, orders = random.Random(args.seed), []
+    for trial in range(args.trials):
+        # Shuffle all API/core jobs together to reduce warmup/clock/order bias.
+        jobs = [("api",name) for name in backends] + [("core",name) for name in fixed]
+        rng.shuffle(jobs)
+        stage_order = list(fixed)
+        rng.shuffle(stage_order)
+        orders.append({"api_and_core": jobs, "pipeline": stage_order})
+        for kind, name in jobs:
+            call = backends[name].call if kind == "api" else lambda name=name: ops.vc.forward_prepared(fixed[name])
+            output, elapsed = measure_trial(call,args.repeats,device)
+            output_hnd(output,"BHND",qkv[0].shape,dtype)
+            (times if kind == "api" else core_times)[name].append(elapsed)
+            print(f"Trial {trial+1}/{args.trials}: {kind} {name} {elapsed:.4f} ms",flush=True)
+        for name in stage_order:
+            cast, smooth = SAGE_VC_VARIANTS[name]
+            samples = []
+            for _ in range(args.repeats):
+                recorder.reset()
+                torch.cuda.synchronize(device)
+                start = time.perf_counter()
+                output = staged_forward(qkv,ops,recorder,expcast=cast,smooth=smooth)
+                stages = recorder.finish()
+                samples.append({"stages": stages,"wall_ms": (time.perf_counter()-start)*1000})
+            output_hnd(output,"BHND",qkv[0].shape,dtype)
+            pipelines[name].append(samples)
+            print(f"Trial {trial+1}/{args.trials}: stages {name} complete",flush=True)
+    report = {"environment": environment,"arguments": vars(args),"payload_parity": "passed; fixed permutation; all consumed bytes/scales",
+              "end_to_end": {name: {**stats(values),"backend": backends[name].info} for name,values in times.items()},
+              "fixed_payload_core": {name: stats(values) for name,values in core_times.items()},
+              "pipeline": {name: summarize_stages(values) for name,values in pipelines.items()},"trial_order": orders,
+              "notes": ["Public API times are synchronized wall time, with fresh clustering on every smoothed call.",
+                        "Staged mirror is verified against installed prepare, using its exact permutation only for the untimed parity check.",
+                        "No synchronization between stages. CUDA-event intervals include device idle/host launch gaps.",
+                        "CPU enqueue times overlap GPU time; never sum them. Instrumentation changes latency.",
+                        "Fixed payloads exclude ALL preprocessing, reuse the same quantized tensors within each ExpCast pair, and still include native host dispatch/output allocation.",
+                        "No layout-cache speedup or model-quality claim is made. No FP32 dense oracle is computed by this diagnostic."]}
+    # Write useful timing results before optional CUPTI tracing, which can be unavailable.
+    path = Path(args.output)
+    path.parent.mkdir(parents=True,exist_ok=True)
+    path.write_text(json.dumps(report,indent=2,allow_nan=False)+"\n",encoding="utf-8")
+    print_report(report)
+    print(f"Timing report: {path}",flush=True)
+    if args.trace_dir:
+        directory = Path(args.trace_dir)
+        directory.mkdir(parents=True,exist_ok=True)
+        report["traces"] = {}
+        for name, (cast,smooth) in SAGE_VC_VARIANTS.items():
+            torch.cuda.synchronize(device)
+            with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU,torch.profiler.ProfilerActivity.CUDA]) as prof:
+                with torch.profiler.record_function(name):
+                    output = staged_forward(qkv,ops,DirectStages(trace=True),expcast=cast,smooth=smooth)
+                torch.cuda.synchronize(device)
+            output_hnd(output,"BHND",qkv[0].shape,dtype)
+            trace = directory / (name + ".trace.json")
+            prof.export_chrome_trace(str(trace))
+            summary = trace_summary(json.loads(trace.read_text(encoding="utf-8"))["traceEvents"])
+            report["traces"][name] = {"path": str(trace), **summary}
+            print(f"Trace {name}: core GPU {summary['core_kernel_ms']:.4f} ms; other kernels {summary['other_kernel_sum_ms']:.4f} ms; {summary['kernel_launches']} launches",flush=True)
+        path.write_text(json.dumps(report,indent=2,allow_nan=False)+"\n",encoding="utf-8")
+    return report
+
+
+if __name__ == "__main__":
+    run(parse_args())

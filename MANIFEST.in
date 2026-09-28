@@ -7,6 +7,7 @@ include D128_CUDA.md
 include INTERLEAVED_CUDA.md
 include SAGE_LOCAL.md
 include SAGE_VC.md
+include SAGE_VC_PROFILE.md
 include results/cuda_local_validation.json
 include results/fused_local_validation.json
 include results/pipeline_local_validation.json

@@ -9,6 +9,7 @@ cuBLASLt FP8 矩阵乘；用户提供的 H200 日志中，旧版 0.1.0 已通过
 另提供 SageAttention 2.2.0 的独立源码编译包 `sageattention_local`，可与已安装原版同场比较，见 [SAGE_LOCAL.md](SAGE_LOCAL.md)。
 在此基础上新增 `sageattn_vc`：保留 Sage INT8 QK 和 Hopper TMA/WGMMA 主体，
 加入 V 聚类/分块平滑与 ExpCast，四组开关对照见 [SAGE_VC.md](SAGE_VC.md)。
+Sage+VC 的分阶段计时、固定量化输入对照和 profiler 用法见 [SAGE_VC_PROFILE.md](SAGE_VC_PROFILE.md)。
 Q/K、P、V 分阶段精度诊断见 [ACCURACY_DIAGNOSTICS.md](ACCURACY_DIAGNOSTICS.md)，已有 0.2.0 安装可直接运行。
 0.2.1 修正参考 scale 除法的舍入，并增加固定量化字节的 CUDA 对拍，见 [PAYLOAD_DIAGNOSTICS.md](PAYLOAD_DIAGNOSTICS.md)。
 0.3.0 默认批量处理 head 和 Q 行、缓存 GEMM plan、合并状态更新及输入校验。
