@@ -1,30 +1,34 @@
 # SageAttention 主体 + VC 两项改动
 
-`sageattention-local==2.2.0+vc5` 在已经同场测到 25.8055 ms 的本地 Sage 源码上，
+`sageattention-local==2.2.0+vc6` 在已经同场测到 25.8055 ms 的本地 Sage 源码上，
 新增独立 `sageattn_vc`。原版 `sageattn` 的数学与内核保留。
 **25.8055 ms 是用户提供的原版源码构建结果，不是本次新入口的速度。**
 
 这是 **Sage+VC 混合实验**：QK 保留 Sage per-thread INT8；新增 V 聚类/块平滑和 ExpCast。
 没有改为完整 VC 的 FP8 QK/Hadamard，也尚未接入论文的去噪步数调度。
 
-vc4 的成对 FP8 解码、V 元数据读取和提前搬运，在用户 H200 上让单平滑 API 从
-45.2558 ms 降到 41.8509 ms，但全开仍为 51.1880 ms，没有实现全开提速。
-因此 vc5 保留 vc4 内核作为同场对照，并进行两项可验证的优化：
+vc6 修正 V 量化尺度的粒度：默认 `v_scale_mode="channel"`，每个 batch/head/channel
+共享一个尺度，块均值仍按 128 个有效 token 计算。主内核在统一尺度下累加残差及均值
+补偿，归一化后只乘一次 V scale；不再在每个 K/V 块读取尺度并恢复缩放。
+这对应 [VC 论文附录 B 的 8-bit 描述](https://arxiv.org/html/2609.15810v1)。
+**这是尺度/恢复方式的对齐，不代表完整复现论文，也不预先承诺 H200 加速。**
 
-- ExpCast 的行最大值改成四条独立归约链，再做 lane 间归约。每 lane 的正尺度在跨 lane
-  归约前应用，保留 per-thread K scale；P 字节编码、分母和概率量化方式不变。
-- V 补偿 `(product + mass * mean) * scale + history` 改成两个 FP32 FMA，减少标量运算。
-  数学公式不变，但每次乘加只舍入一次，**不再要求与 vc4 逐位相同**。
-  [NVIDIA 浮点说明](https://docs.nvidia.com/cuda/floating-point/index.html)解释了这一区别。
+保留 Sage 的两级 PV 累加：每块 WGMMA 的临时结果转入 FP32 历史缓冲。
+Hopper FP8 硬件累加的精度限制使这个缓冲不能随意删除，见
+[SageAttention2 论文](https://arxiv.org/abs/2411.10958)。ExpCast 本版没有新增数学改动。
 
-默认入口使用 `kernel_mode="optimized"`，`kernel_mode="vc4"` 保留此前数学和调度，
-在当前工具链下重新编译。关闭两项时两种模式调用同一控制内核。
-`sage_vc_build_info()` 中 `sage_vc_kernel_version=3` 表示已加载支持两种模式的原生扩展。
-这些改动不改变 INT8 QK、FP8 PV 或聚类，H200 加速幅度需要同场实测。
+两种对照含义不同：
 
-本地验证：102 项测试通过（包括 GPU 辅助函数、混合 lane 尺度、FMA 独立参考和
-同场比较脚本）；Compute Sanitizer memcheck 无错误。28 种新旧 Hopper 内核配置
-交叉编译通过，无 spill。本地不能执行 Hopper 完整 attention，远端验证仍需运行。
+- `v_scale_mode="block"` 保留 vc5 的逐块尺度量化。它与默认路径的 V 字节/均值会不同，
+  必须分别对比 dense FP32 误差；不能把差异当成纯执行误差。
+- `kernel_mode="vc4"` 保留逐块恢复的参考执行方式。对于新的共享尺度输入，每块都读取
+  同一个通道尺度；与 optimized 使用完全相同的量化数据，检查移出缩放及 FMA 的实现误差。
+  因此共享尺度上的 vc4 是参考调度，不是旧版包的原样端到端结果。
+- `v_scale_mode="block", kernel_mode="optimized"` 对应此前 vc5 的路径；
+  `v_scale_mode="block", kernel_mode="vc4"` 对应此前 vc4 的路径，均由当前工具链编译。
+
+`sage_vc_build_info()` 中 `sage_vc_kernel_version=4`、包版本 `2.2.0+vc6` 表示新扩展已加载。
+QK INT8、聚类和原版 `sageattn` 内核保持原有计算方式；原版与混合实验有独立入口。
 
 ## 远端编译和测试
 
@@ -42,10 +46,10 @@ bash scripts/build_sage_local.sh
 脚本先测原版，再运行 `validate_sage_vc.py`：
 
 - V 编码、均值、尺度、尾块和稳定聚类检查；ExpCast 编码与独立 FP32-FMA 参考逐字节比较。
-- FP16/BF16、D64/128、Q/K 边界长度、四种开关共 96 组 attention 对拍。
+- FP16/BF16、D64/128、Q/K 边界长度、四种开关及两种 V scale 粒度共 144 组 attention 对拍。
 - 量化数据固定后，对比 CUDA 与独立 Python 参考，relative RMSE <=1% 是实现回归门槛。
 - 双关闭入口与原版 Sage 比较，relative RMSE <=0.1%；另有非零均值已知答案和 HND/NHD 布局检查。
-- 96 组还会在相同量化数据上对照 optimized/vc4，relative RMSE <=0.1%。这仅是实现回归门槛。
+- 144 组还会在相同量化数据上对照 optimized/vc4，relative RMSE <=0.1%。这仅是实现回归门槛。
 - FP32 dense 误差单独记录，不把上述实现门槛当成模型质量结论。测试失败即中止。
 
 可以单独重跑：
@@ -64,7 +68,7 @@ bash scripts/benchmark_37741.sh --backends flash3 sage sage_local sage_vc_contro
 新旧内核同进程、同量化输入比较，不需要 `ncu`：
 
 ```bash
-python3 scripts/profile_sage_vc.py --compare-kernels --trace-dir results/h200_sage_vc5_traces --output results/h200_sage_vc5_profile.json
+python3 scripts/profile_sage_vc.py --compare-kernels --compare-v-scales --trace-dir results/h200_sage_vc6_traces --output results/h200_sage_vc6_profile.json
 ```
 
 | backend | 入口 | ExpCast | V 聚类 + 块平滑 |
@@ -88,8 +92,11 @@ from sageattention_local import sageattn_vc
 # q/k/v: [1, 37741, 28, 128]，CUDA BF16 或 FP16
 out = sageattn_vc(q, k, v, tensor_layout="NHD", expcast=True, v_smooth=True)
 
-# 保留 vc4 作对照；量化/聚类逻辑相同，执行旧内核
-old = sageattn_vc(q, k, v, tensor_layout="NHD", kernel_mode="vc4")
+# 相同量化方式，用逐块恢复的参考调度作对照
+old_schedule = sageattn_vc(q, k, v, tensor_layout="NHD", kernel_mode="vc4")
+
+# 旧 vc5 的逐块量化 + optimized 内核
+old_quantization = sageattn_vc(q, k, v, tensor_layout="NHD", v_scale_mode="block")
 
 # [batch, heads, tokens, dim] 则用 tensor_layout="HND"
 ```
@@ -105,14 +112,17 @@ old = sageattn_vc(q, k, v, tensor_layout="NHD", kernel_mode="vc4")
 1. V 平滑开启时，每个 head 独立按 V 聚类；确定性等间距初始化，默认 8 类、2 次 Lloyd 迭代。
    C++ 调度 PyTorch CUDA 聚类运算，按标签稳定排序，同序重排 K/V，Q 不重排。
    随后仍用原版 Triton 做 K 去均值和 QK INT8 量化。
-2. 新 CUDA 预处理按 128 个有效 token、每通道计算 FP32 均值和残差。
-   残差以 E4M3 保存，尺度为 `amax/448`；常量通道尺度取 1，并用 `abs(mean)/65504`
-   作尺度下界以容纳 FP16 的 `mean/scale`。V 存储采用 Sage PV 的转置和 token 排列。
-   均值不包括补齐 token，补齐残差为 0。
-3. Sage TMA 搬运、INT8 QK WGMMA、FP8 PV WGMMA 主体保留。
-   每块 PV 在寄存器里执行 `(PV_residual + rowmass * scaled_mean) * block_scale`，
-   随在线最大值调整历史分子/分母。块 scale 不能沿用原版的最后统一乘一次。
-   optimized 模式使用两个 FP32 FMA；vc4 模式使用分别舍入的乘法/加法。
+2. 新 CUDA 预处理先按块计算 FP32 均值及残差峰值，再归约得到每个 batch/head/channel
+   在所有块上的最大残差幅值。共享尺度为 `amax/448`；所有块残差均为零时取 1，
+   并以 `max(abs(block_mean))/65504` 为下界，避免 FP16 `mean/scale` 溢出。
+   最后重新读取 V，融合残差量化与均值存储。三个 GPU pass 不写完整 FP32 残差张量，
+   但比旧单 pass 预处理增加一次 V 读取和统计归约，full API 会计入这些成本。
+   `vs` 为 `[B,H,D]`，`means` 仍为 `[B,H,ceil(N/128),D]`。
+   均值不含补齐 token，补齐残差为 0，FP8 存储沿用 Sage 的转置及 token 排列。
+3. Sage TMA、INT8 QK WGMMA、FP8 PV WGMMA 和两级 FP32 累加保留。
+   默认每块执行 `history += FMA(rowmass, mean/channel_scale, PV_residual)`，
+   随在线最大值调整历史分子/分母；末尾归一化后统一乘 `channel_scale`。
+   旧 block 模式仍逐块恢复尺度。共享尺度上的 vc4 模式同样逐块恢复，作为同输入执行对照。
 4. ExpCast 直接把减去在线 rowmax 的自然对数分数编码为 E4M3 字节：
    `RNE(clamp(FMA(x, 8*log2(e), 119.65), 0, 120))`。
    PV、分母和均值补偿共同使用解码后的权重；最大编码 120 对应 256，公共尺度在归一化抵消。
@@ -136,8 +146,11 @@ old = sageattn_vc(q, k, v, tensor_layout="NHD", kernel_mode="vc4")
 不能执行 Hopper WGMMA attention。完整 Linux CUDA 13 编译、H200 attention 数值和性能
 仍需上面的远端脚本；本地检查不替代这些结果。
 
-本次本地结果：60 项 CPU/适配器/来源检查、30 组 CUDA V 预处理、65,540 个
-ExpCast 字节检查、4 组实际 device helper 的寄存器打包/在线状态/均值恢复检查通过。
-CUDA 12.4 交叉编译全部 16 个 sm_90a attention 变体并链接成功，ptxas 无寄存器溢出到本地内存；
-SASS 确认有 TMA、INT8 IGMMA 与 FP8 QGMMA。上述两类本地 GPU 测试经
-Compute Sanitizer memcheck 检查均为 0 errors。记录见 `results/sage_vc_local_validation.json`。
+本次本地 131 项测试通过，包括 60 组新旧 V 预处理、额外长块归约/大均值用例、
+ExpCast 编码、实际 CUDA helper、独立参考、脚本与来源检查；此前 16 组 helper
+保存结果仍逐位一致。Compute Sanitizer memcheck 为 0 errors。
+44 种 Hopper 配置交叉编译、链接成功，无 spill，SASS 含 TMA、INT8 IGMMA、FP8 QGMMA。
+CUDA 12.4 下 D128/BF16 默认平滑和全开使用 208/209 个寄存器，高于旧 block 模式
+的 180/181；因此不能只凭少了尺度读取就断言提速，远端 CUDA 13 的编译与计时为准。
+记录见 [results/sage_vc6_local_validation.json](results/sage_vc6_local_validation.json)。
+本地没有 Hopper GPU，144 组完整 attention 及 H200 性能仍待远端验证。

@@ -61,9 +61,81 @@ __global__ void expcast_probe(const float* x, uint8_t* y, int64_t n) {
     y[i] = vc_expcast_code(x[i]);
   }
 }
+
+// Three passes avoid writing a full FP32 residual tensor: block statistics,
+// channel reduction, then residual quantization + scaled-mean storage.
+template<typename T>
+__global__ void value_stats(const T* input, float* peaks, float* means, int n, int dim, int tiles) {
+  int lane = threadIdx.x % 32, channel = blockIdx.y * 8 + threadIdx.x / 32;
+  int head = blockIdx.z, tile = blockIdx.x, count = min(128, n - tile * 128);
+  float x[4], total = 0;
+  #pragma unroll
+  for (int j = 0; j < 4; ++j) {
+    int row = lane + j * 32;
+    x[j] = row < count ? to_float(input[(int64_t(head) * n + tile * 128 + row) * dim + channel]) : 0;
+    total += x[j];
+  }
+  float mean = __fdiv_rn(sum_warp(total), float(count)), peak = 0;
+  #pragma unroll
+  for (int j = 0; j < 4; ++j)
+    if (lane + j * 32 < count) peak = fmaxf(peak, fabsf(__fsub_rn(x[j], mean)));
+  peak = max_warp(peak);
+  if (lane == 0) {
+    int64_t meta = (int64_t(head) * tiles + tile) * dim + channel;
+    peaks[meta] = peak;
+    means[meta] = mean;
+  }
 }
 
-std::vector<torch::Tensor> vc_prepare_values(torch::Tensor v) {
+__global__ void value_channel_scales(const float* peaks, const float* means, float* scales, int tiles, int dim) {
+  int lane = threadIdx.x % 32, channel = blockIdx.x * 8 + threadIdx.x / 32, head = blockIdx.y;
+  float peak = 0, mean_peak = 0;
+  for (int tile = lane; tile < tiles; tile += 32) {
+    int64_t meta = (int64_t(head) * tiles + tile) * dim + channel;
+    peak = fmaxf(peak, peaks[meta]);
+    mean_peak = fmaxf(mean_peak, fabsf(means[meta]));
+  }
+  peak = max_warp(peak);
+  mean_peak = max_warp(mean_peak);
+  if (lane == 0) {
+    float scale = peak > 0 ? __fdiv_rn(peak, 448.0f) : 1.0f;
+    // Prevent FP16 mean overflow even for constant or almost-constant blocks.
+    scales[int64_t(head) * dim + channel] = fmaxf(scale, __fdiv_rn(mean_peak, 65504.0f));
+  }
+}
+
+template<typename T>
+__global__ void value_channel_quantize(const T* input, const float* raw_means, const float* scales,
+    uint8_t* payload, half* means, int n, int dim, int tiles) {
+  int lane = threadIdx.x % 32, channel = blockIdx.y * 8 + threadIdx.x / 32;
+  int head = blockIdx.z, tile = blockIdx.x, count = min(128, n - tile * 128);
+  int64_t meta = (int64_t(head) * tiles + tile) * dim + channel;
+  float mean = raw_means[meta], scale = scales[int64_t(head) * dim + channel];
+  if (lane == 0) means[meta] = __float2half_rn(__fdiv_rn(mean, scale));
+  #pragma unroll
+  for (int j = 0; j < 4; ++j) {
+    int row = lane + j * 32, r = row % 16;
+    float residual = row < count ? __fsub_rn(to_float(input[(int64_t(head) * n + tile * 128 + row) * dim + channel]), mean) : 0;
+    int permuted = (row / 16) * 16 + (r / 8) * 2 + ((r / 2) % 4) * 4 + r % 2;
+    payload[(int64_t(head) * dim + channel) * (tiles * 128) + tile * 128 + permuted]
+        = __nv_cvt_float_to_fp8(__fdiv_rn(residual, scale), __NV_SATFINITE, __NV_E4M3);
+  }
+}
+
+template<typename T>
+void prepare_channel(const T* input, torch::Tensor payload, torch::Tensor scales, torch::Tensor means,
+    torch::Tensor peaks, torch::Tensor raw_means, int n, int dim, int tiles, int heads, cudaStream_t stream) {
+  dim3 grid(tiles, dim / 8, heads);
+  value_stats<<<grid, 256, 0, stream>>>(input, peaks.data_ptr<float>(), raw_means.data_ptr<float>(), n, dim, tiles);
+  C10_CUDA_KERNEL_LAUNCH_CHECK();
+  value_channel_scales<<<dim3(dim / 8, heads), 256, 0, stream>>>(peaks.data_ptr<float>(), raw_means.data_ptr<float>(), scales.data_ptr<float>(), tiles, dim);
+  C10_CUDA_KERNEL_LAUNCH_CHECK();
+  value_channel_quantize<<<grid, 256, 0, stream>>>(input, raw_means.data_ptr<float>(), scales.data_ptr<float>(),
+      reinterpret_cast<uint8_t*>(payload.data_ptr()), reinterpret_cast<half*>(means.data_ptr()), n, dim, tiles);
+}
+}
+
+std::vector<torch::Tensor> vc_prepare_values(torch::Tensor v, bool channel_scale) {
   TORCH_CHECK(v.is_cuda() && v.is_contiguous() && v.dim() == 4 && v.numel() > 0, "V requires contiguous nonempty CUDA BHND");
   TORCH_CHECK(v.scalar_type() == at::kHalf || v.scalar_type() == at::kBFloat16 || v.scalar_type() == at::kFloat, "V requires FP16/BF16/FP32");
   TORCH_CHECK(v.size(3) == 64 || v.size(3) == 128, "V dimension must be 64 or 128");
@@ -71,11 +143,21 @@ std::vector<torch::Tensor> vc_prepare_values(torch::Tensor v) {
   const c10::cuda::CUDAGuard guard(v.device());
   int n = v.size(2), dim = v.size(3), tiles = (n + 127) / 128;
   auto payload = torch::empty({v.size(0), v.size(1), dim, tiles * 128}, v.options().dtype(at::ScalarType::Float8_e4m3fn));
-  auto scales = torch::empty({v.size(0), v.size(1), tiles, dim}, v.options().dtype(at::kFloat));
-  auto means = torch::empty_like(scales, scales.options().dtype(at::kHalf));
+  auto means = torch::empty({v.size(0), v.size(1), tiles, dim}, v.options().dtype(at::kHalf));
+  auto scales = channel_scale ? torch::empty({v.size(0), v.size(1), dim}, v.options().dtype(at::kFloat))
+      : torch::empty_like(means, means.options().dtype(at::kFloat));
   dim3 grid(tiles, dim / 8, v.size(0) * v.size(1));
   auto stream = c10::cuda::getCurrentCUDAStream(v.get_device()).stream();
-  if (v.scalar_type() == at::kHalf)
+  if (channel_scale) {
+    auto peaks = torch::empty_like(means, means.options().dtype(at::kFloat));
+    auto raw_means = torch::empty_like(peaks);
+    if (v.scalar_type() == at::kHalf)
+      prepare_channel(reinterpret_cast<const half*>(v.data_ptr()), payload, scales, means, peaks, raw_means, n, dim, tiles, v.size(0) * v.size(1), stream);
+    else if (v.scalar_type() == at::kBFloat16)
+      prepare_channel(reinterpret_cast<const nv_bfloat16*>(v.data_ptr()), payload, scales, means, peaks, raw_means, n, dim, tiles, v.size(0) * v.size(1), stream);
+    else
+      prepare_channel(v.data_ptr<float>(), payload, scales, means, peaks, raw_means, n, dim, tiles, v.size(0) * v.size(1), stream);
+  } else if (v.scalar_type() == at::kHalf)
     value_blocks<<<grid, 256, 0, stream>>>(reinterpret_cast<const half*>(v.data_ptr()), reinterpret_cast<uint8_t*>(payload.data_ptr()), scales.data_ptr<float>(), reinterpret_cast<half*>(means.data_ptr()), n, dim, tiles);
   else if (v.scalar_type() == at::kBFloat16)
     value_blocks<<<grid, 256, 0, stream>>>(reinterpret_cast<const nv_bfloat16*>(v.data_ptr()), reinterpret_cast<uint8_t*>(payload.data_ptr()), scales.data_ptr<float>(), reinterpret_cast<half*>(means.data_ptr()), n, dim, tiles);

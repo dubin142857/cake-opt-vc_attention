@@ -39,13 +39,13 @@ def fake_ops():
         assert kwargs == dict(tensor_layout="HND",smooth_v=False)
         return v.transpose(-1,-2).contiguous().to(torch.float8_e4m3fn), torch.ones(*v.shape[:2],v.shape[-1]),None
 
-    def block_v(v):
+    def block_v(v, channel_scale=True):
         b,h,n,d = v.shape
         # Deliberately identifiable data; these mocks test orchestration, not CUDA quantization.
         return v.transpose(-1,-2).contiguous().to(torch.float8_e4m3fn), \
-            torch.full((b,h,(n+127)//128,d),2.), torch.full((b,h,(n+127)//128,d),3.,dtype=torch.float16)
+            torch.full((b,h,d) if channel_scale else (b,h,(n+127)//128,d),2.), torch.full((b,h,(n+127)//128,d),3.,dtype=torch.float16)
 
-    return SimpleNamespace(qk=qk,v_global=global_v,ext=SimpleNamespace(group_values=group,prepare_values=block_v))
+    return SimpleNamespace(qk=qk,v_global=global_v,ext=SimpleNamespace(group_values=group,prepare_values=block_v,sage_vc_kernel_version=4))
 
 
 def load_installed_prepare(monkeypatch,ops):
@@ -134,6 +134,63 @@ def test_kernel_comparison_cli_and_missing_native_support():
         profile.compare_kernels(SimpleNamespace(ext=SimpleNamespace()),{},args,"cpu")
     with pytest.raises(SystemExit):
         profile.parse_args(["--compare-kernels","--ncu-variant","sage_vc"])
+
+
+def test_v_scale_comparison_holds_grouping_and_qk_payload_fixed():
+    qkv = [torch.randn(2,3,n,64).half() for n in (65,129,129)]
+    ops = fake_ops()
+    base = profile.staged_prepare(*qkv,ops,Recorder(),expcast=False,smooth=True)
+    seen = []
+    quantize = ops.ext.prepare_values
+    def block(v,channel_scale):
+        seen.append((v,channel_scale))
+        return quantize(v,channel_scale)
+    ops.ext.prepare_values = block
+    ops.ext.group_values = lambda *args: pytest.fail("Must reuse exact grouping")
+    states = profile.value_scale_states(ops,qkv,base)
+    assert states["channel"] is base
+    for key in ("q","k","qs","ks","permutation"):
+        assert states["block"][key] is base[key]
+    assert states["channel"]["vs"].shape == (2,3,64)
+    assert states["block"]["vs"].shape == (2,3,2,64)
+    assert seen[0][1] is False
+    torch.testing.assert_close(seen[0][0],qkv[2].gather(2,base["permutation"].unsqueeze(-1).expand_as(qkv[2])))
+
+
+def test_v_scale_comparison_timing_and_accuracy_are_separate(monkeypatch):
+    qkv = [torch.randn(1,1,n,64).half() for n in (5,129,129)]
+    ops = fake_ops()
+    base = profile.staged_prepare(*qkv,ops,Recorder(),expcast=False,smooth=True)
+    calls = []
+    def forward(state):
+        # Deliberately large quantization difference: this is NOT a same-payload
+        # regression and must not be rejected using the 0.1% implementation gate.
+        return torch.full_like(qkv[0],2. if state["vs"].ndim == 3 else 1.)
+    def api(*args,expcast,v_smooth,v_scale_mode):
+        calls.append(v_scale_mode)
+        return torch.ones_like(args[0])
+    ops.vc = SimpleNamespace(forward_prepared=forward,sageattn_vc=api)
+    monkeypatch.setattr(profile,"measure_trial",lambda fn,repeats,device:(fn(),1.))
+    monkeypatch.setattr(profile.torch.cuda,"synchronize",lambda *_:None)
+    args = SimpleNamespace(check_queries=3,reference_chunk=2,warmup=1,repeats=1,trials=2,seed=4)
+    result = profile.compare_v_scales(ops,qkv,base,args,"cpu")
+    assert result["query_indices"] == [0,2,4]
+    assert set(calls) == {"block","channel"}
+    assert len(result["trial_order"]) == 2
+    for row in result["variants"].values():
+        assert row["channel_vs_block_all_outputs"]["checked_queries"] == 5
+        assert row["channel_vs_block_all_outputs"]["rel_rmse"] == 1
+        assert row["channel"]["full_api"]["median_ms"] == 1
+        assert row["block"]["vs_dense_fp32"]["relative_rmse_vs_fp32"] > 0
+
+
+def test_v_scale_cli_guards():
+    assert profile.parse_args(["--compare-v-scales"]).compare_v_scales
+    with pytest.raises(SystemExit): profile.parse_args(["--check-queries","-1"])
+    with pytest.raises(SystemExit): profile.parse_args(["--reference-chunk","0"])
+    with pytest.raises(SystemExit): profile.parse_args(["--ncu-variant","sage_vc","--compare-v-scales"])
+    with pytest.raises(RuntimeError,match="needs vc6"):
+        profile.compare_v_scales(SimpleNamespace(ext=SimpleNamespace()),None,None,None,None)
 
 
 def test_kernel_comparison_reports_interleaved_trials_and_full_output_errors(monkeypatch):

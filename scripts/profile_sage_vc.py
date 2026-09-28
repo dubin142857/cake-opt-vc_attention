@@ -17,7 +17,8 @@ from types import SimpleNamespace
 
 import torch
 
-from benchmark_cuda import SAGE_VC_VARIANTS, external_backend, input_shapes, measure_trial, output_hnd
+from benchmark_cuda import (SAGE_VC_VARIANTS, external_backend, input_shapes, measure_trial,
+                            output_hnd, query_indices, fp32_reference, error_metrics)
 
 
 STAGES = ("cluster_sort", "reorder_kv", "k_mean", "qk_int8", "v_pad", "v_quantize", "attention")
@@ -201,12 +202,18 @@ def parse_args(argv=None):
     parser.add_argument("--trace-dir", help="Optional CUPTI CPU/GPU timelines, one staged call per variant")
     parser.add_argument("--compare-kernels", action="store_true",
                         help="vc5+: compare vc4/optimized cores on identical payloads; validate ALL output rows")
+    parser.add_argument("--compare-v-scales", action="store_true",
+                        help="vc6+: compare old block and new channel V quantization, including API time and dense FP32 errors")
+    parser.add_argument("--check-queries", type=int, default=128, help="Dense FP32 check rows for --compare-v-scales; 0 means all")
+    parser.add_argument("--reference-chunk", type=int, default=32)
     parser.add_argument("--ncu-variant", choices=tuple(SAGE_VC_VARIANTS),
                         help="Only capture one warmed fixed-payload native call inside cudaProfilerStart/Stop")
     args = parser.parse_args(argv)
     if min(args.batch,args.heads,args.queries,args.tokens,args.warmup,args.repeats,args.trials) < 1:
         parser.error("shapes, warmup, repeats and trials must be positive")
-    if args.ncu_variant and (args.trace_dir or args.compare_kernels):
+    if args.check_queries < 0 or args.reference_chunk < 1:
+        parser.error("check-queries must be nonnegative and reference-chunk positive")
+    if args.ncu_variant and (args.trace_dir or args.compare_kernels or args.compare_v_scales):
         parser.error("--ncu-variant uses a separate profiler run")
     return args
 
@@ -249,6 +256,63 @@ def kernel_calls(ops, fixed):
             for name,state in fixed.items() for mode in ("vc4","optimized")}
 
 
+def value_scale_states(ops, qkv, base):
+    """Reuse the exact grouping AND QK bytes/scales; only V quantization changes."""
+    v = qkv[2].gather(2, base["permutation"].unsqueeze(-1).expand_as(qkv[2])).contiguous()
+    payload, scales, means = ops.ext.prepare_values(v, channel_scale=False)
+    return {"channel": base, "block": {**base, "v": payload, "vs": scales, "means": means}}
+
+
+@torch.no_grad()
+def compare_v_scales(ops, qkv, base, args, device):
+    if getattr(ops.ext,"sage_vc_kernel_version",0) < 4:
+        raise RuntimeError("--compare-v-scales needs vc6; rebuild with bash scripts/build_sage_local.sh")
+    states = value_scale_states(ops,qkv,base)
+    indices = query_indices(qkv[0].shape[2],args.check_queries)
+    ids = torch.tensor(indices,device=device)
+    print(f"V scale comparison: FP32 reference for {ids.numel()} query rows, ALL keys; outside timing",flush=True)
+    golden = fp32_reference(*qkv,indices,args.reference_chunk)
+    calls, accuracy, differences = {}, {}, {}
+    for cast in (False,True):
+        name = "sage_vc" if cast else "sage_vc_smooth"
+        outputs = {}
+        for mode,base_state in states.items():
+            state = {**base_state,"expcast":cast}
+            calls[name,mode,"core"] = lambda state=state: ops.vc.forward_prepared(state)
+            calls[name,mode,"api"] = lambda cast=cast,mode=mode: ops.vc.sageattn_vc(
+                *qkv, expcast=cast, v_smooth=True, v_scale_mode=mode)
+            outputs[mode] = calls[name,mode,"core"]()
+            accuracy[name,mode] = error_metrics(outputs[mode].index_select(2,ids).cpu(),golden)
+        differences[name] = output_difference(outputs["channel"],outputs["block"])
+        del outputs
+    for call in calls.values():
+        for _ in range(args.warmup): call()
+    torch.cuda.synchronize(device)
+    times, orders, rng = {key:[] for key in calls}, [], random.Random(args.seed)
+    for trial in range(args.trials):
+        order = list(calls)
+        rng.shuffle(order)
+        orders.append(order)
+        for key in order:
+            _, elapsed = measure_trial(calls[key],args.repeats,device)
+            times[key].append(elapsed)
+        print(f"V scale comparison trial {trial+1}/{args.trials} complete",flush=True)
+    rows = {}
+    print("\nV scale quantization comparison (different V payloads; same original inputs):")
+    print(f"{'variant':<20} {'V scale':<9} {'full API ms':>13} {'core API ms':>13} {'FP32 rel RMSE %':>18}")
+    for name in ("sage_vc_smooth","sage_vc"):
+        rows[name] = {"channel_vs_block_all_outputs":differences[name]}
+        for mode in ("block","channel"):
+            api, core = stats(times[name,mode,"api"]), stats(times[name,mode,"core"])
+            error = accuracy[name,mode]
+            rows[name][mode] = {"full_api":api,"fixed_core_api":core,"vs_dense_fp32":error}
+            print(f"{name:<20} {mode:<9} {api['median_ms']:>13.4f} {core['median_ms']:>13.4f} "
+                  f"{100*error['relative_rmse_vs_fp32']:>18.6f}")
+    print("V quantization changed: channel/block output differences are NOT an implementation regression gate.")
+    return {"variants":rows,"trial_order":orders,"query_indices":ids.tolist(),
+            "scope":"Same original QKV; fixed cores share grouping and QK payloads; API recomputes grouping; quantization changes; no model quality gate."}
+
+
 @torch.no_grad()
 def compare_kernels(ops, fixed, args, device):
     if getattr(ops.ext,"sage_vc_kernel_version",0) < 3:
@@ -277,6 +341,8 @@ def compare_kernels(ops, fixed, args, device):
         print(f"Kernel comparison trial {trial+1}/{args.trials} complete",flush=True)
     rows = {}
     print("\nSame-payload native APIs: vc4 vs optimized (ms; excludes all preprocessing)")
+    if getattr(ops.ext,"sage_vc_kernel_version",0) >= 4:
+        print("Channel V: vc4 applies the shared scale per tile; optimized applies it once in the epilogue. Both retain two-level FP32 accumulation.")
     print(f"{'variant':<23} {'vc4 ms':>11} {'optimized ms':>14} {'old/new':>10} {'output rel RMSE %':>19} {'max abs':>12}")
     for name in fixed:
         old, new = stats(times[name,"vc4"]), stats(times[name,"optimized"])
@@ -317,6 +383,8 @@ def run(args):
     info, ops = sage_vc_build_info(), load_ops()
     if args.compare_kernels and getattr(ops.ext,"sage_vc_kernel_version",0) < 3:
         raise RuntimeError("--compare-kernels needs vc5; rebuild with bash scripts/build_sage_local.sh")
+    if args.compare_v_scales and getattr(ops.ext,"sage_vc_kernel_version",0) < 4:
+        raise RuntimeError("--compare-v-scales needs vc6; rebuild with bash scripts/build_sage_local.sh")
     torch.manual_seed(args.seed)
     dtype = getattr(torch,args.dtype)
     qkv = tuple(torch.randn(args.batch,args.heads,n,args.dim,device=device,dtype=dtype)
@@ -406,6 +474,9 @@ def run(args):
     print(f"Timing report: {path}",flush=True)
     if args.compare_kernels:
         report["kernel_comparison"] = compare_kernels(ops,fixed,args,device)
+        path.write_text(json.dumps(report,indent=2,allow_nan=False)+"\n",encoding="utf-8")
+    if args.compare_v_scales:
+        report["value_scale_comparison"] = compare_v_scales(ops,qkv,bases[True],args,device)
         path.write_text(json.dumps(report,indent=2,allow_nan=False)+"\n",encoding="utf-8")
     if args.trace_dir:
         directory = Path(args.trace_dir)

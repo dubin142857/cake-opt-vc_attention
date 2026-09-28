@@ -17,7 +17,8 @@ spec.loader.exec_module(oracle)
 @pytest.mark.parametrize("seed", [0, 1, 2, 3])
 @pytest.mark.parametrize("optimized", [False, True])
 @pytest.mark.parametrize("mixed_scales", [False, True])
-def test_real_expcast_register_packing_online_rescale_and_mean_restore(seed,optimized,mixed_scales):
+@pytest.mark.parametrize("channel_scale", [False, True])
+def test_real_expcast_register_packing_online_rescale_and_mean_restore(seed,optimized,mixed_scales,channel_scale):
     torch.manual_seed(seed)
     device = "cuda"
     scores = torch.randn(64,128,device=device) * 5
@@ -27,7 +28,7 @@ def test_real_expcast_register_packing_online_rescale_and_mean_restore(seed,opti
     d = torch.rand(64,device=device) * 200
     scale = torch.rand(128,device=device) + 0.01
     mean = (torch.randn(128,device=device) * 8).half()
-    codes, actual, maximum, denom = probe.run(scores,out,product,m,d,scale,mean,optimized,mixed_scales)
+    codes, actual, maximum, denom = probe.run(scores,out,product,m,d,scale,mean,optimized,mixed_scales,channel_scale)
     factors = .137 * (1 + (torch.arange(128,device=device,dtype=torch.float32) % 8) // 2) if mixed_scales else .25
     expected_max = torch.maximum(m,(scores * factors).amax(-1))
     alpha = (m-expected_max).exp()
@@ -35,8 +36,12 @@ def test_real_expcast_register_packing_online_rescale_and_mean_restore(seed,opti
     mass = expected_codes.view(torch.float8_e4m3fn).float().sum(-1)
     if optimized:
         # Independent FP64 emulation of each FP32 FMA's single rounding.
-        centered = (product.double() + mass.double()[:,None] * mean.double()).float()
-        expected = ((out * alpha[:,None]).double() + centered.double() * scale.double()).float()
+        if channel_scale:
+            centered = (product.double() + mass.double()[:,None] * mean.double()).float()
+            expected = (out * alpha[:,None] + centered) * scale
+        else:
+            centered = (product.double() + mass.double()[:,None] * mean.double()).float()
+            expected = ((out * alpha[:,None]).double() + centered.double() * scale.double()).float()
         old = probe.run(scores,out,product,m,d,scale,mean,False,mixed_scales)
         for actual_item,old_item in zip((codes,maximum,denom),(old[0],old[2],old[3])):
             torch.testing.assert_close(actual_item,old_item,rtol=0,atol=0)

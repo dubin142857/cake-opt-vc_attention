@@ -107,7 +107,7 @@ __device__ __forceinline__ void vc_probability(
   }
 }
 
-template<bool BlockValues, bool Optimized=false, uint32_t NQ, uint32_t NV>
+template<bool BlockValues, bool Optimized=false, bool ChannelScale=false, uint32_t NQ, uint32_t NV>
 __device__ __forceinline__ void vc_accumulate(
     float (&out)[NQ][NV][8], const float (&product)[NQ][NV][8],
     const float (&mass)[NQ][2], const float* scales, const half* means,
@@ -121,7 +121,10 @@ __device__ __forceinline__ void vc_accumulate(
         int64_t meta = (int64_t(head) * tiles + tile) * dim + channel;
         // Both rows share these two channels. Torch allocations and even
         // channel indices guarantee float2/half2 alignment, including D=64.
-        float2 scale = *reinterpret_cast<const float2*>(scales + meta);
+        int64_t scale_meta = ChannelScale ? int64_t(head) * dim + channel : meta;
+        float2 scale;
+        if constexpr (!(ChannelScale && Optimized))
+          scale = *reinterpret_cast<const float2*>(scales + scale_meta);
         float2 mean = __half22float2(*reinterpret_cast<const half2*>(means + meta));
         #pragma unroll
         for (int q = 0; q < NQ; ++q) {
@@ -129,12 +132,19 @@ __device__ __forceinline__ void vc_accumulate(
           for (int r = 0; r < 2; ++r) {
             int j = pair * 4 + r * 2;
             if constexpr (Optimized) {
-              // Same algebra, two FMA instructions instead of four mul/adds.
+              // Fuse the mean correction; legacy block scales need a second FMA.
               // Rounds once per FMA; intentionally not bitwise vc4 arithmetic.
               float a = __fmaf_rn(mass[q][r], mean.x, product[q][v][j]);
               float b = __fmaf_rn(mass[q][r], mean.y, product[q][v][j + 1]);
-              out[q][v][j] = __fmaf_rn(a, scale.x, out[q][v][j]);
-              out[q][v][j + 1] = __fmaf_rn(b, scale.y, out[q][v][j + 1]);
+              if constexpr (ChannelScale) {
+                // Shared scale is applied once after online normalization.
+                // Keep the FP32 history outside the FP8 WGMMA accumulator.
+                out[q][v][j] = __fadd_rn(out[q][v][j], a);
+                out[q][v][j + 1] = __fadd_rn(out[q][v][j + 1], b);
+              } else {
+                out[q][v][j] = __fmaf_rn(a, scale.x, out[q][v][j]);
+                out[q][v][j + 1] = __fmaf_rn(b, scale.y, out[q][v][j + 1]);
+              }
             } else {
               float a = __fadd_rn(product[q][v][j], __fmul_rn(mass[q][r], mean.x));
               float b = __fadd_rn(product[q][v][j + 1], __fmul_rn(mass[q][r], mean.y));

@@ -8,7 +8,7 @@
 #include "../../third_party/sageattention_local/csrc/qattn/attn_utils.cuh"
 #include "../../third_party/sageattention_local/csrc/vc/vc_math.cuh"
 
-template<bool Optimized>
+template<bool Optimized, bool ChannelScale=false>
 __global__ void probe(const float* scores, const float* prev_out, const float* product,
     const float* prev_max, const float* prev_d, const float* scale, const half* mean,
     uint8_t* bytes, float* output, float* maximum, float* denom, bool mixed_scales) {
@@ -28,7 +28,14 @@ __global__ void probe(const float* scores, const float* prev_out, const float* p
     }
   float score_scale = mixed_scales ? 0.137f * (1 + lane % 4) : 0.25f;
   vc_probability<true, true, Optimized>(s,o,m,d,score_scale,packed,mass);
-  vc_accumulate<true, Optimized>(o,pv,mass,scale,mean,0,0,1,128,lane);
+  if constexpr (ChannelScale && Optimized) {
+    vc_accumulate<true, true, true>(o,pv,mass,scale,mean,0,0,1,128,lane);
+    for (int t = 0; t < 8; ++t)
+      for (int j = 0; j < 8; ++j) {
+        int column = t * 16 + (lane % 4) * 2 + (j / 4) * 8 + j % 2;
+        o[0][t][j] *= scale[column];
+      }
+  } else vc_accumulate<true, Optimized, ChannelScale>(o,pv,mass,scale,mean,0,0,1,128,lane);
   for (int t = 0; t < 8; ++t)
     for (int j = 0; j < 8; ++j) {
       int r = (j % 4) / 2;
@@ -51,11 +58,12 @@ __global__ void probe(const float* scores, const float* prev_out, const float* p
 
 std::vector<torch::Tensor> run(torch::Tensor scores, torch::Tensor out, torch::Tensor product,
     torch::Tensor m, torch::Tensor d, torch::Tensor scale, torch::Tensor mean,
-    bool optimized, bool mixed_scales) {
+    bool optimized, bool mixed_scales, bool channel_scale) {
   TORCH_CHECK(scores.is_cuda() && scores.sizes() == at::IntArrayRef({64,128}), "Probe shape");
   auto bytes = torch::empty_like(scores,scores.options().dtype(at::kByte));
   auto output = torch::empty_like(out), maximum = torch::empty_like(m), denom = torch::empty_like(d);
-  auto kernel = optimized ? probe<true> : probe<false>;
+  auto kernel = channel_scale ? (optimized ? probe<true,true> : probe<false,true>)
+      : (optimized ? probe<true> : probe<false>);
   kernel<<<1,128,0,c10::cuda::getCurrentCUDAStream().stream()>>>(scores.data_ptr<float>(),out.data_ptr<float>(),
       product.data_ptr<float>(),m.data_ptr<float>(),d.data_ptr<float>(),scale.data_ptr<float>(),
       reinterpret_cast<half*>(mean.data_ptr()),bytes.data_ptr<uint8_t>(),output.data_ptr<float>(),
@@ -90,6 +98,7 @@ std::vector<torch::Tensor> run_helpers(torch::Tensor shifted, torch::Tensor code
 PYBIND11_MODULE(TORCH_EXTENSION_NAME,m) {
   m.def("run",&run,pybind11::arg("scores"),pybind11::arg("out"),pybind11::arg("product"),
       pybind11::arg("m"),pybind11::arg("d"),pybind11::arg("scale"),pybind11::arg("mean"),
-      pybind11::arg("optimized")=false,pybind11::arg("mixed_scales")=false);
+      pybind11::arg("optimized")=false,pybind11::arg("mixed_scales")=false,
+      pybind11::arg("channel_scale")=false);
   m.def("run_helpers",&run_helpers);
 }

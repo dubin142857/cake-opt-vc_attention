@@ -18,7 +18,7 @@ trace 每组只采集一次，带 profiler 开销，用于定位而非稳定速�
 ## 直接运行，不用重新编译
 
 诊断脚本兼容已经安装的 `sageattention-local==2.2.0+vc3` 及后续版本。
-仅运行诊断不用重新编译；升级 vc5 则需要执行 `bash scripts/build_sage_local.sh`。
+仅运行诊断不用重新编译；升级 vc6 则需要执行 `bash scripts/build_sage_local.sh`。
 从仓库根目录执行：
 
 ```bash
@@ -51,7 +51,7 @@ python3 scripts/profile_sage_vc.py --output results/h200_sage_vc_profile.json
 CUDA-event 区间可能包含 GPU 等待 CPU 下发的空闲时间；不要称为各 kernel 执行时间之和。
 JSON 另外记录 `cpu_enqueue_ms`，它与 GPU 时间重叠，不能相加。
 插入事件本身会影响调度，阶段之和也不要求等于独立测量的 full API。
-该诊断不计算 FP32 dense reference、不输出模型精度结论。
+默认诊断不计算 FP32 dense reference；vc6 的 `--compare-v-scales` 会额外计算抽样 FP32 参考，仍不输出模型质量结论。
 
 ## 进一步看实际 GPU 时间线
 
@@ -136,3 +136,35 @@ python3 scripts/profile_sage_vc.py --compare-kernels --trace-dir results/h200_sa
 计时前比较全部输出 query/heads/channels，FP64 分块计算误差，避免只看抽样；
 新旧相对 RMSE 超过 0.1% 或存在非有限结果即报错。这不替代 FP32 dense 参考或模型质量验证。
 `optimized` 的 FMA 舍入与 vc4 有意不同，具体改动见 [SAGE_VC.md](SAGE_VC.md)。
+
+## vc6：共享 V scale 与末尾恢复
+
+用户 vc5 同场数据：full API 为 Sage 25.4430 ms、全开 49.6464 ms；同量化输入
+vc4/optimized 全开为 43.0974/41.8725 ms。控制组调用相同内核却也变化 2.6%，
+所以 2.9% 的全开变化不能证明稳定提速。vc6 改动见 [SAGE_VC.md](SAGE_VC.md)。
+
+重新编译后，先用较小 shape 查完整误差：
+
+```bash
+bash scripts/build_sage_local.sh
+python3 scripts/profile_sage_vc.py --queries 1024 --tokens 1024 --heads 2 --check-queries 0 --compare-kernels --compare-v-scales --output results/h200_sage_vc6_small.json
+```
+
+再测 `[1,37741,28,128]`，默认检查 128 个 query，使用全部 key：
+
+```bash
+python3 scripts/profile_sage_vc.py --compare-kernels --compare-v-scales --trace-dir results/h200_sage_vc6_traces --output results/h200_sage_vc6_profile.json
+```
+
+- 主表 full API/stages/core 使用新的默认 channel V scale；原 Sage 基线不变。
+- `--compare-kernels` 的两种执行方式共享全部量化输入，包括新 channel scale。
+  vc4 参考每块恢复同一尺度；optimized 末尾恢复。两者保留两级 FP32 PV 累加。
+  全输出 relative RMSE <=0.1% 是实现门槛。
+- `--compare-v-scales` 用同一原始 QKV，固定聚类排列及 QK 量化数据，只重做旧 block V
+  量化，比较两种 optimized core 的时间。另测两种公开 API（每次都重新预处理），
+  并用同一个 dense FP32 参考分别报告误差。顺序随机化，精度计算不计时。
+  V 量化改变导致的全输出差异单独报告，**不套用 0.1% 实现门槛**。
+- block/channel 的量化粒度不同，不能要求 FP32 误差与 vc5 完全一致；需要同时看
+  `full API`、`fixed core API` 和 `FP32 rel RMSE %`。不将 kernel-only 收益称为端到端收益。
+
+共享尺度预处理为三个 GPU pass，主循环开销降低是否抵得上新增预处理，需要这次实测回答。

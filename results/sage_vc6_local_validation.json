@@ -1,0 +1,45 @@
+{
+  "scope": "Local native preprocessing/helpers and Hopper cross-compilation; NOT Hopper attention execution or performance",
+  "package": "sageattention-local==2.2.0+vc6",
+  "native_kernel_version": 4,
+  "environment": {
+    "os": "Windows",
+    "gpu": "NVIDIA GeForce RTX 3060 Laptop GPU",
+    "python": "3.10.16",
+    "torch": "2.3.1+cu121",
+    "nvcc": "12.4"
+  },
+  "tests": {
+    "passed": 131,
+    "files": [
+      "tests/test_sage_vc_preprocess_cuda.py",
+      "tests/test_sage_vc_tile_cuda.py",
+      "tests/test_sage_vc.py",
+      "tests/test_sage_local_source.py",
+      "tests/test_benchmark.py",
+      "tests/test_profile_sage_vc.py"
+    ],
+    "legacy_helper_golden_cases_exact": 16,
+    "value_preprocessing_cases": 60,
+    "additional_value_preprocessing_cases": 4,
+    "expcast_code_checks": 65540,
+    "memcheck_errors": 0
+  },
+  "cross_compile": {
+    "target": "sm_90a",
+    "attention_variants": 44,
+    "linked": true,
+    "register_spill_bytes": 0,
+    "d128_bf16_registers": {
+      "block_smooth_optimized": 180,
+      "channel_smooth_optimized": 208,
+      "block_expcast_smooth_optimized": 181,
+      "channel_expcast_smooth_optimized": 209
+    },
+    "sass_verified": ["UTMALDG.4D", "IGMMA.64x128x32.S8.S8", "QGMMA.64x128x32.F32.E4M3.E4M3"],
+    "note": "Channel scales load in the epilogue, not the KV loop. Two-level PV accumulation retained. Static register/instruction data does not establish speedup."
+  },
+  "hopper_attention_validation": "pending_remote: 144 cases, known-answer/layout/alignment checks",
+  "hopper_latency_ms": null,
+  "model_quality_validation": "not_run"
+}

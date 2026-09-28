@@ -6,8 +6,10 @@
 `sageattn` 是原版内核的独立源码构建。`2.2.0+vc3` 新增独立的
 `sageattn_vc` 实验入口：Sage INT8 QK + VC 的 V 聚类/分块平滑、ExpCast，
 不能称为完整 VC 论文复现。使用与对照见仓库根目录 [SAGE_VC.md](../../SAGE_VC.md)。
-当前版本 `2.2.0+vc5` 优化 ExpCast 最大值归约与 V 补偿，并保留 `kernel_mode="vc4"`
-用于同场对照。默认 `optimized` 使用 FP32 FMA，末位舍入可能与 vc4 不同，量化方式不变。
+当前版本 `2.2.0+vc6` 默认按通道共享 V scale，并把恢复缩放移到输出末尾。
+保留两级 FP32 PV 累加、旧的 `v_scale_mode="block"` 和 `kernel_mode="vc4"`
+用于同场对照。同一 V scale 模式下，切换 `kernel_mode` 不改变输入量化，
+但 FMA 与恢复尺度的位置会改变末位舍入；切换 `v_scale_mode` 则会改变 V 量化结果。
 
 ## 构建与导入
 

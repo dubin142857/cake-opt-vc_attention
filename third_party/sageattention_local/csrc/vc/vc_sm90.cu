@@ -135,7 +135,7 @@ __device__ __forceinline__ void arrive(uint64_t* bar) {
     );
 }
 
-template<uint32_t CTA_Q, uint32_t CTA_K, uint32_t NUM_THREADS, uint32_t head_dim, QuantGranularity Q_GRAN, QuantGranularity K_GRAN, typename DTypeOut, MaskMode mask_mode = MaskMode::kNone, bool return_lse = false, bool fuse_v_scale=false, bool ExpCast=false, bool BlockValues=false, bool Optimized=false>
+template<uint32_t CTA_Q, uint32_t CTA_K, uint32_t NUM_THREADS, uint32_t head_dim, QuantGranularity Q_GRAN, QuantGranularity K_GRAN, typename DTypeOut, MaskMode mask_mode = MaskMode::kNone, bool return_lse = false, bool fuse_v_scale=false, bool ExpCast=false, bool BlockValues=false, bool Optimized=false, bool ChannelScale=false>
 __global__ void sage_vc_attention_kernel(const __grid_constant__ CUtensorMap tensorMapQ,
                                         const __grid_constant__ CUtensorMap tensorMapK,
                                         const __grid_constant__ CUtensorMap tensorMapV,
@@ -328,6 +328,8 @@ __global__ void sage_vc_attention_kernel(const __grid_constant__ CUtensorMap ten
     wait(&barrier_V, p);
 
     float RO_temp[num_tiles_q][num_tiles_v][8];
+    // Keep Sage's two-level FP32 accumulation: FP8 WGMMA must not
+    // repeatedly round the long-lived output history or mean compensation.
     wgmma::warpgroup_arrive();
 #pragma unroll
     for (uint32_t fq = 0; fq < num_tiles_q; fq++)
@@ -352,7 +354,7 @@ __global__ void sage_vc_attention_kernel(const __grid_constant__ CUtensorMap ten
       load_async_4D(sV, &tensorMapV, &barrier_V, iter * CTA_K, 0, kv_head_id, batch_id);
     }
 
-    vc_accumulate<BlockValues, Optimized>(RO, RO_temp, tile_mass, V_scale, V_mean,
+    vc_accumulate<BlockValues, Optimized, ChannelScale>(RO, RO_temp, tile_mass, V_scale, V_mean,
         batch_id * num_qo_heads + head_id, iter - 1, div_ceil(kv_len, CTA_K), head_dim, lane_id);
   }
 
@@ -437,6 +439,8 @@ __global__ void sage_vc_attention_kernel(const __grid_constant__ CUtensorMap ten
     wait(&barrier_V, p);
 
     float RO_temp[num_tiles_q][num_tiles_v][8];
+    // Keep Sage's two-level FP32 accumulation: FP8 WGMMA must not
+    // repeatedly round the long-lived output history or mean compensation.
     wgmma::warpgroup_arrive();
 #pragma unroll
     for (uint32_t fq = 0; fq < num_tiles_q; fq++)
@@ -452,13 +456,13 @@ __global__ void sage_vc_attention_kernel(const __grid_constant__ CUtensorMap ten
     wgmma::warpgroup_commit_batch();
     wgmma::warpgroup_wait<0>();
 
-    vc_accumulate<BlockValues, Optimized>(RO, RO_temp, tile_mass, V_scale, V_mean,
+    vc_accumulate<BlockValues, Optimized, ChannelScale>(RO, RO_temp, tile_mass, V_scale, V_mean,
         batch_id * num_qo_heads + head_id, num_iterations - 1, div_ceil(kv_len, CTA_K), head_dim, lane_id);
   }
 
   normalize_d<num_tiles_q, num_tiles_v, ComputeUnit::kCudaCore>(RO, m, d);
 
-  if constexpr (fuse_v_scale && !BlockValues)
+  if constexpr (fuse_v_scale && (!BlockValues || (ChannelScale && Optimized)))
   {
     float v_scale[4];
     float *V_scale_base_ptr = V_scale +  batch_id * (num_qo_heads / num_kv_groups) * head_dim + (head_id / num_kv_groups) * head_dim + (lane_id % 4 ) * 2;
@@ -540,7 +544,7 @@ __global__ void sage_vc_attention_kernel(const __grid_constant__ CUtensorMap ten
 } // namespace sage_vc
 
 namespace {
-template<int Dim, typename Out, bool ExpCast, bool BlockValues, bool Optimized>
+template<int Dim, typename Out, bool ExpCast, bool BlockValues, bool Optimized, bool ChannelScale=false>
 void launch_vc(torch::Tensor q, torch::Tensor k, torch::Tensor v, torch::Tensor qs,
     torch::Tensor ks, torch::Tensor vs, torch::Tensor means, torch::Tensor out, float scale) {
   auto qm = sage_vc::create_tensor_map_4D<64, Dim>(reinterpret_cast<int8_t*>(q.data_ptr()),
@@ -550,7 +554,7 @@ void launch_vc(torch::Tensor q, torch::Tensor k, torch::Tensor v, torch::Tensor 
   auto vm = sage_vc::create_tensor_map_4D<Dim, 128>(reinterpret_cast<int8_t*>(v.data_ptr()),
       v.size(0), v.size(1), Dim, v.size(3), v.stride(0), v.stride(1), v.stride(2));
   auto kernel = sage_vc::sage_vc_attention_kernel<64, 128, 128, Dim,
-      QuantGranularity::kPerThread, QuantGranularity::kPerThread, Out, MaskMode::kNone, false, true, ExpCast, BlockValues, Optimized>;
+      QuantGranularity::kPerThread, QuantGranularity::kPerThread, Out, MaskMode::kNone, false, true, ExpCast, BlockValues, Optimized, ChannelScale>;
   constexpr int shared_bytes = (64 + 128 + 128) * Dim;
   C10_CUDA_CHECK(cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, shared_bytes));
   dim3 grid((q.size(2) + 63) / 64, q.size(1), q.size(0));
@@ -564,7 +568,11 @@ void launch_vc(torch::Tensor q, torch::Tensor k, torch::Tensor v, torch::Tensor 
 template<int Dim, typename Out, bool Optimized>
 void dispatch_vc(torch::Tensor q, torch::Tensor k, torch::Tensor v, torch::Tensor qs,
     torch::Tensor ks, torch::Tensor vs, torch::Tensor means, torch::Tensor out, float scale, bool cast, bool smooth) {
-  if (cast && smooth) launch_vc<Dim, Out, true, true, Optimized>(q,k,v,qs,ks,vs,means,out,scale);
+  if (smooth && vs.dim() == 3) {
+    if (cast) launch_vc<Dim, Out, true, true, Optimized, true>(q,k,v,qs,ks,vs,means,out,scale);
+    else launch_vc<Dim, Out, false, true, Optimized, true>(q,k,v,qs,ks,vs,means,out,scale);
+  }
+  else if (cast && smooth) launch_vc<Dim, Out, true, true, Optimized>(q,k,v,qs,ks,vs,means,out,scale);
   else if (cast) launch_vc<Dim, Out, true, false, Optimized>(q,k,v,qs,ks,vs,means,out,scale);
   else if (smooth) launch_vc<Dim, Out, false, true, Optimized>(q,k,v,qs,ks,vs,means,out,scale);
   else launch_vc<Dim, Out, false, false, false>(q,k,v,qs,ks,vs,means,out,scale);
@@ -601,7 +609,9 @@ torch::Tensor vc_forward(torch::Tensor q, torch::Tensor k, torch::Tensor v,
   TORCH_CHECK(qs.sizes() == torch::IntArrayRef({batch,heads,((nq + 63) / 64) * 32}), "Incorrect Q scales");
   TORCH_CHECK(ks.sizes() == torch::IntArrayRef({batch,heads,tiles * 4}), "Incorrect K scales");
   if (block_values) {
-    TORCH_CHECK(vs.sizes() == torch::IntArrayRef({batch,heads,tiles,dim}) && means.sizes() == vs.sizes(), "Incorrect block V metadata");
+    TORCH_CHECK((vs.sizes() == torch::IntArrayRef({batch,heads,tiles,dim}) ||
+        vs.sizes() == torch::IntArrayRef({batch,heads,dim})) &&
+        means.sizes() == torch::IntArrayRef({batch,heads,tiles,dim}), "Incorrect block V metadata");
     TORCH_CHECK(reinterpret_cast<uintptr_t>(vs.data_ptr()) % alignof(float2) == 0 &&
         reinterpret_cast<uintptr_t>(means.data_ptr()) % alignof(half2) == 0,
         "Block V metadata requires float2/half2 pointer alignment");

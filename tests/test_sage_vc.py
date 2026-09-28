@@ -79,11 +79,38 @@ def test_query_sampling_keeps_original_scale_indices():
     torch.testing.assert_close(sampled,all_rows[:,:,ids],rtol=1e-6,atol=1e-6)
 
 
+@pytest.mark.parametrize("expcast",[False,True])
+def test_channel_scale_epilogue_matches_expanded_per_tile_scales(expcast):
+    torch.manual_seed(918)
+    state = payload(65,257,True,expcast)
+    state["q"].random_(-4,5)
+    state["k"].random_(-4,5)
+    state["qs"].fill_(.1)
+    state["ks"].fill_(.15)
+    state["v"] = torch.randn_like(state["v"].float()).to(torch.float8_e4m3fn)
+    state["means"].normal_()
+    scales = torch.linspace(.01,1,64).view(1,1,64)
+    channel = {**state,"vs":scales}
+    old = {**state,"vs":scales.unsqueeze(2).expand(1,1,3,64).contiguous()}
+    torch.testing.assert_close(oracle.reference(channel),oracle.reference(old),rtol=5e-5,atol=1e-6)
+
+
+@pytest.mark.parametrize("expcast",[False,True])
+def test_shared_scale_nonzero_mean_known_answer(expcast):
+    state = payload(65,257,True,expcast)
+    state["vs"] = torch.full((1,1,64),.25)
+    state["means"][0,0] = torch.tensor([8.,-24.,96.])[:,None]
+    out = oracle.reference(state)
+    expected = (128*2-128*6+24)/257
+    torch.testing.assert_close(out,torch.full_like(out,expected),rtol=2e-6,atol=1e-6)
+
+
 @pytest.mark.parametrize("kwargs,match", [
     ({"is_causal": True}, "noncausal"), ({"return_lse": True}, "LSE"),
     ({"tensor_layout": "XYZ"}, "tensor_layout"), ({"expcast": 1}, "bool"),
     ({"clusters": 0}, "clustering"), ({"iterations": True}, "clustering"),
     ({"kernel_mode": "unknown"}, "kernel_mode"),
+    ({"v_scale_mode": "unknown"}, "v_scale_mode"),
 ])
 def test_unsupported_modes_rejected_before_native_dispatch(kwargs,match):
     q = torch.zeros(1,2,5,64,dtype=torch.float16)

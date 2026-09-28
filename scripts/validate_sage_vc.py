@@ -33,27 +33,36 @@ def validate_preprocessing(ext, oracle, device="cuda:0"):
                     v[:, :, begin:begin+128] = v[:, :, begin:begin+128] * (t+1) + t * 3
                 v[..., 0] = 1.5
                 v[..., 1] = -2.0
-                packed, scales, means = ext.prepare_values(v)
-                unpacked = packed.float().index_select(-1, oracle.value_permutation(packed.shape[-1], device)).transpose(-1, -2)
-                for t, begin in enumerate(range(0, n, 128)):
+                blocks = []
+                for begin in range(0,n,128):
                     rows = v[:, :, begin:begin+128].float()
                     mean = rows.mean(2)
                     residual = rows - mean.unsqueeze(2)
                     peak = residual.abs().amax(2)
-                    scale = torch.where(peak > 0, peak / 448., 1.)
-                    scale = torch.maximum(scale, mean.abs() / 65504.)
-                    torch.testing.assert_close(scales[:, :, t], scale, rtol=2e-5, atol=1e-7)
-                    torch.testing.assert_close(means[:, :, t].float() * scales[:, :, t], mean,
-                                               rtol=8e-4, atol=2e-6)
-                    decoded = unpacked[:, :, begin:begin+rows.shape[2]]
-                    # Quantizer has ~6.25% maximum relative rounding error in normal FP8 range.
-                    err = (decoded * scales[:, :, t].unsqueeze(2) - residual).abs()
-                    bound = residual.abs() * 0.063 + scales[:, :, t].unsqueeze(2) / 512 + 3e-6
-                    if not torch.all(err <= bound).item():
-                        raise AssertionError(f"V residual/packing mismatch: {dtype}, D={dim}, N={n}")
-                if n % 128:
-                    assert torch.count_nonzero(unpacked[:, :, n:]).item() == 0, "Nonzero padded V"
-                count += 1
+                    blocks.append((mean,residual,peak))
+                for channel in (False,True):
+                    packed, scales, means = ext.prepare_values(v,channel_scale=channel)
+                    unpacked = packed.float().index_select(-1, oracle.value_permutation(packed.shape[-1], device)).transpose(-1, -2)
+                    if channel:
+                        peak = torch.stack([b[2] for b in blocks]).amax(0)
+                        mean_peak = torch.stack([b[0].abs() for b in blocks]).amax(0)
+                        expected_scale = torch.maximum(torch.where(peak > 0, peak / 448., 1.),mean_peak/65504.)
+                        assert scales.shape == (2,2,dim)
+                        torch.testing.assert_close(scales,expected_scale,rtol=2e-5,atol=1e-7)
+                    for t,(mean,residual,peak) in enumerate(blocks):
+                        scale = scales if channel else scales[:,:,t]
+                        if not channel:
+                            expected_scale = torch.maximum(torch.where(peak > 0,peak/448.,1.),mean.abs()/65504.)
+                            torch.testing.assert_close(scale,expected_scale,rtol=2e-5,atol=1e-7)
+                        torch.testing.assert_close(means[:,:,t].float()*scale,mean,rtol=8e-4,atol=2e-6)
+                        decoded = unpacked[:,:,t*128:t*128+residual.shape[2]]
+                        err = (decoded * scale.unsqueeze(2) - residual).abs()
+                        bound = residual.abs() * .063 + scale.unsqueeze(2) / 512 + 3e-6
+                        if not torch.all(err <= bound).item():
+                            raise AssertionError(f"V residual/packing mismatch: {dtype}, D={dim}, N={n}, channel={channel}")
+                    if n % 128:
+                        assert torch.count_nonzero(unpacked[:,:,n:]).item() == 0, "Nonzero padded V"
+                    count += 1
     # Stable grouping of separated clusters, plus a bijection check for every head.
     labels = torch.tensor([2, 0, 1, 2, 1, 0], device=device)
     values = labels.float().reshape(1,1,6,1).expand(2,2,6,64).contiguous()
@@ -91,8 +100,10 @@ def validate(device="cuda:0"):
                 q, k, v = (torch.randn(batch,heads,n,dim,device=device,dtype=dtype) for n in (nq,nk,nk))
                 dense = torch.softmax((q.float() @ k.float().transpose(-1,-2)) * dim**-0.5, -1) @ v.float()
                 baseline = sageattn(q,k,v,tensor_layout="HND",is_causal=False)
-                for cast, smooth in ((False,False),(True,False),(False,True),(True,True)):
-                    state = vc.prepare(q,k,v,expcast=cast,v_smooth=smooth)
+                for cast, smooth, scale_mode in ((False,False,"channel"),(True,False,"channel"),
+                                                (False,True,"channel"),(True,True,"channel"),
+                                                (False,True,"block"),(True,True,"block")):
+                    state = vc.prepare(q,k,v,expcast=cast,v_smooth=smooth,v_scale_mode=scale_mode)
                     actual = vc.forward_prepared(state)
                     expected = oracle.reference(state).to(dtype)
                     torch.cuda.synchronize(device)
@@ -103,7 +114,7 @@ def validate(device="cuda:0"):
                         raise AssertionError(f"Native/payload-reference mismatch: {dtype}, {dim}, {nq}/{nk}, "
                                              f"expcast={cast}, smooth={smooth}, {agreement}")
                     row = {"dtype": str(dtype), "dim": dim, "batch": batch, "heads": heads, "queries": nq, "keys": nk,
-                           "expcast": cast, "v_smooth": smooth, "native_vs_payload_reference": agreement,
+                           "expcast": cast, "v_smooth": smooth, "v_scale_mode":scale_mode, "native_vs_payload_reference": agreement,
                            "native_vs_dense_fp32": metrics(actual,dense)}
                     if getattr(ext,"sage_vc_kernel_version",0) >= 3:
                         old = vc.forward_prepared(state,kernel_mode="vc4")
@@ -120,19 +131,21 @@ def validate(device="cuda:0"):
     # A contiguous view can still start at an odd element. Reject misaligned
     # metadata before dispatching the paired-load kernel (vc4 and later).
     if getattr(ext, "sage_vc_kernel_version", 0) >= 2:
-        for field in ("vs", "means"):
-            original = state[field]
-            view = torch.empty(original.numel()+1,device=device,dtype=original.dtype)[1:].view_as(original)
-            view.copy_(original)
-            bad_state = {**state,field:view}
-            try:
-                vc.forward_prepared(bad_state)
-            except RuntimeError as exc:
-                if "pointer alignment" not in str(exc):
-                    raise
-            else:
-                raise AssertionError(f"Unaligned {field} was not rejected")
-        report["unaligned_metadata_cases"] = 2
+        for scale_mode in ("block","channel"):
+            state = vc.prepare(q,k,v,v_scale_mode=scale_mode)
+            for field in ("vs", "means"):
+                original = state[field]
+                view = torch.empty(original.numel()+1,device=device,dtype=original.dtype)[1:].view_as(original)
+                view.copy_(original)
+                bad_state = {**state,field:view}
+                try:
+                    vc.forward_prepared(bad_state)
+                except RuntimeError as exc:
+                    if "pointer alignment" not in str(exc):
+                        raise
+                else:
+                    raise AssertionError(f"Unaligned {field} was not rejected")
+        report["unaligned_metadata_cases"] = 4
     # Uniform attention over three unequal blocks: catches missing mean correction,
     # tail inclusion, incorrect denominator, and applying just the last V scale.
     for dtype in (torch.float16, torch.bfloat16):

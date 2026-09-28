@@ -61,14 +61,16 @@ def reference(state, query_indices=None, chunk=32):
             mass = denominator_p.sum(-1, keepdim=True)
             product = p @ v[:, :, start:end]
             if state["block_values"]:
-                contribution = (product + mass * state["means"][:, :, tile].float().unsqueeze(-2)) * state["vs"][:, :, tile].unsqueeze(-2)
+                contribution = product + mass * state["means"][:, :, tile].float().unsqueeze(-2)
+                if state["vs"].ndim == 4:
+                    contribution *= state["vs"][:, :, tile].unsqueeze(-2)
             else:
                 contribution = product
             out = out * alpha + contribution
             denom = denom * alpha + mass
             maximum = new_max
         out = out / denom
-        if not state["block_values"]:
+        if state["vs"].ndim == 3:
             out *= state["vs"].unsqueeze(-2)
         outputs.append(out)
     return torch.cat(outputs, dim=2)

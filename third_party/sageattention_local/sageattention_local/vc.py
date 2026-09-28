@@ -10,7 +10,7 @@ import torch
 def _extension():
     from . import _vc_sm90
     if (getattr(_vc_sm90, "sage_vc_api_version", None) != 1 or
-            getattr(_vc_sm90, "sage_vc_kernel_version", None) != 3):
+            getattr(_vc_sm90, "sage_vc_kernel_version", None) != 4):
         raise RuntimeError("Rebuild sageattention-local with bash scripts/build_sage_local.sh")
     return _vc_sm90
 
@@ -24,7 +24,8 @@ def sage_vc_build_info():
             "clustering": "8 clusters, 2 Lloyd iterations, stable order; fresh every call",
             "paper_equivalent": False, "sage_vc_api_version": 1,
             "default_kernel_mode": "optimized", "kernel_modes": ["optimized", "vc4"],
-            "value_restore_rounding": "two FP32 FMAs in optimized; separate RN mul/add in vc4",
+            "v_scale_mode": "channel", "v_scale_modes": ["channel", "block"],
+            "value_restore_rounding": "channel: mean FMA + FP32 buffer, epilogue scale; vc4: per-tile scale",
             "sage_vc_kernel_version": _extension().sage_vc_kernel_version}
 
 
@@ -49,8 +50,10 @@ def validate_inputs(q, k, v, tensor_layout, is_causal, return_lse, expcast, v_sm
 
 
 @torch.no_grad()
-def prepare(q, k, v, *, expcast=True, v_smooth=True, clusters=8, iterations=2, sm_scale=None):
+def prepare(q, k, v, *, expcast=True, v_smooth=True, clusters=8, iterations=2, sm_scale=None, v_scale_mode="channel"):
     """Private HND preparation, also returned to the independent diagnostic oracle."""
+    if v_scale_mode not in ("channel", "block"):
+        raise ValueError("v_scale_mode must be 'channel' or 'block'")
     from .triton.quant_per_thread import per_thread_int8
     from .quant import per_channel_fp8
     ext = _extension()
@@ -63,7 +66,7 @@ def prepare(q, k, v, *, expcast=True, v_smooth=True, clusters=8, iterations=2, s
     km = k.mean(dim=2, keepdim=True)
     q8, qs, k8, ks = per_thread_int8(q, k, km, BLKQ=64, WARPQ=16, BLKK=128, WARPK=128, tensor_layout="HND")
     if v_smooth:
-        v8, vs, means = ext.prepare_values(v.contiguous())
+        v8, vs, means = ext.prepare_values(v.contiguous(), channel_scale=v_scale_mode == "channel")
     else:
         pad = (-v.shape[2]) % 128
         if pad:
@@ -85,9 +88,11 @@ def forward_prepared(state, *, kernel_mode="optimized"):
 
 @torch.no_grad()
 def sageattn_vc(q, k, v, tensor_layout="HND", is_causal=False, sm_scale=None, return_lse=False,
-               *, expcast=True, v_smooth=True, clusters=8, iterations=2, kernel_mode="optimized"):
+               *, expcast=True, v_smooth=True, clusters=8, iterations=2, kernel_mode="optimized", v_scale_mode="channel"):
     if kernel_mode not in ("optimized", "vc4"):
         raise ValueError("kernel_mode must be 'optimized' or 'vc4'")
+    if v_scale_mode not in ("channel", "block"):
+        raise ValueError("v_scale_mode must be 'channel' or 'block'")
     validate_inputs(q, k, v, tensor_layout, is_causal, return_lse, expcast, v_smooth, clusters, iterations)
     if q.device.type != "cuda" or torch.cuda.get_device_capability(q.device) != (9, 0):
         raise ValueError("Sage VC requires Hopper; no CPU/reference fallback")
@@ -100,6 +105,7 @@ def sageattn_vc(q, k, v, tensor_layout="HND", is_causal=False, sm_scale=None, re
         if tensor_layout == "NHD":
             q, k, v = (x.transpose(1, 2) for x in (q, k, v))
         q, k, v = (x.contiguous() for x in (q, k, v))
-        state = prepare(q, k, v, expcast=expcast, v_smooth=v_smooth, clusters=clusters, iterations=iterations, sm_scale=sm_scale)
+        state = prepare(q, k, v, expcast=expcast, v_smooth=v_smooth, clusters=clusters, iterations=iterations,
+                        sm_scale=sm_scale, v_scale_mode=v_scale_mode)
         output = forward_prepared(state,kernel_mode=kernel_mode)
         return output.transpose(1, 2).contiguous() if tensor_layout == "NHD" else output
