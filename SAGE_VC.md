@@ -1,8 +1,8 @@
 # SageAttention 主体 + VC 两项改动
 
-当前包版本为 `2.2.0+vc13`：只开 ExpCast 时通过私有共享内存副本，
-将当前块概率解码、分母求和与 PV 重叠。保留 `kernel_mode="vc12"` 和
-`kernel_mode="vc13_serial"` 同输入对照，H200 净收益尚待实测，见文末 vc13 小节。
+当前包版本为 `2.2.0+vc13.1`：H200 对照显示 vc13 共享副本方案回退约 12%，
+默认 `optimized` 已恢复到 vc12。`vc13_serial` / `vc13_overlap` 保留为显式实验，
+CUDA 内核及数值约定未修改，详见文末复测结论。
 
 `sageattention-local==2.2.0+vc9` 在已经同场测到 25.8055 ms 的本地 Sage 源码上，
 新增独立 `sageattn_vc`。原版 `sageattn` 的数学与内核保留。
@@ -322,7 +322,7 @@ V 平滑路径、控制组、所有 Q/K/V 量化、FP8 P 字节、FP32 块内累
 版本 `2.2.0+vc13` / native kernel version 10。只修改 ExpCast 开启、V 平滑关闭的
 路径；control、V 平滑、原版 `sageattn` 沿用原内核。vc12 的 H200 同场复测为
 vc11 28.4311 ms、vc12 27.2819 ms，control 为 25.4781/25.5152 ms；这是用户提供的
-核心 API 结果，vc13 尚无 H200 性能结果。
+核心 API 结果；vc13 后续 H200 结果和默认回退见下文。
 
 vc12 在 PV 前完成 FP8 编码、解码和当前块求和。vc13 将同样的概率字节写入线程
 私有的共享内存位置，再在 PV 执行期间从副本解码、FP32 求和和更新历史分母。
@@ -345,8 +345,35 @@ PV 累加保持 vc12 的数值约定，极端 logits 仍使用相同的旧编码
 |---|---|---|
 | `vc12` | 原版编码、解码求和调度，无共享副本 | 衡量最终净收益 |
 | `vc13_serial` | 新共享副本，求和在 PV 开始前完成 | 检查副本与串行调度成本 |
-| `optimized` | 新共享副本，求和与 PV 重叠 | 候选默认路径 |
+| `vc13_overlap` | 新共享副本，求和与 PV 重叠 | 实验路径；vc13 发布时曾是默认 |
 
 本地 SM86 可执行概率 helper 的数值/内存测试；SM90a 主内核仅交叉编译、检查
 SASS，完整 H200 执行由远端验证。准确率门槛未放宽。具体命令见
 [性能诊断](SAGE_VC_PROFILE.md#vc13完整内核中的概率求和调度对比)。
+
+## vc13.1：H200 实测否决共享副本默认路径
+
+用户回传的 9 轮同输入核心 API 中位数：
+
+| 变体 | vc12 ms | serial ms | overlap ms |
+|---|---:|---:|---:|
+| control | 25.7339 | 25.6209 | 25.7394 |
+| ExpCast | 27.4307 | 29.5502 | 30.7108 |
+
+共享副本串行路径相对 vc12 增加 2.1195 ms，重叠路径再增加 1.1606 ms，总回退
+3.2801 ms（约 11.96%）。control 接近不变，输出 RMSE 在打印精度下为 0.000000%。
+这些是不同完整内核的净时间差，不等于孤立拷贝或求和的耗时；日志不能区分
+共享内存吞吐、指令发射、同步依赖分别占了多少。
+
+vc13.1 只恢复 Python 默认分发并修正诊断标签，native kernel version 仍为 10，
+CUDA/C++ 源码未改。`optimized` 与 `vc12` 使用相同参数；`vc13_overlap` 显式选择
+原 vc13 默认，`vc13_serial` 保留串行副本。资源报告也按实际默认路径重新标记，
+默认不再申请这 8 KiB 副本空间。原版 Sage 仍更快，没有宣称达到加速目标。
+
+当前安装的 vc13 无需先升级也可显式传 `kernel_mode="vc12"` 避开负优化。
+升级默认行为：
+
+```bash
+git pull --ff-only origin master
+python3 -m pip install ./third_party/sageattention_local --no-build-isolation --no-deps
+```

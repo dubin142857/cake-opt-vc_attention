@@ -211,8 +211,8 @@ def parse_args(argv=None):
                         help="Compare previous/optimized cores on identical payloads; validate ALL output rows")
     parser.add_argument("--expcast-only",action="store_true",
                         help="Measure Sage/control/ExpCast only; skip V grouping/smoothing entirely")
-    parser.add_argument("--kernel-baseline",choices=("vc4","vc6","vc7","vc9","vc10","vc11","vc12","vc13_serial"),
-                        help="Same-payload baseline; defaults to vc12 on vc13+, vc11 on vc12, vc10 on vc11, vc9 on vc10, vc7 on vc8/9, vc6 on vc7, otherwise vc4")
+    parser.add_argument("--kernel-baseline",choices=("vc4","vc6","vc7","vc9","vc10","vc11","vc12","vc13_serial","vc13_overlap"),
+                        help="Same-payload baseline; defaults to vc13_overlap after the vc13.1 rollback, vc12 on vc13, vc11 on vc12, vc10 on vc11, vc9 on vc10, vc7 on vc8/9, vc6 on vc7, otherwise vc4")
     parser.add_argument("--compare-probability-schedules", action="store_true",
                         help="vc13+: compare vc12, serial scratch and overlap on identical payloads; validate ALL output rows")
     parser.add_argument("--compare-v-scales", action="store_true",
@@ -277,7 +277,10 @@ def kernel_calls(ops, fixed, baseline="vc4"):
 
 def kernel_baseline(ops,args):
     version = getattr(ops.ext,"sage_vc_kernel_version",0)
-    baseline = getattr(args,"kernel_baseline",None) or ("vc12" if version >= 10 else "vc11" if version >= 9 else "vc10" if version >= 8 else "vc9" if version >= 7 else "vc7" if version >= 6 else "vc6" if version >= 5 else "vc4")
+    restored = getattr(getattr(ops,"vc",None),"DEFAULT_EXPCAST_KERNEL",None) == "vc12"
+    baseline = getattr(args,"kernel_baseline",None) or ("vc13_overlap" if version >= 10 and restored else "vc12" if version >= 10 else "vc11" if version >= 9 else "vc10" if version >= 8 else "vc9" if version >= 7 else "vc7" if version >= 6 else "vc6" if version >= 5 else "vc4")
+    if baseline == "vc13_overlap" and (version < 10 or not restored):
+        raise RuntimeError("--kernel-baseline vc13_overlap needs vc13.1; rebuild with bash scripts/build_sage_local.sh")
     if baseline in ("vc12", "vc13_serial") and version < 10:
         raise RuntimeError("--kernel-baseline vc12/vc13_serial needs vc13; rebuild with bash scripts/build_sage_local.sh")
     if baseline == "vc11" and version < 9:
@@ -453,8 +456,9 @@ def compare_kernels(ops, fixed, args, device):
         print(f"Kernel comparison trial {trial+1}/{args.trials} complete",flush=True)
     rows = {}
     print(f"\nSame-payload native APIs: {baseline} vs optimized (ms; excludes all preprocessing)")
-    if baseline in ("vc12", "vc13_serial"):
-        print("vc13 changes only ExpCast without V smoothing: identical FP8 P and FP32 tile sums; private shared copy allows sum/history updates during PV. vc13_serial uses the same copy but sums before PV.")
+    if baseline in ("vc12", "vc13_serial", "vc13_overlap"):
+        resolved = getattr(ops.vc,"DEFAULT_EXPCAST_KERNEL","vc13_overlap")
+        print(f"Loaded optimized ExpCast path: {resolved}. vc12 has no shared copy; vc13_serial sums the copy before PV; vc13_overlap sums during PV. Quantized payloads and P encoding are identical.")
     elif baseline == "vc11":
         print("vc11/optimized fold the ExpCast-only affine transform in FP32. Q/K/V payloads are identical; FP8 P rounding may differ near boundaries. The denominator still sums decoded P; extreme ranges use vc11.")
     elif baseline == "vc10":
@@ -484,7 +488,9 @@ def compare_probability_schedules(ops, fixed, args, device):
     """Correct-output full kernels: separate copy cost from overlap benefit."""
     if getattr(ops.ext, "sage_vc_kernel_version", 0) < 10:
         raise RuntimeError("Probability schedule comparison needs vc13")
-    modes = ("vc12", "vc13_serial", "optimized")
+    # Older installed vc13 exposes this experiment through optimized.
+    overlap_mode = "vc13_overlap" if getattr(ops.vc,"DEFAULT_EXPCAST_KERNEL",None) == "vc12" else "optimized"
+    modes = ("vc12", "vc13_serial", overlap_mode)
     fixed = {name: state for name, state in fixed.items() if not state["block_values"]}
     calls = {(name, mode): lambda state=state, mode=mode:
              ops.vc.forward_prepared(state, kernel_mode=mode)
@@ -529,13 +535,13 @@ def compare_probability_schedules(ops, fixed, args, device):
                       "output_vs_vc12": {mode: errors[name, mode] for mode in modes[1:]},
                       "vc12_over_overlap": baseline/overlap,
                       "serial_over_overlap": serial/overlap,
-                      "paired_vc12_over_overlap": [a/b for a, b in zip(times[name, "vc12"], times[name, "optimized"])],
-                      "paired_serial_over_overlap": [a/b for a, b in zip(times[name, "vc13_serial"], times[name, "optimized"])]}
+                      "paired_vc12_over_overlap": [a/b for a, b in zip(times[name, "vc12"], times[name, overlap_mode])],
+                      "paired_serial_over_overlap": [a/b for a, b in zip(times[name, "vc13_serial"], times[name, overlap_mode])]}
         print(f"{name:<23} {baseline:>10.4f} {serial:>10.4f} {overlap:>10.4f} {baseline/overlap:>9.3f}x "
-              f"{serial/overlap:>11.3f}x {errors[name, 'optimized']['rel_rmse']*100:>12.6f}")
+              f"{serial/overlap:>11.3f}x {errors[name, overlap_mode]['rel_rmse']*100:>12.6f}")
     print("serial/new tests overlap with the SAME shared-copy path; vc12/new includes the copy cost.")
     print("These are full correct-output native APIs, not isolated sum durations. All output rows checked; preprocessing excluded.")
-    return {"variants": rows, "trial_order": orders, "implementation_rel_rmse_limit": .001,
+    return {"overlap_mode": overlap_mode, "variants": rows, "trial_order": orders, "implementation_rel_rmse_limit": .001,
             "scope": "Same original and quantized inputs; full native API wall time, no preprocessing; three compiled schedules; timings are not additive component costs."}
 
 
@@ -600,7 +606,7 @@ def run(args):
                    "gpu": torch.cuda.get_device_name(device), "device": str(device), "tf32_enabled": False,
                    "input_shapes": input_shapes(args), "build": info}
     if args.dim == 128 and getattr(ops.ext,"sage_vc_kernel_version",0) >= 6:
-        environment["compiled_d128_channel_resources"] = ops.ext.kernel_resources(0 if dtype == torch.float16 else 1)
+        environment["compiled_d128_channel_resources"] = getattr(ops.vc,"kernel_resources",ops.ext.kernel_resources)(0 if dtype == torch.float16 else 1)
     print(json.dumps(environment,indent=2),flush=True)
     bases = {}
     variants = {name: flags for name,flags in SAGE_VC_VARIANTS.items() if not args.expcast_only or not flags[1]}

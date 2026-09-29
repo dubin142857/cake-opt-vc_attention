@@ -393,6 +393,9 @@ CUDA 12.4 的首个概率编码/解码分支中，旧公式为 467 条静态指�
 
 ## vc13：完整内核中的概率求和调度对比
 
+**后续结论：H200 实测 vc12/serial/overlap = 27.4307/29.5502/30.7108 ms，
+vc13.1 已将默认路径恢复为 vc12。下面的三模式诊断仍显式测量原 overlap 实验。**
+
 本轮针对 ExpCast-only，保持 vc12 编码、量化后的概率分母和两级 FP32 PV 累加。
 新增私有共享副本，使当前块解码求和可以与 PV 执行重叠。默认 BSHD 输入仍是
 `[1,37741,28,128]`，BF16；内部准备后的布局为 BHND。
@@ -408,7 +411,8 @@ python3 scripts/profile_sage_vc.py --expcast-only --compare-probability-schedule
 
 - `vc12`：没有共享副本的上一版。
 - `serial`：使用共享副本，但在 PV 之前完成当前块求和。
-- `overlap`：使用共享副本，将当前块求和与 PV 重叠。
+- `overlap`：使用共享副本，将当前块求和与 PV 重叠；vc13.1 显式使用 `vc13_overlap`，
+  对尚未升级的 vc13 安装仍使用旧 `optimized`。JSON 保存实际选择的模式。
 
 `vc12/new > 1` 才表示该修改相对上一版的净收益；`serial/new > 1` 表示新调度
 优于同副本串行对照。三种路径有各自的编译调度，时间差不能当作孤立求和时间。
@@ -419,13 +423,15 @@ python3 scripts/profile_sage_vc.py --expcast-only --compare-probability-schedule
 行参与新旧实现检查，0.1% 回归门槛保持不变，报告另含逐位一致标记；这不是
 模型质量门槛。比较在计时之外进行，预处理也不计入此表的 native API 时间。
 
-若只需要两种内核的既有输出格式：
+若只需要两种内核的既有输出格式，vc13.1 用下面命令对比被否决的 overlap 与
+恢复后的默认 vc12；此处 old/new > 1 表示回退默认消除了负优化：
 
 ```bash
-python3 scripts/profile_sage_vc.py --expcast-only --compare-kernels --kernel-baseline vc12 --trials 9 --repeats 20 --output results/h200_vc13_vs_vc12.json
+python3 scripts/profile_sage_vc.py --expcast-only --compare-kernels --kernel-baseline vc13_overlap --trials 9 --repeats 20 --output results/h200_vc13_rollback.json
 ```
 
-环境 JSON 会列出 `expcast_vc12`、`expcast_serial`、`expcast_optimized` 的目标设备
+vc13.1 环境 JSON 会列出 `expcast_vc12`、`expcast_serial`、`expcast_vc13_overlap` 和
+实际默认 `expcast_optimized` 的目标设备
 编译资源。共享内存副本增加 8 KiB/CTA；本地 CUDA 12.4 编译 D128 均为 168
 寄存器、零 stack/spill，不能据此保证 CUDA 13 或 H200 的实际速度。
 本轮针对 WGMMA 重叠，`benchmark_expcast.py` 仍是 vc12 及更早版本的 helper

@@ -1,0 +1,18 @@
+{
+  "source": "User-provided terminal output; original JSON and individual trials were not supplied",
+  "package_tested": "2.2.0+vc13",
+  "trials": 9,
+  "api_median_ms": {
+    "sage_local": 26.3165,
+    "sage_vc_control": 27.1524,
+    "sage_vc_expcast": 32.2009
+  },
+  "same_payload_native_api_ms": {
+    "sage_vc_control": {"vc12": 25.7339, "serial": 25.6209, "overlap": 25.7394},
+    "sage_vc_expcast": {"vc12": 27.4307, "serial": 29.5502, "overlap": 30.7108}
+  },
+  "displayed_overlap_vs_vc12_rel_rmse_percent": 0.000000,
+  "exact_match": "Not supplied; rounded RMSE display alone is not a bitwise equality check",
+  "decision": "Reject the vc13 shared-copy default; restore vc12 dispatch in 2.2.0+vc13.1 and keep both experiments explicit",
+  "limits": "Full native API differences are not isolated copy/reduction times or hardware stall counters. No model-quality or speedup-over-Sage claim."
+}

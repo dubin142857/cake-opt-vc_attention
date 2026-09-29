@@ -188,6 +188,12 @@ def validate(device="cuda:0"):
                         if not torch.isfinite(serial).all().item() or delta["rel_rmse"] > .001:
                             raise AssertionError(f"Serial/vc12 regression: {row}, delta={delta}")
                         row["serial_vs_vc12"] = {**delta,"exact_match":torch.equal(serial,previous)}
+                        if getattr(vc,"DEFAULT_EXPCAST_KERNEL",None) == "vc12":
+                            overlap = vc.forward_prepared(state,kernel_mode="vc13_overlap")
+                            delta = metrics(overlap,previous)
+                            if not torch.isfinite(overlap).all().item() or delta["rel_rmse"] > .001:
+                                raise AssertionError(f"Overlap/vc12 regression: {row}, delta={delta}")
+                            row["overlap_vs_vc12"] = {**delta,"exact_match":torch.equal(overlap,previous)}
                     if getattr(ext,"sage_vc_kernel_version",0) >= 9:
                         previous = vc.forward_prepared(state,kernel_mode="vc11")
                         delta = metrics(actual,previous)

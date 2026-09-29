@@ -6,10 +6,11 @@
 `sageattn` 是原版内核的独立源码构建。`2.2.0+vc3` 新增独立的
 `sageattn_vc` 实验入口：Sage INT8 QK + VC 的 V 聚类/分块平滑、ExpCast，
 不能称为完整 VC 论文复现。使用与对照见仓库根目录 [SAGE_VC.md](../../SAGE_VC.md)。
-当前版本 `2.2.0+vc13` 在 ExpCast 开启、V 平滑关闭时，将当前块解码求和与 PV 重叠。
-沿用 vc12 的编码和 FP32 求和，每个线程块新增 8 KiB 私有共享内存副本；
-`kernel_mode="vc12"` 保留原内核，`kernel_mode="vc13_serial"` 使用相同副本但提前求和。
-完整 H200 净收益需比较这三种路径。此前 `2.2.0+vc9` 将默认 8 中心聚类的距离计算、分组和块内统计融合成 CUDA kernel，
+当前版本 `2.2.0+vc13.1` 恢复 vc12 为默认 ExpCast-only 路径：H200 同输入测试中，
+vc12 为 27.4307 ms，共享副本串行/重叠分别为 29.5502/30.7108 ms。
+`kernel_mode="vc13_serial"` 和 `"vc13_overlap"` 保留实验；默认 `"optimized"`
+与 `"vc12"` 一致。CUDA 源码、native kernel version 10 和数值约定未改。
+此前 `2.2.0+vc9` 将默认 8 中心聚类的距离计算、分组和块内统计融合成 CUDA kernel，
 减少中间张量与 kernel 下发；最后一次分组不再更新无后续用途的中心。
 保留初始化、Lloyd 轮数、空簇策略和稳定排序。`grouping_mode="legacy"` 可切回旧路径；
 FP32 求和顺序变化可能改变少量分组，使用 `--compare-grouping` 同场检查速度和 dense FP32 误差。

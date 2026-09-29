@@ -4,7 +4,7 @@
   "commit": "eb615cf6cf4d221338033340ee2de1c37fbdba4a",
   "license": "Apache-2.0",
   "local_distribution": "sageattention-local",
-  "local_version": "2.2.0+vc13",
+  "local_version": "2.2.0+vc13.1",
   "scope": "Baseline CUDA/C++ bodies and Triton sources unchanged, with a build-only CUDAContext.h removal; isolated package/operator namespaces and SM90 fake-name fix. Separate Sage+VC experiment in csrc/vc, retaining INT8 QK and adding optional V clustering/block smoothing and ExpCast.",
   "files": [
     {
@@ -400,7 +400,7 @@
     },
     {
       "local_path": "sageattention_local/vc.py",
-      "local_sha256": "3dc47786f4ec5c5688f640e3f155615f503dd2610432e8e46c171153a951e519",
+      "local_sha256": "073a00d6008e2a7c12a644da533f49de214bdf1ca099fb1f17c7fdb518bbc337",
       "license": "Apache-2.0",
       "origin": "New VC integration/diagnostic code in vc-attention"
     },
