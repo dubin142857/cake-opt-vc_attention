@@ -248,3 +248,35 @@ trace 的 19% occupancy 是估计值，不能解读为 GPU 只有 19% 利用率�
 
 记录见 [回传摘要](results/h200_sage_vc9_reported_summary.json)。该文件是控制台数值摘录，
 不是远端原始 JSON；不同计时区间不可相加，完整 144 项远端验证结果未包含在此次回传中。
+
+## vc10：只针对 ExpCast、关闭 V 平滑的主内核
+
+版本 `2.2.0+vc10` / native kernel version 7。`kernel_mode="vc9"` 保留上一版；
+`optimized` 只为 `expcast=True, v_smooth=False` 选择新内核。控制组、V 平滑、全开和
+预处理复用 vc9 的内核。此次不改变 Q/K/V 量化、ExpCast FP32 FMA/RNE 字节和 PV 精度。
+
+- 每个线程的每行 32 个 FP8 权重分成两条独立 FP32 累加链，先求本块的和，再加到历史分母。
+  编码 0..120 的权重都是 `2^-9` 的整数倍，最大 256；这 32 项的和可由 FP32 精确表示。
+  历史分母的加法顺序会变化，不承诺最终输出逐位一致。
+- P 编码/解码及块内求和仍在 PV 前完成，历史输出缩放与 PV 异步计算重叠。
+  PV 使用独立临时累加器，保留两级 FP32 累加；历史缩放明确舍入，编译器的 FMA 合并可能
+  与旧版不同。完整输出仍按 <=0.1% relative RMSE 做实现回归检查。
+- PV 提交后不会读取它的 P 寄存器。NVIDIA PTX 的 `wgmma.wait_group` 规则也限制
+  输入 A 寄存器的访问，不能简单把 P 解码移到未完成的 PV 后面。
+
+参考用户提供的 [BBuf CUDA 优化案例](https://github.com/BBuf/how-to-optim-algorithm-in-cuda)
+采用局部测量、指令检查、同输入整核对照的工作方式，没有替换成案例中的独立 Softmax。
+同步依据：[NVIDIA PTX WGMMA wait](https://docs.nvidia.com/cuda/parallel-thread-execution/#asynchronous-warpgroup-level-matrix-instructions-wgmma-wait-group)。
+
+本地 CUDA 12.4 的 64 个 Hopper 变体交叉编译通过；原有 60 个变体的 SASS 指令流相同。
+新 D128 为 168 registers/thread，无 spill；D64 为 128，无 spill。局部 helper 检查包含
+全部概率字节、尾块、不同 lane 的 QK scale，以及 300 个连续在线块。
+H200 完整 attention 的正确性及提速仍需远端验证，不能由编译资源推出已经加速。
+
+本地 RTX 3060 的独立概率 helper 测量约为旧版 5.03 ms、新版 5.08 ms，未显示提速。
+该测量没有 QK/PV，不能测量本次的 PV 重叠收益；也不能把它当作 H200 性能结果。
+远端优先跑 [SAGE_VC_PROFILE.md](SAGE_VC_PROFILE.md) 的 `--expcast-only` 同场对照。
+
+本地共 246 项测试通过；85 项概率/累加 helper 的 Compute Sanitizer memcheck 为 0 errors。
+完整记录见 [本地验证](results/sage_vc10_local_validation.json) 和
+[局部微基准](results/sage_vc10_local_probability_micro.json)。这不包含 Hopper attention 执行。

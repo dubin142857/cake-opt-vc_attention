@@ -209,8 +209,10 @@ def parse_args(argv=None):
     parser.add_argument("--trace-dir", help="Optional CUPTI CPU/GPU timelines, one staged call per variant")
     parser.add_argument("--compare-kernels", action="store_true",
                         help="Compare previous/optimized cores on identical payloads; validate ALL output rows")
-    parser.add_argument("--kernel-baseline",choices=("vc4","vc6","vc7"),
-                        help="Same-payload baseline; defaults to vc7 on vc8+, vc6 on vc7, otherwise vc4")
+    parser.add_argument("--expcast-only",action="store_true",
+                        help="Measure Sage/control/ExpCast only; skip V grouping/smoothing entirely")
+    parser.add_argument("--kernel-baseline",choices=("vc4","vc6","vc7","vc9"),
+                        help="Same-payload baseline; defaults to vc9 on vc10+, vc7 on vc8/9, vc6 on vc7, otherwise vc4")
     parser.add_argument("--compare-v-scales", action="store_true",
                         help="vc6+: compare old block and new channel V quantization, including API time and dense FP32 errors")
     parser.add_argument("--compare-grouping", action="store_true",
@@ -226,6 +228,8 @@ def parse_args(argv=None):
         parser.error("check-queries must be nonnegative and reference-chunk positive")
     if args.kernel_baseline and not args.compare_kernels:
         parser.error("--kernel-baseline requires --compare-kernels")
+    if args.expcast_only and (args.compare_v_scales or args.compare_grouping or args.ncu_variant):
+        parser.error("--expcast-only cannot be combined with V/grouping comparisons or --ncu-variant")
     if args.ncu_variant and (args.trace_dir or args.compare_kernels or args.compare_v_scales or args.compare_grouping):
         parser.error("--ncu-variant uses a separate profiler run")
     return args
@@ -271,7 +275,9 @@ def kernel_calls(ops, fixed, baseline="vc4"):
 
 def kernel_baseline(ops,args):
     version = getattr(ops.ext,"sage_vc_kernel_version",0)
-    baseline = getattr(args,"kernel_baseline",None) or ("vc7" if version >= 6 else "vc6" if version >= 5 else "vc4")
+    baseline = getattr(args,"kernel_baseline",None) or ("vc9" if version >= 7 else "vc7" if version >= 6 else "vc6" if version >= 5 else "vc4")
+    if baseline == "vc9" and version < 7:
+        raise RuntimeError("--kernel-baseline vc9 needs vc10; rebuild with bash scripts/build_sage_local.sh")
     if baseline == "vc7" and version < 6:
         raise RuntimeError("--kernel-baseline vc7 needs vc8; rebuild with bash scripts/build_sage_local.sh")
     if baseline == "vc6" and getattr(ops.ext,"sage_vc_kernel_version",0) < 5:
@@ -439,10 +445,12 @@ def compare_kernels(ops, fixed, args, device):
         print(f"Kernel comparison trial {trial+1}/{args.trials} complete",flush=True)
     rows = {}
     print(f"\nSame-payload native APIs: {baseline} vs optimized (ms; excludes all preprocessing)")
-    if baseline == "vc7":
-        print("vc7/optimized differ in D128 channel-V PV fragmentation/mean scheduling; Q/K/V payloads, ExpCast and two-level FP32 accumulation are unchanged.")
+    if baseline == "vc9":
+        print("vc9/optimized change only ExpCast without V smoothing: independent tile sums and history scaling overlapped with PV. FP8 P bytes are unchanged; denominator FP32 addition order differs.")
+    elif baseline == "vc7":
+        print("vc7/optimized compare D128 channel-V PV scheduling; vc10+ additionally changes ExpCast-only probability scheduling. Quantized Q/K/V payloads are identical.")
     elif baseline == "vc6":
-        print("vc6/optimized compare ExpCast scheduling and, on vc8+, compact D128 channel-V accumulation; quantized payloads are identical.")
+        print("vc6/optimized compare ExpCast scheduling and compact D128 channel-V accumulation; vc10+ changes ExpCast-only history addition order. Quantized payloads are identical.")
     elif getattr(ops.ext,"sage_vc_kernel_version",0) >= 4:
         print("Channel V: vc4 applies the shared scale per tile; optimized applies it once in the epilogue. Both retain two-level FP32 accumulation.")
     print(f"{'variant':<23} {baseline+' ms':>11} {'optimized ms':>14} {'old/new':>10} {'output rel RMSE %':>19} {'max abs':>12}")
@@ -471,6 +479,8 @@ def print_report(report):
         print(f"{name:<23}" + "".join(f"{value:>13}" for value in values))
     print("\nFixed-payload ExpCast comparison; identical Q/K/V payloads within each pair:")
     for plain, cast in (("sage_vc_control","sage_vc_expcast"),("sage_vc_smooth","sage_vc")):
+        if plain not in report["fixed_payload_core"]:
+            continue
         a, b = (report["fixed_payload_core"][key]["median_ms"] for key in (plain,cast))
         print(f"  {plain} -> {cast}: {a:.4f} -> {b:.4f} ms, delta {b-a:+.4f} ms, plain/cast={a/b:.4f}x")
     print("CPU enqueue times and raw trials are in JSON. Do not add CPU and GPU times.")
@@ -517,15 +527,16 @@ def run(args):
         environment["compiled_d128_channel_resources"] = ops.ext.kernel_resources(0 if dtype == torch.float16 else 1)
     print(json.dumps(environment,indent=2),flush=True)
     bases = {}
-    for smooth in (False,True):
+    variants = {name: flags for name,flags in SAGE_VC_VARIANTS.items() if not args.expcast_only or not flags[1]}
+    for smooth in ((False,) if args.expcast_only else (False,True)):
         print(f"Checking stage/public payload parity, v_smooth={smooth} (outside timing)",flush=True)
         base = ops.vc.prepare(*qkv,expcast=False,v_smooth=smooth)
         staged = staged_prepare(*qkv,ops,DirectStages(),expcast=False,smooth=smooth,fixed_permutation=base["permutation"])
         assert_payload_equal(staged,base)
         del staged
         bases[smooth] = base
-    fixed = fixed_variants(bases)
-    backends = {name: external_backend(name,qkv,None) for name in ("sage_local",*SAGE_VC_VARIANTS)}
+    fixed = {name:{**bases[smooth],"expcast":cast} for name,(cast,smooth) in variants.items()}
+    backends = {name: external_backend(name,qkv,None) for name in ("sage_local",*variants)}
     for name, backend in backends.items():
         print(f"Warmup {name}",flush=True)
         for _ in range(args.warmup):
@@ -593,7 +604,7 @@ def run(args):
         directory = Path(args.trace_dir)
         directory.mkdir(parents=True,exist_ok=True)
         report["traces"] = {}
-        for name, (cast,smooth) in SAGE_VC_VARIANTS.items():
+        for name, (cast,smooth) in variants.items():
             torch.cuda.synchronize(device)
             with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU,torch.profiler.ProfilerActivity.CUDA]) as prof:
                 with torch.profiler.record_function(name):

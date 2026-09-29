@@ -377,6 +377,30 @@ def test_target_shape_and_argument_validation():
         profile.parse_args(["--ncu-variant","sage_vc","--compare-grouping"])
 
 
+def test_vc10_baseline_selects_vc9_and_rejects_stale_binary():
+    args = profile.parse_args(["--compare-kernels"])
+    ops = SimpleNamespace(ext=SimpleNamespace(sage_vc_kernel_version=7))
+    assert profile.kernel_baseline(ops,args) == "vc9"
+    args.kernel_baseline = "vc9"
+    ops.ext.sage_vc_kernel_version = 6
+    with pytest.raises(RuntimeError,match="needs vc10"):
+        profile.kernel_baseline(ops,args)
+
+
+def test_expcast_only_cli_and_partial_report(capsys):
+    assert profile.parse_args(["--expcast-only"]).expcast_only
+    for flag in ("--compare-v-scales","--compare-grouping"):
+        with pytest.raises(SystemExit): profile.parse_args(["--expcast-only",flag])
+    names = ("sage_vc_control","sage_vc_expcast")
+    report = {"end_to_end":{name:{"median_ms":2.} for name in ("sage_local",*names)},
+        "fixed_payload_core":{name:{"median_ms":1.} for name in names},
+        "pipeline":{name:{"stages":{}} for name in names}}
+    profile.print_report(report)
+    output = capsys.readouterr().out
+    assert "sage_vc_control -> sage_vc_expcast" in output
+    assert "sage_vc_smooth -> sage_vc" not in output
+
+
 def test_grouping_comparison_uses_recorded_labels_and_permutations(monkeypatch):
     ops = fake_ops()
     with pytest.raises(RuntimeError,match="vc9"):

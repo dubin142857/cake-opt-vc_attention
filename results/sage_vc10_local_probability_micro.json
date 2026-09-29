@@ -1,0 +1,95 @@
+{
+  "gpu": "NVIDIA GeForce RTX 3060 Laptop GPU",
+  "torch": "2.3.1+cu121",
+  "torch_cuda": "12.1",
+  "arguments": {
+    "blocks": 256,
+    "iterations": 128,
+    "trials": 9,
+    "output": "results/sage_vc10_local_probability_micro.json"
+  },
+  "trial_order": [
+    [
+      "vc9_expcast",
+      "vc10_expcast"
+    ],
+    [
+      "vc9_expcast",
+      "vc10_expcast"
+    ],
+    [
+      "vc10_expcast",
+      "vc9_expcast"
+    ],
+    [
+      "vc9_expcast",
+      "vc10_expcast"
+    ],
+    [
+      "vc9_expcast",
+      "vc10_expcast"
+    ],
+    [
+      "vc10_expcast",
+      "vc9_expcast"
+    ],
+    [
+      "vc9_expcast",
+      "vc10_expcast"
+    ],
+    [
+      "vc9_expcast",
+      "vc10_expcast"
+    ],
+    [
+      "vc9_expcast",
+      "vc10_expcast"
+    ]
+  ],
+  "register_target": 168,
+  "compiled_resources": {
+    "vc9_expcast": {
+      "registers_per_thread": 163,
+      "local_bytes_per_thread": 0
+    },
+    "vc10_expcast": {
+      "registers_per_thread": 168,
+      "local_bytes_per_thread": 0
+    }
+  },
+  "skipped_modes": [
+    "sage_softmax requires SM89+"
+  ],
+  "scope": "probability helpers with common register-input/checksum work; no QK/PV or preprocessing; cannot measure PV overlap",
+  "modes": {
+    "vc9_expcast": {
+      "median_ms": 5.037407875061035,
+      "trials_ms": [
+        5.06060791015625,
+        5.037407875061035,
+        5.03107213973999,
+        5.029376029968262,
+        5.0411200523376465,
+        5.105823993682861,
+        5.031871795654297,
+        5.031424045562744,
+        5.040832042694092
+      ]
+    },
+    "vc10_expcast": {
+      "median_ms": 5.078559875488281,
+      "trials_ms": [
+        5.090367794036865,
+        5.070015907287598,
+        5.075839996337891,
+        5.077087879180908,
+        5.079423904418945,
+        5.080959796905518,
+        5.078559875488281,
+        5.075520038604736,
+        5.091519832611084
+      ]
+    }
+  },
+  "vc9_over_vc10": 0.9918969153783405
+}

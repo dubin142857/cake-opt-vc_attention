@@ -139,3 +139,49 @@ def test_streamed_mean_preserves_long_online_history():
         for actual, expected in zip(new,old):
             torch.testing.assert_close(actual,expected,rtol=0,atol=0)
         _,out,maximum,denom = old
+
+
+@pytest.mark.parametrize("seed", [0,1,2,3])
+@pytest.mark.parametrize("mixed_scales", [False,True])
+def test_pipeline_preserves_bytes_and_exact_tile_mass(seed,mixed_scales):
+    torch.manual_seed(2010+seed)
+    scores = torch.randn(64,128,device="cuda") * (seed+1)*8
+    scores[:16,1:] = -float("inf")
+    scores[16:32,117:] = -float("inf")
+    scores[32:48] = 0
+    out = torch.randn_like(scores)
+    maximum = torch.linspace(-20,20,64,device="cuda")
+    denom = torch.logspace(-6,8,64,device="cuda")
+    old = probe.run_probability(scores,out,maximum,denom,False,mixed_scales)
+    new = probe.run_probability(scores,out,maximum,denom,True,mixed_scales)
+    for a,b in zip(new[:3],old[:3]): torch.testing.assert_close(a,b,rtol=0,atol=0)
+    mass = new[0].view(torch.float8_e4m3fn).float().double().sum(-1).float()
+    torch.testing.assert_close(new[4],mass,rtol=0,atol=0)
+    expected = (denom.double()*(maximum-new[2]).double().exp()+mass.double()).float()
+    torch.testing.assert_close(new[3],expected,rtol=2e-6,atol=1e-5)
+    torch.testing.assert_close(new[3],old[3],rtol=2e-6,atol=1e-5)
+
+
+def test_pipeline_continuous_history_300_tiles_all_codes():
+    torch.manual_seed(2019)
+    out = torch.randn(64,128,device="cuda")
+    maximum = torch.full((64,),-5e6,device="cuda")
+    old_d = new_d = torch.ones(64,device="cuda")
+    exact_d = torch.zeros(64,device="cuda",dtype=torch.float64)
+    for tile in range(300):
+        # Includes all positive E4M3 exponents, subnormals, zeros and a tail.
+        scores = torch.randn_like(out)*24
+        if tile%3 == 0:
+            codes = torch.arange(128,device="cuda").remainder(121)
+            scores[:] = ((codes-119.6500015258789)/11.541560173034668)*4
+        if tile == 299: scores[:,109:] = -float("inf")
+        old = probe.run_probability(scores,out,maximum,old_d,False,False)
+        new = probe.run_probability(scores,out,maximum,new_d,True,False)
+        for a,b in zip(new[:3],old[:3]): torch.testing.assert_close(a,b,rtol=0,atol=0)
+        mass = new[0].view(torch.float8_e4m3fn).float().double().sum(-1)
+        exact_d = exact_d*(maximum-new[2]).double().exp()+mass
+        torch.testing.assert_close(new[4].double(),mass,rtol=0,atol=0)
+        torch.testing.assert_close(new[3].double(),exact_d,rtol=1e-5,atol=1e-5)
+        torch.testing.assert_close(new[3],old[3],rtol=2e-5,atol=1e-5)
+        _,out,maximum,new_d,_ = new
+        old_d = old[3]

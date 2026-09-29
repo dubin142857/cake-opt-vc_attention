@@ -108,7 +108,70 @@ std::vector<torch::Tensor> run_helpers(torch::Tensor shifted, torch::Tensor code
   return {encoded, decoded};
 }
 
+template<bool Pipeline>
+__global__ void probability_probe(const float* scores, const float* previous,
+    const float* prev_max, const float* prev_d, uint8_t* bytes, float* output,
+    float* maximum, float* denom, float* tile_mass, bool mixed_scales) {
+  int lane = threadIdx.x % 32, row_base = (threadIdx.x / 32) * 16 + lane / 4;
+  float s[1][8][8], o[1][8][8], m[1][2], d[1][2], mass[1][2], alpha[1][2];
+  uint32_t packed[1][4][4];
+  #pragma unroll
+  for (int r = 0; r < 2; ++r) {
+    m[0][r] = prev_max[row_base+r*8];
+    d[0][r] = prev_d[row_base+r*8] * .25f;
+  }
+  #pragma unroll
+  for (int t = 0; t < 8; ++t)
+    #pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      int pos = (row_base+((j%4)/2)*8)*128 + t*16+(lane%4)*2+(j/4)*8+j%2;
+      s[0][t][j] = scores[pos]; o[0][t][j] = previous[pos];
+    }
+  float scale = mixed_scales ? .137f*(1+lane%4) : .25f;
+  if constexpr (Pipeline) {
+    vc_probability_prepare(s,m,scale,packed,alpha,mass);
+    vc_probability_finish(o,d,alpha,mass);
+  } else vc_probability<true,false,true,true>(s,o,m,d,scale,packed,mass);
+  #pragma unroll
+  for (int t = 0; t < 8; ++t)
+    #pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      int r = (j%4)/2;
+      int pos = (row_base+r*8)*128+t*16+(lane%4)*2+(j/4)*8+j%2;
+      bytes[pos] = (packed[0][t/2][(t%2)*2+r] >> (8*((j/4)*2+j%2))) & 255;
+      output[pos] = o[0][t][j];
+    }
+  #pragma unroll
+  for (int r = 0; r < 2; ++r) {
+    float sum = d[0][r], weight = Pipeline ? mass[0][r] : 0.f;
+    sum += __shfl_xor_sync(0xffffffff,sum,1); sum += __shfl_xor_sync(0xffffffff,sum,2);
+    weight += __shfl_xor_sync(0xffffffff,weight,1); weight += __shfl_xor_sync(0xffffffff,weight,2);
+    if (lane%4 == 0) {
+      maximum[row_base+r*8] = m[0][r]; denom[row_base+r*8] = sum;
+      tile_mass[row_base+r*8] = weight;
+    }
+  }
+}
+
+std::vector<torch::Tensor> run_probability(torch::Tensor scores, torch::Tensor previous,
+    torch::Tensor m, torch::Tensor d, bool pipeline, bool mixed_scales) {
+  TORCH_CHECK(scores.is_cuda() && scores.sizes() == at::IntArrayRef({64,128}), "Probe shape");
+  for (const auto& tensor : {scores,previous,m,d})
+    TORCH_CHECK(tensor.device() == scores.device() && tensor.is_contiguous() && tensor.scalar_type() == at::kFloat,"Probe tensors");
+  TORCH_CHECK(previous.sizes() == scores.sizes() && m.numel() == 64 && d.numel() == 64,"Probe history shape");
+  auto bytes = torch::empty_like(scores,scores.options().dtype(at::kByte));
+  auto out = torch::empty_like(previous), maximum = torch::empty_like(m), denom = torch::empty_like(d), mass = torch::empty_like(d);
+  auto kernel = pipeline ? probability_probe<true> : probability_probe<false>;
+  kernel<<<1,128,0,c10::cuda::getCurrentCUDAStream().stream()>>>(scores.data_ptr<float>(),previous.data_ptr<float>(),
+      m.data_ptr<float>(),d.data_ptr<float>(),bytes.data_ptr<uint8_t>(),out.data_ptr<float>(),maximum.data_ptr<float>(),
+      denom.data_ptr<float>(),mass.data_ptr<float>(),mixed_scales);
+  C10_CUDA_KERNEL_LAUNCH_CHECK();
+  return {bytes,out,maximum,denom,mass};
+}
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME,m) {
+  m.def("run_probability",&run_probability,pybind11::arg("scores"),pybind11::arg("previous"),
+      pybind11::arg("m"),pybind11::arg("d"),pybind11::arg("pipeline"),pybind11::arg("mixed_scales")=false);
   m.def("run",&run,pybind11::arg("scores"),pybind11::arg("out"),pybind11::arg("product"),
       pybind11::arg("m"),pybind11::arg("d"),pybind11::arg("scale"),pybind11::arg("mean"),
       pybind11::arg("optimized")=false,pybind11::arg("mixed_scales")=false,

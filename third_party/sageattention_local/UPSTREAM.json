@@ -4,7 +4,7 @@
   "commit": "eb615cf6cf4d221338033340ee2de1c37fbdba4a",
   "license": "Apache-2.0",
   "local_distribution": "sageattention-local",
-  "local_version": "2.2.0+vc9",
+  "local_version": "2.2.0+vc10",
   "scope": "Baseline CUDA/C++ bodies and Triton sources unchanged, with a build-only CUDAContext.h removal; isolated package/operator namespaces and SM90 fake-name fix. Separate Sage+VC experiment in csrc/vc, retaining INT8 QK and adding optional V clustering/block smoothing and ExpCast.",
   "files": [
     {
@@ -374,25 +374,25 @@
     },
     {
       "local_path": "csrc/vc/pybind.cpp",
-      "local_sha256": "ec234e5a5667931babb117260d14203fcc1776f8a5c9ae11850c87e9a8c34809",
+      "local_sha256": "6c934b5e245137d0cf414d83d49d4cb3be736e8d12b12c5fa7c79e7813f24a2a",
       "license": "Apache-2.0",
       "origin": "New VC integration/diagnostic code in vc-attention"
     },
     {
       "local_path": "csrc/vc/vc_api.h",
-      "local_sha256": "32c18462f7d719b5b801fc6cca3d87b21e6d8aed4bc0242f4542db04feebb103",
+      "local_sha256": "a497be0394b0b5f9b4d653c5259c6f4da1be30ec2996c4e279592c50b9563fc8",
       "license": "Apache-2.0",
       "origin": "New VC integration/diagnostic code in vc-attention"
     },
     {
       "local_path": "csrc/vc/vc_math.cuh",
-      "local_sha256": "c421336c688ce4f53cee7e9f58fb941a5b87eccbbce76e4076b7f5e0d48411ee",
+      "local_sha256": "43073dbc3155204634f7931101fe1380ae28bb95852ad66758dd843abb37e70b",
       "license": "Apache-2.0",
       "origin": "New VC integration/diagnostic code in vc-attention"
     },
     {
       "local_path": "csrc/vc/vc_sm90.cu",
-      "local_sha256": "580fe39689689f6cfa911d63b4c4ed21a5c5495217c1e37da6a82bacadef4489",
+      "local_sha256": "0f0c12fd27297194cd6725651a337a6dd4a6ae9ff32a1740082c83e798a1f622",
       "license": "Apache-2.0",
       "derived_from": "csrc/qattn/qk_int_sv_f8_cuda_sm90.cu",
       "upstream_sha256": "ad2b0ff7c5f171ad524f2e529dc7eb7d9f167f29094563d99a3d9da888d22572",
@@ -400,7 +400,7 @@
     },
     {
       "local_path": "sageattention_local/vc.py",
-      "local_sha256": "9e24efe752073ad79df476e490d153dfd1a7eac3ee6b9d5f15e3f1697331ee1b",
+      "local_sha256": "22253e68523b55855ab02a447d6cdb81e1306a41cc12b60f733c6595aad88c23",
       "license": "Apache-2.0",
       "origin": "New VC integration/diagnostic code in vc-attention"
     },

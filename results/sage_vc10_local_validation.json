@@ -1,0 +1,61 @@
+{
+  "version": "2.2.0+vc10",
+  "local_gpu": "RTX 3060 Laptop (SM86)",
+  "compiler": "CUDA 12.4 / Windows MSVC",
+  "scope": "Hopper cross-compilation/link only. SM86 execution covers real probability helpers and unchanged preprocessing, not Hopper WGMMA attention.",
+  "tests": {
+    "passed": 246,
+    "legacy_helper_golden_cases": 16,
+    "probability_helper_tests": 85,
+    "continuous_online_tiles": 300
+  },
+  "memcheck": {
+    "tests": 85,
+    "errors": 0
+  },
+  "source_verification": {
+    "pinned_files": 49,
+    "experiment_files": 9,
+    "sdist_hashes": "passed"
+  },
+  "cross_compile": {
+    "attention_variants": 64,
+    "legacy_variants": 60,
+    "legacy_sass_identical": 60,
+    "pipeline_kernels": {
+      "_ZN7sage_vc41sage_vc_attention_kernel_expcast_pipelineILi128E13__nv_bfloat16EEv14CUtensorMap_stS2_S2_PfS3_S3_PK6__halfPT0_S3_jjjjjjf": {
+        "registers": 168,
+        "stack_bytes": 0,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      },
+      "_ZN7sage_vc41sage_vc_attention_kernel_expcast_pipelineILi128E6__halfEEv14CUtensorMap_stS2_S2_PfS3_S3_PKS1_PT0_S3_jjjjjjf": {
+        "registers": 168,
+        "stack_bytes": 0,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      },
+      "_ZN7sage_vc41sage_vc_attention_kernel_expcast_pipelineILi64E13__nv_bfloat16EEv14CUtensorMap_stS2_S2_PfS3_S3_PK6__halfPT0_S3_jjjjjjf": {
+        "registers": 128,
+        "stack_bytes": 0,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      },
+      "_ZN7sage_vc41sage_vc_attention_kernel_expcast_pipelineILi64E6__halfEEv14CUtensorMap_stS2_S2_PfS3_S3_PKS1_PT0_S3_jjjjjjf": {
+        "registers": 128,
+        "stack_bytes": 0,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0
+      }
+    }
+  },
+  "probability_microbenchmark": "sage_vc10_local_probability_micro.json",
+  "performance_conclusion": "Local isolated probability helper has not demonstrated speedup. No H200 latency claim; PV overlap must be tested on H200.",
+  "remote_pending": [
+    "Linux CUDA 13 build and complete attention correctness",
+    "ALL-output vc9 comparison",
+    "ExpCast-only vs vc9 latency",
+    "ExpCast-only vs control latency",
+    "H200 compiled resources and optional CUPTI trace"
+  ]
+}

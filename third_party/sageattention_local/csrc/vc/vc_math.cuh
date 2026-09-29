@@ -10,6 +10,80 @@ __device__ __forceinline__ float2 vc_decode_pair(uint32_t codes) {
   return __half22float2(pair);
 }
 
+// ExpCast without V block means: form P and independent tile sums first.
+// History scaling is delayed until PV is in flight. Never read P's register
+// fragments between wgmma.mma_async and wait_group (PTX forbids that too).
+template<uint32_t NQ, uint32_t NK>
+__device__ __forceinline__ void vc_probability_prepare(
+    const float (&scores)[NQ][NK][8], float (&maximum)[NQ][2], float scale,
+    uint32_t (&packed)[NQ][NK / 2][4], float (&alpha)[NQ][2], float (&mass)[NQ][2]) {
+  static_assert(NK == 8, "Exact FP32 tile sum bound assumes K128");
+  #pragma unroll
+  for (int q = 0; q < NQ; ++q) {
+    #pragma unroll
+    for (int r = 0; r < 2; ++r) {
+      float partial[4] = {-CUDART_INF_F,-CUDART_INF_F,-CUDART_INF_F,-CUDART_INF_F};
+      #pragma unroll
+      for (int k = 0; k < NK; ++k)
+        #pragma unroll
+        for (int j = 0; j < 4; ++j)
+          partial[j] = fmaxf(partial[j], scores[q][k][r*2+(j/2)*4+j%2]);
+      float local_max = __fmul_rn(fmaxf(fmaxf(partial[0],partial[1]),fmaxf(partial[2],partial[3])),scale);
+      local_max = fmaxf(local_max, __shfl_xor_sync(0xffffffff, local_max, 1));
+      local_max = fmaxf(local_max, __shfl_xor_sync(0xffffffff, local_max, 2));
+      float new_max = fmaxf(maximum[q][r],local_max);
+      alpha[q][r] = expf(maximum[q][r]-new_max);
+      maximum[q][r] = new_max;
+    }
+    // Two independent chains per row instead of updating the long-lived
+    // denominator eight times. All E4M3 codes 0..120 are multiples of 2^-9;
+    // 32 values <=256 sum exactly in FP32 (at most 2^22 integer units).
+    // Only the final addition to the historical denominator changes rounding.
+    float sums[2][2] = {};
+    #pragma unroll
+    for (int k = 0; k < NK; ++k) {
+      #pragma unroll
+      for (int r = 0; r < 2; ++r) {
+        float a = __fmul_rn(scores[q][k][r*2],scale);
+        float b = __fmul_rn(scores[q][k][r*2+1],scale);
+        float c = __fmul_rn(scores[q][k][r*2+4],scale);
+        float e = __fmul_rn(scores[q][k][r*2+5],scale);
+        uint32_t low = vc_expcast_pair(__fsub_rn(a,maximum[q][r]),__fsub_rn(b,maximum[q][r]));
+        uint32_t high = vc_expcast_pair(__fsub_rn(c,maximum[q][r]),__fsub_rn(e,maximum[q][r]));
+        float2 first = vc_decode_pair(low), second = vc_decode_pair(high);
+        sums[r][0] = __fadd_rn(sums[r][0],__fadd_rn(first.x,first.y));
+        sums[r][1] = __fadd_rn(sums[r][1],__fadd_rn(second.x,second.y));
+        packed[q][k/2][(k%2)*2+r] = __byte_perm(low,high,0x5410);
+      }
+    }
+    #pragma unroll
+    for (int r = 0; r < 2; ++r)
+      mass[q][r] = __fadd_rn(sums[r][0],sums[r][1]);
+  }
+}
+
+template<uint32_t NQ, uint32_t NV>
+__device__ __forceinline__ void vc_probability_finish(
+    float (&out)[NQ][NV][8], float (&denom)[NQ][2],
+    const float (&alpha)[NQ][2], const float (&mass)[NQ][2]) {
+  // Expose independent CUDA-core work after the PV commit. Ptxas can schedule
+  // it among outstanding PV instructions; RO is distinct from PV accumulators.
+  #pragma unroll
+  for (int q = 0; q < NQ; ++q) {
+    #pragma unroll
+    for (int r = 0; r < 2; ++r) {
+      asm volatile("mul.rn.f32 %0, %0, %1; add.rn.f32 %0, %0, %2;"
+          : "+f"(denom[q][r]) : "f"(alpha[q][r]), "f"(mass[q][r]));
+      #pragma unroll
+      for (int v = 0; v < NV; ++v)
+        #pragma unroll
+        for (int j = 0; j < 4; ++j)
+          asm volatile("mul.rn.f32 %0, %0, %1;"
+              : "+f"(out[q][v][r*2+(j/2)*4+j%2]) : "f"(alpha[q][r]));
+    }
+  }
+}
+
 template<bool ExpCast, bool BlockValues, bool Optimized=false, bool PackedProbability=false, uint32_t NQ, uint32_t NK, uint32_t NV>
 __device__ __forceinline__ void vc_probability(
     float (&scores)[NQ][NK][8], float (&out)[NQ][NV][8],

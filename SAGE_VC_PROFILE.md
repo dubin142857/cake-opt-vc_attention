@@ -230,3 +230,37 @@ trace 汇总现在保留并打印主内核的寄存器、共享内存、grid/blo
 此外，D128 运行的环境信息包含 `compiled_d128_channel_resources`，由 CUDA runtime
 查询当前 dtype 的新旧平滑/全开入口，给出寄存器、local memory 和预测驻留块数。
 这是静态资源查询，排除在计时外；local memory 包含 stack/spill，不能解释为实测内存流量。
+
+## vc10：优先测只开启 ExpCast
+
+vc10 只改 `expcast=True, v_smooth=False` 的主内核；其他路径保持 vc9。
+新增 `--expcast-only` 跳过平滑及聚类，只测 `sage_local`、`sage_vc_control`、`sage_vc_expcast`。
+默认 BSHD 仍是 `[1,37741,28,128]`。升级、完整正确性检查和同场性能对照：
+
+```bash
+git pull --ff-only origin master
+bash scripts/build_sage_local.sh
+python3 scripts/profile_sage_vc.py --expcast-only --compare-kernels --kernel-baseline vc9 --trials 5 --repeats 10 --trace-dir results/h200_sage_vc10_traces --output results/h200_sage_vc10_expcast.json
+```
+
+重点看两种比较，含义不同：
+
+1. `sage_vc_expcast` 行的 `vc9 ms / optimized ms`：同一份量化 Q/K/V 的新旧实现，
+   `old/new > 1` 才是改动收益；全部输出的 relative RMSE 超过 0.1% 会报错。
+2. `control -> expcast` 的 `plain/cast`：是否真正比关闭 ExpCast 快；新版本比旧版本快，
+   不等于已经超过原版 Softmax。完整 API 表和 trace 主 GPU 时间也分别保留。
+
+资源信息增加 `expcast_vc9` / `expcast_optimized`，无需 ncu。
+这里的 vc9 是旧数学和调度在同一工具链下重新编译，不是跨次运行比较日志。
+
+如需独立检查概率处理部分，可选运行：
+
+```bash
+python3 scripts/benchmark_expcast.py --output results/h200_expcast_micro.json
+```
+
+该脚本用 nvcc JIT 编译实际 device helper，交错测量原 Sage 概率处理、vc9 ExpCast、
+vc10 ExpCast。所有变体限制为 168 个寄存器，与 D128 生产入口一致。包含公共输入和
+checksum 运算，但不包含 QK/PV、预处理或 PV 重叠，不能把它的比例当成 attention 加速。
+SM86 只测两条 ExpCast 路径，自动跳过需要 SM89+ 的原 Sage FP8 转换。
+本地 3060 的局部结果约 0.99x，没有证明提速；H200 整核对照才是此次性能验收依据。

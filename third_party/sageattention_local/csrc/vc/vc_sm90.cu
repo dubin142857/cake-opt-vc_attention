@@ -135,7 +135,7 @@ __device__ __forceinline__ void arrive(uint64_t* bar) {
     );
 }
 
-template<uint32_t CTA_Q, uint32_t CTA_K, uint32_t NUM_THREADS, uint32_t head_dim, QuantGranularity Q_GRAN, QuantGranularity K_GRAN, typename DTypeOut, MaskMode mask_mode = MaskMode::kNone, bool return_lse = false, bool fuse_v_scale=false, bool ExpCast=false, bool BlockValues=false, bool Optimized=false, bool ChannelScale=false, bool PackedProbability=false, bool CompactValues=false>
+template<uint32_t CTA_Q, uint32_t CTA_K, uint32_t NUM_THREADS, uint32_t head_dim, QuantGranularity Q_GRAN, QuantGranularity K_GRAN, typename DTypeOut, MaskMode mask_mode = MaskMode::kNone, bool return_lse = false, bool fuse_v_scale=false, bool ExpCast=false, bool BlockValues=false, bool Optimized=false, bool ChannelScale=false, bool PackedProbability=false, bool CompactValues=false, bool PipelineProbability=false>
 __device__ __forceinline__ void sage_vc_attention_body(const CUtensorMap& tensorMapQ,
                                         const CUtensorMap& tensorMapK,
                                         const CUtensorMap& tensorMapV,
@@ -149,6 +149,7 @@ __device__ __forceinline__ void sage_vc_attention_body(const CUtensorMap& tensor
 #else
   static_assert(NUM_THREADS == 128);
   static_assert(!CompactValues || (head_dim == 128 && BlockValues && Optimized && ChannelScale));
+  static_assert(!PipelineProbability || (ExpCast && !BlockValues && Optimized && PackedProbability));
   static_assert(CTA_Q <= CTA_K);
 
   const uint32_t warp_idx = (threadIdx.x % 128) / 32;
@@ -322,8 +323,10 @@ __device__ __forceinline__ void sage_vc_attention_body(const CUtensorMap& tensor
     }
 
     uint32_t RS_f8[num_tiles_q][num_tiles_pv_inner][4];
-    float tile_mass[num_tiles_q][2];
-    vc_probability<ExpCast, BlockValues, Optimized, PackedProbability>(RS_f32, RO, m, d, sm_scale, RS_f8, tile_mass);
+    float tile_mass[num_tiles_q][2], probability_alpha[num_tiles_q][2];
+    if constexpr (PipelineProbability)
+      vc_probability_prepare(RS_f32, m, sm_scale, RS_f8, probability_alpha, tile_mass);
+    else vc_probability<ExpCast, BlockValues, Optimized, PackedProbability>(RS_f32, RO, m, d, sm_scale, RS_f8, tile_mass);
 
     // wait for V
     wait(&barrier_V, p);
@@ -350,6 +353,8 @@ __device__ __forceinline__ void sage_vc_attention_body(const CUtensorMap& tensor
       }
 
       wgmma::warpgroup_commit_batch();
+      if constexpr (PipelineProbability)
+        vc_probability_finish(RO, d, probability_alpha, tile_mass);
       wgmma::warpgroup_wait<0>();
 
       // Start the next V transfer only after the last fragment has finished
@@ -441,8 +446,10 @@ __device__ __forceinline__ void sage_vc_attention_body(const CUtensorMap& tensor
     }
 
     uint32_t RS_f8[num_tiles_q][num_tiles_pv_inner][4];
-    float tile_mass[num_tiles_q][2];
-    vc_probability<ExpCast, BlockValues, Optimized, PackedProbability>(RS_f32, RO, m, d, sm_scale, RS_f8, tile_mass);
+    float tile_mass[num_tiles_q][2], probability_alpha[num_tiles_q][2];
+    if constexpr (PipelineProbability)
+      vc_probability_prepare(RS_f32, m, sm_scale, RS_f8, probability_alpha, tile_mass);
+    else vc_probability<ExpCast, BlockValues, Optimized, PackedProbability>(RS_f32, RO, m, d, sm_scale, RS_f8, tile_mass);
 
     // wait for V
     wait(&barrier_V, p);
@@ -469,6 +476,8 @@ __device__ __forceinline__ void sage_vc_attention_body(const CUtensorMap& tensor
       }
 
       wgmma::warpgroup_commit_batch();
+      if constexpr (PipelineProbability)
+        vc_probability_finish(RO, d, probability_alpha, tile_mass);
       wgmma::warpgroup_wait<0>();
 
       vc_accumulate<BlockValues, Optimized, ChannelScale, CompactValues>(RO, RO_temp, tile_mass, V_scale, V_mean,
@@ -586,12 +595,30 @@ __global__ __maxnreg__(168) void sage_vc_attention_kernel_compact(const __grid_c
       O, Lse, stride_bz_o, stride_h_o, stride_seq_o, qo_len, kv_len, num_kv_groups, sm_scale);
 }
 
+// Separate specialization leaves all vc9 kernels available as a same-payload
+// baseline. Limit D128 register residency to the same target as the control.
+template<int Dim, typename Out>
+__global__ __maxnreg__(168) void sage_vc_attention_kernel_expcast_pipeline(
+    const __grid_constant__ CUtensorMap tensorMapQ,
+    const __grid_constant__ CUtensorMap tensorMapK,
+    const __grid_constant__ CUtensorMap tensorMapV,
+    float* Q_scale, float* K_scale, float* V_scale, const half* V_mean,
+    Out* O, float* Lse, uint32_t stride_bz_o, uint32_t stride_h_o, uint32_t stride_seq_o,
+    uint32_t qo_len, uint32_t kv_len, uint32_t num_kv_groups, float sm_scale) {
+  sage_vc_attention_body<64,128,128,Dim,QuantGranularity::kPerThread,QuantGranularity::kPerThread,
+      Out,MaskMode::kNone,false,true,true,false,true,false,true,false,true>(
+      tensorMapQ,tensorMapK,tensorMapV,Q_scale,K_scale,V_scale,V_mean,
+      O,Lse,stride_bz_o,stride_h_o,stride_seq_o,qo_len,kv_len,num_kv_groups,sm_scale);
+}
+
 } // namespace sage_vc
 
 namespace {
-template<int Dim, typename Out, bool ExpCast, bool BlockValues, bool Optimized, bool ChannelScale, bool PackedProbability, bool CompactValues>
+template<int Dim, typename Out, bool ExpCast, bool BlockValues, bool Optimized, bool ChannelScale, bool PackedProbability, bool CompactValues, bool PipelineProbability=false>
 auto select_vc_kernel() {
-  if constexpr (CompactValues)
+  if constexpr (PipelineProbability)
+    return sage_vc::sage_vc_attention_kernel_expcast_pipeline<Dim,Out>;
+  else if constexpr (CompactValues)
     return sage_vc::sage_vc_attention_kernel_compact<64, 128, 128, Dim,
         QuantGranularity::kPerThread, QuantGranularity::kPerThread, Out, MaskMode::kNone, false, true,
         ExpCast, BlockValues, Optimized, ChannelScale, PackedProbability>;
@@ -625,7 +652,21 @@ std::map<std::string, std::map<std::string, int64_t>> channel_resource_variants(
           {"full_optimized", channel_resources<Out, true, true>()}};
 }
 
-template<int Dim, typename Out, bool ExpCast, bool BlockValues, bool Optimized, bool ChannelScale=false, bool PackedProbability=false, bool CompactValues=false>
+template<typename Out, bool Pipeline>
+std::map<std::string, int64_t> expcast_resources() {
+  auto kernel = select_vc_kernel<128,Out,true,false,true,false,true,false,Pipeline>();
+  constexpr int dynamic_bytes = (64+128+128)*128;
+  C10_CUDA_CHECK(cudaFuncSetAttribute(kernel,cudaFuncAttributeMaxDynamicSharedMemorySize,dynamic_bytes));
+  cudaFuncAttributes attr{};
+  C10_CUDA_CHECK(cudaFuncGetAttributes(&attr,kernel));
+  int active_blocks = 0;
+  C10_CUDA_CHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&active_blocks,kernel,128,dynamic_bytes));
+  return {{"registers_per_thread",attr.numRegs},{"local_bytes_per_thread",int64_t(attr.localSizeBytes)},
+          {"static_shared_bytes",int64_t(attr.sharedSizeBytes)},{"dynamic_shared_bytes",dynamic_bytes},
+          {"threads_per_block",128},{"predicted_active_blocks_per_sm",active_blocks}};
+}
+
+template<int Dim, typename Out, bool ExpCast, bool BlockValues, bool Optimized, bool ChannelScale=false, bool PackedProbability=false, bool CompactValues=false, bool PipelineProbability=false>
 void launch_vc(torch::Tensor q, torch::Tensor k, torch::Tensor v, torch::Tensor qs,
     torch::Tensor ks, torch::Tensor vs, torch::Tensor means, torch::Tensor out, float scale) {
   auto qm = sage_vc::create_tensor_map_4D<64, Dim>(reinterpret_cast<int8_t*>(q.data_ptr()),
@@ -634,7 +675,7 @@ void launch_vc(torch::Tensor q, torch::Tensor k, torch::Tensor v, torch::Tensor 
       k.size(0), k.size(1), k.size(2), Dim, k.stride(0), k.stride(1), k.stride(2));
   auto vm = sage_vc::create_tensor_map_4D<Dim, 128>(reinterpret_cast<int8_t*>(v.data_ptr()),
       v.size(0), v.size(1), Dim, v.size(3), v.stride(0), v.stride(1), v.stride(2));
-  auto kernel = select_vc_kernel<Dim, Out, ExpCast, BlockValues, Optimized, ChannelScale, PackedProbability, CompactValues>();
+  auto kernel = select_vc_kernel<Dim, Out, ExpCast, BlockValues, Optimized, ChannelScale, PackedProbability, CompactValues, PipelineProbability>();
   constexpr int shared_bytes = (64 + 128 + 128) * Dim;
   C10_CUDA_CHECK(cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, shared_bytes));
   dim3 grid((q.size(2) + 63) / 64, q.size(1), q.size(0));
@@ -645,7 +686,7 @@ void launch_vc(torch::Tensor q, torch::Tensor k, torch::Tensor v, torch::Tensor 
       q.size(2), k.size(2), 1, scale);
   C10_CUDA_KERNEL_LAUNCH_CHECK();
 }
-template<int Dim, typename Out, bool Optimized, bool PackedProbability, bool CompactValues>
+template<int Dim, typename Out, bool Optimized, bool PackedProbability, bool CompactValues, bool PipelineProbability=false>
 void dispatch_vc(torch::Tensor q, torch::Tensor k, torch::Tensor v, torch::Tensor qs,
     torch::Tensor ks, torch::Tensor vs, torch::Tensor means, torch::Tensor out, float scale, bool cast, bool smooth) {
   if (smooth && vs.dim() == 3) {
@@ -653,27 +694,27 @@ void dispatch_vc(torch::Tensor q, torch::Tensor k, torch::Tensor v, torch::Tenso
     else launch_vc<Dim, Out, false, true, Optimized, true, false, (CompactValues && Dim == 128)>(q,k,v,qs,ks,vs,means,out,scale);
   }
   else if (cast && smooth) launch_vc<Dim, Out, true, true, Optimized, false, PackedProbability>(q,k,v,qs,ks,vs,means,out,scale);
-  else if (cast) launch_vc<Dim, Out, true, false, Optimized, false, PackedProbability>(q,k,v,qs,ks,vs,means,out,scale);
+  else if (cast) launch_vc<Dim, Out, true, false, Optimized, false, PackedProbability, false, PipelineProbability>(q,k,v,qs,ks,vs,means,out,scale);
   else if (smooth) launch_vc<Dim, Out, false, true, Optimized>(q,k,v,qs,ks,vs,means,out,scale);
   else launch_vc<Dim, Out, false, false, false>(q,k,v,qs,ks,vs,means,out,scale);
 }
-template<bool Optimized, bool PackedProbability=false, bool CompactValues=false>
+template<bool Optimized, bool PackedProbability=false, bool CompactValues=false, bool PipelineProbability=false>
 void dispatch_output(torch::Tensor q, torch::Tensor k, torch::Tensor v, torch::Tensor qs,
     torch::Tensor ks, torch::Tensor vs, torch::Tensor means, torch::Tensor out, float scale,
     int64_t output_type, bool cast, bool smooth) {
   if (q.size(3) == 64) {
-    if (output_type == 0) dispatch_vc<64, half, Optimized, PackedProbability, CompactValues>(q,k,v,qs,ks,vs,means,out,scale,cast,smooth);
-    else dispatch_vc<64, nv_bfloat16, Optimized, PackedProbability, CompactValues>(q,k,v,qs,ks,vs,means,out,scale,cast,smooth);
+    if (output_type == 0) dispatch_vc<64, half, Optimized, PackedProbability, CompactValues, PipelineProbability>(q,k,v,qs,ks,vs,means,out,scale,cast,smooth);
+    else dispatch_vc<64, nv_bfloat16, Optimized, PackedProbability, CompactValues, PipelineProbability>(q,k,v,qs,ks,vs,means,out,scale,cast,smooth);
   } else {
-    if (output_type == 0) dispatch_vc<128, half, Optimized, PackedProbability, CompactValues>(q,k,v,qs,ks,vs,means,out,scale,cast,smooth);
-    else dispatch_vc<128, nv_bfloat16, Optimized, PackedProbability, CompactValues>(q,k,v,qs,ks,vs,means,out,scale,cast,smooth);
+    if (output_type == 0) dispatch_vc<128, half, Optimized, PackedProbability, CompactValues, PipelineProbability>(q,k,v,qs,ks,vs,means,out,scale,cast,smooth);
+    else dispatch_vc<128, nv_bfloat16, Optimized, PackedProbability, CompactValues, PipelineProbability>(q,k,v,qs,ks,vs,means,out,scale,cast,smooth);
   }
 }
 }
 
 torch::Tensor vc_forward(torch::Tensor q, torch::Tensor k, torch::Tensor v,
     torch::Tensor qs, torch::Tensor ks, torch::Tensor vs, torch::Tensor means,
-    bool expcast, bool block_values, int64_t output_type, double scale, bool optimized, bool packed_probability, bool compact_values) {
+    bool expcast, bool block_values, int64_t output_type, double scale, bool optimized, bool packed_probability, bool compact_values, bool pipeline_probability) {
   TORCH_CHECK(q.is_cuda() && q.dim() == 4 && q.numel() > 0, "Q requires nonempty CUDA BHND");
   for (const auto& x : {q,k,v,qs,ks,vs,means})
     TORCH_CHECK(x.device() == q.device() && x.is_contiguous(), "Payloads must be contiguous on the same CUDA device");
@@ -705,7 +746,8 @@ torch::Tensor vc_forward(torch::Tensor q, torch::Tensor k, torch::Tensor v,
   C10_CUDA_CHECK(cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, q.get_device()));
   TORCH_CHECK(major == 9 && minor == 0, "Sage VC native attention requires Hopper; no fallback");
   auto out = torch::empty(q.sizes(), q.options().dtype(output_type == 0 ? at::kHalf : at::kBFloat16));
-  if (optimized && packed_probability && compact_values) dispatch_output<true, true, true>(q,k,v,qs,ks,vs,means,out,scale,output_type,expcast,block_values);
+  if (optimized && packed_probability && compact_values && pipeline_probability) dispatch_output<true, true, true, true>(q,k,v,qs,ks,vs,means,out,scale,output_type,expcast,block_values);
+  else if (optimized && packed_probability && compact_values) dispatch_output<true, true, true>(q,k,v,qs,ks,vs,means,out,scale,output_type,expcast,block_values);
   else if (optimized && packed_probability) dispatch_output<true, true>(q,k,v,qs,ks,vs,means,out,scale,output_type,expcast,block_values);
   else if (optimized) dispatch_output<true>(q,k,v,qs,ks,vs,means,out,scale,output_type,expcast,block_values);
   else dispatch_output<false>(q,k,v,qs,ks,vs,means,out,scale,output_type,expcast,block_values);
@@ -719,5 +761,8 @@ std::map<std::string, std::map<std::string, int64_t>> vc_kernel_resources(int64_
   C10_CUDA_CHECK(cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, device));
   C10_CUDA_CHECK(cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, device));
   TORCH_CHECK(major == 9 && minor == 0, "Compiled attention resource query requires Hopper");
-  return output_type == 0 ? channel_resource_variants<half>() : channel_resource_variants<nv_bfloat16>();
+  auto result = output_type == 0 ? channel_resource_variants<half>() : channel_resource_variants<nv_bfloat16>();
+  result["expcast_vc9"] = output_type == 0 ? expcast_resources<half,false>() : expcast_resources<nv_bfloat16,false>();
+  result["expcast_optimized"] = output_type == 0 ? expcast_resources<half,true>() : expcast_resources<nv_bfloat16,true>();
+  return result;
 }
