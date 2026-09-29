@@ -36,7 +36,7 @@ __global__ __maxnreg__(168) void probability_bench(float* result,int iterations)
       #pragma unroll
       for(int j=0;j<8;++j) s[0][k][j]=input[0][k][j];
     if constexpr(Mode>=2) {
-      vc_probability_prepare<(Mode>=3),(Mode==4)>(s,m,scale,packed,alpha,mass);
+      vc_probability_prepare<(Mode>=3),(Mode>=4),false,(Mode==5)>(s,m,scale,packed,alpha,mass);
       vc_probability_finish(o,d,alpha,mass);
     } else vc_probability<(Mode==1),false,true,true>(s,o,m,d,
         Mode==0 ? scale*math::log2e : scale,packed,mass);
@@ -61,7 +61,7 @@ __global__ __maxnreg__(168) void probability_bench(float* result,int iterations)
 void run(torch::Tensor output,int mode,int iterations) {
   TORCH_CHECK(output.is_cuda() && output.scalar_type()==at::kFloat && output.is_contiguous() &&
       output.dim()==2 && output.size(1)==128 && output.size(0)>0 && output.size(0)<=65535,"Expected CUDA [blocks,128] FP32 output");
-  TORCH_CHECK(mode>=0 && mode<=4 && iterations>0 && iterations<=100000,"Invalid mode/iterations");
+  TORCH_CHECK(mode>=0 && mode<=5 && iterations>0 && iterations<=100000,"Invalid mode/iterations");
   const c10::cuda::CUDAGuard guard(output.device());
   auto stream=c10::cuda::getCurrentCUDAStream(output.get_device()).stream();
   if(mode==0) probability_bench<0><<<output.size(0),128,0,stream>>>(output.data_ptr<float>(),iterations);
@@ -69,19 +69,20 @@ void run(torch::Tensor output,int mode,int iterations) {
   if(mode==2) probability_bench<2><<<output.size(0),128,0,stream>>>(output.data_ptr<float>(),iterations);
   if(mode==3) probability_bench<3><<<output.size(0),128,0,stream>>>(output.data_ptr<float>(),iterations);
   if(mode==4) probability_bench<4><<<output.size(0),128,0,stream>>>(output.data_ptr<float>(),iterations);
+  if(mode==5) probability_bench<5><<<output.size(0),128,0,stream>>>(output.data_ptr<float>(),iterations);
   C10_CUDA_KERNEL_LAUNCH_CHECK();
 }
 std::vector<int64_t> resources(int mode) {
-  TORCH_CHECK(mode>=0 && mode<=4,"Invalid mode");
+  TORCH_CHECK(mode>=0 && mode<=5,"Invalid mode");
   cudaFuncAttributes attr{};
-  auto kernel=mode==0?probability_bench<0>:mode==1?probability_bench<1>:mode==2?probability_bench<2>:mode==3?probability_bench<3>:probability_bench<4>;
+  auto kernel=mode==0?probability_bench<0>:mode==1?probability_bench<1>:mode==2?probability_bench<2>:mode==3?probability_bench<3>:mode==4?probability_bench<4>:probability_bench<5>;
   C10_CUDA_CHECK(cudaFuncGetAttributes(&attr,kernel));
   return {attr.numRegs,int64_t(attr.localSizeBytes)};
 }
 PYBIND11_MODULE(TORCH_EXTENSION_NAME,m) {
-  m.attr("benchmark_api_version")=4;
+  m.attr("benchmark_api_version")=5;
   m.def("run",&run); m.def("resources",&resources);
   m.def("component_run",&component_run); m.def("component_resources",&component_resources);
   m.def("encode_check",&component_encode_check); m.def("decode_check",&component_decode_check);
-  m.def("affine_check",&affine_encode_check);
+  m.def("affine_check",&affine_encode_check,pybind11::arg("scores"),pybind11::arg("gain"),pybind11::arg("bias"),pybind11::arg("paired_encode")=false);
 }

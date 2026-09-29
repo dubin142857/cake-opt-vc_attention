@@ -1,0 +1,169 @@
+{
+  "compiled_variants": 84,
+  "historical_variants": 80,
+  "historical_instruction_text_identical": 80,
+  "paired_resources": [
+    {
+      "name": "_ZN7sage_vc39sage_vc_attention_kernel_expcast_pairedILi128E13__nv_bfloat16EEv14CUtensorMap_stS2_S2_PfS3_S3_PK6__halfPT0_S3_jjjjjjf",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc39sage_vc_attention_kernel_expcast_pairedILi128E6__halfEEv14CUtensorMap_stS2_S2_PfS3_S3_PKS1_PT0_S3_jjjjjjf",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc39sage_vc_attention_kernel_expcast_pairedILi64E13__nv_bfloat16EEv14CUtensorMap_stS2_S2_PfS3_S3_PK6__halfPT0_S3_jjjjjjf",
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc39sage_vc_attention_kernel_expcast_pairedILi64E6__halfEEv14CUtensorMap_stS2_S2_PfS3_S3_PKS1_PT0_S3_jjjjjjf",
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "ptxas_warnings": 0,
+  "instruction_counts": {
+    "_ZN7sage_vc39sage_vc_attention_kernel_expcast_pairedILi128E13__nv_bfloat16EEv14CUtensorMap_stS2_S2_PfS3_S3_PK6__halfPT0_S3_jjjjjjf": {
+      "vc12": {
+        "F2IP": 256,
+        "PRMT": 192,
+        "F2FP": 130,
+        "HADD2": 256,
+        "FADD": 532,
+        "STS": 0,
+        "LDS": 0,
+        "FFMA": 260,
+        "HGMMA": 0
+      },
+      "vc14": {
+        "F2IP": 128,
+        "PRMT": 64,
+        "F2FP": 130,
+        "HADD2": 256,
+        "FADD": 532,
+        "STS": 0,
+        "LDS": 0,
+        "FFMA": 260,
+        "HGMMA": 0
+      },
+      "scope": "Static whole-kernel instruction counts including main/tail and affine/fallback paths, not dynamic throughput"
+    },
+    "_ZN7sage_vc39sage_vc_attention_kernel_expcast_pairedILi128E6__halfEEv14CUtensorMap_stS2_S2_PfS3_S3_PKS1_PT0_S3_jjjjjjf": {
+      "vc12": {
+        "F2IP": 256,
+        "PRMT": 192,
+        "F2FP": 130,
+        "HADD2": 256,
+        "FADD": 532,
+        "STS": 0,
+        "LDS": 0,
+        "FFMA": 260,
+        "HGMMA": 0
+      },
+      "vc14": {
+        "F2IP": 128,
+        "PRMT": 64,
+        "F2FP": 130,
+        "HADD2": 256,
+        "FADD": 532,
+        "STS": 0,
+        "LDS": 0,
+        "FFMA": 260,
+        "HGMMA": 0
+      },
+      "scope": "Static whole-kernel instruction counts including main/tail and affine/fallback paths, not dynamic throughput"
+    },
+    "_ZN7sage_vc39sage_vc_attention_kernel_expcast_pairedILi64E13__nv_bfloat16EEv14CUtensorMap_stS2_S2_PfS3_S3_PK6__halfPT0_S3_jjjjjjf": {
+      "vc12": {
+        "F2IP": 256,
+        "PRMT": 192,
+        "F2FP": 130,
+        "HADD2": 256,
+        "FADD": 468,
+        "STS": 0,
+        "LDS": 0,
+        "FFMA": 260,
+        "HGMMA": 0
+      },
+      "vc14": {
+        "F2IP": 128,
+        "PRMT": 64,
+        "F2FP": 130,
+        "HADD2": 256,
+        "FADD": 468,
+        "STS": 0,
+        "LDS": 0,
+        "FFMA": 260,
+        "HGMMA": 0
+      },
+      "scope": "Static whole-kernel instruction counts including main/tail and affine/fallback paths, not dynamic throughput"
+    },
+    "_ZN7sage_vc39sage_vc_attention_kernel_expcast_pairedILi64E6__halfEEv14CUtensorMap_stS2_S2_PfS3_S3_PKS1_PT0_S3_jjjjjjf": {
+      "vc12": {
+        "F2IP": 256,
+        "PRMT": 192,
+        "F2FP": 130,
+        "HADD2": 256,
+        "FADD": 468,
+        "STS": 0,
+        "LDS": 0,
+        "FFMA": 260,
+        "HGMMA": 0
+      },
+      "vc14": {
+        "F2IP": 128,
+        "PRMT": 64,
+        "F2FP": 130,
+        "HADD2": 256,
+        "FADD": 468,
+        "STS": 0,
+        "LDS": 0,
+        "FFMA": 260,
+        "HGMMA": 0
+      },
+      "scope": "Static whole-kernel instruction counts including main/tail and affine/fallback paths, not dynamic throughput"
+    }
+  },
+  "package_version": "2.2.0+vc14",
+  "native_kernel_version": 11,
+  "local_environment": {
+    "os": "Windows",
+    "cuda_compiler": "12.4",
+    "torch": "2.3.1+cu121",
+    "runtime_gpu": "RTX 3060 Laptop SM86",
+    "cross_compile_target": "sm_90a"
+  },
+  "tests": {
+    "pytest_passed": 323,
+    "legacy_golden_exact_cases": 16,
+    "compute_sanitizer_helper_tests_passed": 147,
+    "compute_sanitizer_errors": 0,
+    "source_and_sdist_hashes_verified": 58
+  },
+  "numerics": "Executed actual probability helpers including RNE neighbours, subnormals, masks, extreme fallback, mixed K scales and 300-tile histories. P bytes, FP32 tile mass and history match vc12 exactly in these checks.",
+  "limitations": [
+    "Full Hopper attention has not executed locally; remote validation required.",
+    "Instruction counts are static, include alternative paths, and do not establish speedup.",
+    "SM86 isolated helper median ratio vc12/vc14 was 0.855x with varying trial times; not evidence of H200 acceleration.",
+    "No model quality validation."
+  ]
+}

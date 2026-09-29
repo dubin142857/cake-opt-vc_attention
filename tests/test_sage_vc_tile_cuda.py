@@ -338,3 +338,38 @@ def test_shared_probability_copy_preserves_long_history_and_zero_mass(mixed_scal
         torch.testing.assert_close(new[4],mass,rtol=0,atol=0)
         assert torch.isfinite(new[4]).all() and (new[4]>=0).all()
         _,out,maximum,denom,_=new
+
+
+@pytest.mark.parametrize("magnitude",[1.,12.,129.,1e4,1e8])
+@pytest.mark.parametrize("mixed_scales",[False,True])
+def test_paired_probability_exact_vc12_including_fallback(magnitude,mixed_scales):
+    torch.manual_seed(2414)
+    scores=torch.randn(64,128,device="cuda")*magnitude
+    scores[:8]=-float("inf")
+    scores[8:16]=0
+    scores[16:24,109:]=-float("inf")
+    boundaries=torch.arange(128,device="cuda").remainder(120).double()+.5
+    scores[24:32]=((boundaries-119.6500015258789)/11.541560173034668*4).float()
+    out=torch.randn_like(scores);maximum=torch.zeros(64,device="cuda")
+    denom=torch.logspace(-6,8,64,device="cuda")
+    args=(scores,out,maximum,denom,True,mixed_scales,True,True,False)
+    old=probe.run_probability(*args)
+    new=probe.run_probability(*args,True)
+    for a,b in zip(new,old): torch.testing.assert_close(a,b,rtol=0,atol=0)
+    expected=new[0].view(torch.float8_e4m3fn).float().double().sum(-1).float()
+    torch.testing.assert_close(new[4],expected,rtol=0,atol=0)
+
+
+def test_paired_probability_preserves_300_tile_history():
+    torch.manual_seed(2415)
+    out=torch.randn(64,128,device="cuda");maximum=torch.full((64,),-5e6,device="cuda")
+    denom=torch.ones_like(maximum)
+    for tile in range(300):
+        scores=torch.randn_like(out)*12
+        if tile%11==0: scores[:8]=0
+        if tile>0 and tile%7==0: scores[8:16]=-float("inf")
+        if tile==299: scores[:,109:]=-float("inf")
+        args=(scores,out,maximum,denom,True,tile%2==0,True,True,False)
+        old=probe.run_probability(*args);new=probe.run_probability(*args,True)
+        for a,b in zip(new,old): torch.testing.assert_close(a,b,rtol=0,atol=0)
+        _,out,maximum,denom,_=new

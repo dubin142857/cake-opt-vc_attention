@@ -13,7 +13,7 @@ __device__ __forceinline__ float2 vc_decode_pair(uint32_t codes) {
 // ExpCast without V block means: form P and independent tile sums first.
 // History scaling is delayed until PV is in flight. Never read P's register
 // fragments between wgmma.mma_async and wait_group (PTX forbids that too).
-template<bool EncodeOnly=false, uint32_t NK>
+template<bool EncodeOnly=false, bool PairedEncode=false, uint32_t NK>
 __device__ __forceinline__ void vc_probability_affine_tile(
     const float (&scores)[NK][8],const float (&maximum)[2],float gain,
     uint32_t (&packed)[NK/2][4],float (&mass)[2]) {
@@ -30,7 +30,7 @@ __device__ __forceinline__ void vc_probability_affine_tile(
         #pragma unroll
         for(int pair=0;pair<2;++pair) {
           int j=r*2+pair*4;
-          codes[k][r][pair]=vc_expcast_affine_pair(scores[base+k][j],scores[base+k][j+1],gain,bias[r]);
+          codes[k][r][pair]=vc_expcast_encode_affine_pair<PairedEncode>(scores[base+k][j],scores[base+k][j+1],gain,bias[r]);
         }
     #pragma unroll
     for(int k=0;k<2;++k)
@@ -62,7 +62,7 @@ __device__ __forceinline__ void vc_probability_affine_tile(
   }
 }
 
-template<bool Interleaved=false, bool FoldAffine=false, bool EncodeOnly=false, uint32_t NQ, uint32_t NK>
+template<bool Interleaved=false, bool FoldAffine=false, bool EncodeOnly=false, bool PairedEncode=false, uint32_t NQ, uint32_t NK>
 __device__ __forceinline__ void vc_probability_prepare(
     const float (&scores)[NQ][NK][8], float (&maximum)[NQ][2], float scale,
     uint32_t (&packed)[NQ][NK / 2][4], float (&alpha)[NQ][2], float (&mass)[NQ][2]) {
@@ -94,7 +94,7 @@ __device__ __forceinline__ void vc_probability_prepare(
       bool safe=scale>=1.1754943508222875e-38f && isfinite(gain) &&
           fabsf(maximum[q][0])<=128.f && fabsf(maximum[q][1])<=128.f;
       if(__all_sync(0xffffffff,safe)) {
-        vc_probability_affine_tile<EncodeOnly>(scores[q],maximum[q],gain,packed[q],mass[q]);
+        vc_probability_affine_tile<EncodeOnly,PairedEncode>(scores[q],maximum[q],gain,packed[q],mass[q]);
         continue;
       }
     }
@@ -121,7 +121,7 @@ __device__ __forceinline__ void vc_probability_prepare(
               int j = r*2+pair*4;
               float a = __fmul_rn(scores[q][base+k][j],scale);
               float b = __fmul_rn(scores[q][base+k][j+1],scale);
-              codes[k][r][pair] = vc_expcast_pair(__fsub_rn(a,maximum[q][r]),__fsub_rn(b,maximum[q][r]));
+              codes[k][r][pair] = vc_expcast_encode_pair<PairedEncode>(__fsub_rn(a,maximum[q][r]),__fsub_rn(b,maximum[q][r]));
             }
         #pragma unroll
         for (int k = 0; k < 2; ++k)

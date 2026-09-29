@@ -1,5 +1,22 @@
 # Sage+VC 性能诊断
 
+vc14 默认只更改 ExpCast-only 的成对转换/打包。直接与最佳旧版 vc12 比较：
+
+```bash
+python3 scripts/profile_sage_vc.py --expcast-only --compare-kernels --kernel-baseline vc12 --warmup 3 --repeats 10 --trials 9 --output results/h200_vc14_paired.json
+```
+
+默认 BSHD `[1,37741,28,128]`、BF16。重点看新旧 `sage_vc_expcast` 的同输入 native
+耗时，以及新 ExpCast 对 `sage_vc_control` 和原版 `sage_local` 的耗时；不能只看旧版加速比。
+若要核对当前 nvcc 是否生成成对指令，无需 ncu：
+
+```bash
+python3 scripts/inspect_expcast_codegen.py --output results/h200_vc14_codegen.json
+```
+
+它使用 CUDA Toolkit 的 `cuobjdump`，仅统计静态指令，不测 GPU 利用率或速度。
+构建及本地证据见 [vc14 说明](SAGE_VC14.md)。以下是历史诊断背景。
+
 用户提供的 vc3 / H200 / BF16 `[1,37741,28,128]` 诊断结果：
 
 | 变体 | full API ms | fixed core API ms | trace 主 GPU kernel ms | 其他 kernel 总 ms | 总启动次数 |

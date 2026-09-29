@@ -11,7 +11,7 @@ import pytest
 import torch
 
 ext=pytest.importorskip("_vc_expcast_bench")
-pytestmark=pytest.mark.skipif(getattr(ext,"benchmark_api_version",0)!=4,reason="Build the v4 component benchmark")
+pytestmark=pytest.mark.skipif(getattr(ext,"benchmark_api_version",0)!=5,reason="Build the v5 component benchmark")
 
 
 def load_benchmark():
@@ -108,3 +108,33 @@ def test_affine_encoding_oracle_and_reported_rounding_difference():
 def test_affine_probe_rejects_mismatched_coefficients():
     with pytest.raises(RuntimeError):
         ext.affine_check(torch.zeros(6,device="cuda"),torch.ones(2,device="cuda"),torch.zeros(3,device="cuda"))
+
+
+def test_paired_conversion_all_rounding_boundaries_and_finite_bit_patterns():
+    # Identity affine map exposes the production packed RNE helper directly.
+    # Includes ties, either neighbouring float, every output-byte pair, signed
+    # zeros, subnormals, infinities and signed integer overflow/underflow.
+    ties=torch.arange(-1,257,device="cuda",dtype=torch.float32)+.5
+    values=torch.cat((ties,torch.nextafter(ties,torch.full_like(ties,-float("inf"))),
+        torch.nextafter(ties,torch.full_like(ties,float("inf"))),
+        torch.tensor([-float("inf"),float("inf"),-0.,0.,1e-40,-1e-40,-1e30,1e30],device="cuda")))
+    boundary_pairs=torch.cartesian_prod(values,values).contiguous()
+    gen=torch.Generator(device="cuda").manual_seed(2414)
+    bits=torch.randint(-(2**31),2**31-1,(262144,),device="cuda",dtype=torch.int32,generator=gen)
+    random_values=bits.view(torch.float32)
+    random_values=random_values[torch.isfinite(random_values)]
+    random_pairs=random_values[:random_values.numel()//2*2].reshape(-1,2)
+    scores=torch.cat((boundary_pairs,random_pairs))
+    gain=torch.ones(scores.shape[0],device="cuda");bias=torch.zeros_like(gain)
+    old=ext.affine_check(scores,gain,bias)
+    actual=ext.affine_check(scores,gain,bias,True)
+    expected=scores.round().clamp(0,255).byte()
+    torch.testing.assert_close(actual,expected,rtol=0,atol=0)
+    torch.testing.assert_close(actual,old,rtol=0,atol=0)
+
+
+@pytest.mark.parametrize("iterations",[1,3,128])
+def test_paired_probability_checksum_is_exact_vc12(iterations):
+    old=torch.empty(3,128,device="cuda");new=torch.empty_like(old)
+    ext.run(old,4,iterations);ext.run(new,5,iterations)
+    torch.testing.assert_close(new,old,rtol=0,atol=0)

@@ -212,7 +212,7 @@ def parse_args(argv=None):
     parser.add_argument("--expcast-only",action="store_true",
                         help="Measure Sage/control/ExpCast only; skip V grouping/smoothing entirely")
     parser.add_argument("--kernel-baseline",choices=("vc4","vc6","vc7","vc9","vc10","vc11","vc12","vc13_serial","vc13_overlap"),
-                        help="Same-payload baseline; defaults to vc13_overlap after the vc13.1 rollback, vc12 on vc13, vc11 on vc12, vc10 on vc11, vc9 on vc10, vc7 on vc8/9, vc6 on vc7, otherwise vc4")
+                        help="Same-payload baseline; defaults to vc12 on vc14, vc13_overlap after the vc13.1 rollback, vc12 on vc13, vc11 on vc12, vc10 on vc11, vc9 on vc10, vc7 on vc8/9, vc6 on vc7, otherwise vc4")
     parser.add_argument("--compare-probability-schedules", action="store_true",
                         help="vc13+: compare vc12, serial scratch and overlap on identical payloads; validate ALL output rows")
     parser.add_argument("--compare-v-scales", action="store_true",
@@ -278,8 +278,8 @@ def kernel_calls(ops, fixed, baseline="vc4"):
 def kernel_baseline(ops,args):
     version = getattr(ops.ext,"sage_vc_kernel_version",0)
     restored = getattr(getattr(ops,"vc",None),"DEFAULT_EXPCAST_KERNEL",None) == "vc12"
-    baseline = getattr(args,"kernel_baseline",None) or ("vc13_overlap" if version >= 10 and restored else "vc12" if version >= 10 else "vc11" if version >= 9 else "vc10" if version >= 8 else "vc9" if version >= 7 else "vc7" if version >= 6 else "vc6" if version >= 5 else "vc4")
-    if baseline == "vc13_overlap" and (version < 10 or not restored):
+    baseline = getattr(args,"kernel_baseline",None) or ("vc12" if version >= 11 else "vc13_overlap" if version >= 10 and restored else "vc12" if version >= 10 else "vc11" if version >= 9 else "vc10" if version >= 8 else "vc9" if version >= 7 else "vc7" if version >= 6 else "vc6" if version >= 5 else "vc4")
+    if baseline == "vc13_overlap" and (version < 10 or not (restored or version >= 11)):
         raise RuntimeError("--kernel-baseline vc13_overlap needs vc13.1; rebuild with bash scripts/build_sage_local.sh")
     if baseline in ("vc12", "vc13_serial") and version < 10:
         raise RuntimeError("--kernel-baseline vc12/vc13_serial needs vc13; rebuild with bash scripts/build_sage_local.sh")
@@ -456,7 +456,9 @@ def compare_kernels(ops, fixed, args, device):
         print(f"Kernel comparison trial {trial+1}/{args.trials} complete",flush=True)
     rows = {}
     print(f"\nSame-payload native APIs: {baseline} vs optimized (ms; excludes all preprocessing)")
-    if baseline in ("vc12", "vc13_serial", "vc13_overlap"):
+    if baseline == "vc12" and getattr(ops.ext,"sage_vc_kernel_version",0) >= 11:
+        print("vc12/vc14 differ only in paired FP32-to-byte conversion/packing. P rounding, decoded-P FP32 denominator, Q/K/V payloads and PV accumulation are unchanged; no shared probability copy.")
+    elif baseline in ("vc12", "vc13_serial", "vc13_overlap"):
         resolved = getattr(ops.vc,"DEFAULT_EXPCAST_KERNEL","vc13_overlap")
         print(f"Loaded optimized ExpCast path: {resolved}. vc12 has no shared copy; vc13_serial sums the copy before PV; vc13_overlap sums during PV. Quantized payloads and P encoding are identical.")
     elif baseline == "vc11":
@@ -489,7 +491,7 @@ def compare_probability_schedules(ops, fixed, args, device):
     if getattr(ops.ext, "sage_vc_kernel_version", 0) < 10:
         raise RuntimeError("Probability schedule comparison needs vc13")
     # Older installed vc13 exposes this experiment through optimized.
-    overlap_mode = "vc13_overlap" if getattr(ops.vc,"DEFAULT_EXPCAST_KERNEL",None) == "vc12" else "optimized"
+    overlap_mode = "vc13_overlap" if getattr(ops.vc,"DEFAULT_EXPCAST_KERNEL",None) in ("vc12", "vc14") else "optimized"
     modes = ("vc12", "vc13_serial", overlap_mode)
     fixed = {name: state for name, state in fixed.items() if not state["block_values"]}
     calls = {(name, mode): lambda state=state, mode=mode:

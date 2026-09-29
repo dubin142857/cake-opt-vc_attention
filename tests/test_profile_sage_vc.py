@@ -421,7 +421,7 @@ def test_vc13_baselines_and_probability_schedule_option():
         profile.parse_args(["--ncu-variant","sage_vc","--compare-probability-schedules"])
 
 
-@pytest.mark.parametrize("restored", [False,True])
+@pytest.mark.parametrize("restored", [False,True,"vc14"])
 def test_probability_schedule_comparison_uses_one_payload_and_checks_all_rows(monkeypatch,restored):
     overlap_mode="vc13_overlap" if restored else "optimized"
     modes=("vc12","vc13_serial",overlap_mode)
@@ -434,7 +434,7 @@ def test_probability_schedule_comparison_uses_one_payload_and_checks_all_rows(mo
         return payload[kernel_mode]
     ops=SimpleNamespace(ext=SimpleNamespace(sage_vc_kernel_version=10),vc=SimpleNamespace(forward_prepared=forward))
     if restored:
-        ops.vc.DEFAULT_EXPCAST_KERNEL="vc12"
+        ops.vc.DEFAULT_EXPCAST_KERNEL="vc14" if restored == "vc14" else "vc12"
     def measure(call,repeats,device):
         out=call()
         return out,{"vc12":3.,"vc13_serial":4.,overlap_mode:2.}[seen[-1]]
@@ -469,6 +469,15 @@ def test_restored_default_compares_against_rejected_overlap():
     del ops.vc.DEFAULT_EXPCAST_KERNEL
     with pytest.raises(RuntimeError,match="needs vc13.1"):
         profile.kernel_baseline(ops,explicit)
+
+
+def test_paired_default_compares_against_best_vc12_and_keeps_overlap_explicit():
+    ops=SimpleNamespace(ext=SimpleNamespace(sage_vc_kernel_version=11),
+                        vc=SimpleNamespace(DEFAULT_EXPCAST_KERNEL="vc14"))
+    assert profile.kernel_baseline(ops,profile.parse_args(["--compare-kernels"]))=="vc12"
+    for mode in ("vc12","vc13_serial","vc13_overlap"):
+        args=profile.parse_args(["--compare-kernels","--kernel-baseline",mode])
+        assert profile.kernel_baseline(ops,args)==mode
 
 
 def test_expcast_only_cli_and_partial_report(capsys):

@@ -1,8 +1,10 @@
 # SageAttention 主体 + VC 两项改动
 
-当前包版本为 `2.2.0+vc13.1`：H200 对照显示 vc13 共享副本方案回退约 12%，
-默认 `optimized` 已恢复到 vc12。`vc13_serial` / `vc13_overlap` 保留为显式实验，
-CUDA 内核及数值约定未修改，详见文末复测结论。
+当前包版本为 `2.2.0+vc14`，native kernel version 11：默认 ExpCast-only 在 vc12 上
+合并两个 FP32 概率的整数转换与字节打包，保留原有 P 字节、FP32 分母及 PV 累加。
+本地 CUDA 12.4 的 Hopper 机器指令已确认减少，完整 H200 提速尚待实测。
+`vc12` 保留为同场基线；此前回退约 12% 的 `vc13_serial` / `vc13_overlap` 仍为显式实验。
+见 [vc14 改动与验证](SAGE_VC14.md)。下文保留各版本的历史开发记录。
 
 `sageattention-local==2.2.0+vc9` 在已经同场测到 25.8055 ms 的本地 Sage 源码上，
 新增独立 `sageattn_vc`。原版 `sageattn` 的数学与内核保留。

@@ -42,3 +42,32 @@ __device__ __forceinline__ uint32_t vc_expcast_affine_pair(float a,float b,float
   asm("cvt.rni.sat.u8.f32 %0, %1;" : "=r"(hi) : "f"(y));
   return __byte_perm(lo,hi,0x1140);
 }
+
+// Keep the FP32 inputs and RNE result of the scalar u8 conversions, but expose
+// both conversions and their pack together. Ptxas can fuse this sequence into
+// ONE Hopper F2IP.U8.F32.NTZ instead of two F2IP instructions plus a PRMT.
+// Round to signed integers first: negative logits (including masked -inf)
+// must saturate to zero, not reinterpret as unsigned. Integer overflow
+// saturates at INT_MIN/MAX, then packing clamps to [0,255]. No FP16 rounding.
+__device__ __forceinline__ uint32_t vc_expcast_pack_rne(float a,float b) {
+  uint32_t packed;
+  asm("{.reg .s32 lo,hi;"
+      " cvt.rni.s32.f32 lo,%1; cvt.rni.s32.f32 hi,%2;"
+      " cvt.pack.sat.u8.s32.b32 %0,hi,lo,0;}"
+      : "=r"(packed) : "f"(a),"f"(b));
+  return packed;
+}
+
+template<bool PairedEncode>
+__device__ __forceinline__ uint32_t vc_expcast_encode_pair(float a,float b) {
+  if constexpr(PairedEncode)
+    return vc_expcast_pack_rne(__fmaf_rn(a,11.541560173034668f,119.6500015258789f),
+                               __fmaf_rn(b,11.541560173034668f,119.6500015258789f));
+  else return vc_expcast_pair(a,b);
+}
+
+template<bool PairedEncode>
+__device__ __forceinline__ uint32_t vc_expcast_encode_affine_pair(float a,float b,float gain,float bias) {
+  if constexpr(PairedEncode) return vc_expcast_pack_rne(__fmaf_rn(a,gain,bias),__fmaf_rn(b,gain,bias));
+  else return vc_expcast_affine_pair(a,b,gain,bias);
+}
