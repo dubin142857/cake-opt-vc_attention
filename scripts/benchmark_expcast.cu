@@ -8,6 +8,7 @@
 #include "../third_party/sageattention_local/csrc/math.cuh"
 #include "../third_party/sageattention_local/csrc/qattn/attn_utils.cuh"
 #include "../third_party/sageattention_local/csrc/vc/vc_math.cuh"
+#include "expcast_components.cuh"
 
 template<int Mode>
 // Match the D128 production register ceiling for both old and new helpers.
@@ -76,5 +77,8 @@ std::vector<int64_t> resources(int mode) {
   return {attr.numRegs,int64_t(attr.localSizeBytes)};
 }
 PYBIND11_MODULE(TORCH_EXTENSION_NAME,module) {
+  module.attr("benchmark_api_version")=2;
   module.def("run",&run); module.def("resources",&resources);
+  module.def("component_run",&component_run); module.def("component_resources",&component_resources);
+  module.def("encode_check",&component_encode_check); module.def("decode_check",&component_decode_check);
 }

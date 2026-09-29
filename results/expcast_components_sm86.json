@@ -1,0 +1,413 @@
+{
+  "gpu": "NVIDIA GeForce RTX 3060 Laptop GPU",
+  "torch": "2.3.1+cu121",
+  "torch_cuda": "12.1",
+  "arguments": {
+    "blocks": 256,
+    "iterations": 128,
+    "trials": 9,
+    "stages": true,
+    "output": "results/expcast_components_sm86.json"
+  },
+  "trial_order": [
+    [
+      "vc9_expcast",
+      "vc10_expcast"
+    ],
+    [
+      "vc9_expcast",
+      "vc10_expcast"
+    ],
+    [
+      "vc10_expcast",
+      "vc9_expcast"
+    ],
+    [
+      "vc9_expcast",
+      "vc10_expcast"
+    ],
+    [
+      "vc9_expcast",
+      "vc10_expcast"
+    ],
+    [
+      "vc10_expcast",
+      "vc9_expcast"
+    ],
+    [
+      "vc9_expcast",
+      "vc10_expcast"
+    ],
+    [
+      "vc9_expcast",
+      "vc10_expcast"
+    ],
+    [
+      "vc9_expcast",
+      "vc10_expcast"
+    ]
+  ],
+  "register_target": 168,
+  "compiled_resources": {
+    "vc9_expcast": {
+      "registers_per_thread": 163,
+      "local_bytes_per_thread": 0
+    },
+    "vc10_expcast": {
+      "registers_per_thread": 168,
+      "local_bytes_per_thread": 0
+    }
+  },
+  "skipped_modes": [
+    "sage_softmax requires SM89+"
+  ],
+  "scope": "probability helpers with common register-input/checksum work; no QK/PV or preprocessing; cannot measure PV overlap",
+  "modes": {
+    "vc9_expcast": {
+      "median_ms": 5.032351970672607,
+      "trials_ms": [
+        5.027647972106934,
+        5.038784027099609,
+        5.0332159996032715,
+        5.029407978057861,
+        5.031807899475098,
+        5.02953577041626,
+        5.032959938049316,
+        5.032351970672607,
+        5.051040172576904
+      ]
+    },
+    "vc10_expcast": {
+      "median_ms": 5.079264163970947,
+      "trials_ms": [
+        5.096767902374268,
+        5.078400135040283,
+        5.079775810241699,
+        5.077023983001709,
+        5.079264163970947,
+        5.076352119445801,
+        5.07916784286499,
+        5.089951992034912,
+        5.08025598526001
+      ]
+    }
+  },
+  "vc9_over_vc10": 0.9907639784457156,
+  "components": {
+    "validation": {
+      "status": "passed",
+      "encoding_values_per_mode": 65900,
+      "fp32_fma_rne_boundaries": 120,
+      "ordinary_exp2_known_values": 8,
+      "decode_rows": 18858,
+      "decode_values_per_row": 32,
+      "integer_sum": "bitwise equal to FP64-decoded FP8 tile sums",
+      "scope": "diagnostic candidates only; no full attention execution"
+    },
+    "groups": {
+      "encode": {
+        "baseline": "expcast_u8",
+        "variants": {
+          "expcast_u8": {
+            "median_ms": 0.26521599292755127,
+            "trials_ms": [
+              0.2672640085220337,
+              0.2622720003128052,
+              0.2619200050830841,
+              0.26521599292755127,
+              0.26214399933815,
+              0.3102400004863739,
+              0.26521599292755127,
+              0.2611199915409088,
+              0.30720001459121704
+            ],
+            "baseline_over_variant": 1.0,
+            "registers_per_thread": 167,
+            "local_bytes_per_thread": 0
+          },
+          "expcast_u32": {
+            "median_ms": 0.3532800078392029,
+            "trials_ms": [
+              0.34860798716545105,
+              0.35225600004196167,
+              0.3676159977912903,
+              0.3532800078392029,
+              0.3511359989643097,
+              0.37273600697517395,
+              0.3635199964046478,
+              0.3481599986553192,
+              0.3829759955406189
+            ],
+            "baseline_over_variant": 0.7507246010033651,
+            "registers_per_thread": 138,
+            "local_bytes_per_thread": 0
+          }
+        }
+      },
+      "decode_sum": {
+        "baseline": "fp32_two_chains",
+        "variants": {
+          "fp32_serial": {
+            "median_ms": 2.5323519706726074,
+            "trials_ms": [
+              2.5169920921325684,
+              2.545664072036743,
+              2.5435519218444824,
+              2.5401599407196045,
+              2.52892804145813,
+              2.5323519706726074,
+              2.548736095428467,
+              2.52620792388916,
+              2.5231359004974365
+            ],
+            "baseline_over_variant": 0.9974474304553783,
+            "registers_per_thread": 53,
+            "local_bytes_per_thread": 0
+          },
+          "fp32_two_chains": {
+            "median_ms": 2.525887966156006,
+            "trials_ms": [
+              2.52508807182312,
+              2.537440061569214,
+              2.5301120281219482,
+              2.5538558959960938,
+              2.521087884902954,
+              2.529279947280884,
+              2.525887966156006,
+              2.5105600357055664,
+              2.5229759216308594
+            ],
+            "baseline_over_variant": 1.0,
+            "registers_per_thread": 55,
+            "local_bytes_per_thread": 0
+          },
+          "integer_exact": {
+            "median_ms": 0.6881279945373535,
+            "trials_ms": [
+              0.66457599401474,
+              0.6898559927940369,
+              0.6881279945373535,
+              0.6899840235710144,
+              0.6889280080795288,
+              0.6901760101318359,
+              0.6840320229530334,
+              0.681984007358551,
+              0.6850559711456299
+            ],
+            "baseline_over_variant": 3.6706659025756196,
+            "registers_per_thread": 167,
+            "local_bytes_per_thread": 0
+          }
+        }
+      }
+    },
+    "trial_order": [
+      [
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          1,
+          1
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      [
+        [
+          1,
+          2
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          1,
+          1
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          1,
+          1
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      [
+        [
+          1,
+          1
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          0,
+          1
+        ]
+      ],
+      [
+        [
+          1,
+          2
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          1
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      [
+        [
+          1,
+          1
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      [
+        [
+          1,
+          0
+        ],
+        [
+          1,
+          1
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      [
+        [
+          1,
+          0
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          1
+        ]
+      ],
+      [
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          1,
+          1
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          2
+        ]
+      ]
+    ],
+    "skipped_modes": [
+      "exp2_fp8_scale256: native FP8 conversion needs SM89+"
+    ],
+    "scope": "synthetic register inputs, 64 values/thread/iteration, identical common input/checksum work within each group; no rowmax, history rescale, QK/PV, preprocessing or attention speedup",
+    "baselines": "current vc10 u8 encoding and two-chain standalone tile sum; serial sum is a diagnostic comparison, not the vc9 historical denominator update",
+    "ordinary_encoding": "exp2_fp8_scale256 uses the same 256 scale as ExpCast, not Sage's 2^8.807 scale; outputs need not match ExpCast",
+    "timing_caveat": "component times are not additive or percentages of the full helper/kernel; independent compilation changes scheduling/register use",
+    "integer_candidate": "exact tile sum for 32 codes in [0,120]; experimental, not used by production attention"
+  }
+}

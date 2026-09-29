@@ -264,3 +264,47 @@ vc10 ExpCast。所有变体限制为 168 个寄存器，与 D128 生产入口一
 checksum 运算，但不包含 QK/PV、预处理或 PV 重叠，不能把它的比例当成 attention 加速。
 SM86 只测两条 ExpCast 路径，自动跳过需要 SM89+ 的原 Sage FP8 转换。
 本地 3060 的局部结果约 0.99x，没有证明提速；H200 整核对照才是此次性能验收依据。
+
+## ExpCast 编码与解码求和：分段定位
+
+H200 已测的完整概率 helper 为 Sage/vc9/vc10 = 0.094496/0.097600/0.099712 ms。
+同次工具链下均为 168 寄存器、0 local bytes。它说明当前 ExpCast 的局部处理并未胜出，
+但不能确定瓶颈在编码还是解码求和，也不能度量与 PV 的重叠。
+
+新增 `--stages`，在完整 helper 表之外，独立编译、验证、计时两个部分。
+不需要重装 Sage 包；首次运行会使用 nvcc JIT 编译新的诊断模块。
+
+```bash
+git pull --ff-only origin master
+python3 scripts/benchmark_expcast.py --stages --output results/h200_expcast_stages.json
+```
+
+| 分组 | 候选 | 含义 |
+| --- | --- | --- |
+| encode | expcast_u8 | 当前 ExpCast 的 u8 饱和取整并打包，编码基线 |
+| encode | expcast_u32 | u32 取整后打包，与 u8 编码逐位一致 |
+| encode | exp2_fp8_scale256 | 普通指数再转 FP8，尺度为 256，输出不要求与 ExpCast 一致 |
+| decode_sum | fp32_serial | 解码后顺序累加块内权重，仅为局部对照 |
+| decode_sum | fp32_two_chains | 当前 vc10 的两条 FP32 累加链，求和基线 |
+| decode_sum | integer_exact | 用整数精确累加块内权重，最后转一次 FP32 |
+
+`baseline/new > 1` 表示该候选在本分组中快于当前方式。保留所有轮次、交错执行顺序、
+实际寄存器和 local memory；168 是寄存器上限，不要求每个分段用满。
+普通指数对照的尺度 256 与原 Sage 的 `2^8.807` 不同，不能把这行称为 Sage Softmax。
+
+整数候选的依据：ExpCast 正 FP8 编码范围是 0..120，即权重 0..256；
+所有权重都是 1/512 的整数倍。每线程一行的 32 个权重最多为 `2^22` 个单位，
+所以整数累加再缩放与该块的精确 FP32 求和一致，包括 FP8 次正规数。
+它仍保留量化权重构造分母的语义，不替换为未量化的指数和。
+
+计时前，脚本检查 65,900 个编码输入（覆盖取整边界及相邻 FP32 值）、
+18,858 行解码求和输入（包括全部 121×121 编码对、随机行和极值），并检查计时内核的
+同输入校验和。失败会直接报错。整数候选只用于诊断，尚未接入生产 attention。
+
+两个分段均处理每线程每轮 64 个值，包含各自公共的输入和校验工作；
+它们独立编译，调度和寄存器用量不同，因此耗时不能相加、不能换算成完整 attention 的
+时间占比。先用 H200 的这张表筛选候选，再接回完整内核做同 Q/K/V 的正确性与性能对照。
+
+本地验证：14 项 CUDA 测试通过，Compute Sanitizer memcheck 零错误；CUDA 12.4
+编译 SM90a 的六个分段内核均无 spill。3060 的原始测量保存在
+`results/expcast_components_sm86.json`，其 FP8 解码使用软件路径，不能预测 H200 的收益。

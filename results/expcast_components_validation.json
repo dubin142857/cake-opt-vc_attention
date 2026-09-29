@@ -1,0 +1,54 @@
+{
+  "scope": "diagnostic candidates only; production attention unchanged",
+  "cuda_tests_passed": 14,
+  "memcheck": "0 errors, 14 tests passed",
+  "compiler": "CUDA 12.4 on Windows",
+  "crosscompile_target": "sm_90a",
+  "component_resources": {
+    "group1_mode0": {
+      "registers": 76,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0
+    },
+    "group1_mode2": {
+      "registers": 166,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0
+    },
+    "group1_mode1": {
+      "registers": 75,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0
+    },
+    "group0_mode0": {
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0
+    },
+    "group0_mode2": {
+      "registers": 143,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0
+    },
+    "group0_mode1": {
+      "registers": 140,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0
+    }
+  },
+  "execution_gpu": "RTX 3060 Laptop SM86",
+  "hopper_execution": "not available locally",
+  "raw_local_measurements": "results/expcast_components_sm86.json",
+  "source_sha256_lf_utf8": {
+    "scripts/benchmark_expcast.cu": "8b5f0c36a42f9c8529f3afeaa09554dd80673e85e84db839c83efa70f55408e2",
+    "scripts/expcast_components.cuh": "d1723c3d8743be5fbbd92d04c8a2c2c835f2ecec2a581386a9dfb43761360b87",
+    "scripts/benchmark_expcast.py": "d95c668edf355ad0a01ec3e6146ad9d9f1361195caf3e153c5e1382fa3c83e17",
+    "tests/test_expcast_components_cuda.py": "690c756bdf1b6669c9746c42d0a51ce30cc5963049bc9ea29f76bec51e5b2a7a"
+  }
+}
