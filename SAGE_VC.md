@@ -225,3 +225,26 @@ SASS 指令流全部与 vc8 相同。
 该随机输入中 1,056,748 个 token 有 11 个标签不同；量化后 attention 的误差需远端检查。
 完整记录见 [results/sage_vc9_local_validation.json](results/sage_vc9_local_validation.json)。
 远端 `--compare-grouping` 会交错新旧计时，同时检查 dense FP32 误差。
+
+## vc9 H200 回传结果（2026-09-29）
+
+用户回传的同场五轮聚类对照：
+
+| 范围 | legacy | fused | old/new |
+|---|---:|---:|---:|
+| 聚类含稳定排序 | 5.4201 ms | 1.0217 ms | 5.305x |
+| 仅平滑完整 API | 36.7985 ms | 33.2530 ms | 1.107x |
+| 全开完整 API | 40.8505 ms | 36.4385 ms | 1.121x |
+
+全开完整 API 节省 4.4120 ms，与聚类节省的 4.3984 ms 接近，支持收益来自聚类融合的判断。
+该次分组检查的标签、稳定排列完全一致；抽查 128 个 query、使用全部 keys，
+仅平滑和全开的 FP32 相对 RMSE 分别为 3.833999%、4.205950%，新旧相同。
+这不等同于确认全部 attention 输出逐位一致或模型质量达标。
+
+主计时中 Sage 完整 API 为 26.1890 ms、全开为 36.9610 ms，仍有约 10.77 ms 差距。
+平滑/全开的完整调用在 trace 中均为 27 次 kernel 下发，此前 vc8 记录约 463 次。
+固定量化输入下打开 ExpCast 仍额外增加约 3.68–3.75 ms，后续重点是主内核及 V 均值恢复。
+trace 的 19% occupancy 是估计值，不能解读为 GPU 只有 19% 利用率。
+
+记录见 [回传摘要](results/h200_sage_vc9_reported_summary.json)。该文件是控制台数值摘录，
+不是远端原始 JSON；不同计时区间不可相加，完整 144 项远端验证结果未包含在此次回传中。

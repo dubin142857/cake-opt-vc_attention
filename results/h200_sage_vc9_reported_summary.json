@@ -1,0 +1,152 @@
+{
+  "source": "User-pasted H200 vc9 console output, received 2026-09-29; summary transcribed from printed values, not the original JSON or raw trials",
+  "source_report_path_on_remote": "results/h200_sage_vc9_profile.json",
+  "context": {
+    "package": "sageattention-local==2.2.0+vc9",
+    "shape_BSHD": [
+      1,
+      37741,
+      28,
+      128
+    ],
+    "dtype": "bfloat16",
+    "note": "Shape, dtype and version follow the established run context; environment header was not included in this excerpt."
+  },
+  "uninstrumented_ms": {
+    "sage_local": {
+      "full_api": 26.189
+    },
+    "sage_vc_control": {
+      "full_api": 27.3565,
+      "fixed_core_api": 25.4682
+    },
+    "sage_vc_expcast": {
+      "full_api": 30.7967,
+      "fixed_core_api": 29.1505
+    },
+    "sage_vc_smooth": {
+      "full_api": 33.4779,
+      "fixed_core_api": 29.8317
+    },
+    "sage_vc": {
+      "full_api": 36.961,
+      "fixed_core_api": 33.5788
+    }
+  },
+  "grouping_comparison": {
+    "trials": 5,
+    "scope": "Same original QKV; unchanged attention kernel; API recomputes grouping",
+    "label_mismatch_percent": 0,
+    "exact_permutation": true,
+    "reference_query_rows": 128,
+    "reference_keys": "all",
+    "cluster_sort": {
+      "legacy_ms": 5.4201,
+      "fused_ms": 1.0217,
+      "speedup": 5.304981892923558,
+      "latency_reduction_percent": 81.1497942842383
+    },
+    "sage_vc_smooth": {
+      "legacy_ms": 36.7985,
+      "fused_ms": 33.253,
+      "speedup": 1.1066219589209996,
+      "latency_reduction_percent": 9.634903596613986,
+      "legacy_fp32_rel_rmse_percent": 3.833999,
+      "fused_fp32_rel_rmse_percent": 3.833999
+    },
+    "sage_vc": {
+      "legacy_ms": 40.8505,
+      "fused_ms": 36.4385,
+      "speedup": 1.1210807250572883,
+      "latency_reduction_percent": 10.800357400766202,
+      "legacy_fp32_rel_rmse_percent": 4.20595,
+      "fused_fp32_rel_rmse_percent": 4.20595
+    }
+  },
+  "staged_event_ms": {
+    "sage_vc_control": {
+      "k_mean": 0.1,
+      "qk_int8": 0.8562,
+      "v_pad": 0.1406,
+      "v_quantize": 0.8373,
+      "attention": 25.2388
+    },
+    "sage_vc_expcast": {
+      "k_mean": 0.1007,
+      "qk_int8": 0.835,
+      "v_pad": 0.1396,
+      "v_quantize": 0.8164,
+      "attention": 28.8947
+    },
+    "sage_vc_smooth": {
+      "cluster_sort": 1.0741,
+      "reorder_kv": 0.8871,
+      "k_mean": 0.0889,
+      "qk_int8": 0.836,
+      "v_quantize": 1.2424,
+      "attention": 29.23
+    },
+    "sage_vc": {
+      "cluster_sort": 1.0513,
+      "reorder_kv": 0.8723,
+      "k_mean": 0.089,
+      "qk_int8": 0.8207,
+      "v_quantize": 1.2119,
+      "attention": 32.9809
+    }
+  },
+  "trace": {
+    "sage_vc_control": {
+      "core_gpu_ms": 23.0326,
+      "other_kernels_ms": 1.8386,
+      "kernel_launches": 9
+    },
+    "sage_vc_expcast": {
+      "core_gpu_ms": 27.3602,
+      "other_kernels_ms": 1.8364,
+      "kernel_launches": 9
+    },
+    "sage_vc_smooth": {
+      "core_gpu_ms": 27.8991,
+      "other_kernels_ms": 3.9575,
+      "kernel_launches": 27
+    },
+    "sage_vc": {
+      "core_gpu_ms": 33.3891,
+      "other_kernels_ms": 4.0404,
+      "kernel_launches": 27
+    },
+    "common_resources": {
+      "registers_per_thread": 168,
+      "shared_bytes": 41088,
+      "block": [
+        128,
+        1,
+        1
+      ],
+      "estimated_occupancy_percent": 19,
+      "occupancy_is_hardware_utilization": false
+    }
+  },
+  "findings": {
+    "full_api_saved_vs_legacy_grouping_ms": 4.412,
+    "cluster_saved_ms": 4.3984,
+    "current_full_api_over_sage": 1.4113177288174423,
+    "current_full_api_gap_vs_sage_ms": 10.771999999999998,
+    "fixed_payload_expcast_extra_ms": {
+      "without_smoothing": 3.6823,
+      "with_smoothing": 3.7471
+    },
+    "historical_launch_count": {
+      "vc8": 463,
+      "vc9": 27,
+      "note": "Different recorded runs; whole staged smoothed attention invocation, not clustering alone."
+    }
+  },
+  "limitations": [
+    "The paired grouping comparison is stronger evidence for this change than cross-version history.",
+    "Matching printed sampled FP32 errors and exact grouping do not establish all-output bitwise equality or model quality.",
+    "The full 144-case remote validator result was not included in this excerpt.",
+    "Full API, fixed native API, staged events and traced kernel timings have different scopes; do not sum across them."
+  ]
+}
