@@ -1,0 +1,162 @@
+{
+  "gpu": "NVIDIA GeForce RTX 3060 Laptop GPU",
+  "torch": "2.3.1+cu121",
+  "torch_cuda": "12.1",
+  "arguments": {
+    "blocks": 256,
+    "iterations": 128,
+    "trials": 9,
+    "stages": false,
+    "output": "results/sage_vc12_local_probability_micro.json"
+  },
+  "trial_order": [
+    [
+      "vc9_expcast",
+      "vc10_expcast",
+      "vc11_expcast",
+      "vc12_expcast"
+    ],
+    [
+      "vc9_expcast",
+      "vc11_expcast",
+      "vc12_expcast",
+      "vc10_expcast"
+    ],
+    [
+      "vc12_expcast",
+      "vc11_expcast",
+      "vc10_expcast",
+      "vc9_expcast"
+    ],
+    [
+      "vc11_expcast",
+      "vc9_expcast",
+      "vc10_expcast",
+      "vc12_expcast"
+    ],
+    [
+      "vc10_expcast",
+      "vc9_expcast",
+      "vc11_expcast",
+      "vc12_expcast"
+    ],
+    [
+      "vc10_expcast",
+      "vc9_expcast",
+      "vc11_expcast",
+      "vc12_expcast"
+    ],
+    [
+      "vc10_expcast",
+      "vc9_expcast",
+      "vc12_expcast",
+      "vc11_expcast"
+    ],
+    [
+      "vc12_expcast",
+      "vc11_expcast",
+      "vc10_expcast",
+      "vc9_expcast"
+    ],
+    [
+      "vc10_expcast",
+      "vc9_expcast",
+      "vc12_expcast",
+      "vc11_expcast"
+    ]
+  ],
+  "register_target": 168,
+  "compiled_resources": {
+    "vc9_expcast": {
+      "registers_per_thread": 163,
+      "local_bytes_per_thread": 0
+    },
+    "vc10_expcast": {
+      "registers_per_thread": 168,
+      "local_bytes_per_thread": 0
+    },
+    "vc11_expcast": {
+      "registers_per_thread": 168,
+      "local_bytes_per_thread": 24
+    },
+    "vc12_expcast": {
+      "registers_per_thread": 168,
+      "local_bytes_per_thread": 24
+    }
+  },
+  "skipped_modes": [
+    "sage_softmax requires SM89+"
+  ],
+  "scope": "probability helpers with common register-input/checksum work; no QK/PV or preprocessing; cannot measure PV overlap",
+  "modes": {
+    "vc9_expcast": {
+      "median_ms": 5.033599853515625,
+      "trials_ms": [
+        5.069151878356934,
+        5.05350399017334,
+        5.042111873626709,
+        5.049856185913086,
+        5.033599853515625,
+        4.838624000549316,
+        3.7231040000915527,
+        3.724128007888794,
+        3.7210240364074707
+      ]
+    },
+    "vc10_expcast": {
+      "median_ms": 5.090720176696777,
+      "trials_ms": [
+        5.090720176696777,
+        5.084864139556885,
+        5.140992164611816,
+        5.111040115356445,
+        5.099071979522705,
+        5.093247890472412,
+        3.742432117462158,
+        3.7728960514068604,
+        3.7588798999786377
+      ]
+    },
+    "vc11_expcast": {
+      "median_ms": 5.079040050506592,
+      "trials_ms": [
+        5.081503868103027,
+        5.0839362144470215,
+        5.092383861541748,
+        5.085951805114746,
+        5.079040050506592,
+        3.7395200729370117,
+        3.78057599067688,
+        3.77891206741333,
+        3.767199993133545
+      ]
+    },
+    "vc12_expcast": {
+      "median_ms": 5.033760070800781,
+      "trials_ms": [
+        5.033760070800781,
+        5.04860782623291,
+        5.0511040687561035,
+        5.0511040687561035,
+        5.054111957550049,
+        3.7162880897521973,
+        3.7564799785614014,
+        3.7445120811462402,
+        3.7382400035858154
+      ]
+    }
+  },
+  "vc9_over_vc10": 0.9887795201467514,
+  "vc10_over_vc11": 1.002299671999834,
+  "vc10_vc11_checksum_exact_match": true,
+  "vc11_over_vc12": 1.0089952598194867,
+  "affine_validation": {
+    "status": "passed",
+    "values": 229376,
+    "independent_fp64_fma_oracle_exact": true,
+    "vc11_byte_mismatch_percent": 0.0013078963092993945,
+    "maximum_code_difference": 1,
+    "decoded_probability_rel_rmse_percent": 0.017656160343904048,
+    "scope": "moderate-range encoding diagnostics only; FP8 boundary rounding may change; not attention/model quality"
+  }
+}

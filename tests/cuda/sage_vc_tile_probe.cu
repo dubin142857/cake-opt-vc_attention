@@ -108,7 +108,7 @@ std::vector<torch::Tensor> run_helpers(torch::Tensor shifted, torch::Tensor code
   return {encoded, decoded};
 }
 
-template<bool Pipeline, bool Interleaved=false>
+template<bool Pipeline, bool Interleaved=false, bool FoldAffine=false>
 __global__ void probability_probe(const float* scores, const float* previous,
     const float* prev_max, const float* prev_d, uint8_t* bytes, float* output,
     float* maximum, float* denom, float* tile_mass, bool mixed_scales) {
@@ -129,7 +129,7 @@ __global__ void probability_probe(const float* scores, const float* previous,
     }
   float scale = mixed_scales ? .137f*(1+lane%4) : .25f;
   if constexpr (Pipeline) {
-    vc_probability_prepare<Interleaved>(s,m,scale,packed,alpha,mass);
+    vc_probability_prepare<Interleaved,FoldAffine>(s,m,scale,packed,alpha,mass);
     vc_probability_finish(o,d,alpha,mass);
   } else vc_probability<true,false,true,true>(s,o,m,d,scale,packed,mass);
   #pragma unroll
@@ -154,7 +154,7 @@ __global__ void probability_probe(const float* scores, const float* previous,
 }
 
 std::vector<torch::Tensor> run_probability(torch::Tensor scores, torch::Tensor previous,
-    torch::Tensor m, torch::Tensor d, bool pipeline, bool mixed_scales, bool interleaved) {
+    torch::Tensor m, torch::Tensor d, bool pipeline, bool mixed_scales, bool interleaved, bool fold_affine) {
   TORCH_CHECK(scores.is_cuda() && scores.sizes() == at::IntArrayRef({64,128}), "Probe shape");
   for (const auto& tensor : {scores,previous,m,d})
     TORCH_CHECK(tensor.device() == scores.device() && tensor.is_contiguous() && tensor.scalar_type() == at::kFloat,"Probe tensors");
@@ -162,7 +162,8 @@ std::vector<torch::Tensor> run_probability(torch::Tensor scores, torch::Tensor p
   auto bytes = torch::empty_like(scores,scores.options().dtype(at::kByte));
   auto out = torch::empty_like(previous), maximum = torch::empty_like(m), denom = torch::empty_like(d), mass = torch::empty_like(d);
   TORCH_CHECK(!interleaved || pipeline,"Interleaved probe requires pipeline");
-  auto kernel = pipeline ? (interleaved ? probability_probe<true,true> : probability_probe<true>) : probability_probe<false>;
+  TORCH_CHECK(!fold_affine || (pipeline && interleaved),"Affine probe requires interleaved pipeline");
+  auto kernel = fold_affine ? probability_probe<true,true,true> : pipeline ? (interleaved ? probability_probe<true,true> : probability_probe<true>) : probability_probe<false>;
   kernel<<<1,128,0,c10::cuda::getCurrentCUDAStream().stream()>>>(scores.data_ptr<float>(),previous.data_ptr<float>(),
       m.data_ptr<float>(),d.data_ptr<float>(),bytes.data_ptr<uint8_t>(),out.data_ptr<float>(),maximum.data_ptr<float>(),
       denom.data_ptr<float>(),mass.data_ptr<float>(),mixed_scales);
@@ -173,7 +174,7 @@ std::vector<torch::Tensor> run_probability(torch::Tensor scores, torch::Tensor p
 PYBIND11_MODULE(TORCH_EXTENSION_NAME,m) {
   m.def("run_probability",&run_probability,pybind11::arg("scores"),pybind11::arg("previous"),
       pybind11::arg("m"),pybind11::arg("d"),pybind11::arg("pipeline"),pybind11::arg("mixed_scales")=false,
-      pybind11::arg("interleaved")=false);
+      pybind11::arg("interleaved")=false,pybind11::arg("fold_affine")=false);
   m.def("run",&run,pybind11::arg("scores"),pybind11::arg("out"),pybind11::arg("product"),
       pybind11::arg("m"),pybind11::arg("d"),pybind11::arg("scale"),pybind11::arg("mean"),
       pybind11::arg("optimized")=false,pybind11::arg("mixed_scales")=false,

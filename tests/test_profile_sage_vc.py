@@ -397,6 +397,16 @@ def test_vc11_baseline_selects_vc10_and_rejects_stale_binary():
         profile.kernel_baseline(ops,explicit)
 
 
+def test_vc12_baseline_selects_vc11_and_rejects_stale_binary():
+    args=profile.parse_args(["--expcast-only","--compare-kernels"])
+    ops=SimpleNamespace(ext=SimpleNamespace(sage_vc_kernel_version=9))
+    assert profile.kernel_baseline(ops,args)=="vc11"
+    explicit=profile.parse_args(["--compare-kernels","--kernel-baseline","vc11"])
+    ops.ext.sage_vc_kernel_version=8
+    with pytest.raises(RuntimeError,match="needs vc12"):
+        profile.kernel_baseline(ops,explicit)
+
+
 def test_expcast_only_cli_and_partial_report(capsys):
     assert profile.parse_args(["--expcast-only"]).expcast_only
     for flag in ("--compare-v-scales","--compare-grouping"):

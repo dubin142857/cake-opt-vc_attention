@@ -11,7 +11,7 @@ import pytest
 import torch
 
 ext=pytest.importorskip("_vc_expcast_bench")
-pytestmark=pytest.mark.skipif(getattr(ext,"benchmark_api_version",0)!=3,reason="Build the v3 component benchmark")
+pytestmark=pytest.mark.skipif(getattr(ext,"benchmark_api_version",0)!=4,reason="Build the v4 component benchmark")
 
 
 def load_benchmark():
@@ -95,3 +95,16 @@ def test_probe_respects_nondefault_cuda_stream():
     stream.synchronize()
     assert torch.equal(decoded,torch.full_like(decoded,8192.))
     assert torch.equal(encoded,torch.full_like(encoded,120))
+
+
+def test_affine_encoding_oracle_and_reported_rounding_difference():
+    report=load_benchmark().validate_affine(ext)
+    assert report["independent_fp64_fma_oracle_exact"]
+    assert report["values"]==56*4096
+    assert report["maximum_code_difference"]<=1
+    assert 0<=report["vc11_byte_mismatch_percent"]<=100
+
+
+def test_affine_probe_rejects_mismatched_coefficients():
+    with pytest.raises(RuntimeError):
+        ext.affine_check(torch.zeros(6,device="cuda"),torch.ones(2,device="cuda"),torch.zeros(3,device="cuda"))

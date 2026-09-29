@@ -31,3 +31,14 @@ __device__ __forceinline__ uint32_t vc_expcast_pair(float a, float b) {
   // Select the low byte of each zero-extended code, then two zero bytes.
   return __byte_perm(lo, hi, 0x1140);
 }
+
+// Algebraically fold RN(score*scale), subtraction and ExpCast's linear map.
+// FP32 coefficients change rounding at byte boundaries; this is NOT bitwise
+// the legacy encoder. Only used by the bounded affine probability path.
+__device__ __forceinline__ uint32_t vc_expcast_affine_pair(float a,float b,float gain,float bias) {
+  float x=__fmaf_rn(a,gain,bias),y=__fmaf_rn(b,gain,bias);
+  uint32_t lo,hi;
+  asm("cvt.rni.sat.u8.f32 %0, %1;" : "=r"(lo) : "f"(x));
+  asm("cvt.rni.sat.u8.f32 %0, %1;" : "=r"(hi) : "f"(y));
+  return __byte_perm(lo,hi,0x1140);
+}

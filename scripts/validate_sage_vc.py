@@ -177,6 +177,12 @@ def validate(device="cuda:0"):
                         if not torch.isfinite(previous).all().item() or delta["rel_rmse"] > 0.001:
                             raise AssertionError(f"Optimized/vc7 regression: {row}, delta={delta}")
                         row["optimized_vs_vc7"] = {**delta,"exact_match":torch.equal(actual,previous)}
+                    if getattr(ext,"sage_vc_kernel_version",0) >= 9:
+                        previous = vc.forward_prepared(state,kernel_mode="vc11")
+                        delta = metrics(actual,previous)
+                        if not torch.isfinite(previous).all().item() or delta["rel_rmse"] > .001:
+                            raise AssertionError(f"Optimized/vc11 regression: {row}, delta={delta}")
+                        row["optimized_vs_vc11"] = {**delta,"exact_match":torch.equal(actual,previous)}
                     if getattr(ext,"sage_vc_kernel_version",0) >= 8:
                         previous = vc.forward_prepared(state,kernel_mode="vc10")
                         delta = metrics(actual,previous)

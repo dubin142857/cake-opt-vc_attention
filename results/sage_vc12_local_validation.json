@@ -1,0 +1,118 @@
+{
+  "package_version": "2.2.0+vc12",
+  "native_kernel_version": 9,
+  "execution_device": "RTX 3060 Laptop, SM86",
+  "crosscompile": "CUDA 12.4 sm_90a; 72 attention kernels compiled and extension linked/imported",
+  "legacy_sass_instruction_text_identical": 68,
+  "new_kernels": {
+    "d128_bf16": {
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "first_probability_branch": {
+        "vc11_fallback_instructions": 467,
+        "affine_instructions": 341,
+        "vc11_fallback_fp32_ops": {
+          "FMUL.FTZ": 64,
+          "FADD.FTZ": 130,
+          "FFMA.FTZ": 64
+        },
+        "affine_fp32_ops": {
+          "FMUL.FTZ": 0,
+          "FADD.FTZ": 66,
+          "FFMA.FTZ": 66
+        },
+        "scope": "static instructions in first encode/decode branch bodies, excludes common guard/max work; not a whole-kernel count or timing"
+      }
+    },
+    "d128_fp16": {
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "first_probability_branch": {
+        "vc11_fallback_instructions": 467,
+        "affine_instructions": 341,
+        "vc11_fallback_fp32_ops": {
+          "FMUL.FTZ": 64,
+          "FADD.FTZ": 130,
+          "FFMA.FTZ": 64
+        },
+        "affine_fp32_ops": {
+          "FMUL.FTZ": 0,
+          "FADD.FTZ": 66,
+          "FFMA.FTZ": 66
+        },
+        "scope": "static instructions in first encode/decode branch bodies, excludes common guard/max work; not a whole-kernel count or timing"
+      }
+    },
+    "d64_bf16": {
+      "registers": 128,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "first_probability_branch": {
+        "vc11_fallback_instructions": 467,
+        "affine_instructions": 341,
+        "vc11_fallback_fp32_ops": {
+          "FMUL.FTZ": 64,
+          "FADD.FTZ": 130,
+          "FFMA.FTZ": 64
+        },
+        "affine_fp32_ops": {
+          "FMUL.FTZ": 0,
+          "FADD.FTZ": 66,
+          "FFMA.FTZ": 66
+        },
+        "scope": "static instructions in first encode/decode branch bodies, excludes common guard/max work; not a whole-kernel count or timing"
+      }
+    },
+    "d64_fp16": {
+      "registers": 128,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "first_probability_branch": {
+        "vc11_fallback_instructions": 467,
+        "affine_instructions": 341,
+        "vc11_fallback_fp32_ops": {
+          "FMUL.FTZ": 64,
+          "FADD.FTZ": 130,
+          "FFMA.FTZ": 64
+        },
+        "affine_fp32_ops": {
+          "FMUL.FTZ": 0,
+          "FADD.FTZ": 66,
+          "FFMA.FTZ": 66
+        },
+        "scope": "static instructions in first encode/decode branch bodies, excludes common guard/max work; not a whole-kernel count or timing"
+      }
+    }
+  },
+  "tests_passed": 295,
+  "legacy_helper_golden_cases_exact": 16,
+  "memcheck": "130 CUDA helper/component tests passed; 0 errors",
+  "affine_encoding": {
+    "status": "passed",
+    "values": 229376,
+    "independent_fp64_fma_oracle_exact": true,
+    "vc11_byte_mismatch_percent": 0.0013078963092993945,
+    "maximum_code_difference": 1,
+    "decoded_probability_rel_rmse_percent": 0.017656160343904048,
+    "scope": "moderate-range encoding diagnostics only; FP8 boundary rounding may change; not attention/model quality"
+  },
+  "online_decoded_pv": "64 tiles x 4 random seeds, FP32/FP16/BF16 outputs pass unchanged 0.1% difference gate; no Hopper WGMMA execution",
+  "rounding": "FP8 P may change near RNE boundaries; denominator remains consistent with actual decoded P",
+  "scope": "Local numerical/compilation checks only; Hopper full-attention accuracy and performance pending",
+  "source_sha256_lf": {
+    "third_party/sageattention_local/csrc/vc/expcast.cuh": "0038adff965460a992cdb29d255d503be0d530f24f4ec70c1ecc029c239ffba1",
+    "third_party/sageattention_local/csrc/vc/vc_math.cuh": "8e9b0b11ef5923a7b5c5e01fe1db4c7aae57a13b3915450989481ac764a6a903",
+    "third_party/sageattention_local/csrc/vc/vc_sm90.cu": "7139c0bf7ca4b1050f75f10a901cf29fb891034c6fb088e3a0bbc56fbd73c965",
+    "third_party/sageattention_local/csrc/vc/vc_api.h": "e513036e22e61f58e7f7e07a94b4b1bfb2c47dbe4ea403b2ba177d3e217cd53c",
+    "third_party/sageattention_local/csrc/vc/pybind.cpp": "e00db36a467038d7e86ad5225dadbef53fd0d607e52c497a384cb2a2d24e6441",
+    "scripts/benchmark_expcast.cu": "6a263be918d53eb01d8b446249b24f3f5cec6e6af217579f8230b00e0a72e30c",
+    "scripts/expcast_components.cuh": "fb1b189827d0f47b2fc1a142d046fb774e2aebfbc1dc65f6e8b5d78b2e5504ea"
+  },
+  "source_distribution": "sdist built; vc12 metadata, matching manifests and all 58 source hashes verified"
+}

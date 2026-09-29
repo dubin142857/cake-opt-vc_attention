@@ -347,3 +347,46 @@ control→ExpCast 的 `plain/cast` 和完整 API 三项；局部提速不能代�
 D64 为 128；64 个历史内核的 SASS 指令文本与 vc10 相同。新旧指令数量相同、顺序不同，
 这里只证明调度改变，不构成性能结论。3060 上完整 helper 约 5.084→5.089 ms，
 没有显示提速，H200 的最终结果仍需上述同场对照。
+
+## vc12：合并 ExpCast 的线性变换
+
+vc11 的 H200 回传：同输入主体 vc10/vc11 为 28.8584/28.7254 ms（1.005x），
+同一个控制内核也有 1.014x 波动，因此不足以确认明显整核收益。
+完整概率 helper 为 0.100352→0.098848 ms，仍慢于 Sage 的 0.094272 ms。
+
+vc12 将每个分数的 `score*scale`、减最大值、ExpCast 线性变换合并：
+
+```text
+gain = RN(scale * 11.541560173034668)
+bias = FMA(-maximum, 11.541560173034668, 119.6500015258789)
+code = saturating_u8_RNE(FMA(score, gain, bias))
+```
+
+系数每行/线程准备后复用。与 vc11 在实数域等价，但 FP32 舍入顺序不同，
+**取整边界附近的 FP8 P 字节可能变化**。分母仍累加实际量化 P，PV 仍保持两级 FP32 累加。
+每个 warp 检查两个行最大值的绝对值均不超过 128、scale 为正正常数、gain 有限；
+超出范围在设备内执行 vc11，限制大数相减/系数溢出带来的误差。
+只开 ExpCast 的新入口启用此路径，控制组和 V 平滑路径复用已有 kernel。
+
+版本 `2.2.0+vc12` / native kernel version 9。`kernel_mode="vc11"` 保留上一版。
+升级并运行默认 `[1,37741,28,128]` 同输入对照：
+
+```bash
+git pull --ff-only origin master
+bash scripts/build_sage_local.sh
+python3 scripts/profile_sage_vc.py --expcast-only --compare-kernels --kernel-baseline vc11 --trials 5 --repeats 10 --output results/h200_sage_vc12_expcast.json
+python3 scripts/benchmark_expcast.py --output results/h200_vc12_expcast_micro.json
+```
+
+构建脚本增加 optimized/vc11 的全输出比较，**仍使用 0.1% relative RMSE 门槛，没有放宽**。
+profile 同时报告全 API、固定主体、同量化 Q/K/V 的新旧误差与速度；这不是模型质量验收。
+micro 的 v4 模块独立编译，先检查 229,376 个编码值与 FP64 模拟的 FP32 FMA 结果一致，
+再输出相对 vc11 的字节变化比例、最大编码差值与解码权重误差。此误差不是 attention 输出误差。
+校验和的逐位一致检查仍只针对 vc10/vc11，不要求 vc12 字节一致。
+
+本地独立 oracle、极端范围回退、边界值及连续解码 PV 的检查通过；
+Hopper 完整内核只有交叉编译结果。D128 新内核仍为 168 寄存器、零 spill。
+68 个历史内核的 SASS 指令文本保持不变。是否减少 H200 完整耗时以回传数据为准。
+CUDA 12.4 的首个概率编码/解码分支中，旧公式为 467 条静态指令，新公式为 341 条；
+此计数不含共用的范围判断、最大值处理，也不是整核指令数或加速比例。
+详细记录见 `results/sage_vc12_local_validation.json`。

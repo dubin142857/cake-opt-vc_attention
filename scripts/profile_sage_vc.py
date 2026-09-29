@@ -211,8 +211,8 @@ def parse_args(argv=None):
                         help="Compare previous/optimized cores on identical payloads; validate ALL output rows")
     parser.add_argument("--expcast-only",action="store_true",
                         help="Measure Sage/control/ExpCast only; skip V grouping/smoothing entirely")
-    parser.add_argument("--kernel-baseline",choices=("vc4","vc6","vc7","vc9","vc10"),
-                        help="Same-payload baseline; defaults to vc10 on vc11+, vc9 on vc10, vc7 on vc8/9, vc6 on vc7, otherwise vc4")
+    parser.add_argument("--kernel-baseline",choices=("vc4","vc6","vc7","vc9","vc10","vc11"),
+                        help="Same-payload baseline; defaults to vc11 on vc12+, vc10 on vc11, vc9 on vc10, vc7 on vc8/9, vc6 on vc7, otherwise vc4")
     parser.add_argument("--compare-v-scales", action="store_true",
                         help="vc6+: compare old block and new channel V quantization, including API time and dense FP32 errors")
     parser.add_argument("--compare-grouping", action="store_true",
@@ -275,7 +275,9 @@ def kernel_calls(ops, fixed, baseline="vc4"):
 
 def kernel_baseline(ops,args):
     version = getattr(ops.ext,"sage_vc_kernel_version",0)
-    baseline = getattr(args,"kernel_baseline",None) or ("vc10" if version >= 8 else "vc9" if version >= 7 else "vc7" if version >= 6 else "vc6" if version >= 5 else "vc4")
+    baseline = getattr(args,"kernel_baseline",None) or ("vc11" if version >= 9 else "vc10" if version >= 8 else "vc9" if version >= 7 else "vc7" if version >= 6 else "vc6" if version >= 5 else "vc4")
+    if baseline == "vc11" and version < 9:
+        raise RuntimeError("--kernel-baseline vc11 needs vc12; rebuild with bash scripts/build_sage_local.sh")
     if baseline == "vc10" and version < 8:
         raise RuntimeError("--kernel-baseline vc10 needs vc11; rebuild with bash scripts/build_sage_local.sh")
     if baseline == "vc9" and version < 7:
@@ -447,10 +449,12 @@ def compare_kernels(ops, fixed, args, device):
         print(f"Kernel comparison trial {trial+1}/{args.trials} complete",flush=True)
     rows = {}
     print(f"\nSame-payload native APIs: {baseline} vs optimized (ms; excludes all preprocessing)")
-    if baseline == "vc10":
-        print("vc10/optimized differ only in ExpCast-only encode/decode instruction scheduling; FP8 P bytes, FP32 tile-sum order, history scaling and PV accumulation are unchanged.")
+    if baseline == "vc11":
+        print("vc11/optimized fold the ExpCast-only affine transform in FP32. Q/K/V payloads are identical; FP8 P rounding may differ near boundaries. The denominator still sums decoded P; extreme ranges use vc11.")
+    elif baseline == "vc10":
+        print("vc10/optimized compare ExpCast-only scheduling; vc12+ also folds the affine transform and may change FP8 P rounding. Q/K/V payloads and two-level PV accumulation are unchanged.")
     elif baseline == "vc9":
-        print("vc9/optimized change only ExpCast without V smoothing: independent tile sums and history scaling overlapped with PV. FP8 P bytes are unchanged; denominator FP32 addition order differs.")
+        print("vc9/optimized change only ExpCast without V smoothing: independent tile sums and history scaling overlapped with PV. denominator FP32 addition order differs; vc12+ can also change FP8 P rounding.")
     elif baseline == "vc7":
         print("vc7/optimized compare D128 channel-V PV scheduling; vc10+ additionally changes ExpCast-only probability scheduling. Quantized Q/K/V payloads are identical.")
     elif baseline == "vc6":

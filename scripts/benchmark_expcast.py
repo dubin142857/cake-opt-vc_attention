@@ -17,7 +17,7 @@ import torch
 def load_extension():
     try:
         extension = importlib.import_module("_vc_expcast_bench")
-        if getattr(extension,"benchmark_api_version",0) == 3:
+        if getattr(extension,"benchmark_api_version",0) == 4:
             return extension
     except ImportError:
         pass
@@ -26,9 +26,9 @@ def load_extension():
     os.environ["TORCH_CUDA_ARCH_LIST"] = f"{major}.{minor}"
     os.environ.setdefault("MAX_JOBS","2")
     # New JIT name avoids reusing the old imported DLL in the same process.
-    extension = load(name="_vc_expcast_bench_v3",sources=[str(Path(__file__).with_suffix(".cu"))],
+    extension = load(name="_vc_expcast_bench_v4",sources=[str(Path(__file__).with_suffix(".cu"))],
         extra_cuda_cflags=["-O3","--use_fast_math","--expt-relaxed-constexpr"],verbose=True)
-    if extension.benchmark_api_version != 3:
+    if extension.benchmark_api_version != 4:
         raise RuntimeError("Stale ExpCast benchmark extension")
     return extension
 
@@ -69,6 +69,34 @@ COMPONENT_NAMES = {
     "decode_sum":("fp32_serial","fp32_two_chains","integer_exact"),
 }
 COMPONENT_BASELINES = {"encode":0,"decode_sum":1}
+
+
+@torch.no_grad()
+def validate_affine(extension,device="cuda"):
+    scales=torch.tensor([2**-20,1e-4,.01,.137,.25,1.,4.,4096.],device=device)
+    maxima=torch.tensor([-127.,-16.,-1.,0.,3.,16.,127.],device=device)
+    scale,maximum=torch.meshgrid(scales,maxima,indexing="ij")
+    scale,maximum=scale.reshape(-1,1),maximum.reshape(-1,1)
+    generator=torch.Generator(device=device).manual_seed(2212)
+    shifts=-torch.rand(56,4096,device=device,generator=generator)*14-.0001
+    scores=((shifts.double()+maximum.double())/scale.double()).float()
+    gain=(scale*11.541560173034668).expand(-1,2048).contiguous()
+    bias=(-maximum.double()*11.541560173034668+119.6500015258789).float().expand_as(gain).contiguous()
+    actual=extension.affine_check(scores,gain,bias)
+    expected=(scores.double()*gain.repeat_interleave(2,-1).double()+bias.repeat_interleave(2,-1).double()).float().round().clamp(0,255).byte()
+    torch.testing.assert_close(actual,expected,rtol=0,atol=0)
+    shifted=scores*scale-maximum
+    legacy=(shifted.double()*11.541560173034668+119.6500015258789).float().round().clamp(0,120).byte()
+    difference=(actual.int()-legacy.int()).abs()
+    if actual.max().item()>120 or difference.max().item()>1:
+        raise AssertionError("Folded encoder exceeded bounded code domain/difference")
+    decoded=actual.view(torch.float8_e4m3fn).float()
+    previous=legacy.view(torch.float8_e4m3fn).float()
+    return {"status":"passed","values":scores.numel(),"independent_fp64_fma_oracle_exact":True,
+            "vc11_byte_mismatch_percent":100*(actual!=legacy).float().mean().item(),
+            "maximum_code_difference":difference.max().item(),
+            "decoded_probability_rel_rmse_percent":100*((decoded-previous).square().mean()/previous.square().mean()).sqrt().item(),
+            "scope":"moderate-range encoding diagnostics only; FP8 boundary rounding may change; not attention/model quality"}
 
 
 @torch.no_grad()
@@ -139,10 +167,11 @@ def main():
         raise RuntimeError("CUDA GPU required")
     extension=load_extension()
     output = torch.empty(args.blocks,128,device="cuda",dtype=torch.float32)
-    modes = ("sage_softmax","vc9_expcast","vc10_expcast","vc11_expcast")
+    affine_validation=validate_affine(extension,output.device)
+    modes = ("sage_softmax","vc9_expcast","vc10_expcast","vc11_expcast","vc12_expcast")
     # Sage's inline FP32->E4M3 pack emits a trap below SM89. The ExpCast
     # helpers support SM86 through CUDA's intrinsic decode implementation.
-    active = [0,1,2,3] if torch.cuda.get_device_capability() >= (8,9) else [1,2,3]
+    active = [0,1,2,3,4] if torch.cuda.get_device_capability() >= (8,9) else [1,2,3,4]
     resources = {}
     for index in active:
         regs,local_bytes = extension.resources(index)
@@ -176,9 +205,11 @@ def main():
     report["vc9_over_vc10"] = report["modes"]["vc9_expcast"]["median_ms"]/report["modes"]["vc10_expcast"]["median_ms"]
     report["vc10_over_vc11"] = report["modes"]["vc10_expcast"]["median_ms"]/report["modes"]["vc11_expcast"]["median_ms"]
     report["vc10_vc11_checksum_exact_match"] = True
+    report["vc11_over_vc12"] = report["modes"]["vc11_expcast"]["median_ms"]/report["modes"]["vc12_expcast"]["median_ms"]
+    report["affine_validation"]=affine_validation
     print("\nComplete probability helpers (no QK/PV or overlap; NOT attention latency):")
-    print(f"{'variant':<20} {'median ms':>12} {'vc10/new':>12}")
-    baseline=report["modes"]["vc10_expcast"]["median_ms"]
+    print(f"{'variant':<20} {'median ms':>12} {'vc11/new':>12}")
+    baseline=report["modes"]["vc11_expcast"]["median_ms"]
     for name,row in report["modes"].items():
         print(f"{name:<20} {row['median_ms']:>12.6f} {baseline/row['median_ms']:>11.3f}x")
     if args.stages:
@@ -187,7 +218,7 @@ def main():
     path.parent.mkdir(parents=True,exist_ok=True)
     path.write_text(json.dumps(report,indent=2)+"\n",encoding="utf-8")
     print(json.dumps(report,indent=2))
-    print("This is NOT an attention speedup. Validate with profile_sage_vc.py --expcast-only --compare-kernels --kernel-baseline vc10.")
+    print("This is NOT an attention speedup. Validate with profile_sage_vc.py --expcast-only --compare-kernels --kernel-baseline vc11.")
 
 
 if __name__ == "__main__":

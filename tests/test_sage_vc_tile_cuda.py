@@ -225,3 +225,83 @@ def test_interleaved_probability_preserves_300_tile_history():
         for a,b in zip(actual,previous):
             torch.testing.assert_close(a,b,rtol=0,atol=0)
         _,out,maximum,denom,_=actual
+
+
+@pytest.mark.parametrize("seed",range(6))
+@pytest.mark.parametrize("mixed_scales",[False,True])
+def test_affine_probability_matches_independent_fma_oracle(seed,mixed_scales):
+    torch.manual_seed(2210+seed)
+    scores=torch.randn(64,128,device="cuda")*(seed+1)*4
+    scores[:16,117:]=-float("inf")
+    out=torch.randn_like(scores)
+    maximum=torch.linspace(-20,20,64,device="cuda")
+    denom=torch.logspace(-6,8,64,device="cuda")
+    old=probe.run_probability(scores,out,maximum,denom,True,mixed_scales,True,False)
+    new=probe.run_probability(scores,out,maximum,denom,True,mixed_scales,True,True)
+    for a,b in zip(new[1:3],old[1:3]): torch.testing.assert_close(a,b,rtol=0,atol=0)
+    scale=(.137*(1+(torch.arange(128,device="cuda")%8)//2)).float() if mixed_scales else torch.full((128,),.25,device="cuda")
+    gain=scale*11.541560173034668
+    bias=(-new[2].double()*11.541560173034668+119.6500015258789).float()
+    expected=(scores.double()*gain.double()+bias[:,None].double()).float().round().clamp(0,255).byte()
+    torch.testing.assert_close(new[0],expected,rtol=0,atol=0)
+    assert new[0].max().item()<=120
+    mass=expected.view(torch.float8_e4m3fn).float().double().sum(-1).float()
+    torch.testing.assert_close(new[4],mass,rtol=0,atol=0)
+    expected_d=(denom.double()*(maximum-new[2]).double().exp()+mass.double()).float()
+    torch.testing.assert_close(new[3],expected_d,rtol=2e-6,atol=1e-5)
+
+
+@pytest.mark.parametrize("magnitude",[129.,1e4,1e8])
+def test_affine_extreme_logits_use_exact_vc11_fallback(magnitude):
+    torch.manual_seed(2227)
+    scores=torch.randn(64,128,device="cuda")*magnitude
+    scores[:16,0]=magnitude*16
+    out=torch.randn_like(scores)
+    maximum=torch.full((64,),magnitude,device="cuda")
+    denom=torch.ones(64,device="cuda")
+    args=(scores,out,maximum,denom,True,True,True)
+    for a,b in zip(probe.run_probability(*args,True),probe.run_probability(*args,False)):
+        torch.testing.assert_close(a,b,rtol=0,atol=0)
+
+
+def test_affine_rounding_boundaries_remain_decoded_probability_consistent():
+    # Deliberately close to every RNE boundary; byte equality is not promised.
+    indices=torch.arange(128,device="cuda").remainder(120).double()
+    scores=(((indices+.5-119.6500015258789)/11.541560173034668)*4).float().expand(64,-1).contiguous()
+    scores[:,0]=0
+    out=torch.zeros_like(scores);maximum=torch.zeros(64,device="cuda");denom=torch.ones_like(maximum)
+    old=probe.run_probability(scores,out,maximum,denom,True,False,True,False)
+    new=probe.run_probability(scores,out,maximum,denom,True,False,True,True)
+    assert (new[0].int()-old[0].int()).abs().max().item()<=1
+    mass=new[0].view(torch.float8_e4m3fn).float().double().sum(-1).float()
+    torch.testing.assert_close(new[4],mass,rtol=0,atol=0)
+    torch.testing.assert_close(new[3],mass+1,rtol=0,atol=0)
+
+
+@pytest.mark.parametrize("seed",range(4))
+def test_affine_online_attention_with_decoded_pv(seed):
+    # Run the real CUDA probability helpers, then decoded FP32 PV matmuls.
+    # This isolates the changed rounding; it does NOT execute Hopper WGMMA.
+    torch.manual_seed(2230+seed)
+    old_out=torch.zeros(64,128,device="cuda");new_out=old_out.clone()
+    maximum=torch.full((64,),-5e6,device="cuda")
+    old_d=torch.ones(64,device="cuda");new_d=old_d.clone()
+    tf32=torch.backends.cuda.matmul.allow_tf32
+    torch.backends.cuda.matmul.allow_tf32=False
+    try:
+        for tile in range(64):
+            scores=torch.randn_like(old_out)*(seed+1)*4
+            if tile==63: scores[:,113:]=-float("inf")
+            values=torch.randn(128,128,device="cuda").to(torch.float8_e4m3fn).float()
+            old=probe.run_probability(scores,old_out,maximum,old_d,True,True,True,False)
+            new=probe.run_probability(scores,new_out,maximum,new_d,True,True,True,True)
+            old_out=old[1]+old[0].view(torch.float8_e4m3fn).float()@values
+            new_out=new[1]+new[0].view(torch.float8_e4m3fn).float()@values
+            maximum,old_d,new_d=new[2],old[3],new[3]
+        for dtype in (torch.float32,torch.float16,torch.bfloat16):
+            a=(new_out/new_d[:,None]).to(dtype).double()
+            b=(old_out/old_d[:,None]).to(dtype).double()
+            rel=((a-b).square().mean()/b.square().mean()).sqrt().item()
+            assert rel<=.001,(seed,dtype,rel)
+    finally:
+        torch.backends.cuda.matmul.allow_tf32=tf32

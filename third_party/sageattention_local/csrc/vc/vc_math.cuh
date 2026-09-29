@@ -13,7 +13,50 @@ __device__ __forceinline__ float2 vc_decode_pair(uint32_t codes) {
 // ExpCast without V block means: form P and independent tile sums first.
 // History scaling is delayed until PV is in flight. Never read P's register
 // fragments between wgmma.mma_async and wait_group (PTX forbids that too).
-template<bool Interleaved=false, uint32_t NQ, uint32_t NK>
+template<uint32_t NK>
+__device__ __forceinline__ void vc_probability_affine_tile(
+    const float (&scores)[NK][8],const float (&maximum)[2],float gain,
+    uint32_t (&packed)[NK/2][4],float (&mass)[2]) {
+  float bias[2]={__fmaf_rn(-maximum[0],11.541560173034668f,119.6500015258789f),
+                 __fmaf_rn(-maximum[1],11.541560173034668f,119.6500015258789f)};
+  float sums[2][2]={};
+  #pragma unroll
+  for(int base=0;base<NK;base+=2) {
+    uint32_t codes[2][2][2]; __half2 decoded[2][2][2];
+    #pragma unroll
+    for(int k=0;k<2;++k)
+      #pragma unroll
+      for(int r=0;r<2;++r)
+        #pragma unroll
+        for(int pair=0;pair<2;++pair) {
+          int j=r*2+pair*4;
+          codes[k][r][pair]=vc_expcast_affine_pair(scores[base+k][j],scores[base+k][j+1],gain,bias[r]);
+        }
+    #pragma unroll
+    for(int k=0;k<2;++k)
+      #pragma unroll
+      for(int r=0;r<2;++r) {
+        packed[base/2][k*2+r]=__byte_perm(codes[k][r][0],codes[k][r][1],0x5410);
+        #pragma unroll
+        for(int pair=0;pair<2;++pair)
+          decoded[k][r][pair]=__nv_cvt_fp8x2_to_halfraw2(
+              static_cast<__nv_fp8x2_storage_t>(codes[k][r][pair]),__NV_E4M3);
+      }
+    #pragma unroll
+    for(int k=0;k<2;++k)
+      #pragma unroll
+      for(int r=0;r<2;++r)
+        #pragma unroll
+        for(int pair=0;pair<2;++pair) {
+          float2 values=__half22float2(decoded[k][r][pair]);
+          sums[r][pair]=__fadd_rn(sums[r][pair],__fadd_rn(values.x,values.y));
+        }
+  }
+  mass[0]=__fadd_rn(sums[0][0],sums[0][1]);
+  mass[1]=__fadd_rn(sums[1][0],sums[1][1]);
+}
+
+template<bool Interleaved=false, bool FoldAffine=false, uint32_t NQ, uint32_t NK>
 __device__ __forceinline__ void vc_probability_prepare(
     const float (&scores)[NQ][NK][8], float (&maximum)[NQ][2], float scale,
     uint32_t (&packed)[NQ][NK / 2][4], float (&alpha)[NQ][2], float (&mass)[NQ][2]) {
@@ -34,6 +77,20 @@ __device__ __forceinline__ void vc_probability_prepare(
       float new_max = fmaxf(maximum[q][r],local_max);
       alpha[q][r] = expf(maximum[q][r]-new_max);
       maximum[q][r] = new_max;
+    }
+    if constexpr(FoldAffine) {
+      static_assert(Interleaved,"Affine path preserves vc11's two-fragment reduction");
+      float gain=__fmul_rn(scale,11.541560173034668f);
+      // Bound cancellation and avoid coefficient overflow/underflow. Maxima
+      // cover all current scores and history; on this domain the error near
+      // nonzero codes is far below the 0.85 gap from code 120 to code 121.
+      // All lanes take the same branch. Extreme logits use the vc11 path.
+      bool safe=scale>=1.1754943508222875e-38f && isfinite(gain) &&
+          fabsf(maximum[q][0])<=128.f && fabsf(maximum[q][1])<=128.f;
+      if(__all_sync(0xffffffff,safe)) {
+        vc_probability_affine_tile(scores[q],maximum[q],gain,packed[q],mass[q]);
+        continue;
+      }
     }
     // Two independent chains per row instead of updating the long-lived
     // denominator eight times. All E4M3 codes 0..120 are multiples of 2^-9;

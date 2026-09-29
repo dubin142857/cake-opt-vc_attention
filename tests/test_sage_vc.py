@@ -105,7 +105,7 @@ def test_shared_scale_nonzero_mean_known_answer(expcast):
     torch.testing.assert_close(out,torch.full_like(out,expected),rtol=2e-6,atol=1e-6)
 
 
-@pytest.mark.parametrize("mode,flags",[("optimized",(True,True,True,True,True)),("vc10",(True,True,True,True,False)),("vc9",(True,True,True,False,False)),("vc7",(True,True,False,False,False)),("vc6",(True,False,False,False,False)),("vc4",(False,False,False,False,False))])
+@pytest.mark.parametrize("mode,flags",[("optimized",(True,True,True,True,True,True)),("vc11",(True,True,True,True,True,False)),("vc10",(True,True,True,True,False,False)),("vc9",(True,True,True,False,False,False)),("vc7",(True,True,False,False,False,False)),("vc6",(True,False,False,False,False,False)),("vc4",(False,False,False,False,False,False))])
 def test_kernel_mode_dispatch_preserves_previous_schedules(monkeypatch,mode,flags):
     from types import SimpleNamespace
     calls = []
@@ -116,7 +116,7 @@ def test_kernel_mode_dispatch_preserves_previous_schedules(monkeypatch,mode,flag
     keys = ("q","k","v","qs","ks","vs","means","expcast","block_values","output_type","scale")
     state = {key:object() for key in keys}
     assert api.forward_prepared(state,kernel_mode=mode) == "output"
-    assert calls == [(tuple(state[key] for key in keys),dict(optimized=flags[0],packed_probability=flags[1],compact_values=flags[2],pipeline_probability=flags[3],interleaved_probability=flags[4]))]
+    assert calls == [(tuple(state[key] for key in keys),dict(optimized=flags[0],packed_probability=flags[1],compact_values=flags[2],pipeline_probability=flags[3],interleaved_probability=flags[4],affine_probability=flags[5]))]
 
 
 @pytest.mark.parametrize("kwargs,match", [

@@ -167,3 +167,22 @@ torch::Tensor component_decode_check(torch::Tensor codes) {
       reinterpret_cast<const uint32_t*>(codes.data_ptr()),result.data_ptr<float>(),codes.size(0));
   C10_CUDA_KERNEL_LAUNCH_CHECK(); return result;
 }
+
+__global__ void affine_encode_probe(const float* scores,const float* gain,const float* bias,
+    uint16_t* output,int64_t pairs) {
+  int64_t i=int64_t(blockIdx.x)*blockDim.x+threadIdx.x;
+  if(i<pairs) output[i]=uint16_t(vc_expcast_affine_pair(scores[2*i],scores[2*i+1],gain[i],bias[i]));
+}
+
+torch::Tensor affine_encode_check(torch::Tensor scores,torch::Tensor gain,torch::Tensor bias) {
+  TORCH_CHECK(scores.is_cuda() && scores.numel()>0 && scores.numel()%2==0,"Expected CUDA score pairs");
+  for(const auto& tensor:{scores,gain,bias})
+    TORCH_CHECK(tensor.device()==scores.device() && tensor.scalar_type()==at::kFloat && tensor.is_contiguous(),"Expected contiguous FP32 on one device");
+  TORCH_CHECK(gain.numel()==scores.numel()/2 && bias.numel()==gain.numel(),"Expected one gain/bias per pair");
+  const c10::cuda::CUDAGuard guard(scores.device());
+  auto result=torch::empty_like(scores,scores.options().dtype(at::kByte));
+  int64_t pairs=gain.numel();
+  affine_encode_probe<<<(pairs+255)/256,256,0,c10::cuda::getCurrentCUDAStream().stream()>>>(
+      scores.data_ptr<float>(),gain.data_ptr<float>(),bias.data_ptr<float>(),reinterpret_cast<uint16_t*>(result.data_ptr()),pairs);
+  C10_CUDA_KERNEL_LAUNCH_CHECK();return result;
+}
