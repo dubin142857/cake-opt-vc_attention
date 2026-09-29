@@ -1,8 +1,8 @@
 # SageAttention 主体 + VC 两项改动
 
-当前包版本为 `2.2.0+vc12`：只开 ExpCast 时合并线性变换以减少逐元素指令，
-保留 `kernel_mode="vc11"` 同输入对照。FP32 舍入变化可能改变少量 FP8 字节，
-H200 精度与性能需要实测，说明见文末 vc12 小节。
+当前包版本为 `2.2.0+vc13`：只开 ExpCast 时通过私有共享内存副本，
+将当前块概率解码、分母求和与 PV 重叠。保留 `kernel_mode="vc12"` 和
+`kernel_mode="vc13_serial"` 同输入对照，H200 净收益尚待实测，见文末 vc13 小节。
 
 `sageattention-local==2.2.0+vc9` 在已经同场测到 25.8055 ms 的本地 Sage 源码上，
 新增独立 `sageattn_vc`。原版 `sageattn` 的数学与内核保留。
@@ -316,3 +316,37 @@ V 平滑路径、控制组、所有 Q/K/V 量化、FP8 P 字节、FP32 块内累
 连续 64 块、四个随机种子、FP32/FP16/BF16 输出的解码 PV 模拟通过原有 0.1% 差异门槛，
 但没有执行 Hopper WGMMA。远端安装检查和 profile 同样保留 0.1% 门槛。
 完整验证步骤见 [性能诊断](SAGE_VC_PROFILE.md#vc12合并-expcast-的线性变换)。
+
+## vc13：让当前块概率求和与 PV 重叠
+
+版本 `2.2.0+vc13` / native kernel version 10。只修改 ExpCast 开启、V 平滑关闭的
+路径；control、V 平滑、原版 `sageattn` 沿用原内核。vc12 的 H200 同场复测为
+vc11 28.4311 ms、vc12 27.2819 ms，control 为 25.4781/25.5152 ms；这是用户提供的
+核心 API 结果，vc13 尚无 H200 性能结果。
+
+vc12 在 PV 前完成 FP8 编码、解码和当前块求和。vc13 将同样的概率字节写入线程
+私有的共享内存位置，再在 PV 执行期间从副本解码、FP32 求和和更新历史分母。
+不能直接在 PV 期间读取 WGMMA 正在使用的概率寄存器；这是
+[NVIDIA PTX 的异步寄存器访问约束](https://docs.nvidia.com/cuda/parallel-thread-execution/#asynchronous-warpgroup-level-matrix-instructions-wgmma-wait-group)。
+
+每 CTA 增加 8192 字节共享内存；D128 动态共享内存由 40960 增至 49152 字节。
+各线程独占自己的副本，不增加跨线程同步。FP8 P 字节、FP32 tile sum 和两级
+PV 累加保持 vc12 的数值约定，极端 logits 仍使用相同的旧编码回退。
+
+编译器可能把 CUDA 算术移到等待之后。因此等待依赖两个非负 tile sum，串行
+对照的 WGMMA fence 也依赖这两个和。每个和包含 32 个 [0,256] 的概率，范围
+[0,8192]，所以整个 warpgroup 的条件一致为真，包括全掩码的零和。检查不成立
+会 trap，不会跳过等待后读取未完成的矩阵乘结果。必须检查目标编译器的生成指令；
+源码中的先后顺序不能单独证明发生了重叠。
+
+三个模式均执行完整 attention 并返回输出：
+
+| kernel_mode | 行为 | 对比目的 |
+|---|---|---|
+| `vc12` | 原版编码、解码求和调度，无共享副本 | 衡量最终净收益 |
+| `vc13_serial` | 新共享副本，求和在 PV 开始前完成 | 检查副本与串行调度成本 |
+| `optimized` | 新共享副本，求和与 PV 重叠 | 候选默认路径 |
+
+本地 SM86 可执行概率 helper 的数值/内存测试；SM90a 主内核仅交叉编译、检查
+SASS，完整 H200 执行由远端验证。准确率门槛未放宽。具体命令见
+[性能诊断](SAGE_VC_PROFILE.md#vc13完整内核中的概率求和调度对比)。

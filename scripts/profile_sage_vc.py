@@ -211,8 +211,10 @@ def parse_args(argv=None):
                         help="Compare previous/optimized cores on identical payloads; validate ALL output rows")
     parser.add_argument("--expcast-only",action="store_true",
                         help="Measure Sage/control/ExpCast only; skip V grouping/smoothing entirely")
-    parser.add_argument("--kernel-baseline",choices=("vc4","vc6","vc7","vc9","vc10","vc11"),
-                        help="Same-payload baseline; defaults to vc11 on vc12+, vc10 on vc11, vc9 on vc10, vc7 on vc8/9, vc6 on vc7, otherwise vc4")
+    parser.add_argument("--kernel-baseline",choices=("vc4","vc6","vc7","vc9","vc10","vc11","vc12","vc13_serial"),
+                        help="Same-payload baseline; defaults to vc12 on vc13+, vc11 on vc12, vc10 on vc11, vc9 on vc10, vc7 on vc8/9, vc6 on vc7, otherwise vc4")
+    parser.add_argument("--compare-probability-schedules", action="store_true",
+                        help="vc13+: compare vc12, serial scratch and overlap on identical payloads; validate ALL output rows")
     parser.add_argument("--compare-v-scales", action="store_true",
                         help="vc6+: compare old block and new channel V quantization, including API time and dense FP32 errors")
     parser.add_argument("--compare-grouping", action="store_true",
@@ -230,7 +232,7 @@ def parse_args(argv=None):
         parser.error("--kernel-baseline requires --compare-kernels")
     if args.expcast_only and (args.compare_v_scales or args.compare_grouping or args.ncu_variant):
         parser.error("--expcast-only cannot be combined with V/grouping comparisons or --ncu-variant")
-    if args.ncu_variant and (args.trace_dir or args.compare_kernels or args.compare_v_scales or args.compare_grouping):
+    if args.ncu_variant and (args.compare_probability_schedules or args.trace_dir or args.compare_kernels or args.compare_v_scales or args.compare_grouping):
         parser.error("--ncu-variant uses a separate profiler run")
     return args
 
@@ -275,7 +277,9 @@ def kernel_calls(ops, fixed, baseline="vc4"):
 
 def kernel_baseline(ops,args):
     version = getattr(ops.ext,"sage_vc_kernel_version",0)
-    baseline = getattr(args,"kernel_baseline",None) or ("vc11" if version >= 9 else "vc10" if version >= 8 else "vc9" if version >= 7 else "vc7" if version >= 6 else "vc6" if version >= 5 else "vc4")
+    baseline = getattr(args,"kernel_baseline",None) or ("vc12" if version >= 10 else "vc11" if version >= 9 else "vc10" if version >= 8 else "vc9" if version >= 7 else "vc7" if version >= 6 else "vc6" if version >= 5 else "vc4")
+    if baseline in ("vc12", "vc13_serial") and version < 10:
+        raise RuntimeError("--kernel-baseline vc12/vc13_serial needs vc13; rebuild with bash scripts/build_sage_local.sh")
     if baseline == "vc11" and version < 9:
         raise RuntimeError("--kernel-baseline vc11 needs vc12; rebuild with bash scripts/build_sage_local.sh")
     if baseline == "vc10" and version < 8:
@@ -449,7 +453,9 @@ def compare_kernels(ops, fixed, args, device):
         print(f"Kernel comparison trial {trial+1}/{args.trials} complete",flush=True)
     rows = {}
     print(f"\nSame-payload native APIs: {baseline} vs optimized (ms; excludes all preprocessing)")
-    if baseline == "vc11":
+    if baseline in ("vc12", "vc13_serial"):
+        print("vc13 changes only ExpCast without V smoothing: identical FP8 P and FP32 tile sums; private shared copy allows sum/history updates during PV. vc13_serial uses the same copy but sums before PV.")
+    elif baseline == "vc11":
         print("vc11/optimized fold the ExpCast-only affine transform in FP32. Q/K/V payloads are identical; FP8 P rounding may differ near boundaries. The denominator still sums decoded P; extreme ranges use vc11.")
     elif baseline == "vc10":
         print("vc10/optimized compare ExpCast-only scheduling; vc12+ also folds the affine transform and may change FP8 P rounding. Q/K/V payloads and two-level PV accumulation are unchanged.")
@@ -471,6 +477,66 @@ def compare_kernels(ops, fixed, args, device):
     print("Accuracy compares ALL output rows on identical quantized tensors; 0.1% is an implementation regression gate, not model quality.")
     return {"variants":rows,"baseline_mode":baseline,"trial_order":orders,"implementation_rel_rmse_limit":.001,
             "scope":"Same process/payload; synchronized native API wall time; includes dispatch/allocation; no preprocessing or dense FP32 oracle."}
+
+
+@torch.no_grad()
+def compare_probability_schedules(ops, fixed, args, device):
+    """Correct-output full kernels: separate copy cost from overlap benefit."""
+    if getattr(ops.ext, "sage_vc_kernel_version", 0) < 10:
+        raise RuntimeError("Probability schedule comparison needs vc13")
+    modes = ("vc12", "vc13_serial", "optimized")
+    fixed = {name: state for name, state in fixed.items() if not state["block_values"]}
+    calls = {(name, mode): lambda state=state, mode=mode:
+             ops.vc.forward_prepared(state, kernel_mode=mode)
+             for name, state in fixed.items() for mode in modes}
+    for call in calls.values():
+        for _ in range(args.warmup):
+            call()
+    torch.cuda.synchronize(device)
+    errors = {}
+    for name in fixed:
+        reference = calls[name, "vc12"]()
+        for mode in modes[1:]:
+            errors[name, mode] = output_difference(calls[name, mode](), reference)
+            if errors[name, mode]["rel_rmse"] > .001:
+                raise AssertionError(f"{mode}/vc12 relative RMSE exceeds 0.1%: {name}, {errors[name, mode]}")
+        del reference
+    times, orders = {key: [] for key in calls}, []
+    rng = random.Random(args.seed + 13)
+    for trial in range(args.trials):
+        # Keep each input's three schedules adjacent; randomize both inputs
+        # and schedule order to reduce drift bias. Save every raw observation.
+        names = list(fixed)
+        rng.shuffle(names)
+        order = []
+        for name in names:
+            shuffled = list(modes)
+            rng.shuffle(shuffled)
+            for mode in shuffled:
+                key = (name, mode)
+                order.append(key)
+                _, elapsed = measure_trial(calls[key], args.repeats, device)
+                times[key].append(elapsed)
+        orders.append(order)
+        print(f"Probability schedule trial {trial+1}/{args.trials} complete", flush=True)
+    rows = {}
+    print("\nFull native API, identical payloads: vc12 / serial shared-copy sum / sum during PV (ms)")
+    print(f"{'variant':<23} {'vc12':>10} {'serial':>10} {'overlap':>10} {'vc12/new':>10} {'serial/new':>12} {'new RMSE %':>12}")
+    for name in fixed:
+        measurements = {mode: stats(times[name, mode]) for mode in modes}
+        baseline, serial, overlap = (measurements[mode]["median_ms"] for mode in modes)
+        rows[name] = {"timings": measurements,
+                      "output_vs_vc12": {mode: errors[name, mode] for mode in modes[1:]},
+                      "vc12_over_overlap": baseline/overlap,
+                      "serial_over_overlap": serial/overlap,
+                      "paired_vc12_over_overlap": [a/b for a, b in zip(times[name, "vc12"], times[name, "optimized"])],
+                      "paired_serial_over_overlap": [a/b for a, b in zip(times[name, "vc13_serial"], times[name, "optimized"])]}
+        print(f"{name:<23} {baseline:>10.4f} {serial:>10.4f} {overlap:>10.4f} {baseline/overlap:>9.3f}x "
+              f"{serial/overlap:>11.3f}x {errors[name, 'optimized']['rel_rmse']*100:>12.6f}")
+    print("serial/new tests overlap with the SAME shared-copy path; vc12/new includes the copy cost.")
+    print("These are full correct-output native APIs, not isolated sum durations. All output rows checked; preprocessing excluded.")
+    return {"variants": rows, "trial_order": orders, "implementation_rel_rmse_limit": .001,
+            "scope": "Same original and quantized inputs; full native API wall time, no preprocessing; three compiled schedules; timings are not additive component costs."}
 
 
 def print_report(report):
@@ -501,6 +567,8 @@ def run(args):
     torch.backends.cuda.matmul.allow_tf32 = False
     from sageattention_local import sage_vc_build_info
     info, ops = sage_vc_build_info(), load_ops()
+    if args.compare_probability_schedules and getattr(ops.ext,"sage_vc_kernel_version",0) < 10:
+        raise RuntimeError("--compare-probability-schedules needs vc13; rebuild with bash scripts/build_sage_local.sh")
     if args.compare_kernels and getattr(ops.ext,"sage_vc_kernel_version",0) < 3:
         raise RuntimeError("--compare-kernels needs vc5; rebuild with bash scripts/build_sage_local.sh")
     if args.compare_kernels:
@@ -601,6 +669,9 @@ def run(args):
     print(f"Timing report: {path}",flush=True)
     if args.compare_kernels:
         report["kernel_comparison"] = compare_kernels(ops,fixed,args,device)
+        path.write_text(json.dumps(report,indent=2,allow_nan=False)+"\n",encoding="utf-8")
+    if args.compare_probability_schedules:
+        report["probability_schedules"] = compare_probability_schedules(ops,fixed,args,device)
         path.write_text(json.dumps(report,indent=2,allow_nan=False)+"\n",encoding="utf-8")
     if args.compare_v_scales:
         report["value_scale_comparison"] = compare_v_scales(ops,qkv,bases[True],args,device)

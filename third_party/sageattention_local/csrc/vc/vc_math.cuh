@@ -13,7 +13,7 @@ __device__ __forceinline__ float2 vc_decode_pair(uint32_t codes) {
 // ExpCast without V block means: form P and independent tile sums first.
 // History scaling is delayed until PV is in flight. Never read P's register
 // fragments between wgmma.mma_async and wait_group (PTX forbids that too).
-template<uint32_t NK>
+template<bool EncodeOnly=false, uint32_t NK>
 __device__ __forceinline__ void vc_probability_affine_tile(
     const float (&scores)[NK][8],const float (&maximum)[2],float gain,
     uint32_t (&packed)[NK/2][4],float (&mass)[2]) {
@@ -37,11 +37,14 @@ __device__ __forceinline__ void vc_probability_affine_tile(
       #pragma unroll
       for(int r=0;r<2;++r) {
         packed[base/2][k*2+r]=__byte_perm(codes[k][r][0],codes[k][r][1],0x5410);
-        #pragma unroll
-        for(int pair=0;pair<2;++pair)
-          decoded[k][r][pair]=__nv_cvt_fp8x2_to_halfraw2(
-              static_cast<__nv_fp8x2_storage_t>(codes[k][r][pair]),__NV_E4M3);
+        if constexpr(!EncodeOnly) {
+          #pragma unroll
+          for(int pair=0;pair<2;++pair)
+            decoded[k][r][pair]=__nv_cvt_fp8x2_to_halfraw2(
+                static_cast<__nv_fp8x2_storage_t>(codes[k][r][pair]),__NV_E4M3);
+        }
       }
+    if constexpr(!EncodeOnly) {
     #pragma unroll
     for(int k=0;k<2;++k)
       #pragma unroll
@@ -51,12 +54,15 @@ __device__ __forceinline__ void vc_probability_affine_tile(
           float2 values=__half22float2(decoded[k][r][pair]);
           sums[r][pair]=__fadd_rn(sums[r][pair],__fadd_rn(values.x,values.y));
         }
+    }
   }
-  mass[0]=__fadd_rn(sums[0][0],sums[0][1]);
-  mass[1]=__fadd_rn(sums[1][0],sums[1][1]);
+  if constexpr(!EncodeOnly) {
+    mass[0]=__fadd_rn(sums[0][0],sums[0][1]);
+    mass[1]=__fadd_rn(sums[1][0],sums[1][1]);
+  }
 }
 
-template<bool Interleaved=false, bool FoldAffine=false, uint32_t NQ, uint32_t NK>
+template<bool Interleaved=false, bool FoldAffine=false, bool EncodeOnly=false, uint32_t NQ, uint32_t NK>
 __device__ __forceinline__ void vc_probability_prepare(
     const float (&scores)[NQ][NK][8], float (&maximum)[NQ][2], float scale,
     uint32_t (&packed)[NQ][NK / 2][4], float (&alpha)[NQ][2], float (&mass)[NQ][2]) {
@@ -88,7 +94,7 @@ __device__ __forceinline__ void vc_probability_prepare(
       bool safe=scale>=1.1754943508222875e-38f && isfinite(gain) &&
           fabsf(maximum[q][0])<=128.f && fabsf(maximum[q][1])<=128.f;
       if(__all_sync(0xffffffff,safe)) {
-        vc_probability_affine_tile(scores[q],maximum[q],gain,packed[q],mass[q]);
+        vc_probability_affine_tile<EncodeOnly>(scores[q],maximum[q],gain,packed[q],mass[q]);
         continue;
       }
     }
@@ -122,11 +128,14 @@ __device__ __forceinline__ void vc_probability_prepare(
           #pragma unroll
           for (int r = 0; r < 2; ++r) {
             packed[q][base/2][k*2+r] = __byte_perm(codes[k][r][0],codes[k][r][1],0x5410);
-            #pragma unroll
-            for (int pair = 0; pair < 2; ++pair)
-              decoded[k][r][pair] = __nv_cvt_fp8x2_to_halfraw2(
-                  static_cast<__nv_fp8x2_storage_t>(codes[k][r][pair]),__NV_E4M3);
+            if constexpr(!EncodeOnly) {
+              #pragma unroll
+              for (int pair = 0; pair < 2; ++pair)
+                decoded[k][r][pair] = __nv_cvt_fp8x2_to_halfraw2(
+                    static_cast<__nv_fp8x2_storage_t>(codes[k][r][pair]),__NV_E4M3);
+            }
           }
+        if constexpr(!EncodeOnly) {
         #pragma unroll
         for (int k = 0; k < 2; ++k)
           #pragma unroll
@@ -136,6 +145,7 @@ __device__ __forceinline__ void vc_probability_prepare(
               float2 values = __half22float2(decoded[k][r][pair]);
               sums[r][pair] = __fadd_rn(sums[r][pair],__fadd_rn(values.x,values.y));
             }
+        }
       }
     } else {
     #pragma unroll
@@ -148,16 +158,64 @@ __device__ __forceinline__ void vc_probability_prepare(
         float e = __fmul_rn(scores[q][k][r*2+5],scale);
         uint32_t low = vc_expcast_pair(__fsub_rn(a,maximum[q][r]),__fsub_rn(b,maximum[q][r]));
         uint32_t high = vc_expcast_pair(__fsub_rn(c,maximum[q][r]),__fsub_rn(e,maximum[q][r]));
-        float2 first = vc_decode_pair(low), second = vc_decode_pair(high);
-        sums[r][0] = __fadd_rn(sums[r][0],__fadd_rn(first.x,first.y));
-        sums[r][1] = __fadd_rn(sums[r][1],__fadd_rn(second.x,second.y));
+        if constexpr(!EncodeOnly) {
+          float2 first = vc_decode_pair(low), second = vc_decode_pair(high);
+          sums[r][0] = __fadd_rn(sums[r][0],__fadd_rn(first.x,first.y));
+          sums[r][1] = __fadd_rn(sums[r][1],__fadd_rn(second.x,second.y));
+        }
         packed[q][k/2][(k%2)*2+r] = __byte_perm(low,high,0x5410);
       }
     }
     }
+    if constexpr(!EncodeOnly) {
+      #pragma unroll
+      for (int r = 0; r < 2; ++r)
+        mass[q][r] = __fadd_rn(sums[r][0],sums[r][1]);
+    }
+  }
+}
+
+// A private shared-memory copy lets CUDA cores decode P while WGMMA reads
+// the original register operands. Reading those operands before wait_group
+// would be undefined behavior. Each thread owns its strided scratch words;
+// no cross-thread communication or extra barrier is needed. Volatile PTX
+// retains the actual shared copy and its placement relative to WGMMA.
+template<uint32_t NQ, uint32_t NP>
+__device__ __forceinline__ void vc_probability_store(
+    const uint32_t (&packed)[NQ][NP][4], uint32_t* scratch) {
+  #pragma unroll
+  for(int q=0;q<NQ;++q)
     #pragma unroll
-    for (int r = 0; r < 2; ++r)
-      mass[q][r] = __fadd_rn(sums[r][0],sums[r][1]);
+    for(int k=0;k<NP;++k)
+      #pragma unroll
+      for(int j=0;j<4;++j) {
+        uint32_t address=static_cast<uint32_t>(__cvta_generic_to_shared(
+            scratch+((q*NP+k)*4+j)*128+threadIdx.x));
+        asm volatile("st.shared.b32 [%0], %1;" :: "r"(address), "r"(packed[q][k][j]) : "memory");
+      }
+}
+
+template<uint32_t NQ>
+__device__ __forceinline__ void vc_probability_load_mass(
+    const uint32_t* scratch, float (&mass)[NQ][2]) {
+  // Same order and exact FP32 tile sums as vc12 (K128, codes 0..120).
+  #pragma unroll
+  for(int q=0;q<NQ;++q) {
+    float sums[2][2]={};
+    #pragma unroll
+    for(int k=0;k<8;++k)
+      #pragma unroll
+      for(int r=0;r<2;++r) {
+        uint32_t address=static_cast<uint32_t>(__cvta_generic_to_shared(
+            scratch+(q*16+k*2+r)*128+threadIdx.x));
+        uint32_t word;
+        asm volatile("ld.shared.b32 %0, [%1];" : "=r"(word) : "r"(address) : "memory");
+        float2 low=vc_decode_pair(word),high=vc_decode_pair(word>>16);
+        sums[r][0]=__fadd_rn(sums[r][0],__fadd_rn(low.x,low.y));
+        sums[r][1]=__fadd_rn(sums[r][1],__fadd_rn(high.x,high.y));
+      }
+    mass[q][0]=__fadd_rn(sums[0][0],sums[0][1]);
+    mass[q][1]=__fadd_rn(sums[1][0],sums[1][1]);
   }
 }
 

@@ -1,0 +1,213 @@
+{
+  "package_version": "2.2.0+vc13",
+  "native_kernel_version": 10,
+  "execution_device": "RTX 3060 Laptop, SM86; no Hopper attention execution",
+  "crosscompile": "CUDA 12.4 sm_90a; 80 attention kernels; native extension linked/imported",
+  "legacy_sass_instruction_text_identical": 72,
+  "new_kernels": {
+    "d128_bf16_serial": {
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "dynamic_shared_bytes": 49152
+    },
+    "d128_fp16_serial": {
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "dynamic_shared_bytes": 49152
+    },
+    "d64_bf16_serial": {
+      "registers": 128,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "dynamic_shared_bytes": 28672
+    },
+    "d64_fp16_serial": {
+      "registers": 128,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "dynamic_shared_bytes": 28672
+    },
+    "d128_bf16_overlap": {
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "dynamic_shared_bytes": 49152
+    },
+    "d128_fp16_overlap": {
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "dynamic_shared_bytes": 49152
+    },
+    "d64_bf16_overlap": {
+      "registers": 128,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "dynamic_shared_bytes": 28672
+    },
+    "d64_fp16_overlap": {
+      "registers": 128,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "dynamic_shared_bytes": 28672
+    }
+  },
+  "tests_passed": 301,
+  "legacy_helper_golden_cases_exact": 16,
+  "memcheck": "132 CUDA helper/component tests passed; 0 errors",
+  "numerical_checks": "Shared-copy helper matches vc12 probability bytes, maximum, output history, denominator and mass exactly; independent oracle, rounding boundaries, extreme fallback, masked tails and two 300-tile histories included.",
+  "sass_regions_between_first_pv_and_wait": {
+    "vc13-d128-bf16-overlap": [
+      {
+        "pv_mma": 4,
+        "shared_loads": 14,
+        "fp8_unpack": 29,
+        "fp32_add": 64,
+        "protected_register_accesses": []
+      },
+      {
+        "pv_mma": 4,
+        "shared_loads": 14,
+        "fp8_unpack": 32,
+        "fp32_add": 68,
+        "protected_register_accesses": []
+      }
+    ],
+    "vc13-d128-bf16-serial": [
+      {
+        "pv_mma": 4,
+        "shared_loads": 0,
+        "fp8_unpack": 0,
+        "fp32_add": 2,
+        "protected_register_accesses": []
+      },
+      {
+        "pv_mma": 4,
+        "shared_loads": 0,
+        "fp8_unpack": 0,
+        "fp32_add": 2,
+        "protected_register_accesses": []
+      }
+    ],
+    "vc13-d128-fp16-overlap": [
+      {
+        "pv_mma": 4,
+        "shared_loads": 14,
+        "fp8_unpack": 29,
+        "fp32_add": 64,
+        "protected_register_accesses": []
+      },
+      {
+        "pv_mma": 4,
+        "shared_loads": 14,
+        "fp8_unpack": 32,
+        "fp32_add": 68,
+        "protected_register_accesses": []
+      }
+    ],
+    "vc13-d128-fp16-serial": [
+      {
+        "pv_mma": 4,
+        "shared_loads": 0,
+        "fp8_unpack": 0,
+        "fp32_add": 2,
+        "protected_register_accesses": []
+      },
+      {
+        "pv_mma": 4,
+        "shared_loads": 0,
+        "fp8_unpack": 0,
+        "fp32_add": 2,
+        "protected_register_accesses": []
+      }
+    ],
+    "vc13-d64-bf16-overlap": [
+      {
+        "pv_mma": 4,
+        "shared_loads": 12,
+        "fp8_unpack": 32,
+        "fp32_add": 70,
+        "protected_register_accesses": []
+      },
+      {
+        "pv_mma": 4,
+        "shared_loads": 11,
+        "fp8_unpack": 32,
+        "fp32_add": 68,
+        "protected_register_accesses": []
+      }
+    ],
+    "vc13-d64-bf16-serial": [
+      {
+        "pv_mma": 4,
+        "shared_loads": 0,
+        "fp8_unpack": 0,
+        "fp32_add": 2,
+        "protected_register_accesses": []
+      },
+      {
+        "pv_mma": 4,
+        "shared_loads": 0,
+        "fp8_unpack": 0,
+        "fp32_add": 2,
+        "protected_register_accesses": []
+      }
+    ],
+    "vc13-d64-fp16-overlap": [
+      {
+        "pv_mma": 4,
+        "shared_loads": 12,
+        "fp8_unpack": 32,
+        "fp32_add": 70,
+        "protected_register_accesses": []
+      },
+      {
+        "pv_mma": 4,
+        "shared_loads": 11,
+        "fp8_unpack": 32,
+        "fp32_add": 68,
+        "protected_register_accesses": []
+      }
+    ],
+    "vc13-d64-fp16-serial": [
+      {
+        "pv_mma": 4,
+        "shared_loads": 0,
+        "fp8_unpack": 0,
+        "fp32_add": 2,
+        "protected_register_accesses": []
+      },
+      {
+        "pv_mma": 4,
+        "shared_loads": 0,
+        "fp8_unpack": 0,
+        "fp32_add": 2,
+        "protected_register_accesses": []
+      }
+    ]
+  },
+  "sass_scope": "Static CUDA 12.4 scheduling audit: unpack/sum instructions after PV issue and before dependent wait; no non-WGMMA instruction accesses protected A/accumulator registers in these regions. Not measured hardware overlap or speedup.",
+  "ptxas_warnings": 0,
+  "numerical_contract": "Identical vc12 P encoding and FP32 decoded-P sums, two-level FP32 PV accumulation; no threshold relaxation.",
+  "scope": "Full H200 correctness/performance pending remote validation. Extra 8 KiB shared copy may cost more than overlap saves; compare vc12, vc13_serial and optimized.",
+  "source_sha256_lf": {
+    "third_party/sageattention_local/csrc/vc/vc_math.cuh": "8d7711255ba1d19d63a5ff475cad394f543a7e9842ab9a746fbf0af5d91e7eb8",
+    "third_party/sageattention_local/csrc/vc/vc_sm90.cu": "dc2a861a950e3a502515c79d01005764e98868adb706dff958b172510cda77b9",
+    "third_party/sageattention_local/csrc/vc/pybind.cpp": "2c893bcd0827669670b601cbdaa010c234f912bd8771d6f5fdf7e5d3f492bfe9",
+    "third_party/sageattention_local/csrc/vc/vc_api.h": "3e4b51e4302251955cf50575c671433477230e12d520d9d958a4d412d1c04991",
+    "third_party/sageattention_local/sageattention_local/vc.py": "3dc47786f4ec5c5688f640e3f155615f503dd2610432e8e46c171153a951e519",
+    "scripts/profile_sage_vc.py": "c18e96e168dbd93dfae339186072f43679a2b3d7e8e788d5c618066e36cd62d8",
+    "scripts/validate_sage_vc.py": "05b510d67ab77ef1b890929bcaacf881c7e665f62242ec1134daebe084669e0e",
+    "tests/cuda/sage_vc_tile_probe.cu": "f08637ef846fea9feea55f1eb23666c60e0d20beb015ed668fd0e4c7e57e3eb3"
+  }
+}

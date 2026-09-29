@@ -135,7 +135,7 @@ __device__ __forceinline__ void arrive(uint64_t* bar) {
     );
 }
 
-template<uint32_t CTA_Q, uint32_t CTA_K, uint32_t NUM_THREADS, uint32_t head_dim, QuantGranularity Q_GRAN, QuantGranularity K_GRAN, typename DTypeOut, MaskMode mask_mode = MaskMode::kNone, bool return_lse = false, bool fuse_v_scale=false, bool ExpCast=false, bool BlockValues=false, bool Optimized=false, bool ChannelScale=false, bool PackedProbability=false, bool CompactValues=false, bool PipelineProbability=false, bool InterleavedProbability=false, bool FoldAffine=false>
+template<uint32_t CTA_Q, uint32_t CTA_K, uint32_t NUM_THREADS, uint32_t head_dim, QuantGranularity Q_GRAN, QuantGranularity K_GRAN, typename DTypeOut, MaskMode mask_mode = MaskMode::kNone, bool return_lse = false, bool fuse_v_scale=false, bool ExpCast=false, bool BlockValues=false, bool Optimized=false, bool ChannelScale=false, bool PackedProbability=false, bool CompactValues=false, bool PipelineProbability=false, bool InterleavedProbability=false, bool FoldAffine=false, int ProbabilitySchedule=0>
 __device__ __forceinline__ void sage_vc_attention_body(const CUtensorMap& tensorMapQ,
                                         const CUtensorMap& tensorMapK,
                                         const CUtensorMap& tensorMapV,
@@ -149,6 +149,8 @@ __device__ __forceinline__ void sage_vc_attention_body(const CUtensorMap& tensor
 #else
   static_assert(NUM_THREADS == 128);
   static_assert(!CompactValues || (head_dim == 128 && BlockValues && Optimized && ChannelScale));
+  static_assert(ProbabilitySchedule >= 0 && ProbabilitySchedule <= 2);
+  static_assert(ProbabilitySchedule == 0 || (PipelineProbability && FoldAffine));
   static_assert(!PipelineProbability || (ExpCast && !BlockValues && Optimized && PackedProbability));
   static_assert(CTA_Q <= CTA_K);
 
@@ -175,6 +177,7 @@ __device__ __forceinline__ void sage_vc_attention_body(const CUtensorMap& tensor
   int8_t *sK = (int8_t*)(smem_ + CTA_Q * head_dim * sizeof(int8_t));
   int8_t *sV = (int8_t*)(smem_ + CTA_Q * head_dim * sizeof(int8_t) + CTA_K * head_dim * sizeof(int8_t));
   half *sO = (half*)smem_;
+  uint32_t* probability_scratch = reinterpret_cast<uint32_t*>(smem_ + (CTA_Q + 2 * CTA_K) * head_dim);
 
   int32_t RS[num_tiles_q][num_tiles_k][8];
   float RO[num_tiles_q][num_tiles_v][8];
@@ -325,8 +328,14 @@ __device__ __forceinline__ void sage_vc_attention_body(const CUtensorMap& tensor
     uint32_t RS_f8[num_tiles_q][num_tiles_pv_inner][4];
     float tile_mass[num_tiles_q][2], probability_alpha[num_tiles_q][2];
     if constexpr (PipelineProbability)
-      vc_probability_prepare<InterleavedProbability,FoldAffine>(RS_f32, m, sm_scale, RS_f8, probability_alpha, tile_mass);
+      vc_probability_prepare<InterleavedProbability,FoldAffine,(ProbabilitySchedule != 0)>(RS_f32, m, sm_scale, RS_f8, probability_alpha, tile_mass);
     else vc_probability<ExpCast, BlockValues, Optimized, PackedProbability>(RS_f32, RO, m, d, sm_scale, RS_f8, tile_mass);
+
+    if constexpr(ProbabilitySchedule != 0) {
+      vc_probability_store(RS_f8, probability_scratch);
+      if constexpr(ProbabilitySchedule == 2)
+        vc_probability_load_mass(probability_scratch, tile_mass);
+    }
 
     // wait for V
     wait(&barrier_V, p);
@@ -340,7 +349,16 @@ __device__ __forceinline__ void sage_vc_attention_body(const CUtensorMap& tensor
       float RO_temp[num_tiles_q][num_tiles_v / pv_parts][8];
       // Keep Sage's two-level FP32 accumulation: FP8 WGMMA must not
       // repeatedly round the long-lived output history or mean compensation.
-      wgmma::warpgroup_arrive();
+      if constexpr(ProbabilitySchedule == 2) {
+        // Controlled serial baseline: force BOTH row sums before PV starts.
+        // The mass predicate is uniformly true (same bound as at the wait).
+        asm volatile("{ .reg .pred p;\n"
+                     "setp.ge.f32 p, %0, 0f00000000;\n"
+                     "setp.ge.and.f32 p, %1, 0f00000000, p;\n"
+                     "@!p trap;\n"
+                     "@p wgmma.fence.sync.aligned; }"
+                     :: "f"(tile_mass[0][0]), "f"(tile_mass[0][1]) : "memory");
+      } else wgmma::warpgroup_arrive();
   #pragma unroll
       for (uint32_t fq = 0; fq < num_tiles_q; fq++)
       {
@@ -353,9 +371,25 @@ __device__ __forceinline__ void sage_vc_attention_body(const CUtensorMap& tensor
       }
 
       wgmma::warpgroup_commit_batch();
+      if constexpr(ProbabilitySchedule == 1)
+        vc_probability_load_mass(probability_scratch, tile_mass);
       if constexpr (PipelineProbability)
         vc_probability_finish(RO, d, probability_alpha, tile_mass);
-      wgmma::warpgroup_wait<0>();
+      if constexpr(ProbabilitySchedule != 0) {
+        static_assert(num_tiles_q == 1);
+        // Every lane's mass is a finite nonnegative sum of 32 E4M3
+        // values in [0,256], including fully masked (zero-mass) tiles.
+        // Thus the wait predicate is true for the WHOLE warpgroup.
+        // This data dependency stops ptxas moving the sum past the wait
+        // to reuse P's registers. Invalid mass traps instead of skipping
+        // the wait and accessing unfinished accumulators.
+        asm volatile("{ .reg .pred p;\n"
+                     "setp.ge.f32 p, %0, 0f00000000;\n"
+                     "setp.ge.and.f32 p, %1, 0f00000000, p;\n"
+                     "@!p trap;\n"
+                     "@p wgmma.wait_group.sync.aligned 0; }"
+                     :: "f"(tile_mass[0][0]), "f"(tile_mass[0][1]) : "memory");
+      } else wgmma::warpgroup_wait<0>();
 
       // Start the next V transfer only after the last fragment has finished
       // reading sV. Overlap that transfer with the remaining mean restoration.
@@ -448,8 +482,14 @@ __device__ __forceinline__ void sage_vc_attention_body(const CUtensorMap& tensor
     uint32_t RS_f8[num_tiles_q][num_tiles_pv_inner][4];
     float tile_mass[num_tiles_q][2], probability_alpha[num_tiles_q][2];
     if constexpr (PipelineProbability)
-      vc_probability_prepare<InterleavedProbability,FoldAffine>(RS_f32, m, sm_scale, RS_f8, probability_alpha, tile_mass);
+      vc_probability_prepare<InterleavedProbability,FoldAffine,(ProbabilitySchedule != 0)>(RS_f32, m, sm_scale, RS_f8, probability_alpha, tile_mass);
     else vc_probability<ExpCast, BlockValues, Optimized, PackedProbability>(RS_f32, RO, m, d, sm_scale, RS_f8, tile_mass);
+
+    if constexpr(ProbabilitySchedule != 0) {
+      vc_probability_store(RS_f8, probability_scratch);
+      if constexpr(ProbabilitySchedule == 2)
+        vc_probability_load_mass(probability_scratch, tile_mass);
+    }
 
     // wait for V
     wait(&barrier_V, p);
@@ -463,7 +503,14 @@ __device__ __forceinline__ void sage_vc_attention_body(const CUtensorMap& tensor
       float RO_temp[num_tiles_q][num_tiles_v / pv_parts][8];
       // Keep Sage's two-level FP32 accumulation: FP8 WGMMA must not
       // repeatedly round the long-lived output history or mean compensation.
-      wgmma::warpgroup_arrive();
+      if constexpr(ProbabilitySchedule == 2) {
+        asm volatile("{ .reg .pred p;\n"
+                     "setp.ge.f32 p, %0, 0f00000000;\n"
+                     "setp.ge.and.f32 p, %1, 0f00000000, p;\n"
+                     "@!p trap;\n"
+                     "@p wgmma.fence.sync.aligned; }"
+                     :: "f"(tile_mass[0][0]), "f"(tile_mass[0][1]) : "memory");
+      } else wgmma::warpgroup_arrive();
   #pragma unroll
       for (uint32_t fq = 0; fq < num_tiles_q; fq++)
       {
@@ -476,9 +523,20 @@ __device__ __forceinline__ void sage_vc_attention_body(const CUtensorMap& tensor
       }
 
       wgmma::warpgroup_commit_batch();
+      if constexpr(ProbabilitySchedule == 1)
+        vc_probability_load_mass(probability_scratch, tile_mass);
       if constexpr (PipelineProbability)
         vc_probability_finish(RO, d, probability_alpha, tile_mass);
-      wgmma::warpgroup_wait<0>();
+      if constexpr(ProbabilitySchedule != 0) {
+        static_assert(num_tiles_q == 1);
+        // Same uniform mass-dependent wait as the main K-tile loop.
+        asm volatile("{ .reg .pred p;\n"
+                     "setp.ge.f32 p, %0, 0f00000000;\n"
+                     "setp.ge.and.f32 p, %1, 0f00000000, p;\n"
+                     "@!p trap;\n"
+                     "@p wgmma.wait_group.sync.aligned 0; }"
+                     :: "f"(tile_mass[0][0]), "f"(tile_mass[0][1]) : "memory");
+      } else wgmma::warpgroup_wait<0>();
 
       vc_accumulate<BlockValues, Optimized, ChannelScale, CompactValues>(RO, RO_temp, tile_mass, V_scale, V_mean,
           batch_id * num_qo_heads + head_id, num_iterations - 1, div_ceil(kv_len, CTA_K), head_dim, lane_id, part * (num_tiles_v / pv_parts));
@@ -641,12 +699,29 @@ __global__ __maxnreg__(168) void sage_vc_attention_kernel_expcast_affine(
       O,Lse,stride_bz_o,stride_h_o,stride_seq_o,qo_len,kv_len,num_kv_groups,sm_scale);
 }
 
+// Schedules 1/2 share encoding and scratch storage. Only mass timing differs.
+template<int Dim, typename Out, int ProbabilitySchedule>
+__global__ __maxnreg__(168) void sage_vc_attention_kernel_expcast_deferred(
+    const __grid_constant__ CUtensorMap tensorMapQ,
+    const __grid_constant__ CUtensorMap tensorMapK,
+    const __grid_constant__ CUtensorMap tensorMapV,
+    float* Q_scale, float* K_scale, float* V_scale, const half* V_mean,
+    Out* O, float* Lse, uint32_t stride_bz_o, uint32_t stride_h_o, uint32_t stride_seq_o,
+    uint32_t qo_len, uint32_t kv_len, uint32_t num_kv_groups, float sm_scale) {
+  sage_vc_attention_body<64,128,128,Dim,QuantGranularity::kPerThread,QuantGranularity::kPerThread,
+      Out,MaskMode::kNone,false,true,true,false,true,false,true,false,true,true,true,ProbabilitySchedule>(
+      tensorMapQ,tensorMapK,tensorMapV,Q_scale,K_scale,V_scale,V_mean,
+      O,Lse,stride_bz_o,stride_h_o,stride_seq_o,qo_len,kv_len,num_kv_groups,sm_scale);
+}
+
 } // namespace sage_vc
 
 namespace {
-template<int Dim, typename Out, bool ExpCast, bool BlockValues, bool Optimized, bool ChannelScale, bool PackedProbability, bool CompactValues, bool PipelineProbability=false, bool InterleavedProbability=false, bool FoldAffine=false>
+template<int Dim, typename Out, bool ExpCast, bool BlockValues, bool Optimized, bool ChannelScale, bool PackedProbability, bool CompactValues, bool PipelineProbability=false, bool InterleavedProbability=false, bool FoldAffine=false, int ProbabilitySchedule=0>
 auto select_vc_kernel() {
-  if constexpr (PipelineProbability && InterleavedProbability && FoldAffine)
+  if constexpr (ProbabilitySchedule != 0)
+    return sage_vc::sage_vc_attention_kernel_expcast_deferred<Dim,Out,ProbabilitySchedule>;
+  else if constexpr (PipelineProbability && InterleavedProbability && FoldAffine)
     return sage_vc::sage_vc_attention_kernel_expcast_affine<Dim,Out>;
   else if constexpr (PipelineProbability && InterleavedProbability)
     return sage_vc::sage_vc_attention_kernel_expcast_interleaved<Dim,Out>;
@@ -686,10 +761,10 @@ std::map<std::string, std::map<std::string, int64_t>> channel_resource_variants(
           {"full_optimized", channel_resources<Out, true, true>()}};
 }
 
-template<typename Out, bool Pipeline, bool Interleaved=false, bool Affine=false>
+template<typename Out, bool Pipeline, bool Interleaved=false, bool Affine=false, int Schedule=0>
 std::map<std::string, int64_t> expcast_resources() {
-  auto kernel = select_vc_kernel<128,Out,true,false,true,false,true,false,Pipeline,Interleaved,Affine>();
-  constexpr int dynamic_bytes = (64+128+128)*128;
+  auto kernel = select_vc_kernel<128,Out,true,false,true,false,true,false,Pipeline,Interleaved,Affine,Schedule>();
+  constexpr int dynamic_bytes = (64+128+128)*128 + (Schedule ? 8192 : 0);
   C10_CUDA_CHECK(cudaFuncSetAttribute(kernel,cudaFuncAttributeMaxDynamicSharedMemorySize,dynamic_bytes));
   cudaFuncAttributes attr{};
   C10_CUDA_CHECK(cudaFuncGetAttributes(&attr,kernel));
@@ -700,7 +775,7 @@ std::map<std::string, int64_t> expcast_resources() {
           {"threads_per_block",128},{"predicted_active_blocks_per_sm",active_blocks}};
 }
 
-template<int Dim, typename Out, bool ExpCast, bool BlockValues, bool Optimized, bool ChannelScale=false, bool PackedProbability=false, bool CompactValues=false, bool PipelineProbability=false, bool InterleavedProbability=false, bool FoldAffine=false>
+template<int Dim, typename Out, bool ExpCast, bool BlockValues, bool Optimized, bool ChannelScale=false, bool PackedProbability=false, bool CompactValues=false, bool PipelineProbability=false, bool InterleavedProbability=false, bool FoldAffine=false, int ProbabilitySchedule=0>
 void launch_vc(torch::Tensor q, torch::Tensor k, torch::Tensor v, torch::Tensor qs,
     torch::Tensor ks, torch::Tensor vs, torch::Tensor means, torch::Tensor out, float scale) {
   auto qm = sage_vc::create_tensor_map_4D<64, Dim>(reinterpret_cast<int8_t*>(q.data_ptr()),
@@ -709,8 +784,8 @@ void launch_vc(torch::Tensor q, torch::Tensor k, torch::Tensor v, torch::Tensor 
       k.size(0), k.size(1), k.size(2), Dim, k.stride(0), k.stride(1), k.stride(2));
   auto vm = sage_vc::create_tensor_map_4D<Dim, 128>(reinterpret_cast<int8_t*>(v.data_ptr()),
       v.size(0), v.size(1), Dim, v.size(3), v.stride(0), v.stride(1), v.stride(2));
-  auto kernel = select_vc_kernel<Dim, Out, ExpCast, BlockValues, Optimized, ChannelScale, PackedProbability, CompactValues, PipelineProbability, InterleavedProbability, FoldAffine>();
-  constexpr int shared_bytes = (64 + 128 + 128) * Dim;
+  auto kernel = select_vc_kernel<Dim, Out, ExpCast, BlockValues, Optimized, ChannelScale, PackedProbability, CompactValues, PipelineProbability, InterleavedProbability, FoldAffine, ProbabilitySchedule>();
+  constexpr int shared_bytes = (64 + 128 + 128) * Dim + (ProbabilitySchedule ? 8192 : 0);
   C10_CUDA_CHECK(cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, shared_bytes));
   dim3 grid((q.size(2) + 63) / 64, q.size(1), q.size(0));
   kernel<<<grid, 128, shared_bytes, c10::cuda::getCurrentCUDAStream(q.get_device()).stream()>>>(
@@ -720,7 +795,7 @@ void launch_vc(torch::Tensor q, torch::Tensor k, torch::Tensor v, torch::Tensor 
       q.size(2), k.size(2), 1, scale);
   C10_CUDA_KERNEL_LAUNCH_CHECK();
 }
-template<int Dim, typename Out, bool Optimized, bool PackedProbability, bool CompactValues, bool PipelineProbability=false, bool InterleavedProbability=false, bool FoldAffine=false>
+template<int Dim, typename Out, bool Optimized, bool PackedProbability, bool CompactValues, bool PipelineProbability=false, bool InterleavedProbability=false, bool FoldAffine=false, int ProbabilitySchedule=0>
 void dispatch_vc(torch::Tensor q, torch::Tensor k, torch::Tensor v, torch::Tensor qs,
     torch::Tensor ks, torch::Tensor vs, torch::Tensor means, torch::Tensor out, float scale, bool cast, bool smooth) {
   if (smooth && vs.dim() == 3) {
@@ -728,27 +803,27 @@ void dispatch_vc(torch::Tensor q, torch::Tensor k, torch::Tensor v, torch::Tenso
     else launch_vc<Dim, Out, false, true, Optimized, true, false, (CompactValues && Dim == 128)>(q,k,v,qs,ks,vs,means,out,scale);
   }
   else if (cast && smooth) launch_vc<Dim, Out, true, true, Optimized, false, PackedProbability>(q,k,v,qs,ks,vs,means,out,scale);
-  else if (cast) launch_vc<Dim, Out, true, false, Optimized, false, PackedProbability, false, PipelineProbability, InterleavedProbability, FoldAffine>(q,k,v,qs,ks,vs,means,out,scale);
+  else if (cast) launch_vc<Dim, Out, true, false, Optimized, false, PackedProbability, false, PipelineProbability, InterleavedProbability, FoldAffine, ProbabilitySchedule>(q,k,v,qs,ks,vs,means,out,scale);
   else if (smooth) launch_vc<Dim, Out, false, true, Optimized>(q,k,v,qs,ks,vs,means,out,scale);
   else launch_vc<Dim, Out, false, false, false>(q,k,v,qs,ks,vs,means,out,scale);
 }
-template<bool Optimized, bool PackedProbability=false, bool CompactValues=false, bool PipelineProbability=false, bool InterleavedProbability=false, bool FoldAffine=false>
+template<bool Optimized, bool PackedProbability=false, bool CompactValues=false, bool PipelineProbability=false, bool InterleavedProbability=false, bool FoldAffine=false, int ProbabilitySchedule=0>
 void dispatch_output(torch::Tensor q, torch::Tensor k, torch::Tensor v, torch::Tensor qs,
     torch::Tensor ks, torch::Tensor vs, torch::Tensor means, torch::Tensor out, float scale,
     int64_t output_type, bool cast, bool smooth) {
   if (q.size(3) == 64) {
-    if (output_type == 0) dispatch_vc<64, half, Optimized, PackedProbability, CompactValues, PipelineProbability, InterleavedProbability, FoldAffine>(q,k,v,qs,ks,vs,means,out,scale,cast,smooth);
-    else dispatch_vc<64, nv_bfloat16, Optimized, PackedProbability, CompactValues, PipelineProbability, InterleavedProbability, FoldAffine>(q,k,v,qs,ks,vs,means,out,scale,cast,smooth);
+    if (output_type == 0) dispatch_vc<64, half, Optimized, PackedProbability, CompactValues, PipelineProbability, InterleavedProbability, FoldAffine, ProbabilitySchedule>(q,k,v,qs,ks,vs,means,out,scale,cast,smooth);
+    else dispatch_vc<64, nv_bfloat16, Optimized, PackedProbability, CompactValues, PipelineProbability, InterleavedProbability, FoldAffine, ProbabilitySchedule>(q,k,v,qs,ks,vs,means,out,scale,cast,smooth);
   } else {
-    if (output_type == 0) dispatch_vc<128, half, Optimized, PackedProbability, CompactValues, PipelineProbability, InterleavedProbability, FoldAffine>(q,k,v,qs,ks,vs,means,out,scale,cast,smooth);
-    else dispatch_vc<128, nv_bfloat16, Optimized, PackedProbability, CompactValues, PipelineProbability, InterleavedProbability, FoldAffine>(q,k,v,qs,ks,vs,means,out,scale,cast,smooth);
+    if (output_type == 0) dispatch_vc<128, half, Optimized, PackedProbability, CompactValues, PipelineProbability, InterleavedProbability, FoldAffine, ProbabilitySchedule>(q,k,v,qs,ks,vs,means,out,scale,cast,smooth);
+    else dispatch_vc<128, nv_bfloat16, Optimized, PackedProbability, CompactValues, PipelineProbability, InterleavedProbability, FoldAffine, ProbabilitySchedule>(q,k,v,qs,ks,vs,means,out,scale,cast,smooth);
   }
 }
 }
 
 torch::Tensor vc_forward(torch::Tensor q, torch::Tensor k, torch::Tensor v,
     torch::Tensor qs, torch::Tensor ks, torch::Tensor vs, torch::Tensor means,
-    bool expcast, bool block_values, int64_t output_type, double scale, bool optimized, bool packed_probability, bool compact_values, bool pipeline_probability, bool interleaved_probability, bool affine_probability) {
+    bool expcast, bool block_values, int64_t output_type, double scale, bool optimized, bool packed_probability, bool compact_values, bool pipeline_probability, bool interleaved_probability, bool affine_probability, int64_t probability_schedule) {
   TORCH_CHECK(q.is_cuda() && q.dim() == 4 && q.numel() > 0, "Q requires nonempty CUDA BHND");
   for (const auto& x : {q,k,v,qs,ks,vs,means})
     TORCH_CHECK(x.device() == q.device() && x.is_contiguous(), "Payloads must be contiguous on the same CUDA device");
@@ -774,13 +849,17 @@ torch::Tensor vc_forward(torch::Tensor q, torch::Tensor k, torch::Tensor v,
   TORCH_CHECK(output_type == 0 || output_type == 1, "Output type must be 0 (FP16) or 1 (BF16)");
   TORCH_CHECK(std::isfinite(scale) && scale > 0 && scale <= FLT_MAX, "Scale must be positive finite FP32");
   TORCH_CHECK(q.numel() < INT32_MAX && k.numel() < INT32_MAX && v.numel() < INT32_MAX && batch <= 65535 && heads <= 65535, "Shape exceeds kernel bounds");
+  TORCH_CHECK(probability_schedule >= 0 && probability_schedule <= 2, "Probability schedule must be 0 (vc12), 1 (overlap) or 2 (serial scratch)");
+  TORCH_CHECK(probability_schedule == 0 || (optimized && packed_probability && compact_values && pipeline_probability && interleaved_probability && affine_probability), "Scratch schedules require the affine pipeline");
   const c10::cuda::CUDAGuard guard(q.device());
   int major, minor;
   C10_CUDA_CHECK(cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, q.get_device()));
   C10_CUDA_CHECK(cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, q.get_device()));
   TORCH_CHECK(major == 9 && minor == 0, "Sage VC native attention requires Hopper; no fallback");
   auto out = torch::empty(q.sizes(), q.options().dtype(output_type == 0 ? at::kHalf : at::kBFloat16));
-  if (optimized && packed_probability && compact_values && pipeline_probability && interleaved_probability && affine_probability) dispatch_output<true, true, true, true, true, true>(q,k,v,qs,ks,vs,means,out,scale,output_type,expcast,block_values);
+  if (probability_schedule == 1) dispatch_output<true,true,true,true,true,true,1>(q,k,v,qs,ks,vs,means,out,scale,output_type,expcast,block_values);
+  else if (probability_schedule == 2) dispatch_output<true,true,true,true,true,true,2>(q,k,v,qs,ks,vs,means,out,scale,output_type,expcast,block_values);
+  else if (optimized && packed_probability && compact_values && pipeline_probability && interleaved_probability && affine_probability) dispatch_output<true, true, true, true, true, true>(q,k,v,qs,ks,vs,means,out,scale,output_type,expcast,block_values);
   else if (optimized && packed_probability && compact_values && pipeline_probability && interleaved_probability) dispatch_output<true, true, true, true, true>(q,k,v,qs,ks,vs,means,out,scale,output_type,expcast,block_values);
   else if (optimized && packed_probability && compact_values && pipeline_probability) dispatch_output<true, true, true, true>(q,k,v,qs,ks,vs,means,out,scale,output_type,expcast,block_values);
   else if (optimized && packed_probability && compact_values) dispatch_output<true, true, true>(q,k,v,qs,ks,vs,means,out,scale,output_type,expcast,block_values);
@@ -801,6 +880,8 @@ std::map<std::string, std::map<std::string, int64_t>> vc_kernel_resources(int64_
   result["expcast_vc9"] = output_type == 0 ? expcast_resources<half,false>() : expcast_resources<nv_bfloat16,false>();
   result["expcast_vc10"] = output_type == 0 ? expcast_resources<half,true>() : expcast_resources<nv_bfloat16,true>();
   result["expcast_vc11"] = output_type == 0 ? expcast_resources<half,true,true>() : expcast_resources<nv_bfloat16,true,true>();
-  result["expcast_optimized"] = output_type == 0 ? expcast_resources<half,true,true,true>() : expcast_resources<nv_bfloat16,true,true,true>();
+  result["expcast_vc12"] = output_type == 0 ? expcast_resources<half,true,true,true>() : expcast_resources<nv_bfloat16,true,true,true>();
+  result["expcast_serial"] = output_type == 0 ? expcast_resources<half,true,true,true,2>() : expcast_resources<nv_bfloat16,true,true,true,2>();
+  result["expcast_optimized"] = output_type == 0 ? expcast_resources<half,true,true,true,1>() : expcast_resources<nv_bfloat16,true,true,true,1>();
   return result;
 }

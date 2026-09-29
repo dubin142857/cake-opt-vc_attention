@@ -407,6 +407,53 @@ def test_vc12_baseline_selects_vc11_and_rejects_stale_binary():
         profile.kernel_baseline(ops,explicit)
 
 
+def test_vc13_baselines_and_probability_schedule_option():
+    args=profile.parse_args(["--expcast-only","--compare-probability-schedules"])
+    assert args.compare_probability_schedules
+    ops=SimpleNamespace(ext=SimpleNamespace(sage_vc_kernel_version=10))
+    assert profile.kernel_baseline(ops,args)=="vc12"
+    for mode in ("vc12","vc13_serial"):
+        explicit=profile.parse_args(["--compare-kernels","--kernel-baseline",mode])
+        assert profile.kernel_baseline(ops,explicit)==mode
+        with pytest.raises(RuntimeError,match="needs vc13"):
+            profile.kernel_baseline(SimpleNamespace(ext=SimpleNamespace(sage_vc_kernel_version=9)),explicit)
+    with pytest.raises(SystemExit):
+        profile.parse_args(["--ncu-variant","sage_vc","--compare-probability-schedules"])
+
+
+def test_probability_schedule_comparison_uses_one_payload_and_checks_all_rows(monkeypatch):
+    modes=("vc12","vc13_serial","optimized")
+    state={mode:torch.ones(1,2,17,4) for mode in modes}
+    state["block_values"]=False
+    seen=[]
+    def forward(payload, *, kernel_mode):
+        assert payload is state
+        seen.append(kernel_mode)
+        return payload[kernel_mode]
+    ops=SimpleNamespace(ext=SimpleNamespace(sage_vc_kernel_version=10),vc=SimpleNamespace(forward_prepared=forward))
+    def measure(call,repeats,device):
+        out=call()
+        return out,{"vc12":3.,"vc13_serial":4.,"optimized":2.}[seen[-1]]
+    monkeypatch.setattr(profile,"measure_trial",measure)
+    monkeypatch.setattr(profile.torch.cuda,"synchronize",lambda *_:None)
+    args=SimpleNamespace(warmup=1,trials=3,repeats=2,seed=31)
+    result=profile.compare_probability_schedules(ops,{"cast":state},args,"cpu")
+    row=result["variants"]["cast"]
+    assert row["vc12_over_overlap"]==1.5 and row["serial_over_overlap"]==2.
+    assert row["paired_vc12_over_overlap"]==[1.5]*3
+    for mode in modes[1:]:
+        assert row["output_vs_vc12"][mode]["checked_queries"]==17
+        assert row["output_vs_vc12"][mode]["exact_match"]
+    for order in result["trial_order"]:
+        assert set(order)=={("cast",mode) for mode in modes}
+    state["vc13_serial"][:,:,16,:]=float("nan")
+    with pytest.raises(RuntimeError,match="Nonfinite"):
+        profile.compare_probability_schedules(ops,{"cast":state},args,"cpu")
+    state["vc13_serial"][:,:,16,:]=2.
+    with pytest.raises(AssertionError,match="exceeds"):
+        profile.compare_probability_schedules(ops,{"cast":state},args,"cpu")
+
+
 def test_expcast_only_cli_and_partial_report(capsys):
     assert profile.parse_args(["--expcast-only"]).expcast_only
     for flag in ("--compare-v-scales","--compare-grouping"):

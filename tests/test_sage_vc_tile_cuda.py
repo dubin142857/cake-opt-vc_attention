@@ -238,6 +238,8 @@ def test_affine_probability_matches_independent_fma_oracle(seed,mixed_scales):
     denom=torch.logspace(-6,8,64,device="cuda")
     old=probe.run_probability(scores,out,maximum,denom,True,mixed_scales,True,False)
     new=probe.run_probability(scores,out,maximum,denom,True,mixed_scales,True,True)
+    deferred=probe.run_probability(scores,out,maximum,denom,True,mixed_scales,True,True,True)
+    for a,b in zip(deferred,new): torch.testing.assert_close(a,b,rtol=0,atol=0)
     for a,b in zip(new[1:3],old[1:3]): torch.testing.assert_close(a,b,rtol=0,atol=0)
     scale=(.137*(1+(torch.arange(128,device="cuda")%8)//2)).float() if mixed_scales else torch.full((128,),.25,device="cuda")
     gain=scale*11.541560173034668
@@ -262,6 +264,8 @@ def test_affine_extreme_logits_use_exact_vc11_fallback(magnitude):
     args=(scores,out,maximum,denom,True,True,True)
     for a,b in zip(probe.run_probability(*args,True),probe.run_probability(*args,False)):
         torch.testing.assert_close(a,b,rtol=0,atol=0)
+    for a,b in zip(probe.run_probability(*args,True,True),probe.run_probability(*args,True)):
+        torch.testing.assert_close(a,b,rtol=0,atol=0)
 
 
 def test_affine_rounding_boundaries_remain_decoded_probability_consistent():
@@ -272,6 +276,8 @@ def test_affine_rounding_boundaries_remain_decoded_probability_consistent():
     out=torch.zeros_like(scores);maximum=torch.zeros(64,device="cuda");denom=torch.ones_like(maximum)
     old=probe.run_probability(scores,out,maximum,denom,True,False,True,False)
     new=probe.run_probability(scores,out,maximum,denom,True,False,True,True)
+    deferred=probe.run_probability(scores,out,maximum,denom,True,False,True,True,True)
+    for a,b in zip(deferred,new): torch.testing.assert_close(a,b,rtol=0,atol=0)
     assert (new[0].int()-old[0].int()).abs().max().item()<=1
     mass=new[0].view(torch.float8_e4m3fn).float().double().sum(-1).float()
     torch.testing.assert_close(new[4],mass,rtol=0,atol=0)
@@ -305,3 +311,30 @@ def test_affine_online_attention_with_decoded_pv(seed):
             assert rel<=.001,(seed,dtype,rel)
     finally:
         torch.backends.cuda.matmul.allow_tf32=tf32
+
+
+@pytest.mark.parametrize("mixed_scales", [False, True])
+def test_shared_probability_copy_preserves_long_history_and_zero_mass(mixed_scales):
+    torch.manual_seed(2313)
+    out=torch.randn(64,128,device="cuda")
+    maximum=torch.full((64,),-5e6,device="cuda")
+    denom=torch.ones(64,device="cuda")
+    for tile in range(300):
+        scores=torch.randn_like(out)*12
+        if tile % 3 == 0:
+            codes=torch.arange(128,device="cuda").remainder(121)
+            scores[:]=((codes-119.6500015258789)/11.541560173034668)*4
+        if tile % 19 == 0:
+            scores[:8]=0  # maximum code 120
+        if tile > 0 and tile % 7 == 0:
+            scores[8:16]=-float("inf")  # every mass is zero, wait still executes
+        if tile == 299:
+            scores[:,109:]=-float("inf")
+        args=(scores,out,maximum,denom,True,mixed_scales,True,True)
+        old=probe.run_probability(*args)
+        new=probe.run_probability(*args,True)
+        for a,b in zip(new,old): torch.testing.assert_close(a,b,rtol=0,atol=0)
+        mass=new[0].view(torch.float8_e4m3fn).float().double().sum(-1).float()
+        torch.testing.assert_close(new[4],mass,rtol=0,atol=0)
+        assert torch.isfinite(new[4]).all() and (new[4]>=0).all()
+        _,out,maximum,denom,_=new
