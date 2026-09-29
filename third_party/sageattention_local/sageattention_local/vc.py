@@ -10,7 +10,7 @@ import torch
 def _extension():
     from . import _vc_sm90
     if (getattr(_vc_sm90, "sage_vc_api_version", None) != 1 or
-            getattr(_vc_sm90, "sage_vc_kernel_version", None) != 7 or
+            getattr(_vc_sm90, "sage_vc_kernel_version", None) != 8 or
             getattr(_vc_sm90, "sage_vc_preprocess_version", None) != 1):
         raise RuntimeError("Rebuild sageattention-local with bash scripts/build_sage_local.sh")
     return _vc_sm90
@@ -28,8 +28,9 @@ def sage_vc_build_info():
             "grouping_rounding": "FP32 reduction order changes; labels near boundaries can differ",
             "sage_vc_preprocess_version": _extension().sage_vc_preprocess_version,
             "paper_equivalent": False, "sage_vc_api_version": 1,
-            "default_kernel_mode": "optimized", "kernel_modes": ["optimized", "vc9", "vc7", "vc6", "vc4"],
-            "expcast_probability": "saturating u8 RNE + byte permutation + streamed FP32 reduction",
+            "default_kernel_mode": "optimized", "kernel_modes": ["optimized", "vc10", "vc9", "vc7", "vc6", "vc4"],
+            "expcast_probability": "saturating u8 RNE + byte permutation + FP32 reduction",
+            "expcast_interleaving": "expcast-only: encode two K fragments, issue packed decode, then consume FP32 values",
             "expcast_numerical_contract": "same FP32 FMA/RNE bytes; expcast-only sums each K128 tile before adding history",
             "expcast_pipeline": "expcast-only: independent tile sums; history scaling overlaps PV WGMMA",
             "compact_values": "D128/channel: two N64 PV fragments, paired mean restoration, 168-register target",
@@ -91,19 +92,20 @@ def prepare(q, k, v, *, expcast=True, v_smooth=True, clusters=8, iterations=2, s
 
 
 def forward_prepared(state, *, kernel_mode="optimized"):
-    if kernel_mode not in ("optimized", "vc9", "vc7", "vc6", "vc4"):
-        raise ValueError("kernel_mode must be 'optimized', 'vc9', 'vc7', 'vc6' or 'vc4'")
+    if kernel_mode not in ("optimized", "vc10", "vc9", "vc7", "vc6", "vc4"):
+        raise ValueError("kernel_mode must be 'optimized', 'vc10', 'vc9', 'vc7', 'vc6' or 'vc4'")
     return _extension().forward(*(state[name] for name in ("q", "k", "v", "qs", "ks", "vs", "means",
                                                           "expcast", "block_values", "output_type", "scale")),
-                                optimized=kernel_mode != "vc4", packed_probability=kernel_mode in ("optimized", "vc9", "vc7"),
-                                compact_values=kernel_mode in ("optimized", "vc9"), pipeline_probability=kernel_mode == "optimized")
+                                optimized=kernel_mode != "vc4", packed_probability=kernel_mode in ("optimized", "vc10", "vc9", "vc7"),
+                                compact_values=kernel_mode in ("optimized", "vc10", "vc9"), pipeline_probability=kernel_mode in ("optimized", "vc10"),
+                                interleaved_probability=kernel_mode == "optimized")
 
 
 @torch.no_grad()
 def sageattn_vc(q, k, v, tensor_layout="HND", is_causal=False, sm_scale=None, return_lse=False,
                *, expcast=True, v_smooth=True, clusters=8, iterations=2, kernel_mode="optimized", v_scale_mode="channel", grouping_mode="fused"):
-    if kernel_mode not in ("optimized", "vc9", "vc7", "vc6", "vc4"):
-        raise ValueError("kernel_mode must be 'optimized', 'vc9', 'vc7', 'vc6' or 'vc4'")
+    if kernel_mode not in ("optimized", "vc10", "vc9", "vc7", "vc6", "vc4"):
+        raise ValueError("kernel_mode must be 'optimized', 'vc10', 'vc9', 'vc7', 'vc6' or 'vc4'")
     if v_scale_mode not in ("channel", "block"):
         raise ValueError("v_scale_mode must be 'channel' or 'block'")
     if grouping_mode not in ("fused", "legacy"):

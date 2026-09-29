@@ -185,3 +185,43 @@ def test_pipeline_continuous_history_300_tiles_all_codes():
         torch.testing.assert_close(new[3],old[3],rtol=2e-5,atol=1e-5)
         _,out,maximum,new_d,_ = new
         old_d = old[3]
+
+
+@pytest.mark.parametrize("seed",range(4))
+@pytest.mark.parametrize("mixed_scales",[False,True])
+def test_interleaved_probability_matches_vc10_every_output(seed,mixed_scales):
+    torch.manual_seed(2110+seed)
+    scores=torch.randn(64,128,device="cuda")*(seed+1)*12
+    scores[:16,1:]=-float("inf")
+    scores[16:32,117:]=-float("inf")
+    scores[32:40]=0
+    scores[40:48]=-float("inf")  # masked tile with finite previous maximum
+    out=torch.randn_like(scores)
+    maximum=torch.linspace(-20,20,64,device="cuda")
+    denom=torch.logspace(-6,8,64,device="cuda")
+    args=(scores,out,maximum,denom,True,mixed_scales)
+    previous=probe.run_probability(*args,False)
+    actual=probe.run_probability(*args,True)
+    for a,b in zip(actual,previous):
+        torch.testing.assert_close(a,b,rtol=0,atol=0)
+    decoded=actual[0].view(torch.float8_e4m3fn).float().double().sum(-1).float()
+    torch.testing.assert_close(actual[4],decoded,rtol=0,atol=0)
+
+
+def test_interleaved_probability_preserves_300_tile_history():
+    torch.manual_seed(2119)
+    out=torch.randn(64,128,device="cuda")
+    maximum=torch.full((64,),-5e6,device="cuda")
+    denom=torch.ones(64,device="cuda")
+    for tile in range(300):
+        scores=torch.randn_like(out)*24
+        if tile%3==0:
+            codes=torch.arange(128,device="cuda").remainder(121)
+            scores[:]=((codes-119.6500015258789)/11.541560173034668)*4
+        if tile==299: scores[:,109:]=-float("inf")
+        args=(scores,out,maximum,denom,True,tile%2==0)
+        previous=probe.run_probability(*args,False)
+        actual=probe.run_probability(*args,True)
+        for a,b in zip(actual,previous):
+            torch.testing.assert_close(a,b,rtol=0,atol=0)
+        _,out,maximum,denom,_=actual

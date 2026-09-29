@@ -13,7 +13,7 @@ __device__ __forceinline__ float2 vc_decode_pair(uint32_t codes) {
 // ExpCast without V block means: form P and independent tile sums first.
 // History scaling is delayed until PV is in flight. Never read P's register
 // fragments between wgmma.mma_async and wait_group (PTX forbids that too).
-template<uint32_t NQ, uint32_t NK>
+template<bool Interleaved=false, uint32_t NQ, uint32_t NK>
 __device__ __forceinline__ void vc_probability_prepare(
     const float (&scores)[NQ][NK][8], float (&maximum)[NQ][2], float scale,
     uint32_t (&packed)[NQ][NK / 2][4], float (&alpha)[NQ][2], float (&mass)[NQ][2]) {
@@ -40,6 +40,47 @@ __device__ __forceinline__ void vc_probability_prepare(
     // 32 values <=256 sum exactly in FP32 (at most 2^22 integer units).
     // Only the final addition to the historical denominator changes rounding.
     float sums[2][2] = {};
+    if constexpr (Interleaved) {
+      // Two K fragments at a time: expose independent encodes and packed
+      // FP8->half2 conversions before consuming FP32 values. Keep the batch
+      // small to bound temporary lifetimes. All operations retain vc10's
+      // explicit RN arithmetic and the same per-row/per-chain K order.
+      #pragma unroll
+      for (int base = 0; base < NK; base += 2) {
+        uint32_t codes[2][2][2];
+        __half2 decoded[2][2][2];
+        #pragma unroll
+        for (int k = 0; k < 2; ++k)
+          #pragma unroll
+          for (int r = 0; r < 2; ++r)
+            #pragma unroll
+            for (int pair = 0; pair < 2; ++pair) {
+              int j = r*2+pair*4;
+              float a = __fmul_rn(scores[q][base+k][j],scale);
+              float b = __fmul_rn(scores[q][base+k][j+1],scale);
+              codes[k][r][pair] = vc_expcast_pair(__fsub_rn(a,maximum[q][r]),__fsub_rn(b,maximum[q][r]));
+            }
+        #pragma unroll
+        for (int k = 0; k < 2; ++k)
+          #pragma unroll
+          for (int r = 0; r < 2; ++r) {
+            packed[q][base/2][k*2+r] = __byte_perm(codes[k][r][0],codes[k][r][1],0x5410);
+            #pragma unroll
+            for (int pair = 0; pair < 2; ++pair)
+              decoded[k][r][pair] = __nv_cvt_fp8x2_to_halfraw2(
+                  static_cast<__nv_fp8x2_storage_t>(codes[k][r][pair]),__NV_E4M3);
+          }
+        #pragma unroll
+        for (int k = 0; k < 2; ++k)
+          #pragma unroll
+          for (int r = 0; r < 2; ++r)
+            #pragma unroll
+            for (int pair = 0; pair < 2; ++pair) {
+              float2 values = __half22float2(decoded[k][r][pair]);
+              sums[r][pair] = __fadd_rn(sums[r][pair],__fadd_rn(values.x,values.y));
+            }
+      }
+    } else {
     #pragma unroll
     for (int k = 0; k < NK; ++k) {
       #pragma unroll
@@ -55,6 +96,7 @@ __device__ __forceinline__ void vc_probability_prepare(
         sums[r][1] = __fadd_rn(sums[r][1],__fadd_rn(second.x,second.y));
         packed[q][k/2][(k%2)*2+r] = __byte_perm(low,high,0x5410);
       }
+    }
     }
     #pragma unroll
     for (int r = 0; r < 2; ++r)

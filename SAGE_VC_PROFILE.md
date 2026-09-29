@@ -308,3 +308,42 @@ python3 scripts/benchmark_expcast.py --stages --output results/h200_expcast_stag
 本地验证：14 项 CUDA 测试通过，Compute Sanitizer memcheck 零错误；CUDA 12.4
 编译 SM90a 的六个分段内核均无 spill。3060 的原始测量保存在
 `results/expcast_components_sm86.json`，其 FP8 解码使用软件路径，不能预测 H200 的收益。
+
+## vc11：两组编码与解码交错，保留 vc10 同输入对照
+
+H200 分段回传：u8 编码 0.059328 ms，普通 exp2+FP8（尺度 256）0.080000 ms；
+两条 FP32 链解码求和 0.034048 ms，整数候选 0.151008 ms。整数候选不接入主内核。
+完整 helper 的 Sage/vc10 为 0.095712/0.101312 ms，仍未获得整段优势。
+
+vc11 保留 u8 编码和两条 FP32 累加链，改为先编码相邻两个 K fragment，
+再发出成对的 FP8 解码，最后消费 FP32 值。块内加法顺序、历史缩放和两级 PV 累加保持 vc10。
+只影响 `expcast=True, v_smooth=False`；其他模式复用已有内核。
+包版本 `2.2.0+vc11`，native kernel version 8。`kernel_mode="vc10"` 可执行旧路径。
+
+完整 helper 对照（不需要先重装包，JIT 编译 v3 诊断模块）：
+
+```bash
+git pull --ff-only origin master
+python3 scripts/benchmark_expcast.py --output results/h200_vc11_expcast_micro.json
+```
+
+新表保留 Sage/vc9/vc10，并增加 `vc11_expcast`；`vc10/new > 1` 才表示局部收益。
+计时前检查 vc10/vc11 的完整 helper 校验和一致。`--stages` 仍可用，分段候选没有变化。
+
+重新编译包、运行完整正确性检查，再测默认 BSHD `[1,37741,28,128]`：
+
+```bash
+bash scripts/build_sage_local.sh
+python3 scripts/profile_sage_vc.py --expcast-only --compare-kernels --kernel-baseline vc10 --trials 5 --repeats 10 --output results/h200_sage_vc11_expcast.json
+```
+
+安装脚本的完整 attention 检查增加 optimized/vc10 全输出对照；profile 也使用同一份量化
+Q/K/V 对照 vc10，不把独立预处理差异混入新旧内核比较。看新旧 `old/new`、
+control→ExpCast 的 `plain/cast` 和完整 API 三项；局部提速不能代替完整 attention 的收益。
+`compiled_d128_channel_resources` 现在同时包含 `expcast_vc9`、`expcast_vc10` 和
+`expcast_optimized`，可以核对目标编译器的寄存器与 local memory。
+
+本地没有 Hopper 执行条件。CUDA 12.4 下四个新内核均无 spill，D128 为 168 寄存器、
+D64 为 128；64 个历史内核的 SASS 指令文本与 vc10 相同。新旧指令数量相同、顺序不同，
+这里只证明调度改变，不构成性能结论。3060 上完整 helper 约 5.084→5.089 ms，
+没有显示提速，H200 的最终结果仍需上述同场对照。

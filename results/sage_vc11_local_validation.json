@@ -1,0 +1,64 @@
+{
+  "package_version": "2.2.0+vc11",
+  "native_kernel_version": 8,
+  "execution_device": "RTX 3060 Laptop, SM86",
+  "crosscompile": "CUDA 12.4, sm_90a; 68 attention kernels compiled and extension linked/imported",
+  "old_sass_instruction_text_unchanged": 64,
+  "new_attention_kernels": {
+    "d128_bf16": {
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "instructions_vc10": 2424,
+      "instructions_vc11": 2424,
+      "instruction_counts_equal": true,
+      "opcode_order_changed": true
+    },
+    "d128_fp16": {
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "instructions_vc10": 2424,
+      "instructions_vc11": 2424,
+      "instruction_counts_equal": true,
+      "opcode_order_changed": true
+    },
+    "d64_bf16": {
+      "registers": 128,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "instructions_vc10": 2104,
+      "instructions_vc11": 2104,
+      "instruction_counts_equal": true,
+      "opcode_order_changed": true
+    },
+    "d64_fp16": {
+      "registers": 128,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "instructions_vc10": 2104,
+      "instructions_vc11": 2104,
+      "instruction_counts_equal": true,
+      "opcode_order_changed": true
+    }
+  },
+  "tests_passed": 271,
+  "legacy_golden_helper_cases_exact": 16,
+  "probability_and_mean_helper_tests_passed": 94,
+  "memcheck": "94 helper tests passed; ERROR SUMMARY: 0 errors",
+  "numerical_checks": "vc10/vc11 helper FP8 bytes, maxima, FP32 history, denominators and masses exactly match; includes 300 sequential tiles, subnormals, zeros, mixed scales and masked tails",
+  "scope": "Hopper attention execution/performance unavailable locally; SM86 helper microbenchmark is not an attention speedup",
+  "local_microbenchmark": "results/sage_vc11_local_probability_micro.json",
+  "source_sha256_lf": {
+    "third_party/sageattention_local/csrc/vc/vc_sm90.cu": "2244349eb295f85d90247714ddaeee1b8ec653f2ead99e62946957399e5b80e7",
+    "third_party/sageattention_local/csrc/vc/vc_math.cuh": "03f19076ae5b6b8b5b71aa3f4e64b3ee773c43bac4927844e84e2eea510a88a7",
+    "third_party/sageattention_local/csrc/vc/pybind.cpp": "950ce5fc89c58508524d55cd0cd780b1b3770a293611320aad57360597ae608a",
+    "third_party/sageattention_local/csrc/vc/vc_api.h": "54d8e5104b981fce005f2306ca05425c50d54484c668ecae9f4b2a5deac3f677",
+    "tests/cuda/sage_vc_tile_probe.cu": "cba2648fd580189e1df8cab1532c33f782b39041b1d336df0385bff82c63f351"
+  },
+  "source_distribution": "sdist built; vc11 metadata and all 58 recorded source hashes verified"
+}

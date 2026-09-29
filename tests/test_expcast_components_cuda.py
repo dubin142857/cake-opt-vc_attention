@@ -11,7 +11,7 @@ import pytest
 import torch
 
 ext=pytest.importorskip("_vc_expcast_bench")
-pytestmark=pytest.mark.skipif(getattr(ext,"benchmark_api_version",0)!=2,reason="Build the v2 component benchmark")
+pytestmark=pytest.mark.skipif(getattr(ext,"benchmark_api_version",0)!=3,reason="Build the v3 component benchmark")
 
 
 def load_benchmark():

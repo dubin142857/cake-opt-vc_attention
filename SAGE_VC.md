@@ -1,5 +1,8 @@
 # SageAttention 主体 + VC 两项改动
 
+当前包版本为 `2.2.0+vc11`：新增只开 ExpCast 时的两组编码/解码交错调度，
+保留 `kernel_mode="vc10"` 同输入对照。H200 性能尚待实测，说明见文末 vc11 小节。
+
 `sageattention-local==2.2.0+vc9` 在已经同场测到 25.8055 ms 的本地 Sage 源码上，
 新增独立 `sageattn_vc`。原版 `sageattn` 的数学与内核保留。
 **25.8055 ms 是用户提供的原版源码构建结果，不是本次新入口的速度。**
@@ -280,3 +283,18 @@ H200 完整 attention 的正确性及提速仍需远端验证，不能由编译�
 本地共 246 项测试通过；85 项概率/累加 helper 的 Compute Sanitizer memcheck 为 0 errors。
 完整记录见 [本地验证](results/sage_vc10_local_validation.json) 和
 [局部微基准](results/sage_vc10_local_probability_micro.json)。这不包含 Hopper attention 执行。
+
+## vc11：ExpCast 编码和解码交错调度
+
+版本 `2.2.0+vc11` / native kernel version 8，默认 `optimized` 在只开 ExpCast 时
+使用新的两组交错调度。`kernel_mode="vc10"` 保留上一版，`vc9/vc7/vc6/vc4` 继续可用。
+V 平滑路径、控制组、所有 Q/K/V 量化、FP8 P 字节、FP32 块内累加顺序和历史缩放不变。
+整数求和候选在 H200 上明显更慢，没有接入。
+
+新实现先准备相邻两个 K fragment 的编码，发出 packed FP8 解码后再消费 FP32 值，
+以改变独立指令的安排。PV 仍使用独立 FP32 临时缓冲；vc10 的 WGMMA 等待边界保持不变。
+64 个历史 kernel 保留；新增四个 D64/D128 × FP16/BF16 specialization。
+
+本地 CUDA helper 的新旧所有输出逐位一致，并覆盖 300 个块的连续历史。
+完整 Hopper attention 只能交叉编译，不能在本地 3060 上执行；尚无 H200 提速结论。
+升级和同输入验证命令见 [性能诊断](SAGE_VC_PROFILE.md#vc11两组编码与解码交错保留-vc10-同输入对照)。
