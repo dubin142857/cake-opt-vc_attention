@@ -1,0 +1,297 @@
+{
+  "source": "User-pasted vc18 H200 profile; original wall-time trial arrays not supplied",
+  "shape_bshd": [
+    1,
+    37741,
+    28,
+    128
+  ],
+  "dtype": "bfloat16",
+  "variants": {
+    "control_vc16": {
+      "core_api_ms": 24.5288,
+      "full_api_ms": 26.1587,
+      "printed_vs_same_algorithm_rmse_percent": 0.0,
+      "resources": {
+        "pv_channels": 128,
+        "register_cap": 168,
+        "registers_per_thread": 168,
+        "local_bytes_per_thread": 0,
+        "shared_bytes": 41088,
+        "predicted_blocks_per_sm": 3
+      },
+      "cupti_trial_median_ms": [
+        24.7689,
+        24.719,
+        24.3488
+      ],
+      "cupti_median_ms": 24.719
+    },
+    "control_vc18_r128": {
+      "core_api_ms": 32.4625,
+      "full_api_ms": 34.0256,
+      "printed_vs_same_algorithm_rmse_percent": 0.0,
+      "resources": {
+        "pv_channels": 128,
+        "register_cap": 128,
+        "registers_per_thread": 128,
+        "local_bytes_per_thread": 184,
+        "shared_bytes": 41088,
+        "predicted_blocks_per_sm": 4
+      },
+      "cupti_trial_median_ms": [
+        31.4359,
+        32.6882,
+        32.3741
+      ],
+      "cupti_median_ms": 32.3741
+    },
+    "control_vc18_r144": {
+      "core_api_ms": 26.6211,
+      "full_api_ms": 28.1344,
+      "printed_vs_same_algorithm_rmse_percent": 0.0,
+      "resources": {
+        "pv_channels": 128,
+        "register_cap": 144,
+        "registers_per_thread": 144,
+        "local_bytes_per_thread": 72,
+        "shared_bytes": 41088,
+        "predicted_blocks_per_sm": 3
+      },
+      "cupti_trial_median_ms": [
+        26.0739,
+        26.7984,
+        26.5018
+      ],
+      "cupti_median_ms": 26.5018
+    },
+    "control_vc18_r192": {
+      "core_api_ms": 27.0549,
+      "full_api_ms": 28.6173,
+      "printed_vs_same_algorithm_rmse_percent": 0.0,
+      "resources": {
+        "pv_channels": 128,
+        "register_cap": 192,
+        "registers_per_thread": 187,
+        "local_bytes_per_thread": 0,
+        "shared_bytes": 41088,
+        "predicted_blocks_per_sm": 2
+      },
+      "cupti_trial_median_ms": [
+        26.7421,
+        26.7555,
+        26.8015
+      ],
+      "cupti_median_ms": 26.7555
+    },
+    "control_vc18_pv64_r128": {
+      "core_api_ms": 26.7137,
+      "full_api_ms": 28.312,
+      "printed_vs_same_algorithm_rmse_percent": 0.0,
+      "resources": {
+        "pv_channels": 64,
+        "register_cap": 128,
+        "registers_per_thread": 128,
+        "local_bytes_per_thread": 144,
+        "shared_bytes": 41088,
+        "predicted_blocks_per_sm": 4
+      },
+      "cupti_trial_median_ms": [
+        27.4787,
+        27.0281,
+        26.8653
+      ],
+      "cupti_median_ms": 27.0281
+    },
+    "control_vc18_pv64_r144": {
+      "core_api_ms": 25.5061,
+      "full_api_ms": 26.9707,
+      "printed_vs_same_algorithm_rmse_percent": 0.0,
+      "resources": {
+        "pv_channels": 64,
+        "register_cap": 144,
+        "registers_per_thread": 144,
+        "local_bytes_per_thread": 0,
+        "shared_bytes": 41088,
+        "predicted_blocks_per_sm": 3
+      },
+      "cupti_trial_median_ms": [
+        25.2718,
+        25.3782,
+        25.3294
+      ],
+      "cupti_median_ms": 25.3294
+    },
+    "control_vc18_pv64_r168": {
+      "core_api_ms": 25.4804,
+      "full_api_ms": 26.9374,
+      "printed_vs_same_algorithm_rmse_percent": 0.0,
+      "resources": {
+        "pv_channels": 64,
+        "register_cap": 168,
+        "registers_per_thread": 168,
+        "local_bytes_per_thread": 0,
+        "shared_bytes": 41088,
+        "predicted_blocks_per_sm": 3
+      },
+      "cupti_trial_median_ms": [
+        25.9898,
+        25.276,
+        25.3081
+      ],
+      "cupti_median_ms": 25.3081
+    },
+    "expcast_vc16": {
+      "core_api_ms": 25.2242,
+      "full_api_ms": 26.675,
+      "printed_vs_same_algorithm_rmse_percent": 0.0,
+      "resources": {
+        "pv_channels": 128,
+        "register_cap": 168,
+        "registers_per_thread": 168,
+        "local_bytes_per_thread": 0,
+        "shared_bytes": 41088,
+        "predicted_blocks_per_sm": 3
+      },
+      "cupti_trial_median_ms": [
+        24.9917,
+        25.3536,
+        25.3121
+      ],
+      "cupti_median_ms": 25.3121
+    },
+    "expcast_vc18_r128": {
+      "core_api_ms": 41.4245,
+      "full_api_ms": 42.9746,
+      "printed_vs_same_algorithm_rmse_percent": 0.0,
+      "resources": {
+        "pv_channels": 128,
+        "register_cap": 128,
+        "registers_per_thread": 128,
+        "local_bytes_per_thread": 208,
+        "shared_bytes": 41088,
+        "predicted_blocks_per_sm": 4
+      },
+      "cupti_trial_median_ms": [
+        41.2588,
+        41.321,
+        41.1203
+      ],
+      "cupti_median_ms": 41.2588
+    },
+    "expcast_vc18_r144": {
+      "core_api_ms": 28.4523,
+      "full_api_ms": 30.0125,
+      "printed_vs_same_algorithm_rmse_percent": 0.0,
+      "resources": {
+        "pv_channels": 128,
+        "register_cap": 144,
+        "registers_per_thread": 144,
+        "local_bytes_per_thread": 136,
+        "shared_bytes": 41088,
+        "predicted_blocks_per_sm": 3
+      },
+      "cupti_trial_median_ms": [
+        28.6601,
+        28.3868,
+        28.4151
+      ],
+      "cupti_median_ms": 28.4151
+    },
+    "expcast_vc18_r192": {
+      "core_api_ms": 26.8671,
+      "full_api_ms": 28.4335,
+      "printed_vs_same_algorithm_rmse_percent": 0.0,
+      "resources": {
+        "pv_channels": 128,
+        "register_cap": 192,
+        "registers_per_thread": 192,
+        "local_bytes_per_thread": 0,
+        "shared_bytes": 41088,
+        "predicted_blocks_per_sm": 2
+      },
+      "cupti_trial_median_ms": [
+        26.3804,
+        26.4265,
+        26.333
+      ],
+      "cupti_median_ms": 26.3804
+    },
+    "expcast_vc18_pv64_r128": {
+      "core_api_ms": 27.168,
+      "full_api_ms": 28.7894,
+      "printed_vs_same_algorithm_rmse_percent": 0.0,
+      "resources": {
+        "pv_channels": 64,
+        "register_cap": 128,
+        "registers_per_thread": 128,
+        "local_bytes_per_thread": 120,
+        "shared_bytes": 41088,
+        "predicted_blocks_per_sm": 4
+      },
+      "cupti_trial_median_ms": [
+        26.8464,
+        27.0644,
+        27.1984
+      ],
+      "cupti_median_ms": 27.0644
+    },
+    "expcast_vc18_pv64_r144": {
+      "core_api_ms": 25.3539,
+      "full_api_ms": 27.2549,
+      "printed_vs_same_algorithm_rmse_percent": 0.0,
+      "resources": {
+        "pv_channels": 64,
+        "register_cap": 144,
+        "registers_per_thread": 144,
+        "local_bytes_per_thread": 16,
+        "shared_bytes": 41088,
+        "predicted_blocks_per_sm": 3
+      },
+      "cupti_trial_median_ms": [
+        25.6683,
+        25.5825,
+        25.5882
+      ],
+      "cupti_median_ms": 25.5882
+    },
+    "expcast_vc18_pv64_r168": {
+      "core_api_ms": 25.4214,
+      "full_api_ms": 27.008,
+      "printed_vs_same_algorithm_rmse_percent": 0.0,
+      "resources": {
+        "pv_channels": 64,
+        "register_cap": 168,
+        "registers_per_thread": 168,
+        "local_bytes_per_thread": 0,
+        "shared_bytes": 41088,
+        "predicted_blocks_per_sm": 3
+      },
+      "cupti_trial_median_ms": [
+        25.3736,
+        25.2384,
+        25.428
+      ],
+      "cupti_median_ms": 25.3736
+    },
+    "sage_cpp": {
+      "core_api_ms": 24.7355,
+      "full_api_ms": 26.1382,
+      "printed_vs_same_algorithm_rmse_percent": 0.0,
+      "cupti_trial_median_ms": [
+        24.1606,
+        24.6087,
+        24.6121
+      ],
+      "cupti_median_ms": 24.6087
+    }
+  },
+  "conclusion": "No vc18 candidate improves full API over the same-algorithm vc16 baseline. Retain vc16 as the next experimental baseline; default vc15 is unchanged.",
+  "notes": [
+    "Repeated CUPTI timings corroborate the broad regressions; separate profiler-active measurements from API wall times.",
+    "All-row implementation gates passed; rounded printed zero is not proof of bitwise equality or zero dense-FP32/model error.",
+    "local bytes and predicted resident blocks are resource attributes, not dynamic traffic/utilization measurements.",
+    "PV splitting reduces low-cap resource pressure and latency versus the same low cap, but still loses to vc16 at 168 registers.",
+    "The first default-API tables and single-shot traces refer to default vc15, not the vc16/vc18 candidate comparison."
+  ]
+}
