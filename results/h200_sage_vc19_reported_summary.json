@@ -1,0 +1,249 @@
+{
+  "source": "User-pasted vc19 H200 profile; original JSON, raw wall-time trials and individual CUPTI launch samples not supplied",
+  "shape_bshd": [
+    1,
+    37741,
+    28,
+    128
+  ],
+  "dtype": "bfloat16",
+  "shape_source": "Prior agreed validate_pipeline_h200.sh workload; environment header absent from pasted excerpt",
+  "variants": {
+    "control_vc16": {
+      "core_api_ms": 24.7284,
+      "full_api_ms": 26.2914,
+      "printed_vs_same_algorithm_rmse_percent": 0.0,
+      "resources": {
+        "k_buffers": 1,
+        "v_buffers": 1,
+        "early_tma_prefetch": 0,
+        "registers_per_thread": 168,
+        "local_bytes_per_thread": 0,
+        "shared_bytes": 41088,
+        "predicted_blocks_per_sm": 3
+      },
+      "cupti_trial_median_ms": [
+        24.9526,
+        24.7097,
+        24.7644
+      ],
+      "cupti_median_ms": 24.7644
+    },
+    "control_vc19_k": {
+      "core_api_ms": 25.4705,
+      "full_api_ms": 27.0789,
+      "printed_vs_same_algorithm_rmse_percent": 0.0,
+      "resources": {
+        "k_buffers": 2,
+        "v_buffers": 1,
+        "early_tma_prefetch": 1,
+        "registers_per_thread": 168,
+        "local_bytes_per_thread": 0,
+        "shared_bytes": 57472,
+        "predicted_blocks_per_sm": 3
+      },
+      "cupti_trial_median_ms": [
+        25.1226,
+        25.5867,
+        25.5879
+      ],
+      "cupti_median_ms": 25.5867,
+      "full_api_increase_vs_vc16_percent": 2.995276021817017
+    },
+    "control_vc19_v": {
+      "core_api_ms": 25.1119,
+      "full_api_ms": 26.7003,
+      "printed_vs_same_algorithm_rmse_percent": 0.0,
+      "resources": {
+        "k_buffers": 1,
+        "v_buffers": 2,
+        "early_tma_prefetch": 1,
+        "registers_per_thread": 168,
+        "local_bytes_per_thread": 0,
+        "shared_bytes": 57472,
+        "predicted_blocks_per_sm": 3
+      },
+      "cupti_trial_median_ms": [
+        25.6661,
+        25.2214,
+        25.1977
+      ],
+      "cupti_median_ms": 25.2214,
+      "full_api_increase_vs_vc16_percent": 1.5552614162805956
+    },
+    "control_vc19_kv": {
+      "core_api_ms": 25.6791,
+      "full_api_ms": 27.2724,
+      "printed_vs_same_algorithm_rmse_percent": 0.0,
+      "resources": {
+        "k_buffers": 2,
+        "v_buffers": 2,
+        "early_tma_prefetch": 1,
+        "registers_per_thread": 168,
+        "local_bytes_per_thread": 0,
+        "shared_bytes": 73856,
+        "predicted_blocks_per_sm": 3
+      },
+      "cupti_trial_median_ms": [
+        25.3253,
+        25.7514,
+        25.7529
+      ],
+      "cupti_median_ms": 25.7514,
+      "full_api_increase_vs_vc16_percent": 3.73125813003492
+    },
+    "control_vc19_kv_late": {
+      "core_api_ms": 25.2182,
+      "full_api_ms": 26.7163,
+      "printed_vs_same_algorithm_rmse_percent": 0.0,
+      "resources": {
+        "k_buffers": 2,
+        "v_buffers": 2,
+        "early_tma_prefetch": 0,
+        "registers_per_thread": 168,
+        "local_bytes_per_thread": 0,
+        "shared_bytes": 73856,
+        "predicted_blocks_per_sm": 3
+      },
+      "cupti_trial_median_ms": [
+        25.4752,
+        25.1627,
+        25.1603
+      ],
+      "cupti_median_ms": 25.1627,
+      "full_api_increase_vs_vc16_percent": 1.616117817993712
+    },
+    "expcast_vc16": {
+      "core_api_ms": 25.3802,
+      "full_api_ms": 26.8888,
+      "printed_vs_same_algorithm_rmse_percent": 0.0,
+      "resources": {
+        "k_buffers": 1,
+        "v_buffers": 1,
+        "early_tma_prefetch": 0,
+        "registers_per_thread": 168,
+        "local_bytes_per_thread": 0,
+        "shared_bytes": 41088,
+        "predicted_blocks_per_sm": 3
+      },
+      "cupti_trial_median_ms": [
+        25.4605,
+        25.375,
+        25.2623
+      ],
+      "cupti_median_ms": 25.375
+    },
+    "expcast_vc19_k": {
+      "core_api_ms": 26.2807,
+      "full_api_ms": 27.8891,
+      "printed_vs_same_algorithm_rmse_percent": 0.0,
+      "resources": {
+        "k_buffers": 2,
+        "v_buffers": 1,
+        "early_tma_prefetch": 1,
+        "registers_per_thread": 168,
+        "local_bytes_per_thread": 0,
+        "shared_bytes": 57472,
+        "predicted_blocks_per_sm": 3
+      },
+      "cupti_trial_median_ms": [
+        26.1864,
+        26.2942,
+        26.2917
+      ],
+      "cupti_median_ms": 26.2917,
+      "full_api_increase_vs_vc16_percent": 3.7201362649132763
+    },
+    "expcast_vc19_v": {
+      "core_api_ms": 25.8346,
+      "full_api_ms": 27.5219,
+      "printed_vs_same_algorithm_rmse_percent": 0.0,
+      "resources": {
+        "k_buffers": 1,
+        "v_buffers": 2,
+        "early_tma_prefetch": 1,
+        "registers_per_thread": 168,
+        "local_bytes_per_thread": 0,
+        "shared_bytes": 57472,
+        "predicted_blocks_per_sm": 3
+      },
+      "cupti_trial_median_ms": [
+        25.7915,
+        25.9184,
+        25.9726
+      ],
+      "cupti_median_ms": 25.9184,
+      "full_api_increase_vs_vc16_percent": 2.354511915741875
+    },
+    "expcast_vc19_kv": {
+      "core_api_ms": 26.0698,
+      "full_api_ms": 27.8083,
+      "printed_vs_same_algorithm_rmse_percent": 0.0,
+      "resources": {
+        "k_buffers": 2,
+        "v_buffers": 2,
+        "early_tma_prefetch": 1,
+        "registers_per_thread": 168,
+        "local_bytes_per_thread": 0,
+        "shared_bytes": 73856,
+        "predicted_blocks_per_sm": 3
+      },
+      "cupti_trial_median_ms": [
+        25.4988,
+        26.0304,
+        25.9965
+      ],
+      "cupti_median_ms": 25.9965,
+      "full_api_increase_vs_vc16_percent": 3.4196394037666167
+    },
+    "expcast_vc19_kv_late": {
+      "core_api_ms": 25.7126,
+      "full_api_ms": 27.3374,
+      "printed_vs_same_algorithm_rmse_percent": 0.0,
+      "resources": {
+        "k_buffers": 2,
+        "v_buffers": 2,
+        "early_tma_prefetch": 0,
+        "registers_per_thread": 168,
+        "local_bytes_per_thread": 0,
+        "shared_bytes": 73856,
+        "predicted_blocks_per_sm": 3
+      },
+      "cupti_trial_median_ms": [
+        25.2201,
+        25.8066,
+        25.8051
+      ],
+      "cupti_median_ms": 25.8051,
+      "full_api_increase_vs_vc16_percent": 1.6683526226533019
+    },
+    "sage_cpp": {
+      "core_api_ms": 24.788,
+      "full_api_ms": 26.3825,
+      "printed_vs_same_algorithm_rmse_percent": 0.0,
+      "cupti_trial_median_ms": [
+        24.8417,
+        24.8402,
+        24.7212
+      ],
+      "cupti_median_ms": 24.8402
+    }
+  },
+  "correctness": {
+    "comparison_gate": "All-output same-algorithm and fresh/fixed API 0.1% gates passed before the printed timing table",
+    "printed_rmse_percent": 0.0,
+    "exact_match": "Not established by rounded text; original JSON not supplied",
+    "separate_shape_validation": "Build/validation output not included in this excerpt",
+    "model_quality": "Not assessed by this comparison"
+  },
+  "conclusions": [
+    "All eight vc19 control/ExpCast candidate rows lose to their vc16 baselines in core API, full API and repeated CUPTI medians.",
+    "All reported resources retain 168 registers, zero local bytes and predicted 3 resident blocks per SM; no evidence of a spill or predicted-residency regression.",
+    "Early KV is slower than late KV with the same buffer counts and CTA reuse synchronization; this implementation of lookahead has no net benefit.",
+    "Additional synchronization, address work and copy scheduling are hypotheses; no hardware stall/bandwidth counters were provided to apportion costs.",
+    "Initial stage tables and one-off traces measure the unchanged default vc15; they are not vc19 speed measurements.",
+    "Keep vc16 as experiment baseline and vc15 as existing public default. 22 ms full API not reached."
+  ],
+  "vc16_expcast_vs_sage_full_api_increase_percent": 1.919075144508664,
+  "vc16_expcast_full_api_reduction_needed_for_22ms_percent": 18.181547707595726
+}

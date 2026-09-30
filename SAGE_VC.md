@@ -2,12 +2,13 @@
 
 当前包版本为 `2.2.0+vc19`，native kernel version 16。新增基于 vc16 的 K/V 双缓冲 TMA 候选，
 让下一块搬运与当前块计算重叠，并保留相同双缓冲配置的延后搬运对照。默认 `optimized` 仍为 vc15。
-最新 H200 同场 vc16 ExpCast 核心 25.2242 ms、完整 API 26.6750 ms；原版 Sage 分别为 24.7355/26.1382 ms。
-vc17、vc18 候选均未改善完整 API。vc18 减少了低寄存器上限下的压力，但仍慢于 vc16；
+最新 H200 同场 vc16 ExpCast 核心 25.3802 ms、完整 API 26.8888 ms；原版 Sage 分别为 24.7880/26.3825 ms。
+vc17、vc18、vc19 候选均未改善完整 API。vc19 四个 ExpCast 候选完整 API 为 27.3374–27.8891 ms，
+预测驻留仍为 3 块且没有 local memory 分配，双缓冲仍未产生净收益；
 保留 168 寄存器、N128 PV 作为后续实验基线，22 ms 尚未达到。
 运行 `bash scripts/validate_pipeline_h200.sh` 使用现有工具链离线构建、检查并对照 vc19 候选；
 不需要 nvdisasm/ncu。编译资源、全输出精度、核心/完整 API 及重复 CUPTI 分开报告。
-vc19 已通过本地交叉编译与测试，尚未在 H200 验证运行正确性或提速。见 [vc19 说明](SAGE_VC19.md)。
+vc19 同场全输出实现门槛已通过，但没有加速；当前无需重新运行这轮实验。见 [vc19 说明](SAGE_VC19.md)。
 [vc18 说明](SAGE_VC18.md) 和 [vc17 说明](SAGE_VC17.md) 保留既往实验。下文保留历史开发记录。
 
 `sageattention-local==2.2.0+vc9` 在已经同场测到 25.8055 ms 的本地 Sage 源码上，
