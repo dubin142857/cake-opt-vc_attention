@@ -1,0 +1,48 @@
+{
+  "source": "User-provided terminal output on 2026-09-30; original JSON, exact_match flags and individual trials were not supplied",
+  "implementation_under_test": "vc14 paired conversion, compared with retained vc12 in the same process",
+  "context": "H200, BF16, BSHD [1,37741,28,128] from the ongoing experiment; environment header was not included in this excerpt",
+  "comparison_trials": 9,
+  "api_median_ms": {
+    "sage_local": 26.1198,
+    "sage_vc_control": 27.0958,
+    "sage_vc_expcast": 27.3954
+  },
+  "fixed_payload_native_api_ms": {
+    "sage_vc_control": 25.4165,
+    "sage_vc_expcast": 25.8497
+  },
+  "staged_cuda_event_intervals_ms": {
+    "sage_vc_control": {"k_mean": 0.1019, "qk_int8": 0.8564, "v_pad": 0.1402, "v_quantize": 0.8365, "attention": 25.1146},
+    "sage_vc_expcast": {"k_mean": 0.0978, "qk_int8": 0.8492, "v_pad": 0.1403, "v_quantize": 0.8306, "attention": 25.4936}
+  },
+  "same_payload_native_api_comparison_ms": {
+    "sage_vc_control": {"vc12": 25.7255, "vc14": 25.5998},
+    "sage_vc_expcast": {"vc12": 27.2233, "vc14": 25.8515}
+  },
+  "displayed_output_differences_all_rows": {
+    "sage_vc_control": {"relative_rmse_percent": 0.0, "max_abs": 0.0},
+    "sage_vc_expcast": {"relative_rmse_percent": 0.0, "max_abs": 0.0}
+  },
+  "derived": {
+    "expcast_saved_ms_vs_vc12": 1.3718,
+    "expcast_latency_reduction_percent_vs_vc12": 5.039065800251978,
+    "expcast_speedup_vs_vc12": 1.0530646190743282,
+    "fixed_payload_expcast_slower_than_control_ms": 0.4332,
+    "fixed_payload_expcast_slower_than_control_percent": 1.7044046190466844,
+    "comparison_expcast_slower_than_control_ms": 0.2517,
+    "comparison_expcast_slower_than_control_percent": 0.9832108063344336,
+    "full_api_expcast_slower_than_sage_ms": 1.2756,
+    "full_api_expcast_slower_than_sage_percent": 4.883651482783158,
+    "full_api_control_slower_than_sage_ms": 0.976
+  },
+  "decision": "Retain vc14: measured improvement over vc12 in this workload, but it has not overtaken control or original Sage",
+  "limits": [
+    "Rounded zero differences do not establish bitwise equality; exact_match was not supplied",
+    "Implementation agreement is not dense FP32 or model-quality validation",
+    "Native API timing includes dispatch/allocation; CUDA-event stage intervals include stream gaps",
+    "Do not mix medians from the two timing groups or treat their differences as isolated kernel durations",
+    "Raw trials were not supplied, so no confidence interval or statistical significance claim",
+    "No remote CUDA 13 SASS was supplied; the specific machine-instruction fusion was confirmed locally with CUDA 12.4"
+  ]
+}

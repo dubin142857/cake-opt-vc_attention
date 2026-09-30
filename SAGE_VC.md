@@ -2,7 +2,8 @@
 
 当前包版本为 `2.2.0+vc14`，native kernel version 11：默认 ExpCast-only 在 vc12 上
 合并两个 FP32 概率的整数转换与字节打包，保留原有 P 字节、FP32 分母及 PV 累加。
-本地 CUDA 12.4 的 Hopper 机器指令已确认减少，完整 H200 提速尚待实测。
+本地 CUDA 12.4 的 Hopper 机器指令已确认减少；9 月 30 日 H200 回传同输入 native API
+比 vc12 快 1.053 倍（耗时下降 5.04%），但完整 API 仍比原版 Sage 慢 4.88%。
 `vc12` 保留为同场基线；此前回退约 12% 的 `vc13_serial` / `vc13_overlap` 仍为显式实验。
 见 [vc14 改动与验证](SAGE_VC14.md)。下文保留各版本的历史开发记录。
 

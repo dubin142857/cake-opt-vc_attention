@@ -8,7 +8,8 @@
 不能称为完整 VC 论文复现。使用与对照见仓库根目录 [SAGE_VC.md](../../SAGE_VC.md)。
 当前版本 `2.2.0+vc14` 在 vc12 上合并成对的 FP32 到整数转换和字节打包，
 默认 `"optimized"` 等于 `"vc14"`，仅修改 ExpCast-only 路径，native kernel version 11。
-P 字节和 FP32 分母数值约定保持 vc12，不增加共享内存。完整 H200 速度待验证，
+P 字节和 FP32 分母数值约定保持 vc12，不增加共享内存。H200 同输入 native API
+相对 vc12 已测得 1.053x，完整 API 仍比原版 Sage 慢 4.88%，
 见 [vc14 说明](../../SAGE_VC14.md)。`kernel_mode="vc12"` 保留最佳旧版同场基线。
 此前共享副本串行/重叠在 H200 比 vc12 更慢，`"vc13_serial"` / `"vc13_overlap"` 保留实验。
 此前 `2.2.0+vc9` 将默认 8 中心聚类的距离计算、分组和块内统计融合成 CUDA kernel，

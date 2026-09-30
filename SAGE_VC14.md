@@ -2,7 +2,20 @@
 
 这一版针对 `expcast=True, v_smooth=False`。基于最佳旧版 vc12，保留其 affine
 计算、极端范围回退、decoded-P FP32 分母、在线历史更新和两级 PV 累加。
-没有采用 vc13 的共享副本方案，没有改变 V 平滑路径，也没有达到已验证的 H200 提速结论。
+没有采用 vc13 的共享副本方案，没有改变 V 平滑路径。
+
+**2026-09-30 H200 回传结果：相对 vc12 已测得提升，但仍未超过原版 Sage。**
+同进程、相同量化输入的 9 轮对照汇总中，ExpCast native API 从 27.2233 ms 降到
+25.8515 ms，减少 1.3718 ms（耗时下降 5.04%，加速比 1.053x）；control 从
+25.7255 ms 变为 25.5998 ms（下降 0.49%）。全输出行相对 RMSE 和最大绝对差均显示为零，
+没有提供原始 JSON 的 `exact_match`，因此不将显示零解释为逐位一致或模型质量通过。
+
+另一组 fixed core 主计时中，ExpCast 25.8497 ms、control 25.4165 ms，仍慢 0.4332 ms
+（1.70%）。完整 API 为 27.3954 ms，原版 `sage_local` 为 26.1198 ms，仍慢 4.88%。
+control 完整 API 自身也比原版多 0.9760 ms，需要单独核查两条路径；不能全归因于 ExpCast。
+两组计时独立汇总，不混用其数值推导阶段成本。原始轮次未提供，未计算统计置信区间。
+数据出处及完整转录见 [H200 vc14 回传摘要](results/h200_sage_vc14_reported_summary.json)。
+保留 vc14 作为下一轮基线，下一步优先核查剩余概率解码/归一化开销及 control 与 Sage 路径差异。
 
 原来每两个数先分别执行 FP32→u8 的 RNE 转换，再用 byte permutation 打包。
 现在将两个转换和打包写在一起：
@@ -59,7 +72,7 @@ python3 scripts/inspect_expcast_codegen.py --output results/h200_vc14_codegen.js
 ```
 
 该脚本的数字统计整个函数里的主循环、尾块及回退分支，并非一次执行的动态指令数。
-CUDA 13 的生成代码可能与本地 CUDA 12.4 不同，最终以同场 H200 实测为准。
+CUDA 13 的生成代码可能与本地 CUDA 12.4 不同。当前 H200 已回传计时，但尚未回传机器指令报告。
 `python3 scripts/benchmark_expcast.py` 也保留 vc12/vc14 helper 对照，但不测 QK/PV 或预处理。
 
 Python 入口保持不变：
