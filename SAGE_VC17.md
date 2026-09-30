@@ -34,10 +34,13 @@ direct 核心增加约 31.1%，本地 SM86 微基准优势未在 Hopper 完整�
 原始 wall-time 试次及 H200 分项微基准未随本次回传提供。
 汇总见 [本轮回传记录](results/h200_sage_vc17_reported_summary.json)。
 
-最后的 `cuobjdump` 返回码 1 出现在计时完成之后；实际错误文本被旧脚本隐藏，
-暂不能判定工具版本、安装或二进制方面的具体原因。脚本已改为保存完整 stderr、
-原始/部分 stdout、工具版本及失败状态；失败的重试不会留下看似成功的旧 JSON。
-该修复不修改 CUDA 内核，不要求重新安装或重新计时：
+最后的 `cuobjdump` 返回码 1 出现在计时完成之后。补充日志后已定位到：
+`Could not find executable file 'nvdisasm'`。这说明子进程找不到反汇编工具，
+还不能确定是未安装还是 PATH 未配置。脚本已保存完整 stderr、原始/部分 stdout、
+工具版本及失败状态，并自动查找所选 cuobjdump 的同目录、CUDA_HOME/CUDA_PATH、
+PATH 和 Linux 的 `/usr/local/cuda/bin`，只修改子进程的 PATH。
+已有 `NVDISASM_PATH` 显式设置会保留；`--nvdisasm` 可覆盖它。
+该修复不修改 CUDA 内核，不要求重新安装算子或重新计时：
 
 ```bash
 git pull --ff-only origin master
@@ -46,7 +49,17 @@ python3 scripts/inspect_probability_codegen.py --output results/h200_vc17_codege
 
 如仍失败，查看 `results/h200_vc17_codegen.cuobjdump.stderr.txt` 和
 `results/h200_vc17_codegen.diagnostics.json`。此前保存的 attention 时延结果不受影响。
-修复通过 4 项针对性测试，并用本地 CUDA 12.4 cuobjdump 实际解析了全部 20 个候选组合。
+可以明确指定已安装的工具：
+
+```bash
+python3 scripts/inspect_probability_codegen.py --nvdisasm /usr/local/cuda/bin/nvdisasm --output results/h200_vc17_codegen.json
+```
+
+若确实未安装，使用与 CUDA Toolkit 匹配的 nvdisasm 组件。对于当前 CUDA 13.0、
+已配置 NVIDIA apt 源的 Ubuntu/Debian 环境，可以运行
+`apt-get install cuda-nvdisasm-13-0`。包名见 [NVIDIA 软件源](https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/)。
+修复通过 9 项针对性测试，并用本地 CUDA 12.4 cuobjdump 实际解析了全部 20 个候选组合；
+远端 CUDA 13.0 的工具发现仍需重试确认。
 
 ## 改动范围
 

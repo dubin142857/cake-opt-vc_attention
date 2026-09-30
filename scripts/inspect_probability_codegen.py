@@ -35,15 +35,48 @@ def inspect(sass):
     return rows
 
 
-def dump_sass(tool,binary,output):
+def disassembler_environment(tool,nvdisasm=None):
+    """Make Toolkit helpers visible only to the child, preserving explicit overrides."""
+    env=os.environ.copy()
+    executable="nvdisasm.exe" if os.name=="nt" else "nvdisasm"
+    if nvdisasm:
+        selected=Path(nvdisasm).expanduser().resolve()
+        if not selected.is_file() or not os.access(selected,os.X_OK):
+            raise SystemExit(f"--nvdisasm must name an executable file: {selected}")
+        source="--nvdisasm"
+        env.pop("NVDISASM_PATH",None)
+        candidates=[selected]
+    elif env.get("NVDISASM_PATH"):
+        # Do not reinterpret or silently replace the user's native-tool override.
+        return env,{"source":"NVDISASM_PATH","value":env["NVDISASM_PATH"]}
+    else:
+        resolved_tool=Path(shutil.which(str(tool)) or tool).resolve()
+        candidates=[resolved_tool.parent/executable]
+        for key in ("CUDA_HOME","CUDA_PATH"):
+            if env.get(key): candidates.append(Path(env[key])/"bin"/executable)
+        on_path=shutil.which(executable)
+        if on_path: candidates.append(Path(on_path))
+        if os.name!="nt": candidates.append(Path("/usr/local/cuda/bin")/executable)
+        selected=next((p.resolve() for p in candidates if p.is_file() and os.access(p,os.X_OK)),None)
+        source="auto" if selected else "not found"
+    if selected:
+        env["PATH"]=str(selected.parent)+(os.pathsep+env["PATH"] if env.get("PATH") else "")
+    return env,{"source":source,"executable":str(selected) if selected else None,
+                "searched_paths":[str(p) for p in candidates]}
+
+
+def dump_sass(tool,binary,output,nvdisasm=None):
     """Preserve subprocess evidence even when disassembly fails or is partial."""
     output.parent.mkdir(parents=True,exist_ok=True)
     sass_path=output.with_suffix(".sass.txt")
     stderr_path=output.with_suffix(".cuobjdump.stderr.txt")
     diagnostics_path=output.with_suffix(".diagnostics.json")
+    # Resolve before changing the child's PATH to avoid selecting another cuobjdump.
+    tool=shutil.which(str(tool)) or str(tool)
+    env,disassembler=disassembler_environment(tool,nvdisasm)
     command=[str(tool),"--dump-sass",str(binary)]
     diagnostics={"command":command,"binary":str(binary),"cuobjdump":str(tool),
-        "nvdisasm_on_path":shutil.which("nvdisasm"),"sass_path":str(sass_path),
+        "nvdisasm_on_path":shutil.which("nvdisasm"),"nvdisasm":disassembler,"sass_path":str(sass_path),
         "stderr_path":str(stderr_path),"diagnostics_path":str(diagnostics_path)}
     try:
         version=subprocess.run([str(tool),"--version"],capture_output=True,text=True,errors="replace",timeout=10)
@@ -54,7 +87,7 @@ def dump_sass(tool,binary,output):
         # Stream to files instead of collecting the complete shared library's
         # disassembly in subprocess.PIPE; keep stderr independently readable.
         with sass_path.open("wb") as stdout,stderr_path.open("wb") as stderr:
-            raw=subprocess.run(command,stdout=stdout,stderr=stderr,check=False)
+            raw=subprocess.run(command,stdout=stdout,stderr=stderr,check=False,env=env)
         diagnostics["returncode"]=raw.returncode
     except OSError as exc:
         diagnostics.update(returncode=None,launch_error=str(exc))
@@ -65,7 +98,12 @@ def dump_sass(tool,binary,output):
         failure={**diagnostics,"status":"failed","stage":"cuobjdump","error":error}
         # A failed retry must not leave an old successful JSON looking current.
         output.write_text(json.dumps(failure,indent=2)+"\n",encoding="utf-8")
+        hint=""
+        if "nvdisasm" in error.lower() and "could not find executable" in error.lower():
+            hint=("nvdisasm is unavailable to cuobjdump. Install the nvdisasm component matching your CUDA Toolkit "
+                  "if absent, or pass --nvdisasm /path/to/cuda/bin/nvdisasm.\n")
         raise SystemExit(f"cuobjdump failed (exit {diagnostics['returncode']}):\n{error[:4000]}\n"
+            f"{hint}"
             f"Diagnostics: {diagnostics_path}\nFull stderr: {stderr_path}\nRaw/partial stdout: {sass_path}\n"
             "Previously saved attention timings are unaffected. Do not rebuild or rerun timings just to retry this inspection.")
     return sass_path.read_text(encoding="utf-8",errors="replace"),diagnostics
@@ -75,6 +113,7 @@ def main(argv=None):
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary",type=Path)
     parser.add_argument("--cuobjdump")
+    parser.add_argument("--nvdisasm",type=Path,help="Explicit nvdisasm executable; otherwise search the selected Toolkit and PATH")
     parser.add_argument("--output",type=Path,default=Path("results/probability_codegen.json"))
     args=parser.parse_args(argv)
     if args.binary is None:
@@ -88,7 +127,7 @@ def main(argv=None):
             candidate=Path(os.environ.get(env,"/usr/local/cuda"))/"bin"/("cuobjdump.exe" if os.name=="nt" else "cuobjdump")
             if candidate.is_file(): tool=str(candidate);break
     if not tool: raise SystemExit("cuobjdump not found; pass --cuobjdump /path/to/cuda/bin/cuobjdump")
-    sass,diagnostics=dump_sass(tool,binary,args.output)
+    sass,diagnostics=dump_sass(tool,binary,args.output,args.nvdisasm)
     try:
         rows=inspect(sass)
     except RuntimeError as exc:

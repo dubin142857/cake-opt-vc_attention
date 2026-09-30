@@ -24,8 +24,8 @@
   "codegen_failure": {
     "tool": "/usr/local/cuda/bin/cuobjdump",
     "returncode": 1,
-    "stderr": "not exposed by the previous script",
-    "root_cause": "unknown; rerun inspection after diagnostic fix, without rerunning timings"
+    "stderr": "Follow-up retry: cuobjdump fatal: Could not find executable file 'nvdisasm'; you can try adding path to environment variables PATH or NVDISASM_PATH",
+    "root_cause": "cuobjdump cannot locate nvdisasm; not yet known whether it is uninstalled or absent from the subprocess search path. No need to rerun timings."
   },
   "conclusion": "No full-API improvement from vc17 candidates. Retain vc16 as the candidate baseline; no default change.",
   "notes": [

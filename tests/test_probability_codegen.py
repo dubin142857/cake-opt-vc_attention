@@ -57,3 +57,63 @@ def test_parse_failure_retains_successful_tool_output(monkeypatch,tmp_path):
     report=json.loads(output.read_text())
     assert report["status"]=="failed" and report["stage"]=="parse" and report["returncode"]==0
     assert Path(report["sass_path"]).read_text()=="unrecognized symbols"
+
+
+def make_executable(directory,name):
+    directory.mkdir(parents=True,exist_ok=True)
+    path=directory/(name+('.exe' if codegen.os.name=='nt' else ''))
+    path.write_bytes(b'fixture')
+    path.chmod(0o755)
+    return path
+
+
+def test_sibling_nvdisasm_reaches_child_without_changing_parent(monkeypatch,tmp_path):
+    monkeypatch.delenv("NVDISASM_PATH",raising=False)
+    monkeypatch.setenv("PATH","")
+    tool=make_executable(tmp_path/"toolkit with spaces"/"bin","cuobjdump")
+    disasm=make_executable(tool.parent,"nvdisasm")
+    def run(command,**kwargs):
+        if command[-1]=="--version": return SimpleNamespace(returncode=0,stdout="CUDA 13.0",stderr="")
+        assert kwargs["env"]["PATH"]==str(disasm.parent)
+        assert command[0]==str(tool)
+        assert codegen.os.environ["PATH"]==""
+        kwargs["stdout"].write(b"sass fixture")
+        return SimpleNamespace(returncode=0)
+    monkeypatch.setattr(codegen.subprocess,"run",run)
+    sass,diagnostics=codegen.dump_sass(tool,tmp_path/"kernel.so",tmp_path/"result.json")
+    assert sass=="sass fixture"
+    assert diagnostics["nvdisasm"]["executable"]==str(disasm)
+
+
+@pytest.mark.parametrize("variable",["CUDA_HOME","CUDA_PATH"])
+def test_nvdisasm_from_cuda_environment(monkeypatch,tmp_path,variable):
+    for key in ("NVDISASM_PATH","CUDA_HOME","CUDA_PATH"):
+        monkeypatch.delenv(key,raising=False)
+    monkeypatch.setenv("PATH","")
+    root=tmp_path/"cuda"
+    disasm=make_executable(root/"bin","nvdisasm")
+    monkeypatch.setenv(variable,str(root))
+    env,info=codegen.disassembler_environment(tmp_path/"other"/"cuobjdump")
+    assert info["executable"]==str(disasm) and env["PATH"]==str(disasm.parent)
+
+
+def test_explicit_nvdisasm_overrides_child_only(monkeypatch,tmp_path):
+    monkeypatch.setenv("NVDISASM_PATH","user override")
+    monkeypatch.setenv("PATH","original path")
+    env,info=codegen.disassembler_environment("cuobjdump")
+    assert env["NVDISASM_PATH"]=="user override" and info["source"]=="NVDISASM_PATH"
+    disasm=make_executable(tmp_path/"chosen","nvdisasm")
+    env,info=codegen.disassembler_environment("cuobjdump",disasm)
+    assert "NVDISASM_PATH" not in env and info["source"]=="--nvdisasm"
+    assert env["PATH"]==str(disasm.parent)+codegen.os.pathsep+"original path"
+    assert codegen.os.environ["NVDISASM_PATH"]=="user override"
+
+
+def test_missing_nvdisasm_keeps_actionable_failure(monkeypatch,tmp_path):
+    def run(command,**kwargs):
+        if command[-1]=="--version": return SimpleNamespace(returncode=0,stdout="CUDA 13.0",stderr="")
+        kwargs["stderr"].write(b"cuobjdump fatal: Could not find executable file 'nvdisasm'")
+        return SimpleNamespace(returncode=1)
+    monkeypatch.setattr(codegen.subprocess,"run",run)
+    with pytest.raises(SystemExit,match="pass --nvdisasm"):
+        codegen.dump_sass("cuobjdump",tmp_path/"kernel.so",tmp_path/"result.json")
