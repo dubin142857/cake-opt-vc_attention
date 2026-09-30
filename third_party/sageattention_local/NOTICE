@@ -6,7 +6,7 @@ License: Apache License 2.0 (see LICENSE).
 
 Local integration in vc-attention:
 - Independent sageattention_local Python package and Torch operator namespaces.
-- Independent sageattention-local distribution, version 2.2.0+vc16.
+- Independent sageattention-local distribution, version 2.2.0+vc17.
 - Hopper-only build of the baseline _qattn_sm90 and _fused CUDA extensions.
 - Distinct name for the SM90 fake implementation, avoiding shadowing the CUDA callable.
 - Remove the unused CUDAContext.h include in fused.cu to avoid unnecessary cuSPARSE headers.
@@ -26,4 +26,5 @@ Sage+VC experiment, separate entry sageattn_vc and extension _vc_sm90:
 - vc10 changes only the ExpCast-without-V-smoothing core: independent exact tile sums and PV-overlapped history scaling; FP8 encoding is unchanged, FP32 history-add rounding can differ. Prior vc9 kernels remain selectable.
 - vc11-vc15 schedule and simplify the ExpCast encoding/reduction pipeline, including paired conversion and four-byte packing. Historical paths remain selectable.
 - vc16 adds csrc/vc/sage_layout.cuh, also derived from the pinned upstream Hopper kernel with its license retained. It exposes sum/pack, next-V prefetch and ExpCast history schedules independently; default remains vc15.
+- vc17 adds probability_variants.cuh: selectable fragment batch sizes, FP32 sum chains and direct positive-E4M3 decoding on the vc16 body. Historical helpers remain unchanged; default remains vc15.
 Modified and new experiment files are recorded separately in UPSTREAM.json.

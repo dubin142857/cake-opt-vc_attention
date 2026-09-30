@@ -1,5 +1,15 @@
 # Sage+VC 性能诊断
 
+vc17 最新一键测试（在仓库根目录，包含构建及正确性检查）：
+
+```bash
+bash scripts/validate_expcast_h200.sh
+```
+
+结果为 `results/h200_vc17_probability.json`、`h200_vc17_attention.json`、`h200_vc17_codegen.json`，
+分别是实际概率 helper 微基准、完整 attention 对照、机器码统计。详细范围见 [vc17 说明](SAGE_VC17.md)。
+最新完整对照使用 `--compare-probability-candidates`，以 vc16 为基线；默认调用仍保留 vc15。
+
 vc16 增加原版主体调度的独立候选，默认仍保留 vc15。最新对比命令：
 
 ```bash

@@ -11,13 +11,14 @@ import torch
 # The vc13 shared-copy schedules remain explicit experiments after regression.
 DEFAULT_EXPCAST_KERNEL = "vc15"
 SAGE_LAYOUT_MODES = {"vc16": 1, "vc16_early_v": 2, "vc16_pack_first": 3,
-                     "vc16_pack_early": 4, "vc16_serial": 5}
+                     "vc16_pack_early": 4, "vc16_serial": 5,
+                     "vc17_g1": 6, "vc17_g4": 7, "vc17_c4": 8, "vc17_direct": 9}
 
 
 def _extension():
     from . import _vc_sm90
     if (getattr(_vc_sm90, "sage_vc_api_version", None) != 1 or
-            getattr(_vc_sm90, "sage_vc_kernel_version", None) != 13 or
+            getattr(_vc_sm90, "sage_vc_kernel_version", None) != 14 or
             getattr(_vc_sm90, "sage_vc_preprocess_version", None) != 1):
         raise RuntimeError("Rebuild sageattention-local with bash scripts/build_sage_local.sh")
     return _vc_sm90
@@ -36,7 +37,8 @@ def sage_vc_build_info():
             "sage_vc_preprocess_version": _extension().sage_vc_preprocess_version,
             "paper_equivalent": False, "sage_vc_api_version": 1,
             "default_kernel_mode": "optimized", "default_expcast_kernel": DEFAULT_EXPCAST_KERNEL, "kernel_modes": ["optimized", "vc15", "vc14", "vc13_overlap", "vc13_serial", "vc12", "vc11", "vc10", "vc9", "vc7", "vc6", "vc4", *SAGE_LAYOUT_MODES],
-            "sage_layout_candidates": {"modes": SAGE_LAYOUT_MODES, "scope": "v_smooth=False only; pack-first modes require expcast=False; no H200 speed claim; default remains measured vc15"},
+            "sage_layout_candidates": {"modes": SAGE_LAYOUT_MODES, "scope": "v_smooth=False only; pack-first modes require expcast=False; vc17 modes require expcast=True; default remains vc15"},
+            "probability_candidates": "vc17: group 1/4 fragments, four FP32 chains, or exact direct FP32 decode; vc16 body and unchanged encoding/history",
             "expcast_probability": "paired saturating u8 RNE/packing + decoded-P FP32 reduction",
             "expcast_interleaving": "vc15: encode two K fragments, issue packed decode, then consume FP32 values",
             "probability_scratch_bytes_per_block": 0,
@@ -116,11 +118,13 @@ def forward_prepared(state, *, kernel_mode="optimized"):
     if sage_schedule:
         if state["block_values"]:
             raise ValueError("Sage layout candidates require v_smooth=False")
+        if sage_schedule>=6 and not state["expcast"]:
+            raise ValueError("Probability candidates require expcast=True")
         if state["expcast"] and sage_schedule in (3, 4):
             raise ValueError("Pack-first candidates require expcast=False")
         kernel_mode = "vc15"
     if kernel_mode not in ("optimized", "vc15", "vc14", "vc13_overlap", "vc13_serial", "vc12", "vc11", "vc10", "vc9", "vc7", "vc6", "vc4"):
-        raise ValueError("Unknown kernel_mode; use a documented vc4..vc16 mode or 'optimized'")
+        raise ValueError("Unknown kernel_mode; use a documented vc4..vc17 mode or 'optimized'")
     return _extension().forward(*(state[name] for name in ("q", "k", "v", "qs", "ks", "vs", "means",
                                                           "expcast", "block_values", "output_type", "scale")),
                                 optimized=kernel_mode != "vc4", packed_probability=kernel_mode in ("optimized", "vc15", "vc14", "vc13_overlap", "vc13_serial", "vc12", "vc11", "vc10", "vc9", "vc7"),
@@ -136,10 +140,12 @@ def forward_prepared(state, *, kernel_mode="optimized"):
 def sageattn_vc(q, k, v, tensor_layout="HND", is_causal=False, sm_scale=None, return_lse=False,
                *, expcast=True, v_smooth=True, clusters=8, iterations=2, kernel_mode="optimized", v_scale_mode="channel", grouping_mode="fused"):
     if kernel_mode not in ("optimized", "vc15", "vc14", "vc13_overlap", "vc13_serial", "vc12", "vc11", "vc10", "vc9", "vc7", "vc6", "vc4", *SAGE_LAYOUT_MODES):
-        raise ValueError("Unknown kernel_mode; use a documented vc4..vc16 mode or 'optimized'")
+        raise ValueError("Unknown kernel_mode; use a documented vc4..vc17 mode or 'optimized'")
     if kernel_mode in SAGE_LAYOUT_MODES:
         if v_smooth:
             raise ValueError("Sage layout candidates require v_smooth=False")
+        if SAGE_LAYOUT_MODES[kernel_mode]>=6 and not expcast:
+            raise ValueError("Probability candidates require expcast=True")
         if expcast and SAGE_LAYOUT_MODES[kernel_mode] in (3, 4):
             raise ValueError("Pack-first candidates require expcast=False")
     if v_scale_mode not in ("channel", "block"):

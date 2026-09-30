@@ -570,6 +570,34 @@ def test_layout_cli_rejects_stale_native_and_invalid_sample_counts():
         with pytest.raises(SystemExit): profile.parse_args(argv)
 
 
+def test_probability_candidates_use_vc16_references_and_reject_stale_native():
+    args=profile.parse_args(["--compare-probability-candidates","--expcast-only"])
+    assert args.compare_sage_layout and args.compare_probability_candidates
+    ops=SimpleNamespace(ext=SimpleNamespace(sage_vc_kernel_version=13))
+    with pytest.raises(RuntimeError,match="needs vc17"):
+        profile.compare_sage_layout(ops,None,None,args,"cpu",None)
+    calls,full,meta=profile.sage_layout_calls(ops,{"block_values":False},None,None,None,True)
+    assert set(calls)==set(full)==set(meta)=={
+        "sage_cpp","control_vc16","expcast_vc16","expcast_vc17_g1","expcast_vc17_g4","expcast_vc17_c4","expcast_vc17_direct"}
+    for row in meta.values():
+        assert row["reference"]==("expcast_vc16" if row["expcast"] else "control_vc16")
+
+
+def test_probability_codegen_classifies_only_matching_full_kernel_schedules():
+    path=ROOT/"scripts/inspect_probability_codegen.py"
+    spec=importlib.util.spec_from_file_location("probability_codegen",path)
+    module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+    parts=[]
+    for dim in (64,128):
+        for dtype in ("6__half","13__nv_bfloat16"):
+            for mode in range(5):
+                name=f"sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj{dim}E{dtype}L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi{mode}EEEv"
+                parts.append(f"Function : {name}\n/*0000*/ @P0 FADD R1, R2, R3; /* 0x0 */\n/*0010*/ F2FP.F32.F16 R2, R4; /* 0x0 */")
+    report=module.inspect("\n".join(parts))
+    assert len(report)==20 and all(row["opcodes"]=={"FADD":1,"F2FP":1} for row in report)
+    with pytest.raises(RuntimeError,match="Expected 20"): module.inspect("\n".join(parts[:-1]))
+
+
 def test_layout_calls_share_native_bytes_and_recompute_full_api():
     qkv=tuple(torch.ones(1,2,n,64).half() for n in (3,7,7))
     ops=fake_ops()
@@ -618,8 +646,8 @@ def test_layout_comparison_checks_all_rows_with_separate_algorithm_references(mo
         assert set(order)=={(kind,name) for kind in ("core","api") for name in names}
     for row in report["variants"].values():
         assert row["core"]["trial_mean_ms"]==[2.]*3 and row["full_api"]["trial_mean_ms"]==[2.]*3
-        assert row["vs_same_algorithm_vc15"]["checked_queries"]==513
-        assert row["vs_same_algorithm_vc15"]["exact_match"]
+        assert row["vs_same_algorithm_baseline"]["checked_queries"]==513
+        assert row["vs_same_algorithm_baseline"]["exact_match"]
     for group in (outputs,public):
         original=group["expcast_vc16"].clone()
         group["expcast_vc16"][:,:,512]=float("nan")

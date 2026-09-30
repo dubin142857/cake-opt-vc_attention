@@ -1,0 +1,24 @@
+{
+  "source": "User-pasted H200 vc16 profile; wall-time raw trials unavailable",
+  "shape_bshd": [1, 37741, 28, 128],
+  "dtype": "bfloat16",
+  "columns": ["core_api_ms", "full_api_ms", "repeated_cupti_kernel_ms", "vs_same_algorithm_vc15_printed_rmse_percent"],
+  "variants": {
+    "sage_cpp": [24.6435, 26.1921, 24.5735, 0.000737],
+    "control_vc15": [25.5145, 27.1041, 25.5917, 0],
+    "control_vc16": [24.5392, 26.2127, 24.4804, 0.000737],
+    "control_vc16_early_v": [25.4070, 26.9825, 25.3875, 0],
+    "control_vc16_pack_first": [24.6732, 26.2738, 24.6641, 0.000737],
+    "control_vc16_pack_early": [25.5215, 27.0425, 25.5095, 0],
+    "expcast_vc15": [25.4844, 27.0211, 25.4706, 0],
+    "expcast_vc16": [25.2107, 26.7478, 25.1577, 0],
+    "expcast_vc16_early_v": [25.4311, 26.9109, 25.4430, 0],
+    "expcast_vc16_serial": [25.2182, 26.7966, 25.2282, 0]
+  },
+  "notes": [
+    "Core and full API are synchronized wall times. CUPTI is separate profiler-active GPU duration: median of three 20-launch trial medians.",
+    "Printed zero errors are rounded; no exact-match flag is inferred from the text.",
+    "Same-algorithm regression checks passed in this profile; no model-quality acceptance claim.",
+    "These are vc16 results, not vc17 results."
+  ]
+}

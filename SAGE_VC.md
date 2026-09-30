@@ -1,11 +1,11 @@
 # SageAttention 主体 + VC 两项改动
 
-当前包版本为 `2.2.0+vc16`，native kernel version 13。新增沿用原版 Sage 主体的
-调度候选，分别调整分母求和/FP8 打包、V 预取、ExpCast 历史更新的位置。
-默认 `optimized` 仍为已测的 vc15；新候选需要显式选择，H200 性能待验证。
-新增 `--compare-sage-layout` 同场测完整 API、固定量化输入核心，并可重复采集 CUPTI kernel 耗时。
-见 [vc16 改动与验证](SAGE_VC16.md)。用户回传 vc15 核心约 25.48 ms、原版 Sage 约 24.58 ms；
-22 ms 是后续目标，尚未达到。下文保留各版本的历史开发记录。
+当前包版本为 `2.2.0+vc17`，native kernel version 14。在 vc16 主体上增加概率处理的四个候选：
+fragment 批次 1/4、四条 FP32 累加链、直接解码到 FP32。默认 `optimized` 仍为 vc15。
+H200 回传 vc16 ExpCast 核心 25.2107 ms、完整 API 26.7478 ms；原版 Sage 分别为 24.6435/26.1921 ms。
+新候选的速度待 H200 验证，22 ms 尚未达到。运行 `bash scripts/validate_expcast_h200.sh`
+即可构建、检查、测当前概率 helper 和完整 attention，并导出实际机器码。
+见 [vc17 说明](SAGE_VC17.md)。下文保留各版本的历史开发记录。
 
 `sageattention-local==2.2.0+vc9` 在已经同场测到 25.8055 ms 的本地 Sage 源码上，
 新增独立 `sageattn_vc`。原版 `sageattn` 的数学与内核保留。

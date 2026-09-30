@@ -186,6 +186,8 @@ def validate(device="cuda:0"):
                     if getattr(ext,"sage_vc_kernel_version",0) >= 13 and not smooth:
                         modes = ("vc16","vc16_early_v","vc16_serial") if cast else (
                             "vc16","vc16_early_v","vc16_pack_first","vc16_pack_early")
+                        if cast and getattr(ext,"sage_vc_kernel_version",0) >= 14:
+                            modes += ("vc17_g1","vc17_g4","vc17_c4","vc17_direct")
                         row["sage_layout_vs_vc15"] = {}
                         for mode in modes:
                             candidate = vc.forward_prepared(state,kernel_mode=mode)

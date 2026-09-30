@@ -20,7 +20,7 @@
 
 #pragma once
 
-template<uint32_t CTA_Q, uint32_t CTA_K, uint32_t NUM_THREADS, uint32_t head_dim, QuantGranularity Q_GRAN, QuantGranularity K_GRAN, typename DTypeOut, MaskMode mask_mode = MaskMode::kNone, bool return_lse = false, bool fuse_v_scale=false, bool ExpCast=false, bool EarlyV=false, bool PackFirst=false, bool OverlapHistory=true>
+template<uint32_t CTA_Q, uint32_t CTA_K, uint32_t NUM_THREADS, uint32_t head_dim, QuantGranularity Q_GRAN, QuantGranularity K_GRAN, typename DTypeOut, MaskMode mask_mode = MaskMode::kNone, bool return_lse = false, bool fuse_v_scale=false, bool ExpCast=false, bool EarlyV=false, bool PackFirst=false, bool OverlapHistory=true, int ProbabilityVariant=0>
 __global__ __maxnreg__(168) void sage_vc_attention_kernel_sage_layout(const __grid_constant__ CUtensorMap tensorMapQ,
                                         const __grid_constant__ CUtensorMap tensorMapK,
                                         const __grid_constant__ CUtensorMap tensorMapV,
@@ -210,7 +210,7 @@ __global__ __maxnreg__(168) void sage_vc_attention_kernel_sage_layout(const __gr
     float tile_mass[num_tiles_q][2], probability_alpha[num_tiles_q][2];
     if constexpr (ExpCast) {
       // vc15's exact encoder and FP32 recurrence, with a controlled schedule.
-      vc_probability_prepare<true,true,false,true,true>(RS_f32,m,sm_scale,RS_f8,probability_alpha,tile_mass);
+      vc_probability_prepare_variant<ProbabilityVariant>(RS_f32,m,sm_scale,RS_f8,probability_alpha,tile_mass);
       if constexpr (!OverlapHistory)
         vc_probability_finish(RO,d,probability_alpha,tile_mass);
     } else {
@@ -359,7 +359,7 @@ __global__ __maxnreg__(168) void sage_vc_attention_kernel_sage_layout(const __gr
     float tile_mass[num_tiles_q][2], probability_alpha[num_tiles_q][2];
     if constexpr (ExpCast) {
       // vc15's exact encoder and FP32 recurrence, with a controlled schedule.
-      vc_probability_prepare<true,true,false,true,true>(RS_f32,m,sm_scale,RS_f8,probability_alpha,tile_mass);
+      vc_probability_prepare_variant<ProbabilityVariant>(RS_f32,m,sm_scale,RS_f8,probability_alpha,tile_mass);
       if constexpr (!OverlapHistory)
         vc_probability_finish(RO,d,probability_alpha,tile_mass);
     } else {

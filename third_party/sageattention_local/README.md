@@ -6,10 +6,11 @@
 `sageattn` 是原版内核的独立源码构建。`2.2.0+vc3` 新增独立的
 `sageattn_vc` 实验入口：Sage INT8 QK + VC 的 V 聚类/分块平滑、ExpCast，
 不能称为完整 VC 论文复现。使用与对照见仓库根目录 [SAGE_VC.md](../../SAGE_VC.md)。
-当前版本 `2.2.0+vc16` 增加原版 Sage 主体调度的独立候选，native kernel version 13。
+当前版本 `2.2.0+vc17` 增加 vc16 主体上的概率处理候选，native kernel version 14。
 默认 `"optimized"` 仍等于已测的 `"vc15"`，新候选通过 `kernel_mode="vc16"` 等显式选择。
-仅支持 `v_smooth=False`；保持 vc15 的量化数据和 ExpCast 编码，调整执行顺序。
-新增完整 API、同输入核心及重复 CUPTI 对照，见 [vc16 说明](../../SAGE_VC16.md)。
+vc17 候选还要求 `expcast=True`，测试 fragment 批次、FP32 求和链和直接 FP32 解码。
+保留量化输入、P 编码、FP32 分母和历史更新。完整测试入口为 `scripts/validate_expcast_h200.sh`，
+包含实际 helper 微基准、完整 API/同输入核心、重复 CUPTI 与机器码，见 [vc17 说明](../../SAGE_VC17.md)。
 新候选的 H200 性能及完整 attention 正确性待远端验证，不宣称已达到 22 ms。
 `kernel_mode="vc14"` 保留上一版同场基线，`vc12` 及更早内核仍可使用。
 此前共享副本串行/重叠在 H200 比 vc12 更慢，`"vc13_serial"` / `"vc13_overlap"` 保留实验。

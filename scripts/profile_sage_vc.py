@@ -213,6 +213,8 @@ def parse_args(argv=None):
                         help="vc15+: compare original Sage C++, registered Sage, VC control and vc14/vc15 ExpCast on the same payload")
     parser.add_argument("--compare-sage-layout", action="store_true",
                         help="vc16+: compare original-loop candidates with vc15 and Sage, including fresh full APIs")
+    parser.add_argument("--compare-probability-candidates", action="store_true",
+                        help="vc17+: compare four probability candidates on the vc16 body, plus vc16 and Sage")
     parser.add_argument("--kernel-samples", type=int, default=20,
                         help="GPU launches per variant/trial for --compare-sage-layout with --trace-dir")
     parser.add_argument("--kernel-trials", type=int, default=3,
@@ -232,6 +234,8 @@ def parse_args(argv=None):
     parser.add_argument("--ncu-variant", choices=tuple(SAGE_VC_VARIANTS),
                         help="Only capture one warmed fixed-payload native call inside cudaProfilerStart/Stop")
     args = parser.parse_args(argv)
+    if args.compare_probability_candidates:
+        args.compare_sage_layout = True
     if min(args.batch,args.heads,args.queries,args.tokens,args.warmup,args.repeats,args.trials,args.kernel_samples,args.kernel_trials) < 1:
         parser.error("shapes, warmup, repeats and trials must be positive")
     if args.check_queries < 0 or args.reference_chunk < 1:
@@ -355,10 +359,12 @@ def compare_sage_core(ops, state, args, device):
             "scope":"Same Q/K/V bytes and scales; no preprocessing; every call includes fresh output allocation and native dispatch. Synchronized wall time, not pure GPU duration."}
 
 
-def sage_layout_calls(ops, state, qkv, native, sage_api):
+def sage_layout_calls(ops, state, qkv, native, sage_api, probability_candidates=False):
     """All native variants share operands. Full APIs recompute preprocessing."""
     modes = {False:("vc15","vc16","vc16_early_v","vc16_pack_first","vc16_pack_early"),
              True:("vc15","vc16","vc16_early_v","vc16_serial")}
+    if probability_candidates:
+        modes = {False:("vc16",),True:("vc16","vc17_g1","vc17_g4","vc17_c4","vc17_direct")}
     calls, full, metadata = {}, {}, {}
     for cast, variants in modes.items():
         payload = {**state,"expcast":cast}
@@ -366,10 +372,10 @@ def sage_layout_calls(ops, state, qkv, native, sage_api):
             name = ("expcast_" if cast else "control_") + mode
             calls[name] = lambda payload=payload,mode=mode:ops.vc.forward_prepared(payload,kernel_mode=mode)
             full[name] = lambda cast=cast,mode=mode:ops.vc.sageattn_vc(*qkv,tensor_layout="HND",expcast=cast,v_smooth=False,kernel_mode=mode)
-            metadata[name] = {"expcast":cast,"kernel_mode":mode,"reference":("expcast_" if cast else "control_")+"vc15"}
+            metadata[name] = {"expcast":cast,"kernel_mode":mode,"reference":("expcast_" if cast else "control_")+modes[cast][0]}
     calls["sage_cpp"] = sage_core_calls(ops,state,native,native)["sage_cpp"]
     full["sage_cpp"] = lambda:sage_api(*qkv,tensor_layout="HND",is_causal=False)
-    metadata["sage_cpp"] = {"expcast":False,"reference":"control_vc15","full_api":"sage_local public sageattn"}
+    metadata["sage_cpp"] = {"expcast":False,"reference":"control_"+modes[False][0],"full_api":"sage_local public sageattn"}
     return calls,full,metadata
 
 
@@ -416,16 +422,18 @@ def trace_layout_samples(calls, args, device):
 
 @torch.no_grad()
 def compare_sage_layout(ops,state,qkv,args,device,sage_api):
+    if args.compare_probability_candidates and getattr(ops.ext,"sage_vc_kernel_version",0) < 14:
+        raise RuntimeError("--compare-probability-candidates needs vc17; rebuild with bash scripts/build_sage_local.sh")
     if getattr(ops.ext,"sage_vc_kernel_version",0) < 13:
         raise RuntimeError("--compare-sage-layout needs vc16; rebuild with bash scripts/build_sage_local.sh")
     native,_ = load_sage_core_ops()
-    calls,full,metadata = sage_layout_calls(ops,state,qkv,native,sage_api)
+    calls,full,metadata = sage_layout_calls(ops,state,qkv,native,sage_api,args.compare_probability_candidates)
     for call in (*calls.values(),*full.values()):
         for _ in range(args.warmup): call()
     torch.cuda.synchronize(device)
     errors={}
     for cast in (False,True):
-        reference_name=("expcast_" if cast else "control_")+"vc15"
+        reference_name=next(meta["reference"] for meta in metadata.values() if meta["expcast"]==cast)
         reference=calls[reference_name]()
         for name,meta in metadata.items():
             if meta["expcast"]!=cast: continue
@@ -437,7 +445,7 @@ def compare_sage_layout(ops,state,qkv,args,device,sage_api):
             api_error=output_difference(api_output,output)
             if api_error["rel_rmse"]>.001:
                 raise AssertionError(f"{name} fresh API/fixed-payload output differs: {api_error}")
-            errors[name]={"vs_same_algorithm_vc15":error,"full_vs_fixed":api_error}
+            errors[name]={"vs_same_algorithm_baseline":error,"full_vs_fixed":api_error}
             del output,api_output
         del reference
     jobs={(kind,name):call for kind,group in (("core",calls),("api",full)) for name,call in group.items()}
@@ -451,12 +459,13 @@ def compare_sage_layout(ops,state,qkv,args,device,sage_api):
     rows={name:{**meta,"core":stats(times["core",name]),"full_api":stats(times["api",name]),**errors[name]}
           for name,meta in metadata.items()}
     print("\nOriginal-loop candidates, identical native payloads; fresh preprocessing for full API (ms):")
-    print(f"{'variant':<28} {'core API':>11} {'full API':>11} {'vc15/core':>11} {'vs vc15 RMSE %':>17}")
+    baseline_label="vc16" if args.compare_probability_candidates else "vc15"
+    print(f"{'variant':<28} {'core API':>11} {'full API':>11} {baseline_label+'/core':>11} {'vs base RMSE %':>17}")
     for name,row in rows.items():
         ref=row["reference"]
-        row["vc15_core_over_variant"]=rows[ref]["core"]["median_ms"]/row["core"]["median_ms"]
+        row["baseline_core_over_variant"]=rows[ref]["core"]["median_ms"]/row["core"]["median_ms"]
         row["sage_core_over_variant"]=rows["sage_cpp"]["core"]["median_ms"]/row["core"]["median_ms"]
-        print(f"{name:<28} {row['core']['median_ms']:>11.4f} {row['full_api']['median_ms']:>11.4f} {row['vc15_core_over_variant']:>10.3f}x {100*row['vs_same_algorithm_vc15']['rel_rmse']:>17.6f}")
+        print(f"{name:<28} {row['core']['median_ms']:>11.4f} {row['full_api']['median_ms']:>11.4f} {row['baseline_core_over_variant']:>10.3f}x {100*row['vs_same_algorithm_baseline']['rel_rmse']:>17.6f}")
     print("vc15 remains the default. Rows compare schedules within the same algorithm; 0.1% is an implementation gate, not model quality.")
     return {"variants":rows,"trial_order":orders,"scope":"Core APIs include allocation/dispatch; full APIs redo all preprocessing. All output rows validated outside timing; default is unchanged."},calls
 
@@ -776,6 +785,8 @@ def run(args):
         raise RuntimeError("--compare-sage-core needs vc15; rebuild with bash scripts/build_sage_local.sh")
     if args.compare_sage_layout and getattr(ops.ext,"sage_vc_kernel_version",0) < 13:
         raise RuntimeError("--compare-sage-layout needs vc16; rebuild with bash scripts/build_sage_local.sh")
+    if args.compare_probability_candidates and getattr(ops.ext,"sage_vc_kernel_version",0) < 14:
+        raise RuntimeError("--compare-probability-candidates needs vc17; rebuild with bash scripts/build_sage_local.sh")
     if args.compare_v_scales and getattr(ops.ext,"sage_vc_kernel_version",0) < 4:
         raise RuntimeError("--compare-v-scales needs vc6; rebuild with bash scripts/build_sage_local.sh")
     if args.compare_grouping:

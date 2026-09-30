@@ -1,0 +1,45 @@
+{
+  "package_version": "2.2.0+vc17",
+  "native_kernel_version": 14,
+  "default_kernel": "vc15",
+  "environment": {
+    "os": "Windows",
+    "torch": "2.3.1+cu121",
+    "cuda_compiler": "12.4",
+    "runtime_gpu": "RTX 3060 Laptop SM86",
+    "attention_compile_target": "sm_90a"
+  },
+  "validation": {
+    "pytest_passed": 367,
+    "historical_golden_exact_cases": 16,
+    "new_helper_memcheck_tests_passed": 11,
+    "memcheck_errors": 0,
+    "compiled_attention_variants": 132,
+    "new_attention_variants": 16,
+    "historical_instruction_text_identical": 116,
+    "new_stack_and_spill_bytes": 0,
+    "ptxas_warnings": 0,
+    "native_link": "passed",
+    "recorded_source_and_sdist_hashes": 60,
+    "unchanged_upstream_kernel_sources": 36,
+    "helper_history_cases_per_candidate": 4,
+    "maximum_history_steps": 300,
+    "direct_decode_valid_codes_checked": 121,
+    "direct_decode_code_pairs_checked": 14641,
+    "checks": "Exact vc16 P bytes, mass, maximum and alpha; FP64 decoded-P tile-sum oracle; RNE boundaries and neighbours; masks and extreme fallback; current CUDA stream; benchmark checksums; API mode/domain gates; randomized full-API/core comparison and all-row error gates."
+  },
+  "remote_checks_added": {
+    "new_candidate_full_attention_cases": 96,
+    "dtype": ["float16", "bfloat16"],
+    "dim": [64, 128],
+    "query_key_lengths": [[1, 1], [63, 127], [64, 128], [65, 129], [129, 257], [257, 385]],
+    "status": "pending H200 execution"
+  },
+  "limitations": [
+    "No complete Hopper attention execution locally. Helper tests do not replace the remote full-kernel check.",
+    "SM86 microbenchmark latencies are not H200 results; FP8 conversion implementations differ.",
+    "Independent component microbenchmarks are not additive or attention bottleneck percentages.",
+    "SASS equality normalizes the zero template parameter and excludes encodings/control bits.",
+    "No H200 speedup, 22 ms achievement or model-quality acceptance is claimed."
+  ]
+}
