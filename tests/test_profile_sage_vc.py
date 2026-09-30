@@ -625,10 +625,23 @@ def test_pipeline_comparison_requires_vc19_and_matching_scope():
         with pytest.raises(SystemExit): profile.parse_args(["--compare-pipeline-candidates",*extra])
 
 
-@pytest.mark.parametrize("candidate",["layout","register","pipeline"])
+def test_compute_comparison_requires_vc20_and_matching_scope():
+    args=profile.parse_args(["--compare-compute-candidates"])
+    assert args.expcast_only and args.compare_sage_layout
+    ops=SimpleNamespace(ext=SimpleNamespace(sage_vc_kernel_version=16))
+    with pytest.raises(RuntimeError,match="needs vc20"):
+        profile.compare_sage_layout(ops,None,None,args,"cpu",None)
+    for extra in (["--compare-register-candidates"],["--compare-probability-candidates"],
+                  ["--compare-pipeline-candidates"],["--dim","64"],["--compare-v-scales"],
+                  ["--compare-grouping"],["--ncu-variant","sage_vc_control"]):
+        with pytest.raises(SystemExit): profile.parse_args(["--compare-compute-candidates",*extra])
+
+
+@pytest.mark.parametrize("candidate",["layout","register","pipeline","compute"])
 def test_layout_calls_share_native_bytes_and_recompute_full_api(candidate):
     register_candidates = candidate=="register"
     pipeline_candidates = candidate=="pipeline"
+    compute_candidates = candidate=="compute"
     qkv=tuple(torch.ones(1,2,n,64).half() for n in (3,7,7))
     ops=fake_ops()
     state=profile.staged_prepare(*qkv,ops,Recorder(),expcast=False,smooth=False)
@@ -654,8 +667,11 @@ def test_layout_calls_share_native_bytes_and_recompute_full_api(candidate):
         "vc19_kv":dict(k_buffers=2,v_buffers=2,early_tma_prefetch=1),
         "vc19_kv_late":dict(k_buffers=2,v_buffers=2,early_tma_prefetch=0)}
     ops.vc.SAGE_LAYOUT_MODES.update({name:i+16 for i,name in enumerate(ops.vc.PIPELINE_CANDIDATES)})
-    calls,full,meta=profile.sage_layout_calls(ops,state,qkv,native,api,register_candidates=register_candidates,pipeline_candidates=pipeline_candidates)
-    count=15 if register_candidates else 11 if pipeline_candidates else 10
+    ops.vc.COMPUTE_CANDIDATES={"vc20_pv_qk":1,"vc20_serial":2,"vc20_qk_pv":3}
+    ops.vc.SAGE_LAYOUT_MODES.update({name:19+mode for name,mode in ops.vc.COMPUTE_CANDIDATES.items()})
+    calls,full,meta=profile.sage_layout_calls(ops,state,qkv,native,api,register_candidates=register_candidates,
+                                          pipeline_candidates=pipeline_candidates,compute_candidates=compute_candidates)
+    count=15 if register_candidates else 11 if pipeline_candidates else 9 if compute_candidates else 10
     assert len(calls)==len(full)==len(meta)==count
     for _ in range(2):
         for name in calls: calls[name]();full[name]()
@@ -663,13 +679,19 @@ def test_layout_calls_share_native_bytes_and_recompute_full_api(candidate):
     for kwargs in public:
         assert kwargs["tensor_layout"]=="HND"
         if "expcast" in kwargs: assert kwargs["v_smooth"] is False
-    if register_candidates or pipeline_candidates:
+    if register_candidates or pipeline_candidates or compute_candidates:
         for cast in (False,True):
-            for mode in (ops.vc.REGISTER_CANDIDATES if register_candidates else ops.vc.PIPELINE_CANDIDATES):
+            for mode in (ops.vc.REGISTER_CANDIDATES if register_candidates else ops.vc.PIPELINE_CANDIDATES if pipeline_candidates else ops.vc.COMPUTE_CANDIDATES):
                 assert (cast,mode) in core
         for name,row in meta.items():
             assert row["reference"]==("expcast_vc16" if row["expcast"] else "control_vc16")
             if name!="sage_cpp": assert "resource_key" in row
+        if compute_candidates:
+            for name,mode in ops.vc.COMPUTE_CANDIDATES.items():
+                r=meta[f"expcast_{name}"]
+                assert r["register_limit"]==224
+                assert r["expected_compute_resources"]==dict(compute_schedule=mode,k_buffers=1,v_buffers=1,dynamic_shared_bytes=40960,pv_fragment_channels=128)
+            assert meta["expcast_vc16"]["register_limit"]==168
         if pipeline_candidates:
             assert meta["expcast_vc19_kv"]["expected_pipeline_resources"]["dynamic_shared_bytes"]==73728
             assert meta["expcast_vc19_k"]["expected_pipeline_resources"]["dynamic_shared_bytes"]==57344
@@ -679,13 +701,16 @@ def test_layout_calls_share_native_bytes_and_recompute_full_api(candidate):
     assert (True,"vc16_pack_early") not in core
 
 
-@pytest.mark.parametrize("candidate",["layout","register","pipeline"])
+@pytest.mark.parametrize("candidate",["layout","register","pipeline","compute"])
 def test_layout_comparison_checks_all_rows_with_separate_algorithm_references(monkeypatch,candidate):
     register_candidates = candidate=="register"
     pipeline_candidates = candidate=="pipeline"
+    compute_candidates = candidate=="compute"
     names=("control_vc15","control_vc16","expcast_vc15","expcast_vc16","sage_cpp")
     if pipeline_candidates:
         names += ("control_vc19_kv","control_vc19_kv_late","expcast_vc19_kv","expcast_vc19_kv_late")
+    if compute_candidates:
+        names += tuple(f"{cast}_{mode}" for cast in ("control","expcast") for mode in ("vc20_pv_qk","vc20_serial","vc20_qk_pv"))
     outputs={name:torch.full((1,1,513,4),2. if name.startswith("expcast") else 1.) for name in names}
     public={name:x.clone() for name,x in outputs.items()}
     calls={name:lambda name=name:outputs[name] for name in names}
@@ -693,18 +718,20 @@ def test_layout_comparison_checks_all_rows_with_separate_algorithm_references(mo
     meta={name:{"expcast":name.startswith("expcast"),"reference":"expcast_vc15" if name.startswith("expcast") else "control_vc15"} for name in names}
     resources={name:{"requested_register_limit":128,"pv_fragment_channels":64,"registers_per_thread":128,
                "local_bytes_per_thread":0,"static_shared_bytes":128,"dynamic_shared_bytes":40960,
-               "predicted_active_blocks_per_sm":4,"k_buffers":1,"v_buffers":1,"early_tma_prefetch":0} for name in names if name!="sage_cpp"}
-    if register_candidates or pipeline_candidates:
+               "predicted_active_blocks_per_sm":4,"k_buffers":1,"v_buffers":1,"early_tma_prefetch":0,"compute_schedule":0} for name in names if name!="sage_cpp"}
+    if register_candidates or pipeline_candidates or compute_candidates:
         for name,row in meta.items():
             if name!="sage_cpp": row.update(resource_key=name,register_limit=128)
             if pipeline_candidates and name!="sage_cpp":
                 row["expected_pipeline_resources"]=dict(k_buffers=1,v_buffers=1,early_tma_prefetch=0,dynamic_shared_bytes=40960)
-    ops=SimpleNamespace(ext=SimpleNamespace(sage_vc_kernel_version=16),vc=SimpleNamespace(kernel_resources=lambda _:resources))
+            if compute_candidates and name!="sage_cpp":
+                row["expected_compute_resources"]=dict(compute_schedule=0,k_buffers=1,v_buffers=1,dynamic_shared_bytes=40960,pv_fragment_channels=64)
+    ops=SimpleNamespace(ext=SimpleNamespace(sage_vc_kernel_version=17),vc=SimpleNamespace(kernel_resources=lambda _:resources))
     monkeypatch.setattr(profile,"load_sage_core_ops",lambda:(None,None))
     monkeypatch.setattr(profile,"sage_layout_calls",lambda *args:(calls,full,meta))
     monkeypatch.setattr(torch.cuda,"synchronize",lambda *_:None)
     monkeypatch.setattr(profile,"measure_trial",lambda call,*args:(call(),2.))
-    flag="--compare-register-candidates" if register_candidates else "--compare-pipeline-candidates" if pipeline_candidates else "--compare-sage-layout"
+    flag="--compare-register-candidates" if register_candidates else "--compare-pipeline-candidates" if pipeline_candidates else "--compare-compute-candidates" if compute_candidates else "--compare-sage-layout"
     args=profile.parse_args([flag,"--warmup","1","--trials","3"])
     report,returned=profile.compare_sage_layout(ops,None,None,args,"cpu",None)
     assert returned is calls and len(report["trial_order"])==3
@@ -715,7 +742,7 @@ def test_layout_comparison_checks_all_rows_with_separate_algorithm_references(mo
         assert row["vs_same_algorithm_baseline"]["checked_queries"]==513
         assert row["vs_same_algorithm_baseline"]["exact_match"]
         assert row["sage_full_api_over_variant"]==1 and row["baseline_full_api_over_variant"]==1
-    if register_candidates or pipeline_candidates:
+    if register_candidates or pipeline_candidates or compute_candidates:
         assert report["variants"]["expcast_vc16"]["compiled_resources"] is resources["expcast_vc16"]
         resources["expcast_vc16"]["requested_register_limit"]=144
         with pytest.raises(RuntimeError,match="metadata does not match"):
@@ -723,6 +750,13 @@ def test_layout_comparison_checks_all_rows_with_separate_algorithm_references(mo
         resources["expcast_vc16"]["requested_register_limit"]=128
     if pipeline_candidates:
         for key in ("k_buffers","v_buffers","early_tma_prefetch","dynamic_shared_bytes"):
+            original=resources["expcast_vc16"][key]
+            resources["expcast_vc16"][key]=99
+            with pytest.raises(RuntimeError,match="Pipeline metadata does not match"):
+                profile.compare_sage_layout(ops,None,None,args,"cpu",None)
+            resources["expcast_vc16"][key]=original
+    if compute_candidates:
+        for key in ("compute_schedule","k_buffers","v_buffers","dynamic_shared_bytes","pv_fragment_channels"):
             original=resources["expcast_vc16"][key]
             resources["expcast_vc16"][key]=99
             with pytest.raises(RuntimeError,match="Pipeline metadata does not match"):

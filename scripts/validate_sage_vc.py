@@ -120,11 +120,14 @@ def validate_grouping(ext, device="cuda:0"):
 
 
 @torch.no_grad()
-def validate_pipeline(vc, device):
+def validate_pipeline(vc, device, *, compute=False):
     """Exercise both slot parities, reuse, partial tails and long lookahead loops."""
     from sageattention_local.vc_reference import value_permutation
-    if vc._extension().sage_vc_kernel_version < 16:
-        raise RuntimeError("Pipeline validation needs vc19; rebuild sageattention-local")
+    minimum=17 if compute else 16
+    if vc._extension().sage_vc_kernel_version < minimum:
+        raise RuntimeError("Rebuild sageattention-local for the requested pipeline validation")
+    modes=vc.COMPUTE_CANDIDATES if compute else vc.PIPELINE_CANDIDATES
+    label="Compute" if compute else "TMA"
     rows = []
     known_answers = 0
     for dtype in (torch.float16, torch.bfloat16):
@@ -144,7 +147,7 @@ def validate_pipeline(vc, device):
                     expected = vc.forward_prepared(payload,kernel_mode="vc16")
                     if not torch.isfinite(expected).all().item():
                         raise AssertionError("Nonfinite pipeline baseline")
-                    for mode in vc.PIPELINE_CANDIDATES:
+                    for mode in modes:
                         deltas=[]
                         for repeat in range(3):
                             actual = vc.forward_prepared(payload,kernel_mode=mode)
@@ -168,11 +171,11 @@ def validate_pipeline(vc, device):
                 # ExpCast divides by the same decoded P used in its numerator.
                 weight = 1. if cast else 448. / (2**float(torch.tensor(8.807)))
                 expected = (mean*weight).to(dtype)
-                for mode in vc.PIPELINE_CANDIDATES:
+                for mode in modes:
                     actual = vc.forward_prepared({**payload,"expcast":cast},kernel_mode=mode)
                     torch.testing.assert_close(actual,expected,rtol=.004,atol=.004)
                     known_answers += 1
-            print(f"Pipeline slot/tail checks passed: {dtype}, D{dim}",flush=True)
+            print(f"{label} pipeline slot/tail checks passed: {dtype}, D{dim}",flush=True)
     return {"cases":rows,"known_answer_cases":known_answers,"status":"passed","implementation_rel_rmse_limit":.001,
             "scope":"All rows versus vc16, both algorithms separately, 3 repeats; no model-quality or speed claim."}
 
@@ -195,6 +198,8 @@ def validate(device="cuda:0"):
         report["grouping"] = validate_grouping(ext,device)
     if getattr(ext,"sage_vc_kernel_version",0) >= 16:
         report["pipeline"] = validate_pipeline(vc,device)
+    if getattr(ext,"sage_vc_kernel_version",0) >= 17:
+        report["compute_pipeline"] = validate_pipeline(vc,device,compute=True)
     for dtype in (torch.float16, torch.bfloat16):
         for dim in (64, 128):
             for nq, nk in ((1,1), (63,127), (64,128), (65,129), (129,257), (257,385)):
@@ -355,11 +360,14 @@ if __name__ == "__main__":
     parser.add_argument("--output", default="results/sage_vc_validation.json")
     parser.add_argument("--pipeline-only", action="store_true",
                         help="vc19 slot/tail/reuse checks only, also suitable for optional compute-sanitizer")
+    parser.add_argument("--compute-only", action="store_true", help="vc20 compute carry/tail checks only")
     args = parser.parse_args()
-    if args.pipeline_only:
+    if args.pipeline_only and args.compute_only:
+        parser.error("Choose --pipeline-only or --compute-only")
+    if args.pipeline_only or args.compute_only:
         torch.cuda.set_device(args.device)
         from sageattention_local import vc
-        report = validate_pipeline(vc,args.device)
+        report = validate_pipeline(vc,args.device,compute=args.compute_only)
     else:
         report = validate(args.device)
     path = Path(args.output)

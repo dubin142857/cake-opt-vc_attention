@@ -18,18 +18,20 @@ PIPELINE_CANDIDATES = {
     "vc19_kv": {"k_buffers": 2, "v_buffers": 2, "early_tma_prefetch": 1},
     "vc19_kv_late": {"k_buffers": 2, "v_buffers": 2, "early_tma_prefetch": 0},
 }
+COMPUTE_CANDIDATES = {"vc20_pv_qk": 1, "vc20_serial": 2, "vc20_qk_pv": 3}
 SAGE_LAYOUT_MODES = {"vc16": 1, "vc16_early_v": 2, "vc16_pack_first": 3,
                      "vc16_pack_early": 4, "vc16_serial": 5,
                      "vc17_g1": 6, "vc17_g4": 7, "vc17_c4": 8, "vc17_direct": 9,
                      "vc18_r128": 10, "vc18_r144": 11, "vc18_r192": 12,
                      "vc18_pv64_r128": 13, "vc18_pv64_r144": 14, "vc18_pv64_r168": 15,
-                     **{mode: i+16 for i,mode in enumerate(PIPELINE_CANDIDATES)}}
+                     **{mode: i+16 for i,mode in enumerate(PIPELINE_CANDIDATES)},
+                     **{mode: schedule+19 for mode,schedule in COMPUTE_CANDIDATES.items()}}
 
 
 def _extension():
     from . import _vc_sm90
     if (getattr(_vc_sm90, "sage_vc_api_version", None) != 1 or
-            getattr(_vc_sm90, "sage_vc_kernel_version", None) != 16 or
+            getattr(_vc_sm90, "sage_vc_kernel_version", None) != 17 or
             getattr(_vc_sm90, "sage_vc_preprocess_version", None) != 1):
         raise RuntimeError("Rebuild sageattention-local with bash scripts/build_sage_local.sh")
     return _vc_sm90
@@ -50,6 +52,8 @@ def sage_vc_build_info():
             "default_kernel_mode": "optimized", "default_expcast_kernel": DEFAULT_EXPCAST_KERNEL, "kernel_modes": ["optimized", "vc15", "vc14", "vc13_overlap", "vc13_serial", "vc12", "vc11", "vc10", "vc9", "vc7", "vc6", "vc4", *SAGE_LAYOUT_MODES],
             "sage_layout_candidates": {"modes": SAGE_LAYOUT_MODES, "scope": "v_smooth=False only; pack-first modes require expcast=False; vc17 modes require expcast=True; default remains vc15"},
             "probability_candidates": "vc17: group 1/4 fragments, four FP32 chains, or exact direct FP32 decode; vc16 body and unchanged encoding/history",
+            "compute_candidates": {"modes": COMPUTE_CANDIDATES, "baseline": "vc16", "register_cap": 224,
+                                   "scope": "PV(i) and QK(i+1) joint group versus serial, single K/V buffers, unchanged vc16 math; no V smoothing; H200 unverified"},
             "pipeline_candidates": {"modes": PIPELINE_CANDIDATES, "baseline": "vc16",
                                     "scope": "K/V ping-pong TMA buffers; vc16 arithmetic, cap 168, N128 PV at D128; no V smoothing; H200 speed unverified"},
             "register_candidates": {"limits": REGISTER_CANDIDATES, "baseline": "vc16 (168)",
@@ -139,7 +143,7 @@ def forward_prepared(state, *, kernel_mode="optimized"):
             raise ValueError("Pack-first candidates require expcast=False")
         kernel_mode = "vc15"
     if kernel_mode not in ("optimized", "vc15", "vc14", "vc13_overlap", "vc13_serial", "vc12", "vc11", "vc10", "vc9", "vc7", "vc6", "vc4"):
-        raise ValueError("Unknown kernel_mode; use a documented vc4..vc19 mode or 'optimized'")
+        raise ValueError("Unknown kernel_mode; use a documented vc4..vc20 mode or 'optimized'")
     return _extension().forward(*(state[name] for name in ("q", "k", "v", "qs", "ks", "vs", "means",
                                                           "expcast", "block_values", "output_type", "scale")),
                                 optimized=kernel_mode != "vc4", packed_probability=kernel_mode in ("optimized", "vc15", "vc14", "vc13_overlap", "vc13_serial", "vc12", "vc11", "vc10", "vc9", "vc7"),
@@ -155,7 +159,7 @@ def forward_prepared(state, *, kernel_mode="optimized"):
 def sageattn_vc(q, k, v, tensor_layout="HND", is_causal=False, sm_scale=None, return_lse=False,
                *, expcast=True, v_smooth=True, clusters=8, iterations=2, kernel_mode="optimized", v_scale_mode="channel", grouping_mode="fused"):
     if kernel_mode not in ("optimized", "vc15", "vc14", "vc13_overlap", "vc13_serial", "vc12", "vc11", "vc10", "vc9", "vc7", "vc6", "vc4", *SAGE_LAYOUT_MODES):
-        raise ValueError("Unknown kernel_mode; use a documented vc4..vc19 mode or 'optimized'")
+        raise ValueError("Unknown kernel_mode; use a documented vc4..vc20 mode or 'optimized'")
     if kernel_mode in SAGE_LAYOUT_MODES:
         if v_smooth:
             raise ValueError("Sage layout candidates require v_smooth=False")

@@ -1,0 +1,33 @@
+{
+  "package_version": "2.2.0+vc20",
+  "native_kernel_version": 17,
+  "tests": {
+    "passed": 411,
+    "scope": "CPU contracts, benchmark routing and failure gates, provenance, and existing CUDA helpers executable on local SM86. No full Hopper attention execution."
+  },
+  "sm90a_cross_compile": {
+    "cuda_toolkit": "12.4",
+    "status": "passed",
+    "compiled_kernel_instances": 236,
+    "historical_instances": 212,
+    "historical_instruction_text_identical": 212,
+    "comparison": "Verbatim SASS instruction text, excluding encodings/control words",
+    "new_compute_instances": 24,
+    "ptxas_warnings": 0,
+    "d128_bf16_new_candidates": "Control registers: 221/206/221; ExpCast registers: 224/218/223 for PV-QK/serial/QK-PV respectively. All zero stack frame, spill stores and spill loads.",
+    "static_instruction_check": "All 24 new instances have the expected GMMA sequence between waits: separate QK prologue; paired or serial main loop; PV-only tail. Not hardware concurrency or speed evidence.",
+    "detail": "sage_vc20_codegen_local.json"
+  },
+  "native_link_and_import": "passed; kernel version 17",
+  "source_and_sdist": {
+    "status": "passed",
+    "verified_source_hashes": 62,
+    "unchanged_upstream_kernel_files": 36
+  },
+  "shell_syntax": "validate_compute_h200.sh passed bash -n",
+  "python_syntax": "validate_sage_vc.py and profile_sage_vc.py passed py_compile",
+  "h200_correctness": "not run locally; remote validation includes 360 compute shape/dtype/algorithm/mode cases with 3 repeats and 24 uniform-attention decoded-V known-answer cases before timing",
+  "h200_performance": "not measured; no speedup or 22 ms claim. Increased registers can lower residency.",
+  "remote_command": "bash scripts/validate_compute_h200.sh",
+  "default_kernel": "vc15 unchanged; new candidates require explicit selection"
+}
