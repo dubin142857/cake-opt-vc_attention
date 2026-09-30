@@ -1,0 +1,33 @@
+{
+  "package_version": "2.2.0+vc19",
+  "native_kernel_version": 16,
+  "tests": {
+    "passed": 402,
+    "scope": "CPU contracts, benchmark routing and failure gates, provenance, and existing CUDA helpers executable on local SM86. No full Hopper attention execution."
+  },
+  "sm90a_cross_compile": {
+    "cuda_toolkit": "12.4",
+    "status": "passed",
+    "compiled_kernel_instances": 212,
+    "historical_instances": 180,
+    "historical_instruction_text_identical": 180,
+    "comparison": "Verbatim SASS instruction text, excluding encodings/control words",
+    "new_pipeline_instances": 32,
+    "ptxas_warnings": 0,
+    "d128_bf16_new_candidates": "All 8 control/ExpCast variants: 168 registers; zero stack frame, spill stores and spill loads",
+    "detail": "sage_vc19_codegen_local.json"
+  },
+  "native_link_and_import": "passed; kernel version 16",
+  "source_and_sdist": {
+    "status": "passed",
+    "verified_source_hashes": 61,
+    "unchanged_upstream_kernel_files": 36
+  },
+  "shell_syntax": "validate_pipeline_h200.sh passed bash -n",
+  "python_syntax": "validate_sage_vc.py and profile_sage_vc.py passed py_compile",
+  "probability_sass_parser": "Successfully parsed the 20 existing probability combinations from the actual vc19 object",
+  "h200_correctness": "not run locally; remote validation includes 480 pipeline shape/dtype/algorithm/mode cases with 3 repeats and 32 uniform-attention decoded-V known-answer cases before timing",
+  "h200_performance": "not measured; no speedup or 22 ms claim",
+  "remote_command": "bash scripts/validate_pipeline_h200.sh",
+  "default_kernel": "vc15 unchanged; new candidates require explicit selection"
+}

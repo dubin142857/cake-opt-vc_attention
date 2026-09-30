@@ -120,6 +120,64 @@ def validate_grouping(ext, device="cuda:0"):
 
 
 @torch.no_grad()
+def validate_pipeline(vc, device):
+    """Exercise both slot parities, reuse, partial tails and long lookahead loops."""
+    from sageattention_local.vc_reference import value_permutation
+    if vc._extension().sage_vc_kernel_version < 16:
+        raise RuntimeError("Pipeline validation needs vc19; rebuild sageattention-local")
+    rows = []
+    known_answers = 0
+    for dtype in (torch.float16, torch.bfloat16):
+        for dim in (64, 128):
+            for nk in (1,127,128,129,255,256,257,383,384,385,511,512,513,1025,37741):
+                torch.manual_seed(1900+nk)
+                batch, heads = (2,3) if nk==513 else (1,1)
+                q = torch.randn(batch,heads,65,dim,device=device,dtype=dtype)
+                k,v = (torch.randn(batch,heads,nk,dim,device=device,dtype=dtype) for _ in range(2))
+                tile = (torch.arange(nk,device=device)//128).view(1,1,nk,1)
+                # Unequal adjacent payloads expose reading a previous/next slot.
+                k.mul_((1+(tile % 3)*.2).to(dtype))
+                v.add_(((tile % 7)-3).to(dtype)*.25)
+                state = vc.prepare(q,k,v,expcast=False,v_smooth=False)
+                for cast in (False,True):
+                    payload = {**state,"expcast":cast}
+                    expected = vc.forward_prepared(payload,kernel_mode="vc16")
+                    if not torch.isfinite(expected).all().item():
+                        raise AssertionError("Nonfinite pipeline baseline")
+                    for mode in vc.PIPELINE_CANDIDATES:
+                        deltas=[]
+                        for repeat in range(3):
+                            actual = vc.forward_prepared(payload,kernel_mode=mode)
+                            delta = metrics(actual,expected)
+                            if not torch.isfinite(actual).all().item() or delta["rel_rmse"] > .001:
+                                raise AssertionError(f"Pipeline regression: {dtype}, D{dim}, K{nk}, {cast}, {mode}, repeat {repeat}: {delta}")
+                            deltas.append({**delta,"exact_match":torch.equal(actual,expected)})
+                        rows.append(dict(dtype=str(dtype),dim=dim,keys=nk,queries=65,batch=batch,heads=heads,
+                                         expcast=cast,mode=mode,repeats=deltas))
+            # Independent uniform-attention oracle over decoded, unpadded V.
+            # Five unequal tiles make stale slots or included padding visible.
+            q = torch.zeros(1,1,65,dim,device=device,dtype=dtype)
+            k = torch.zeros(1,1,513,dim,device=device,dtype=dtype)
+            v = torch.arange(513,device=device).view(1,1,513,1).expand_as(k).to(dtype)/128-2
+            payload = vc.prepare(q,k,v,expcast=False,v_smooth=False)
+            decoded = payload["v"].float()
+            decoded = decoded.index_select(-1,value_permutation(decoded.shape[-1],decoded.device))
+            mean = (decoded[...,:513].mean(-1)*payload["vs"]).unsqueeze(2).expand_as(q)
+            for cast in (False,True):
+                # Sage divides rounded FP8 P by unrounded exp2(P) mass;
+                # ExpCast divides by the same decoded P used in its numerator.
+                weight = 1. if cast else 448. / (2**float(torch.tensor(8.807)))
+                expected = (mean*weight).to(dtype)
+                for mode in vc.PIPELINE_CANDIDATES:
+                    actual = vc.forward_prepared({**payload,"expcast":cast},kernel_mode=mode)
+                    torch.testing.assert_close(actual,expected,rtol=.004,atol=.004)
+                    known_answers += 1
+            print(f"Pipeline slot/tail checks passed: {dtype}, D{dim}",flush=True)
+    return {"cases":rows,"known_answer_cases":known_answers,"status":"passed","implementation_rel_rmse_limit":.001,
+            "scope":"All rows versus vc16, both algorithms separately, 3 repeats; no model-quality or speed claim."}
+
+
+@torch.no_grad()
 def validate(device="cuda:0"):
     if not torch.cuda.is_available() or torch.cuda.get_device_capability(device) != (9, 0):
         raise RuntimeError("Full Sage VC validation requires Hopper")
@@ -135,6 +193,8 @@ def validate(device="cuda:0"):
               "scope": "Synthetic implementation regression only; no model quality or speed acceptance."}
     if getattr(ext,"sage_vc_preprocess_version",0) >= 1:
         report["grouping"] = validate_grouping(ext,device)
+    if getattr(ext,"sage_vc_kernel_version",0) >= 16:
+        report["pipeline"] = validate_pipeline(vc,device)
     for dtype in (torch.float16, torch.bfloat16):
         for dim in (64, 128):
             for nq, nk in ((1,1), (63,127), (64,128), (65,129), (129,257), (257,385)):
@@ -293,8 +353,15 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--output", default="results/sage_vc_validation.json")
+    parser.add_argument("--pipeline-only", action="store_true",
+                        help="vc19 slot/tail/reuse checks only, also suitable for optional compute-sanitizer")
     args = parser.parse_args()
-    report = validate(args.device)
+    if args.pipeline_only:
+        torch.cuda.set_device(args.device)
+        from sageattention_local import vc
+        report = validate_pipeline(vc,args.device)
+    else:
+        report = validate(args.device)
     path = Path(args.output)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(report,indent=2,allow_nan=False)+"\n",encoding="utf-8")

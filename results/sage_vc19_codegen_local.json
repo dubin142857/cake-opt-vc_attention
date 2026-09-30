@@ -1,0 +1,457 @@
+{
+  "compiled_variants": 212,
+  "historical_variants": 180,
+  "historical_instruction_text_identical": 180,
+  "pipeline_resources": [
+    {
+      "name": "_ZN7sage_vc37sage_vc_attention_kernel_tma_pipelineILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16Lb0ELi3ELb0EEEv14CUtensorMap_stS3_S3_PfS4_S4_PT5_S4_jjjjjjf",
+      "dim": 128,
+      "buffer_mode": 3,
+      "early": false,
+      "expcast": false,
+      "dtype": "bfloat16",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc37sage_vc_attention_kernel_tma_pipelineILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16Lb1ELi3ELb0EEEv14CUtensorMap_stS3_S3_PfS4_S4_PT5_S4_jjjjjjf",
+      "dim": 128,
+      "buffer_mode": 3,
+      "early": false,
+      "expcast": true,
+      "dtype": "bfloat16",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc37sage_vc_attention_kernel_tma_pipelineILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfLb0ELi3ELb0EEEv14CUtensorMap_stS3_S3_PfS4_S4_PT5_S4_jjjjjjf",
+      "dim": 128,
+      "buffer_mode": 3,
+      "early": false,
+      "expcast": false,
+      "dtype": "float16",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc37sage_vc_attention_kernel_tma_pipelineILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfLb1ELi3ELb0EEEv14CUtensorMap_stS3_S3_PfS4_S4_PT5_S4_jjjjjjf",
+      "dim": 128,
+      "buffer_mode": 3,
+      "early": false,
+      "expcast": true,
+      "dtype": "float16",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc37sage_vc_attention_kernel_tma_pipelineILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E13__nv_bfloat16Lb0ELi3ELb0EEEv14CUtensorMap_stS3_S3_PfS4_S4_PT5_S4_jjjjjjf",
+      "dim": 64,
+      "buffer_mode": 3,
+      "early": false,
+      "expcast": false,
+      "dtype": "bfloat16",
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc37sage_vc_attention_kernel_tma_pipelineILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E13__nv_bfloat16Lb1ELi3ELb0EEEv14CUtensorMap_stS3_S3_PfS4_S4_PT5_S4_jjjjjjf",
+      "dim": 64,
+      "buffer_mode": 3,
+      "early": false,
+      "expcast": true,
+      "dtype": "bfloat16",
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc37sage_vc_attention_kernel_tma_pipelineILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E6__halfLb0ELi3ELb0EEEv14CUtensorMap_stS3_S3_PfS4_S4_PT5_S4_jjjjjjf",
+      "dim": 64,
+      "buffer_mode": 3,
+      "early": false,
+      "expcast": false,
+      "dtype": "float16",
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc37sage_vc_attention_kernel_tma_pipelineILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E6__halfLb1ELi3ELb0EEEv14CUtensorMap_stS3_S3_PfS4_S4_PT5_S4_jjjjjjf",
+      "dim": 64,
+      "buffer_mode": 3,
+      "early": false,
+      "expcast": true,
+      "dtype": "float16",
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc37sage_vc_attention_kernel_tma_pipelineILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16Lb0ELi3ELb1EEEv14CUtensorMap_stS3_S3_PfS4_S4_PT5_S4_jjjjjjf",
+      "dim": 128,
+      "buffer_mode": 3,
+      "early": true,
+      "expcast": false,
+      "dtype": "bfloat16",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc37sage_vc_attention_kernel_tma_pipelineILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16Lb1ELi3ELb1EEEv14CUtensorMap_stS3_S3_PfS4_S4_PT5_S4_jjjjjjf",
+      "dim": 128,
+      "buffer_mode": 3,
+      "early": true,
+      "expcast": true,
+      "dtype": "bfloat16",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc37sage_vc_attention_kernel_tma_pipelineILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfLb0ELi3ELb1EEEv14CUtensorMap_stS3_S3_PfS4_S4_PT5_S4_jjjjjjf",
+      "dim": 128,
+      "buffer_mode": 3,
+      "early": true,
+      "expcast": false,
+      "dtype": "float16",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc37sage_vc_attention_kernel_tma_pipelineILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfLb1ELi3ELb1EEEv14CUtensorMap_stS3_S3_PfS4_S4_PT5_S4_jjjjjjf",
+      "dim": 128,
+      "buffer_mode": 3,
+      "early": true,
+      "expcast": true,
+      "dtype": "float16",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc37sage_vc_attention_kernel_tma_pipelineILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E13__nv_bfloat16Lb0ELi3ELb1EEEv14CUtensorMap_stS3_S3_PfS4_S4_PT5_S4_jjjjjjf",
+      "dim": 64,
+      "buffer_mode": 3,
+      "early": true,
+      "expcast": false,
+      "dtype": "bfloat16",
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc37sage_vc_attention_kernel_tma_pipelineILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E13__nv_bfloat16Lb1ELi3ELb1EEEv14CUtensorMap_stS3_S3_PfS4_S4_PT5_S4_jjjjjjf",
+      "dim": 64,
+      "buffer_mode": 3,
+      "early": true,
+      "expcast": true,
+      "dtype": "bfloat16",
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc37sage_vc_attention_kernel_tma_pipelineILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E6__halfLb0ELi3ELb1EEEv14CUtensorMap_stS3_S3_PfS4_S4_PT5_S4_jjjjjjf",
+      "dim": 64,
+      "buffer_mode": 3,
+      "early": true,
+      "expcast": false,
+      "dtype": "float16",
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc37sage_vc_attention_kernel_tma_pipelineILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E6__halfLb1ELi3ELb1EEEv14CUtensorMap_stS3_S3_PfS4_S4_PT5_S4_jjjjjjf",
+      "dim": 64,
+      "buffer_mode": 3,
+      "early": true,
+      "expcast": true,
+      "dtype": "float16",
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc37sage_vc_attention_kernel_tma_pipelineILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16Lb0ELi2ELb1EEEv14CUtensorMap_stS3_S3_PfS4_S4_PT5_S4_jjjjjjf",
+      "dim": 128,
+      "buffer_mode": 2,
+      "early": true,
+      "expcast": false,
+      "dtype": "bfloat16",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc37sage_vc_attention_kernel_tma_pipelineILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16Lb1ELi2ELb1EEEv14CUtensorMap_stS3_S3_PfS4_S4_PT5_S4_jjjjjjf",
+      "dim": 128,
+      "buffer_mode": 2,
+      "early": true,
+      "expcast": true,
+      "dtype": "bfloat16",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc37sage_vc_attention_kernel_tma_pipelineILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfLb0ELi2ELb1EEEv14CUtensorMap_stS3_S3_PfS4_S4_PT5_S4_jjjjjjf",
+      "dim": 128,
+      "buffer_mode": 2,
+      "early": true,
+      "expcast": false,
+      "dtype": "float16",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc37sage_vc_attention_kernel_tma_pipelineILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfLb1ELi2ELb1EEEv14CUtensorMap_stS3_S3_PfS4_S4_PT5_S4_jjjjjjf",
+      "dim": 128,
+      "buffer_mode": 2,
+      "early": true,
+      "expcast": true,
+      "dtype": "float16",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc37sage_vc_attention_kernel_tma_pipelineILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E13__nv_bfloat16Lb0ELi2ELb1EEEv14CUtensorMap_stS3_S3_PfS4_S4_PT5_S4_jjjjjjf",
+      "dim": 64,
+      "buffer_mode": 2,
+      "early": true,
+      "expcast": false,
+      "dtype": "bfloat16",
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc37sage_vc_attention_kernel_tma_pipelineILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E13__nv_bfloat16Lb1ELi2ELb1EEEv14CUtensorMap_stS3_S3_PfS4_S4_PT5_S4_jjjjjjf",
+      "dim": 64,
+      "buffer_mode": 2,
+      "early": true,
+      "expcast": true,
+      "dtype": "bfloat16",
+      "registers": 127,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc37sage_vc_attention_kernel_tma_pipelineILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E6__halfLb0ELi2ELb1EEEv14CUtensorMap_stS3_S3_PfS4_S4_PT5_S4_jjjjjjf",
+      "dim": 64,
+      "buffer_mode": 2,
+      "early": true,
+      "expcast": false,
+      "dtype": "float16",
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc37sage_vc_attention_kernel_tma_pipelineILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E6__halfLb1ELi2ELb1EEEv14CUtensorMap_stS3_S3_PfS4_S4_PT5_S4_jjjjjjf",
+      "dim": 64,
+      "buffer_mode": 2,
+      "early": true,
+      "expcast": true,
+      "dtype": "float16",
+      "registers": 127,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc37sage_vc_attention_kernel_tma_pipelineILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16Lb0ELi1ELb1EEEv14CUtensorMap_stS3_S3_PfS4_S4_PT5_S4_jjjjjjf",
+      "dim": 128,
+      "buffer_mode": 1,
+      "early": true,
+      "expcast": false,
+      "dtype": "bfloat16",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc37sage_vc_attention_kernel_tma_pipelineILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16Lb1ELi1ELb1EEEv14CUtensorMap_stS3_S3_PfS4_S4_PT5_S4_jjjjjjf",
+      "dim": 128,
+      "buffer_mode": 1,
+      "early": true,
+      "expcast": true,
+      "dtype": "bfloat16",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc37sage_vc_attention_kernel_tma_pipelineILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfLb0ELi1ELb1EEEv14CUtensorMap_stS3_S3_PfS4_S4_PT5_S4_jjjjjjf",
+      "dim": 128,
+      "buffer_mode": 1,
+      "early": true,
+      "expcast": false,
+      "dtype": "float16",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc37sage_vc_attention_kernel_tma_pipelineILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfLb1ELi1ELb1EEEv14CUtensorMap_stS3_S3_PfS4_S4_PT5_S4_jjjjjjf",
+      "dim": 128,
+      "buffer_mode": 1,
+      "early": true,
+      "expcast": true,
+      "dtype": "float16",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc37sage_vc_attention_kernel_tma_pipelineILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E13__nv_bfloat16Lb0ELi1ELb1EEEv14CUtensorMap_stS3_S3_PfS4_S4_PT5_S4_jjjjjjf",
+      "dim": 64,
+      "buffer_mode": 1,
+      "early": true,
+      "expcast": false,
+      "dtype": "bfloat16",
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc37sage_vc_attention_kernel_tma_pipelineILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E13__nv_bfloat16Lb1ELi1ELb1EEEv14CUtensorMap_stS3_S3_PfS4_S4_PT5_S4_jjjjjjf",
+      "dim": 64,
+      "buffer_mode": 1,
+      "early": true,
+      "expcast": true,
+      "dtype": "bfloat16",
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc37sage_vc_attention_kernel_tma_pipelineILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E6__halfLb0ELi1ELb1EEEv14CUtensorMap_stS3_S3_PfS4_S4_PT5_S4_jjjjjjf",
+      "dim": 64,
+      "buffer_mode": 1,
+      "early": true,
+      "expcast": false,
+      "dtype": "float16",
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc37sage_vc_attention_kernel_tma_pipelineILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E6__halfLb1ELi1ELb1EEEv14CUtensorMap_stS3_S3_PfS4_S4_PT5_S4_jjjjjjf",
+      "dim": 64,
+      "buffer_mode": 1,
+      "early": true,
+      "expcast": true,
+      "dtype": "float16",
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "ptxas_warnings": 0,
+  "scope": "Local CUDA 12.4 sm90a cross-compilation; historical instruction text compared verbatim, excluding encodings/control words. No Hopper execution. Resources are not CUDA 13.0/H200 latency evidence."
+}
