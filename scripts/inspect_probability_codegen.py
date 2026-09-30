@@ -35,12 +35,48 @@ def inspect(sass):
     return rows
 
 
-def main():
+def dump_sass(tool,binary,output):
+    """Preserve subprocess evidence even when disassembly fails or is partial."""
+    output.parent.mkdir(parents=True,exist_ok=True)
+    sass_path=output.with_suffix(".sass.txt")
+    stderr_path=output.with_suffix(".cuobjdump.stderr.txt")
+    diagnostics_path=output.with_suffix(".diagnostics.json")
+    command=[str(tool),"--dump-sass",str(binary)]
+    diagnostics={"command":command,"binary":str(binary),"cuobjdump":str(tool),
+        "nvdisasm_on_path":shutil.which("nvdisasm"),"sass_path":str(sass_path),
+        "stderr_path":str(stderr_path),"diagnostics_path":str(diagnostics_path)}
+    try:
+        version=subprocess.run([str(tool),"--version"],capture_output=True,text=True,errors="replace",timeout=10)
+        diagnostics["tool_version"]={"returncode":version.returncode,"stdout":version.stdout,"stderr":version.stderr}
+    except (OSError,subprocess.TimeoutExpired) as exc:
+        diagnostics["tool_version_error"]=str(exc)
+    try:
+        # Stream to files instead of collecting the complete shared library's
+        # disassembly in subprocess.PIPE; keep stderr independently readable.
+        with sass_path.open("wb") as stdout,stderr_path.open("wb") as stderr:
+            raw=subprocess.run(command,stdout=stdout,stderr=stderr,check=False)
+        diagnostics["returncode"]=raw.returncode
+    except OSError as exc:
+        diagnostics.update(returncode=None,launch_error=str(exc))
+    diagnostics_path.write_text(json.dumps(diagnostics,indent=2)+"\n",encoding="utf-8")
+    if diagnostics["returncode"]!=0:
+        error=stderr_path.read_text(encoding="utf-8",errors="replace").strip()
+        if not error: error=diagnostics.get("launch_error") or sass_path.read_text(encoding="utf-8",errors="replace")[-4000:] or "cuobjdump produced no error text"
+        failure={**diagnostics,"status":"failed","stage":"cuobjdump","error":error}
+        # A failed retry must not leave an old successful JSON looking current.
+        output.write_text(json.dumps(failure,indent=2)+"\n",encoding="utf-8")
+        raise SystemExit(f"cuobjdump failed (exit {diagnostics['returncode']}):\n{error[:4000]}\n"
+            f"Diagnostics: {diagnostics_path}\nFull stderr: {stderr_path}\nRaw/partial stdout: {sass_path}\n"
+            "Previously saved attention timings are unaffected. Do not rebuild or rerun timings just to retry this inspection.")
+    return sass_path.read_text(encoding="utf-8",errors="replace"),diagnostics
+
+
+def main(argv=None):
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary",type=Path)
     parser.add_argument("--cuobjdump")
     parser.add_argument("--output",type=Path,default=Path("results/probability_codegen.json"))
-    args=parser.parse_args()
+    args=parser.parse_args(argv)
     if args.binary is None:
         from sageattention_local import vc
         binary=Path(vc._extension().__file__)
@@ -52,18 +88,21 @@ def main():
             candidate=Path(os.environ.get(env,"/usr/local/cuda"))/"bin"/("cuobjdump.exe" if os.name=="nt" else "cuobjdump")
             if candidate.is_file(): tool=str(candidate);break
     if not tool: raise SystemExit("cuobjdump not found; pass --cuobjdump /path/to/cuda/bin/cuobjdump")
-    raw=subprocess.run([tool,"--dump-sass",str(binary)],capture_output=True,text=True,errors="replace",check=True)
-    rows=inspect(raw.stdout)
-    args.output.parent.mkdir(parents=True,exist_ok=True)
-    sass_path=args.output.with_suffix(".sass.txt");sass_path.write_text(raw.stdout,encoding="utf-8")
-    report={"binary":str(binary),"sass_path":str(sass_path),"variants":rows,
+    sass,diagnostics=dump_sass(tool,binary,args.output)
+    try:
+        rows=inspect(sass)
+    except RuntimeError as exc:
+        report={**diagnostics,"status":"failed","stage":"parse","error":str(exc)}
+        args.output.write_text(json.dumps(report,indent=2)+"\n",encoding="utf-8")
+        raise SystemExit(f"{exc}\nRaw SASS: {diagnostics['sass_path']}\nDiagnostics: {diagnostics['diagnostics_path']}") from exc
+    report={**diagnostics,"status":"passed","variants":rows,
         "scope":"Static counts include main/tail and fallback branches; not dynamic instruction counts or bottleneck percentages. Raw SASS retained for dependency inspection."}
     args.output.write_text(json.dumps(report,indent=2)+"\n",encoding="utf-8")
     print("D128 BF16 static instructions (NOT speedup):")
     for row in rows:
         if row["dim"]==128 and row["dtype"]=="bfloat16":
             print(row["mode"],{op:row["opcodes"].get(op,0) for op in ("F2IP","F2FP","HADD2","FADD","IADD3","LOP3","SHF","SEL")})
-    print(f"Report: {args.output}; raw SASS: {sass_path}")
+    print(f"Report: {args.output}; raw SASS: {diagnostics['sass_path']}")
 
 
 if __name__=="__main__": main()

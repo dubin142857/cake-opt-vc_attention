@@ -1,0 +1,37 @@
+{
+  "source": "User-pasted H200 vc17 profile; raw wall-time trials and component microbenchmarks not included",
+  "shape_bshd": [1, 37741, 28, 128],
+  "dtype": "bfloat16",
+  "columns": ["core_api_ms", "full_api_ms", "repeated_cupti_kernel_ms", "vs_same_algorithm_baseline_printed_rmse_percent"],
+  "variants": {
+    "sage_cpp": [24.7304, 26.3704, 24.5531, 0],
+    "control_vc16": [24.6643, 26.2658, 24.4810, 0],
+    "expcast_vc16": [25.1132, 26.8277, 25.2278, 0],
+    "expcast_vc17_g1": [25.3456, 26.9792, 25.2037, 0],
+    "expcast_vc17_g4": [25.1506, 26.8606, 25.2682, 0],
+    "expcast_vc17_c4": [25.4398, 26.9252, 25.0731, 0],
+    "expcast_vc17_direct": [32.9169, 34.6078, 32.7034, 0]
+  },
+  "cupti_trial_median_ms": {
+    "sage_cpp": [24.1644, 24.5605, 24.5531],
+    "control_vc16": [24.7188, 24.4749, 24.4810],
+    "expcast_vc16": [24.9732, 25.2451, 25.2278],
+    "expcast_vc17_g1": [24.9789, 25.4037, 25.2037],
+    "expcast_vc17_g4": [25.4958, 25.2156, 25.2682],
+    "expcast_vc17_c4": [25.0260, 25.0731, 25.2983],
+    "expcast_vc17_direct": [32.3862, 32.7034, 32.7160]
+  },
+  "codegen_failure": {
+    "tool": "/usr/local/cuda/bin/cuobjdump",
+    "returncode": 1,
+    "stderr": "not exposed by the previous script",
+    "root_cause": "unknown; rerun inspection after diagnostic fix, without rerunning timings"
+  },
+  "conclusion": "No full-API improvement from vc17 candidates. Retain vc16 as the candidate baseline; no default change.",
+  "notes": [
+    "Core/full API are synchronized wall times; CUPTI is separate profiler-active GPU duration.",
+    "Each CUPTI trial median represents 20 launches; individual launch samples not supplied.",
+    "All-row implementation checks passed. Printed zero RMSE is not a bitwise-equality assertion or a dense-FP32/model-quality claim.",
+    "Codegen export failed after performance measurements had been saved. No reason to discard those measurements."
+  ]
+}

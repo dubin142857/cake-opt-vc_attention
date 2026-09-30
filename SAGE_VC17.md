@@ -11,7 +11,42 @@
 
 vc16 消除了 control 与原版主体的大部分差距，ExpCast 仍比同主体 control 多约 0.67 ms。
 该差值是整个内核的净差，不能直接归因于某个转换操作。
-22 ms 是目标，**vc17 尚无 H200 完整 attention 性能结果**。
+22 ms 是目标。下文补充了本轮 H200 回传结果。
+
+## H200 回传结论
+
+四个候选均未改善目标 shape 的完整 API 耗时，继续使用 vc16 作为下一轮候选基线。
+
+| 实现 | 核心 API ms | 完整 API ms | 重复 CUPTI kernel ms |
+|---|---:|---:|---:|
+| 原版 Sage | 24.7304 | 26.3704 | 24.5531 |
+| vc16 control | 24.6643 | 26.2658 | 24.4810 |
+| vc16 ExpCast | 25.1132 | 26.8277 | 25.2278 |
+| vc17_g1 | 25.3456 | 26.9792 | 25.2037 |
+| vc17_g4 | 25.1506 | 26.8606 | 25.2682 |
+| vc17_c4 | 25.4398 | 26.9252 | 25.0731 |
+| vc17_direct | 32.9169 | 34.6078 | 32.7034 |
+
+g4 基本持平；c4 的 CUPTI 中位数略低，但核心/完整 API 都较慢，不能认定有稳定收益。
+direct 核心增加约 31.1%，本地 SM86 微基准优势未在 Hopper 完整内核兑现。
+各候选的全部输出行实现检查通过，打印 RMSE 为 0；打印精度不足以证明逐位一致，
+也不代表相对 dense FP32 的量化误差为零。
+原始 wall-time 试次及 H200 分项微基准未随本次回传提供。
+汇总见 [本轮回传记录](results/h200_sage_vc17_reported_summary.json)。
+
+最后的 `cuobjdump` 返回码 1 出现在计时完成之后；实际错误文本被旧脚本隐藏，
+暂不能判定工具版本、安装或二进制方面的具体原因。脚本已改为保存完整 stderr、
+原始/部分 stdout、工具版本及失败状态；失败的重试不会留下看似成功的旧 JSON。
+该修复不修改 CUDA 内核，不要求重新安装或重新计时：
+
+```bash
+git pull --ff-only origin master
+python3 scripts/inspect_probability_codegen.py --output results/h200_vc17_codegen.json
+```
+
+如仍失败，查看 `results/h200_vc17_codegen.cuobjdump.stderr.txt` 和
+`results/h200_vc17_codegen.diagnostics.json`。此前保存的 attention 时延结果不受影响。
+修复通过 4 项针对性测试，并用本地 CUDA 12.4 cuobjdump 实际解析了全部 20 个候选组合。
 
 ## 改动范围
 
