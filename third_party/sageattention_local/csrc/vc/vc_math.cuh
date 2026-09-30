@@ -13,7 +13,7 @@ __device__ __forceinline__ float2 vc_decode_pair(uint32_t codes) {
 // ExpCast without V block means: form P and independent tile sums first.
 // History scaling is delayed until PV is in flight. Never read P's register
 // fragments between wgmma.mma_async and wait_group (PTX forbids that too).
-template<bool EncodeOnly=false, bool PairedEncode=false, uint32_t NK>
+template<bool EncodeOnly=false, bool PairedEncode=false, bool FusedPack=false, uint32_t NK>
 __device__ __forceinline__ void vc_probability_affine_tile(
     const float (&scores)[NK][8],const float (&maximum)[2],float gain,
     uint32_t (&packed)[NK/2][4],float (&mass)[2]) {
@@ -26,17 +26,27 @@ __device__ __forceinline__ void vc_probability_affine_tile(
     #pragma unroll
     for(int k=0;k<2;++k)
       #pragma unroll
-      for(int r=0;r<2;++r)
+      for(int r=0;r<2;++r) {
+        if constexpr(FusedPack) {
+          int j=r*2;
+          vc_expcast_quad_rne(__fmaf_rn(scores[base+k][j],gain,bias[r]),
+              __fmaf_rn(scores[base+k][j+1],gain,bias[r]),
+              __fmaf_rn(scores[base+k][j+4],gain,bias[r]),
+              __fmaf_rn(scores[base+k][j+5],gain,bias[r]),codes[k][r][0],codes[k][r][1]);
+        } else {
         #pragma unroll
         for(int pair=0;pair<2;++pair) {
           int j=r*2+pair*4;
           codes[k][r][pair]=vc_expcast_encode_affine_pair<PairedEncode>(scores[base+k][j],scores[base+k][j+1],gain,bias[r]);
         }
+        }
+      }
     #pragma unroll
     for(int k=0;k<2;++k)
       #pragma unroll
       for(int r=0;r<2;++r) {
-        packed[base/2][k*2+r]=__byte_perm(codes[k][r][0],codes[k][r][1],0x5410);
+        if constexpr(FusedPack) packed[base/2][k*2+r]=codes[k][r][0];
+        else packed[base/2][k*2+r]=__byte_perm(codes[k][r][0],codes[k][r][1],0x5410);
         if constexpr(!EncodeOnly) {
           #pragma unroll
           for(int pair=0;pair<2;++pair)
@@ -62,11 +72,12 @@ __device__ __forceinline__ void vc_probability_affine_tile(
   }
 }
 
-template<bool Interleaved=false, bool FoldAffine=false, bool EncodeOnly=false, bool PairedEncode=false, uint32_t NQ, uint32_t NK>
+template<bool Interleaved=false, bool FoldAffine=false, bool EncodeOnly=false, bool PairedEncode=false, bool FusedPack=false, uint32_t NQ, uint32_t NK>
 __device__ __forceinline__ void vc_probability_prepare(
     const float (&scores)[NQ][NK][8], float (&maximum)[NQ][2], float scale,
     uint32_t (&packed)[NQ][NK / 2][4], float (&alpha)[NQ][2], float (&mass)[NQ][2]) {
   static_assert(NK == 8, "Exact FP32 tile sum bound assumes K128");
+  static_assert(!FusedPack || (Interleaved && PairedEncode && !EncodeOnly));
   #pragma unroll
   for (int q = 0; q < NQ; ++q) {
     #pragma unroll
@@ -94,7 +105,7 @@ __device__ __forceinline__ void vc_probability_prepare(
       bool safe=scale>=1.1754943508222875e-38f && isfinite(gain) &&
           fabsf(maximum[q][0])<=128.f && fabsf(maximum[q][1])<=128.f;
       if(__all_sync(0xffffffff,safe)) {
-        vc_probability_affine_tile<EncodeOnly,PairedEncode>(scores[q],maximum[q],gain,packed[q],mass[q]);
+        vc_probability_affine_tile<EncodeOnly,PairedEncode,FusedPack>(scores[q],maximum[q],gain,packed[q],mass[q]);
         continue;
       }
     }
@@ -115,7 +126,17 @@ __device__ __forceinline__ void vc_probability_prepare(
         #pragma unroll
         for (int k = 0; k < 2; ++k)
           #pragma unroll
-          for (int r = 0; r < 2; ++r)
+          for (int r = 0; r < 2; ++r) {
+            if constexpr(FusedPack) {
+              float u[4];
+              #pragma unroll
+              for(int pair=0;pair<2;++pair) {
+                int j=r*2+pair*4;
+                u[pair*2]=__fmaf_rn(__fsub_rn(__fmul_rn(scores[q][base+k][j],scale),maximum[q][r]),11.541560173034668f,119.6500015258789f);
+                u[pair*2+1]=__fmaf_rn(__fsub_rn(__fmul_rn(scores[q][base+k][j+1],scale),maximum[q][r]),11.541560173034668f,119.6500015258789f);
+              }
+              vc_expcast_quad_rne(u[0],u[1],u[2],u[3],codes[k][r][0],codes[k][r][1]);
+            } else {
             #pragma unroll
             for (int pair = 0; pair < 2; ++pair) {
               int j = r*2+pair*4;
@@ -123,11 +144,14 @@ __device__ __forceinline__ void vc_probability_prepare(
               float b = __fmul_rn(scores[q][base+k][j+1],scale);
               codes[k][r][pair] = vc_expcast_encode_pair<PairedEncode>(__fsub_rn(a,maximum[q][r]),__fsub_rn(b,maximum[q][r]));
             }
+            }
+          }
         #pragma unroll
         for (int k = 0; k < 2; ++k)
           #pragma unroll
           for (int r = 0; r < 2; ++r) {
-            packed[q][base/2][k*2+r] = __byte_perm(codes[k][r][0],codes[k][r][1],0x5410);
+            if constexpr(FusedPack) packed[q][base/2][k*2+r] = codes[k][r][0];
+            else packed[q][base/2][k*2+r] = __byte_perm(codes[k][r][0],codes[k][r][1],0x5410);
             if constexpr(!EncodeOnly) {
               #pragma unroll
               for (int pair = 0; pair < 2; ++pair)

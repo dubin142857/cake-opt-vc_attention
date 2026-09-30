@@ -1,0 +1,163 @@
+{
+  "compiled_variants": 88,
+  "historical_variants": 84,
+  "historical_instruction_text_identical": 84,
+  "ptxas_warnings": 0,
+  "instruction_counts": {
+    "_ZN7sage_vc38sage_vc_attention_kernel_expcast_pack4ILi128E13__nv_bfloat16EEv14CUtensorMap_stS2_S2_PfS3_S3_PK6__halfPT0_S3_jjjjjjf": {
+      "vc14": {
+        "F2IP": 128,
+        "PRMT": 64,
+        "F2FP": 130,
+        "HADD2": 256,
+        "FADD": 532,
+        "STS": 0,
+        "LDS": 0,
+        "FFMA": 260
+      },
+      "vc15": {
+        "F2IP": 128,
+        "PRMT": 0,
+        "F2FP": 130,
+        "HADD2": 256,
+        "FADD": 532,
+        "STS": 0,
+        "LDS": 0,
+        "FFMA": 260
+      },
+      "scope": "Static whole-kernel instruction counts including main/tail and affine/fallback paths, not dynamic throughput"
+    },
+    "_ZN7sage_vc38sage_vc_attention_kernel_expcast_pack4ILi128E6__halfEEv14CUtensorMap_stS2_S2_PfS3_S3_PKS1_PT0_S3_jjjjjjf": {
+      "vc14": {
+        "F2IP": 128,
+        "PRMT": 64,
+        "F2FP": 130,
+        "HADD2": 256,
+        "FADD": 532,
+        "STS": 0,
+        "LDS": 0,
+        "FFMA": 260
+      },
+      "vc15": {
+        "F2IP": 128,
+        "PRMT": 0,
+        "F2FP": 130,
+        "HADD2": 256,
+        "FADD": 532,
+        "STS": 0,
+        "LDS": 0,
+        "FFMA": 260
+      },
+      "scope": "Static whole-kernel instruction counts including main/tail and affine/fallback paths, not dynamic throughput"
+    },
+    "_ZN7sage_vc38sage_vc_attention_kernel_expcast_pack4ILi64E13__nv_bfloat16EEv14CUtensorMap_stS2_S2_PfS3_S3_PK6__halfPT0_S3_jjjjjjf": {
+      "vc14": {
+        "F2IP": 128,
+        "PRMT": 64,
+        "F2FP": 130,
+        "HADD2": 256,
+        "FADD": 468,
+        "STS": 0,
+        "LDS": 0,
+        "FFMA": 260
+      },
+      "vc15": {
+        "F2IP": 128,
+        "PRMT": 0,
+        "F2FP": 130,
+        "HADD2": 256,
+        "FADD": 468,
+        "STS": 0,
+        "LDS": 0,
+        "FFMA": 260
+      },
+      "scope": "Static whole-kernel instruction counts including main/tail and affine/fallback paths, not dynamic throughput"
+    },
+    "_ZN7sage_vc38sage_vc_attention_kernel_expcast_pack4ILi64E6__halfEEv14CUtensorMap_stS2_S2_PfS3_S3_PKS1_PT0_S3_jjjjjjf": {
+      "vc14": {
+        "F2IP": 128,
+        "PRMT": 64,
+        "F2FP": 130,
+        "HADD2": 256,
+        "FADD": 468,
+        "STS": 0,
+        "LDS": 0,
+        "FFMA": 260
+      },
+      "vc15": {
+        "F2IP": 128,
+        "PRMT": 0,
+        "F2FP": 130,
+        "HADD2": 256,
+        "FADD": 468,
+        "STS": 0,
+        "LDS": 0,
+        "FFMA": 260
+      },
+      "scope": "Static whole-kernel instruction counts including main/tail and affine/fallback paths, not dynamic throughput"
+    }
+  },
+  "four_byte_resources": [
+    {
+      "name": "_ZN7sage_vc38sage_vc_attention_kernel_expcast_pack4ILi128E13__nv_bfloat16EEv14CUtensorMap_stS2_S2_PfS3_S3_PK6__halfPT0_S3_jjjjjjf",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc38sage_vc_attention_kernel_expcast_pack4ILi128E6__halfEEv14CUtensorMap_stS2_S2_PfS3_S3_PKS1_PT0_S3_jjjjjjf",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc38sage_vc_attention_kernel_expcast_pack4ILi64E13__nv_bfloat16EEv14CUtensorMap_stS2_S2_PfS3_S3_PK6__halfPT0_S3_jjjjjjf",
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc38sage_vc_attention_kernel_expcast_pack4ILi64E6__halfEEv14CUtensorMap_stS2_S2_PfS3_S3_PKS1_PT0_S3_jjjjjjf",
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "package_version": "2.2.0+vc15",
+  "native_kernel_version": 12,
+  "local_environment": {
+    "os": "Windows",
+    "cuda_compiler": "12.4",
+    "torch": "2.3.1+cu121",
+    "runtime_gpu": "RTX 3060 Laptop SM86",
+    "cross_compile_target": "sm_90a"
+  },
+  "tests": {
+    "pytest_passed": 331,
+    "legacy_golden_exact_cases": 16,
+    "compute_sanitizer_helper_tests_passed": 149,
+    "compute_sanitizer_errors": 0,
+    "source_and_sdist_hashes_verified": 58
+  },
+  "numerics": "Executed actual four-byte and probability CUDA helpers, including RNE boundaries and neighbours, subnormals, infinities, masks, extreme fallback, mixed K scales and 300-tile histories. P bytes, FP32 tile mass and history match vc14 exactly in these checks.",
+  "diagnostic_tests": "Original Sage adapter passes identical Q/K/V/scales and upstream flags; output allocation is fresh per call. CPU orchestration tests cover all-row NaN/tail regression gates, separate algorithm differences, raw trial retention and trace classification.",
+  "limitations": [
+    "Full Hopper attention has not executed locally; remote validation required.",
+    "Static instruction counts include alternative paths; no H200 latency or speedup is claimed.",
+    "Removing PRMT also changes dependency scheduling; fewer instructions need not mean lower latency.",
+    "Original Sage/C++ versus VC control native timings still require remote execution.",
+    "No model quality validation."
+  ]
+}

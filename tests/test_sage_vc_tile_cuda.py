@@ -356,6 +356,8 @@ def test_paired_probability_exact_vc12_including_fallback(magnitude,mixed_scales
     old=probe.run_probability(*args)
     new=probe.run_probability(*args,True)
     for a,b in zip(new,old): torch.testing.assert_close(a,b,rtol=0,atol=0)
+    fused=probe.run_probability(*args,True,True)
+    for a,b in zip(fused,new): torch.testing.assert_close(a,b,rtol=0,atol=0)
     expected=new[0].view(torch.float8_e4m3fn).float().double().sum(-1).float()
     torch.testing.assert_close(new[4],expected,rtol=0,atol=0)
 
@@ -372,4 +374,6 @@ def test_paired_probability_preserves_300_tile_history():
         args=(scores,out,maximum,denom,True,tile%2==0,True,True,False)
         old=probe.run_probability(*args);new=probe.run_probability(*args,True)
         for a,b in zip(new,old): torch.testing.assert_close(a,b,rtol=0,atol=0)
+        fused=probe.run_probability(*args,True,True)
+        for a,b in zip(fused,new): torch.testing.assert_close(a,b,rtol=0,atol=0)
         _,out,maximum,denom,_=new

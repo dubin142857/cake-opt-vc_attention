@@ -7,15 +7,15 @@ import math
 import torch
 
 
-# vc14 keeps vc12's math/schedule and pairs its byte conversions. Shared-copy
-# vc13 schedules remain explicit experiments after their H200 regression.
-DEFAULT_EXPCAST_KERNEL = "vc14"
+# vc15 fuses final four-byte assembly into vc14's paired conversion.
+# The vc13 shared-copy schedules remain explicit experiments after regression.
+DEFAULT_EXPCAST_KERNEL = "vc15"
 
 
 def _extension():
     from . import _vc_sm90
     if (getattr(_vc_sm90, "sage_vc_api_version", None) != 1 or
-            getattr(_vc_sm90, "sage_vc_kernel_version", None) != 11 or
+            getattr(_vc_sm90, "sage_vc_kernel_version", None) != 12 or
             getattr(_vc_sm90, "sage_vc_preprocess_version", None) != 1):
         raise RuntimeError("Rebuild sageattention-local with bash scripts/build_sage_local.sh")
     return _vc_sm90
@@ -33,15 +33,15 @@ def sage_vc_build_info():
             "grouping_rounding": "FP32 reduction order changes; labels near boundaries can differ",
             "sage_vc_preprocess_version": _extension().sage_vc_preprocess_version,
             "paper_equivalent": False, "sage_vc_api_version": 1,
-            "default_kernel_mode": "optimized", "default_expcast_kernel": DEFAULT_EXPCAST_KERNEL, "kernel_modes": ["optimized", "vc14", "vc13_overlap", "vc13_serial", "vc12", "vc11", "vc10", "vc9", "vc7", "vc6", "vc4"],
+            "default_kernel_mode": "optimized", "default_expcast_kernel": DEFAULT_EXPCAST_KERNEL, "kernel_modes": ["optimized", "vc15", "vc14", "vc13_overlap", "vc13_serial", "vc12", "vc11", "vc10", "vc9", "vc7", "vc6", "vc4"],
             "expcast_probability": "paired saturating u8 RNE/packing + decoded-P FP32 reduction",
-            "expcast_interleaving": "vc14: encode two K fragments, issue packed decode, then consume FP32 values",
+            "expcast_interleaving": "vc15: encode two K fragments, issue packed decode, then consume FP32 values",
             "probability_scratch_bytes_per_block": 0,
-            "expcast_conversion": "paired signed RNE then saturating u8 pack; exact vc12 P bytes",
+            "expcast_conversion": "ExpCast-only paired RNE with fused four-byte assembly; exact vc14 P bytes",
             "experimental_probability_scratch_bytes_per_block": 8192,
             "experimental_kernel_modes": ["vc13_serial", "vc13_overlap"],
             "expcast_numerical_contract": "expcast-only folds coefficients in FP32 before FMA/RNE; byte rounding may differ near boundaries; denominator uses decoded P; extreme ranges use vc11",
-            "expcast_pipeline": "vc14: tile sums before PV; history scaling overlaps PV; shared-copy schedules are opt-in experiments",
+            "expcast_pipeline": "vc15: tile sums before PV; history scaling overlaps PV; shared-copy schedules are opt-in experiments",
             "compact_values": "D128/channel: two N64 PV fragments, paired mean restoration, 168-register target",
             "v_scale_mode": "channel", "v_scale_modes": ["channel", "block"],
             "value_restore_rounding": "channel: mean FMA + FP32 buffer, epilogue scale; vc4: per-tile scale",
@@ -52,7 +52,7 @@ def kernel_resources(output_type=1):
     """Report the paired-conversion default and retain historical resources."""
     resources = _extension().kernel_resources(output_type)
     resources["expcast_vc13_overlap"] = resources["expcast_optimized"]
-    resources["expcast_optimized"] = resources["expcast_vc14"]
+    resources["expcast_optimized"] = resources["expcast_vc15"]
     return resources
 
 
@@ -109,23 +109,24 @@ def prepare(q, k, v, *, expcast=True, v_smooth=True, clusters=8, iterations=2, s
 
 
 def forward_prepared(state, *, kernel_mode="optimized"):
-    if kernel_mode not in ("optimized", "vc14", "vc13_overlap", "vc13_serial", "vc12", "vc11", "vc10", "vc9", "vc7", "vc6", "vc4"):
-        raise ValueError("kernel_mode must be 'optimized', 'vc14', 'vc13_overlap', 'vc13_serial', 'vc12', 'vc11', 'vc10', 'vc9', 'vc7', 'vc6' or 'vc4'")
+    if kernel_mode not in ("optimized", "vc15", "vc14", "vc13_overlap", "vc13_serial", "vc12", "vc11", "vc10", "vc9", "vc7", "vc6", "vc4"):
+        raise ValueError("kernel_mode must be 'optimized', 'vc15', 'vc14', 'vc13_overlap', 'vc13_serial', 'vc12', 'vc11', 'vc10', 'vc9', 'vc7', 'vc6' or 'vc4'")
     return _extension().forward(*(state[name] for name in ("q", "k", "v", "qs", "ks", "vs", "means",
                                                           "expcast", "block_values", "output_type", "scale")),
-                                optimized=kernel_mode != "vc4", packed_probability=kernel_mode in ("optimized", "vc14", "vc13_overlap", "vc13_serial", "vc12", "vc11", "vc10", "vc9", "vc7"),
-                                compact_values=kernel_mode in ("optimized", "vc14", "vc13_overlap", "vc13_serial", "vc12", "vc11", "vc10", "vc9"), pipeline_probability=kernel_mode in ("optimized", "vc14", "vc13_overlap", "vc13_serial", "vc12", "vc11", "vc10"),
-                                interleaved_probability=kernel_mode in ("optimized", "vc14", "vc13_overlap", "vc13_serial", "vc12", "vc11"),
-                                affine_probability=kernel_mode in ("optimized", "vc14", "vc13_overlap", "vc13_serial", "vc12"),
+                                optimized=kernel_mode != "vc4", packed_probability=kernel_mode in ("optimized", "vc15", "vc14", "vc13_overlap", "vc13_serial", "vc12", "vc11", "vc10", "vc9", "vc7"),
+                                compact_values=kernel_mode in ("optimized", "vc15", "vc14", "vc13_overlap", "vc13_serial", "vc12", "vc11", "vc10", "vc9"), pipeline_probability=kernel_mode in ("optimized", "vc15", "vc14", "vc13_overlap", "vc13_serial", "vc12", "vc11", "vc10"),
+                                interleaved_probability=kernel_mode in ("optimized", "vc15", "vc14", "vc13_overlap", "vc13_serial", "vc12", "vc11"),
+                                affine_probability=kernel_mode in ("optimized", "vc15", "vc14", "vc13_overlap", "vc13_serial", "vc12"),
                                 probability_schedule=1 if kernel_mode == "vc13_overlap" else 2 if kernel_mode == "vc13_serial" else 0,
-                                paired_probability=kernel_mode in ("optimized", "vc14"))
+                                paired_probability=kernel_mode in ("optimized", "vc15", "vc14"),
+                                fused_probability=kernel_mode in ("optimized", "vc15"))
 
 
 @torch.no_grad()
 def sageattn_vc(q, k, v, tensor_layout="HND", is_causal=False, sm_scale=None, return_lse=False,
                *, expcast=True, v_smooth=True, clusters=8, iterations=2, kernel_mode="optimized", v_scale_mode="channel", grouping_mode="fused"):
-    if kernel_mode not in ("optimized", "vc14", "vc13_overlap", "vc13_serial", "vc12", "vc11", "vc10", "vc9", "vc7", "vc6", "vc4"):
-        raise ValueError("kernel_mode must be 'optimized', 'vc14', 'vc13_overlap', 'vc13_serial', 'vc12', 'vc11', 'vc10', 'vc9', 'vc7', 'vc6' or 'vc4'")
+    if kernel_mode not in ("optimized", "vc15", "vc14", "vc13_overlap", "vc13_serial", "vc12", "vc11", "vc10", "vc9", "vc7", "vc6", "vc4"):
+        raise ValueError("kernel_mode must be 'optimized', 'vc15', 'vc14', 'vc13_overlap', 'vc13_serial', 'vc12', 'vc11', 'vc10', 'vc9', 'vc7', 'vc6' or 'vc4'")
     if v_scale_mode not in ("channel", "block"):
         raise ValueError("v_scale_mode must be 'channel' or 'block'")
     if grouping_mode not in ("fused", "legacy"):

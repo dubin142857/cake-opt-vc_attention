@@ -105,7 +105,7 @@ def test_shared_scale_nonzero_mean_known_answer(expcast):
     torch.testing.assert_close(out,torch.full_like(out,expected),rtol=2e-6,atol=1e-6)
 
 
-@pytest.mark.parametrize("mode,flags",[("optimized",(True,True,True,True,True,True)),("vc14",(True,True,True,True,True,True)),("vc13_overlap",(True,True,True,True,True,True)),("vc13_serial",(True,True,True,True,True,True)),("vc12",(True,True,True,True,True,True)),("vc11",(True,True,True,True,True,False)),("vc10",(True,True,True,True,False,False)),("vc9",(True,True,True,False,False,False)),("vc7",(True,True,False,False,False,False)),("vc6",(True,False,False,False,False,False)),("vc4",(False,False,False,False,False,False))])
+@pytest.mark.parametrize("mode,flags",[("optimized",(True,True,True,True,True,True)),("vc15",(True,True,True,True,True,True)),("vc14",(True,True,True,True,True,True)),("vc13_overlap",(True,True,True,True,True,True)),("vc13_serial",(True,True,True,True,True,True)),("vc12",(True,True,True,True,True,True)),("vc11",(True,True,True,True,True,False)),("vc10",(True,True,True,True,False,False)),("vc9",(True,True,True,False,False,False)),("vc7",(True,True,False,False,False,False)),("vc6",(True,False,False,False,False,False)),("vc4",(False,False,False,False,False,False))])
 def test_kernel_mode_dispatch_preserves_previous_schedules(monkeypatch,mode,flags):
     from types import SimpleNamespace
     calls = []
@@ -117,18 +117,20 @@ def test_kernel_mode_dispatch_preserves_previous_schedules(monkeypatch,mode,flag
     state = {key:object() for key in keys}
     assert api.forward_prepared(state,kernel_mode=mode) == "output"
     schedule = 1 if mode == "vc13_overlap" else 2 if mode == "vc13_serial" else 0
-    assert calls == [(tuple(state[key] for key in keys),dict(optimized=flags[0],packed_probability=flags[1],compact_values=flags[2],pipeline_probability=flags[3],interleaved_probability=flags[4],affine_probability=flags[5],probability_schedule=schedule,paired_probability=mode in ("optimized","vc14")))]
+    assert calls == [(tuple(state[key] for key in keys),dict(optimized=flags[0],packed_probability=flags[1],compact_values=flags[2],pipeline_probability=flags[3],interleaved_probability=flags[4],affine_probability=flags[5],probability_schedule=schedule,paired_probability=mode in ("optimized","vc15","vc14"),fused_probability=mode in ("optimized","vc15")))]
 
 
 def test_resource_report_tracks_paired_default_and_preserves_experiment(monkeypatch):
     from types import SimpleNamespace
     old={"registers_per_thread":168,"dynamic_shared_bytes":40960}
     paired={"registers_per_thread":168,"dynamic_shared_bytes":40960}
+    fused={"registers_per_thread":168,"dynamic_shared_bytes":40960}
     experiment={"registers_per_thread":168,"dynamic_shared_bytes":49152}
     monkeypatch.setattr(api,"_extension",lambda:SimpleNamespace(
-        kernel_resources=lambda output_type:{"expcast_vc12":old,"expcast_vc14":paired,"expcast_optimized":experiment}))
+        kernel_resources=lambda output_type:{"expcast_vc12":old,"expcast_vc14":paired,"expcast_vc15":fused,"expcast_optimized":experiment}))
     resources=api.kernel_resources()
-    assert resources["expcast_optimized"] is paired
+    assert resources["expcast_optimized"] is fused
+    assert resources["expcast_vc14"] is paired
     assert resources["expcast_vc12"] is old
     assert resources["expcast_vc13_overlap"] is experiment
 

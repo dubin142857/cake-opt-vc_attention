@@ -11,7 +11,7 @@ import pytest
 import torch
 
 ext=pytest.importorskip("_vc_expcast_bench")
-pytestmark=pytest.mark.skipif(getattr(ext,"benchmark_api_version",0)!=5,reason="Build the v5 component benchmark")
+pytestmark=pytest.mark.skipif(getattr(ext,"benchmark_api_version",0)!=6,reason="Build the v6 component benchmark")
 
 
 def load_benchmark():
@@ -131,10 +131,33 @@ def test_paired_conversion_all_rounding_boundaries_and_finite_bit_patterns():
     expected=scores.round().clamp(0,255).byte()
     torch.testing.assert_close(actual,expected,rtol=0,atol=0)
     torch.testing.assert_close(actual,old,rtol=0,atol=0)
+    # Four-byte path must preserve both byte pairs, including unlike high/low
+    # bytes. The independent oracle catches swapped/copied-upper-pair errors.
+    count=scores.numel()//4*4
+    quads=scores.flatten()[:count].reshape(-1,4).contiguous()
+    quad=ext.quad_check(quads,torch.ones(quads.shape[0],device="cuda"),torch.zeros(quads.shape[0],device="cuda"))
+    torch.testing.assert_close(quad,expected.flatten()[:count].reshape_as(quad),rtol=0,atol=0)
 
 
 @pytest.mark.parametrize("iterations",[1,3,128])
 def test_paired_probability_checksum_is_exact_vc12(iterations):
     old=torch.empty(3,128,device="cuda");new=torch.empty_like(old)
-    ext.run(old,4,iterations);ext.run(new,5,iterations)
-    torch.testing.assert_close(new,old,rtol=0,atol=0)
+    ext.run(old,4,iterations)
+    for mode in (5,6):
+        ext.run(new,mode,iterations)
+        torch.testing.assert_close(new,old,rtol=0,atol=0)
+
+
+def test_quad_probe_rejects_incomplete_groups_and_mismatched_coefficients():
+    for size,gains,biases in ((6,2,2),(8,1,2),(8,2,1),(0,0,0)):
+        with pytest.raises(RuntimeError):
+            ext.quad_check(torch.zeros(size,device="cuda"),torch.ones(gains,device="cuda"),torch.zeros(biases,device="cuda"))
+
+
+def test_quad_probe_uses_current_stream_and_keeps_four_distinct_bytes():
+    stream=torch.cuda.Stream()
+    with torch.cuda.stream(stream):
+        scores=torch.arange(256,device="cuda",dtype=torch.float32).reshape(-1,4)
+        actual=ext.quad_check(scores,torch.ones(64,device="cuda"),torch.zeros(64,device="cuda"))
+    stream.synchronize()
+    torch.testing.assert_close(actual,scores.byte(),rtol=0,atol=0)

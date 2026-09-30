@@ -1,0 +1,127 @@
+{
+  "binary": "D:\\codex\\\u7b97\u5b50\\build\\vc15-core.obj",
+  "cuobjdump": "build/cuda124/toolkit/bin/cuobjdump.exe",
+  "variants": [
+    {
+      "kernel": "_ZN7sage_vc39sage_vc_attention_kernel_expcast_pairedILi128E13__nv_bfloat16EEv14CUtensorMap_stS2_S2_PfS3_S3_PK6__halfPT0_S3_jjjjjjf",
+      "vc12": {
+        "F2IP": 256,
+        "PRMT": 192,
+        "F2FP": 130,
+        "HADD2": 256,
+        "FADD": 532,
+        "FFMA": 260
+      },
+      "vc14": {
+        "F2IP": 128,
+        "PRMT": 64,
+        "F2FP": 130,
+        "HADD2": 256,
+        "FADD": 532,
+        "FFMA": 260
+      },
+      "paired_conversion_reduced": true,
+      "packing_instructions_reduced": true,
+      "vc15": {
+        "F2IP": 128,
+        "PRMT": 0,
+        "F2FP": 130,
+        "HADD2": 256,
+        "FADD": 532,
+        "FFMA": 260
+      },
+      "four_byte_assembly_reduced": true
+    },
+    {
+      "kernel": "_ZN7sage_vc39sage_vc_attention_kernel_expcast_pairedILi128E6__halfEEv14CUtensorMap_stS2_S2_PfS3_S3_PKS1_PT0_S3_jjjjjjf",
+      "vc12": {
+        "F2IP": 256,
+        "PRMT": 192,
+        "F2FP": 130,
+        "HADD2": 256,
+        "FADD": 532,
+        "FFMA": 260
+      },
+      "vc14": {
+        "F2IP": 128,
+        "PRMT": 64,
+        "F2FP": 130,
+        "HADD2": 256,
+        "FADD": 532,
+        "FFMA": 260
+      },
+      "paired_conversion_reduced": true,
+      "packing_instructions_reduced": true,
+      "vc15": {
+        "F2IP": 128,
+        "PRMT": 0,
+        "F2FP": 130,
+        "HADD2": 256,
+        "FADD": 532,
+        "FFMA": 260
+      },
+      "four_byte_assembly_reduced": true
+    },
+    {
+      "kernel": "_ZN7sage_vc39sage_vc_attention_kernel_expcast_pairedILi64E13__nv_bfloat16EEv14CUtensorMap_stS2_S2_PfS3_S3_PK6__halfPT0_S3_jjjjjjf",
+      "vc12": {
+        "F2IP": 256,
+        "PRMT": 192,
+        "F2FP": 130,
+        "HADD2": 256,
+        "FADD": 468,
+        "FFMA": 260
+      },
+      "vc14": {
+        "F2IP": 128,
+        "PRMT": 64,
+        "F2FP": 130,
+        "HADD2": 256,
+        "FADD": 468,
+        "FFMA": 260
+      },
+      "paired_conversion_reduced": true,
+      "packing_instructions_reduced": true,
+      "vc15": {
+        "F2IP": 128,
+        "PRMT": 0,
+        "F2FP": 130,
+        "HADD2": 256,
+        "FADD": 468,
+        "FFMA": 260
+      },
+      "four_byte_assembly_reduced": true
+    },
+    {
+      "kernel": "_ZN7sage_vc39sage_vc_attention_kernel_expcast_pairedILi64E6__halfEEv14CUtensorMap_stS2_S2_PfS3_S3_PKS1_PT0_S3_jjjjjjf",
+      "vc12": {
+        "F2IP": 256,
+        "PRMT": 192,
+        "F2FP": 130,
+        "HADD2": 256,
+        "FADD": 468,
+        "FFMA": 260
+      },
+      "vc14": {
+        "F2IP": 128,
+        "PRMT": 64,
+        "F2FP": 130,
+        "HADD2": 256,
+        "FADD": 468,
+        "FFMA": 260
+      },
+      "paired_conversion_reduced": true,
+      "packing_instructions_reduced": true,
+      "vc15": {
+        "F2IP": 128,
+        "PRMT": 0,
+        "F2FP": 130,
+        "HADD2": 256,
+        "FADD": 468,
+        "FFMA": 260
+      },
+      "four_byte_assembly_reduced": true
+    }
+  ],
+  "scope": "Static instruction counts, including main/tail and affine/fallback branches; NOT dynamic counts or a performance measurement"
+}

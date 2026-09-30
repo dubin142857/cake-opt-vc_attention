@@ -6,11 +6,11 @@
 `sageattn` 是原版内核的独立源码构建。`2.2.0+vc3` 新增独立的
 `sageattn_vc` 实验入口：Sage INT8 QK + VC 的 V 聚类/分块平滑、ExpCast，
 不能称为完整 VC 论文复现。使用与对照见仓库根目录 [SAGE_VC.md](../../SAGE_VC.md)。
-当前版本 `2.2.0+vc14` 在 vc12 上合并成对的 FP32 到整数转换和字节打包，
-默认 `"optimized"` 等于 `"vc14"`，仅修改 ExpCast-only 路径，native kernel version 11。
-P 字节和 FP32 分母数值约定保持 vc12，不增加共享内存。H200 同输入 native API
-相对 vc12 已测得 1.053x，完整 API 仍比原版 Sage 慢 4.88%，
-见 [vc14 说明](../../SAGE_VC14.md)。`kernel_mode="vc12"` 保留最佳旧版同场基线。
+当前版本 `2.2.0+vc15` 将四字节拼接合并进 vc14 的成对 FP32 转换，
+默认 `"optimized"` 等于 `"vc15"`，仅修改 ExpCast-only 路径，native kernel version 12。
+P 字节、FP32 分母及 PV 累加保持 vc14，不增加共享内存，H200 性能待测。
+新增原版 Sage 与 VC control 使用相同量化输入的对照，见 [vc15 说明](../../SAGE_VC15.md)。
+`kernel_mode="vc14"` 保留上一版同场基线，`vc12` 及更早内核仍可使用。
 此前共享副本串行/重叠在 H200 比 vc12 更慢，`"vc13_serial"` / `"vc13_overlap"` 保留实验。
 此前 `2.2.0+vc9` 将默认 8 中心聚类的距离计算、分组和块内统计融合成 CUDA kernel，
 减少中间张量与 kernel 下发；最后一次分组不再更新无后续用途的中心。

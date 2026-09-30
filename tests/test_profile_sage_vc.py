@@ -421,7 +421,7 @@ def test_vc13_baselines_and_probability_schedule_option():
         profile.parse_args(["--ncu-variant","sage_vc","--compare-probability-schedules"])
 
 
-@pytest.mark.parametrize("restored", [False,True,"vc14"])
+@pytest.mark.parametrize("restored", [False,True,"vc14","vc15"])
 def test_probability_schedule_comparison_uses_one_payload_and_checks_all_rows(monkeypatch,restored):
     overlap_mode="vc13_overlap" if restored else "optimized"
     modes=("vc12","vc13_serial",overlap_mode)
@@ -434,7 +434,7 @@ def test_probability_schedule_comparison_uses_one_payload_and_checks_all_rows(mo
         return payload[kernel_mode]
     ops=SimpleNamespace(ext=SimpleNamespace(sage_vc_kernel_version=10),vc=SimpleNamespace(forward_prepared=forward))
     if restored:
-        ops.vc.DEFAULT_EXPCAST_KERNEL="vc14" if restored == "vc14" else "vc12"
+        ops.vc.DEFAULT_EXPCAST_KERNEL=restored if isinstance(restored,str) else "vc12"
     def measure(call,repeats,device):
         out=call()
         return out,{"vc12":3.,"vc13_serial":4.,overlap_mode:2.}[seen[-1]]
@@ -478,6 +478,85 @@ def test_paired_default_compares_against_best_vc12_and_keeps_overlap_explicit():
     for mode in ("vc12","vc13_serial","vc13_overlap"):
         args=profile.parse_args(["--compare-kernels","--kernel-baseline",mode])
         assert profile.kernel_baseline(ops,args)==mode
+
+
+def test_four_byte_default_compares_against_vc14_and_rejects_stale_extension():
+    ops=SimpleNamespace(ext=SimpleNamespace(sage_vc_kernel_version=12),vc=SimpleNamespace(DEFAULT_EXPCAST_KERNEL="vc15"))
+    args=profile.parse_args(["--compare-kernels","--compare-sage-core","--expcast-only"])
+    assert profile.kernel_baseline(ops,args)=="vc14"
+    explicit=profile.parse_args(["--compare-kernels","--kernel-baseline","vc14"])
+    assert profile.kernel_baseline(ops,explicit)=="vc14"
+    ops.ext.sage_vc_kernel_version=11
+    with pytest.raises(RuntimeError,match="needs vc15"):
+        profile.kernel_baseline(ops,explicit)
+    with pytest.raises(RuntimeError,match="needs vc15"):
+        profile.compare_sage_core(ops,None,args,"cpu")
+    with pytest.raises(SystemExit):
+        profile.parse_args(["--compare-sage-core","--ncu-variant","sage_vc_control"])
+
+
+def test_original_sage_core_uses_same_bytes_flags_and_fresh_output():
+    qkv=tuple(torch.ones(1,2,n,64).half() for n in (3,7,7))
+    ops=fake_ops()
+    state=profile.staged_prepare(*qkv,ops,Recorder(),expcast=False,smooth=False)
+    outputs,seen=[],[]
+    def native(*args):
+        for actual,key in zip(args[:3],("q","k","v")): assert actual is state[key]
+        for actual,key in zip(args[4:7],("qs","ks","vs")): assert actual is state[key]
+        assert args[7:]==(1,0,3,state["scale"],0)
+        assert args[3].dtype==torch.float16
+        assert all(args[3] is not out for out in outputs)
+        outputs.append(args[3]);args[3].fill_(3)
+    def forward(payload,kernel_mode="optimized"):
+        for key in ("q","k","v","qs","ks","vs","means"): assert payload[key] is state[key]
+        seen.append((payload["expcast"],kernel_mode))
+        return torch.ones_like(qkv[0])
+    ops.vc=SimpleNamespace(forward_prepared=forward)
+    calls=profile.sage_core_calls(ops,state,native,native)
+    for _ in range(2):
+        for call in calls.values(): call()
+    assert len(outputs)==4
+    assert seen==[(False,"optimized"),(True,"vc14"),(True,"optimized")]*2
+    with pytest.raises(ValueError,match="unsmoothed"):
+        profile.sage_core_calls(ops,{**state,"block_values":True},native,native)
+
+
+def test_sage_core_comparison_gates_implementation_not_algorithm_error(monkeypatch):
+    outputs={name:torch.ones(1,1,513,4) for name in
+             ("sage_cpp","sage_registered","vc_control","vc14_expcast","vc_optimized_expcast")}
+    outputs["vc14_expcast"]*=2
+    outputs["vc_optimized_expcast"]*=2  # Large Sage/ExpCast error is reported, not an implementation failure.
+    calls={name:lambda name=name:outputs[name] for name in outputs}
+    ops=SimpleNamespace(ext=SimpleNamespace(sage_vc_kernel_version=12),vc=SimpleNamespace(DEFAULT_EXPCAST_KERNEL="vc15"))
+    monkeypatch.setattr(profile,"load_sage_core_ops",lambda:(None,None))
+    monkeypatch.setattr(profile,"sage_core_calls",lambda *args:calls)
+    monkeypatch.setattr(torch.cuda,"synchronize",lambda *_:None)
+    monkeypatch.setattr(profile,"measure_trial",lambda call,*args:(call(),2.))
+    args=profile.parse_args(["--compare-sage-core","--warmup","1","--trials","3"])
+    report=profile.compare_sage_core(ops,None,args,"cpu")
+    assert len(report["trial_order"])==3
+    assert report["optimized_vs_vc14"]["exact_match"]
+    for order in report["trial_order"]: assert set(order)==set(calls)
+    for name,row in report["rows"].items():
+        assert row["trial_mean_ms"]==[2.]*3
+        if name!="sage_cpp": assert row["vs_original_sage"]["checked_queries"]==513
+    assert report["rows"]["vc_optimized_expcast"]["vs_original_sage"]["rel_rmse"]==1.
+    for name in ("sage_registered","vc_control","vc_optimized_expcast"):
+        original=outputs[name].clone()
+        outputs[name][:,:,512]=float("nan")
+        with pytest.raises(RuntimeError,match="Nonfinite"): profile.compare_sage_core(ops,None,args,"cpu")
+        outputs[name][:,:,512]=100
+        with pytest.raises(AssertionError,match="exceeds"): profile.compare_sage_core(ops,None,args,"cpu")
+        outputs[name]=original
+
+
+def test_sage_trace_marker_counts_original_kernel_without_including_other_work():
+    events=[dict(ph="X",cat="kernel",name="qk_int8_sv_f8_attn_kernel<...>",dur=2000,args={"registers per thread":168}),
+            dict(ph="X",cat="kernel",name="other",dur=100)]
+    result=profile.trace_summary(events,("qk_int8_sv_f8_attn_kernel",))
+    assert result["core_kernel_ms"]==2 and result["other_kernel_sum_ms"]==.1
+    assert result["core_resources"][0]["registers per thread"]==168
+    with pytest.raises(RuntimeError,match="zero-time"): profile.trace_summary(events)
 
 
 def test_expcast_only_cli_and_partial_report(capsys):

@@ -161,7 +161,7 @@ def summarize_stages(trials):
             "raw_trials": trials}
 
 
-def trace_summary(events):
+def trace_summary(events, core_names=("sage_vc_attention_kernel",)):
     """Keep device and host-runtime events separate; exclude nested CPU operators."""
     groups = {}
     resources = []
@@ -173,7 +173,7 @@ def trace_summary(events):
         row = groups.setdefault(key, {"category": category, "name": key[1], "calls": 0, "total_us": 0.})
         row["calls"] += 1
         row["total_us"] += event.get("dur", 0.)
-        if category == "kernel" and "sage_vc_attention_kernel" in key[1]:
+        if category == "kernel" and any(marker in key[1] for marker in core_names):
             metadata = event.get("args", {})
             resources.append({"name": key[1], "duration_ms": event.get("dur", 0.) / 1000,
                               **{key: metadata.get(key) for key in (
@@ -183,9 +183,9 @@ def trace_summary(events):
     kernels = [x for x in rows if x["category"] == "kernel"]
     if not kernels:
         raise RuntimeError("No GPU kernel events captured; check CUPTI/PyTorch profiler availability")
-    core = sum(x["total_us"] for x in kernels if "sage_vc_attention_kernel" in x["name"])
+    core = sum(x["total_us"] for x in kernels if any(marker in x["name"] for marker in core_names))
     if not core:
-        raise RuntimeError("Trace does not contain the Sage VC native core; refusing a zero-time result")
+        raise RuntimeError("Trace does not contain the requested Sage VC native core; refusing a zero-time result")
     total = sum(x["total_us"] for x in kernels)
     return {"core_kernel_ms": core / 1000, "other_kernel_sum_ms": (total-core) / 1000,
             "kernel_sum_ms": total / 1000, "kernel_launches": sum(x["calls"] for x in kernels),
@@ -209,10 +209,12 @@ def parse_args(argv=None):
     parser.add_argument("--trace-dir", help="Optional CUPTI CPU/GPU timelines, one staged call per variant")
     parser.add_argument("--compare-kernels", action="store_true",
                         help="Compare previous/optimized cores on identical payloads; validate ALL output rows")
+    parser.add_argument("--compare-sage-core", action="store_true",
+                        help="vc15+: compare original Sage C++, registered Sage, VC control and vc14/vc15 ExpCast on the same payload")
     parser.add_argument("--expcast-only",action="store_true",
                         help="Measure Sage/control/ExpCast only; skip V grouping/smoothing entirely")
-    parser.add_argument("--kernel-baseline",choices=("vc4","vc6","vc7","vc9","vc10","vc11","vc12","vc13_serial","vc13_overlap"),
-                        help="Same-payload baseline; defaults to vc12 on vc14, vc13_overlap after the vc13.1 rollback, vc12 on vc13, vc11 on vc12, vc10 on vc11, vc9 on vc10, vc7 on vc8/9, vc6 on vc7, otherwise vc4")
+    parser.add_argument("--kernel-baseline",choices=("vc4","vc6","vc7","vc9","vc10","vc11","vc12","vc13_serial","vc13_overlap","vc14"),
+                        help="Same-payload baseline; defaults to vc14 on vc15, vc12 on vc14, vc13_overlap after the vc13.1 rollback, vc12 on vc13, vc11 on vc12, vc10 on vc11, vc9 on vc10, vc7 on vc8/9, vc6 on vc7, otherwise vc4")
     parser.add_argument("--compare-probability-schedules", action="store_true",
                         help="vc13+: compare vc12, serial scratch and overlap on identical payloads; validate ALL output rows")
     parser.add_argument("--compare-v-scales", action="store_true",
@@ -232,7 +234,7 @@ def parse_args(argv=None):
         parser.error("--kernel-baseline requires --compare-kernels")
     if args.expcast_only and (args.compare_v_scales or args.compare_grouping or args.ncu_variant):
         parser.error("--expcast-only cannot be combined with V/grouping comparisons or --ncu-variant")
-    if args.ncu_variant and (args.compare_probability_schedules or args.trace_dir or args.compare_kernels or args.compare_v_scales or args.compare_grouping):
+    if args.ncu_variant and (args.compare_sage_core or args.compare_probability_schedules or args.trace_dir or args.compare_kernels or args.compare_v_scales or args.compare_grouping):
         parser.error("--ncu-variant uses a separate profiler run")
     return args
 
@@ -275,10 +277,84 @@ def kernel_calls(ops, fixed, baseline="vc4"):
             for name,state in fixed.items() for mode in (baseline,"optimized")}
 
 
+def load_sage_core_ops():
+    from sageattention_local import _qattn_sm90, sm90_compile
+    name = "qk_int8_sv_f8_accum_f32_fuse_v_scale_attn_inst_buf"
+    return getattr(_qattn_sm90,name), getattr(sm90_compile,name)
+
+
+def sage_core_calls(ops, state, native, registered):
+    """Every call allocates its output; all calls share the very same input tensors."""
+    if state["block_values"]:
+        raise ValueError("Original Sage core comparison requires unsmoothed, channel-quantized V")
+    def sage_call(function):
+        query = state["q"]
+        with torch.cuda.device(query.device) if query.is_cuda else nullcontext():
+            output = torch.empty(query.shape,device=query.device,
+                                 dtype=torch.float16 if state["output_type"] == 0 else torch.bfloat16)
+            function(query,state["k"],state["v"],output,state["qs"],state["ks"],state["vs"],
+                     1,0,3,state["scale"],0)
+        return output
+    control, cast = {**state,"expcast":False}, {**state,"expcast":True}
+    return {"sage_cpp":lambda:sage_call(native),
+            "sage_registered":lambda:sage_call(registered),
+            "vc_control":lambda:ops.vc.forward_prepared(control),
+            "vc14_expcast":lambda:ops.vc.forward_prepared(cast,kernel_mode="vc14"),
+            "vc_optimized_expcast":lambda:ops.vc.forward_prepared(cast)}
+
+
+@torch.no_grad()
+def compare_sage_core(ops, state, args, device):
+    if getattr(ops.ext,"sage_vc_kernel_version",0) < 12:
+        raise RuntimeError("--compare-sage-core needs vc15; rebuild with bash scripts/build_sage_local.sh")
+    calls = sage_core_calls(ops,state,*load_sage_core_ops())
+    for call in calls.values():
+        for _ in range(args.warmup): call()
+    torch.cuda.synchronize(device)
+    errors, regression = {}, {}
+    original = calls["sage_cpp"]()
+    for name,call in calls.items():
+        if name == "sage_cpp": continue
+        actual = call()
+        errors[name] = output_difference(actual,original)
+        if name in ("sage_registered","vc_control") and errors[name]["rel_rmse"] > .001:
+            raise AssertionError(f"{name}/original Sage relative RMSE exceeds 0.1%: {errors[name]}")
+        del actual
+    del original
+    previous, actual = calls["vc14_expcast"](), calls["vc_optimized_expcast"]()
+    regression = output_difference(actual,previous)
+    if regression["rel_rmse"] > .001:
+        raise AssertionError(f"Optimized/vc14 ExpCast relative RMSE exceeds 0.1%: {regression}")
+    del previous,actual
+    times = {name:[] for name in calls}
+    rng, orders = random.Random(args.seed), []
+    for trial in range(args.trials):
+        order = list(calls)
+        rng.shuffle(order)
+        orders.append(order)
+        for name in order:
+            _, elapsed = measure_trial(calls[name],args.repeats,device)
+            times[name].append(elapsed)
+        print(f"Original Sage core comparison trial {trial+1}/{args.trials} complete",flush=True)
+    rows = {name:{**stats(samples),"vs_original_sage":errors.get(name)} for name,samples in times.items()}
+    print("\nIdentical quantized inputs, fresh output allocation, synchronized API wall time:")
+    print(f"{'core API':<25} {'median ms':>12} {'Sage/core':>12} {'vs Sage RMSE %':>16}")
+    for name,row in rows.items():
+        row["sage_cpp_over_variant"] = rows["sage_cpp"]["median_ms"]/row["median_ms"]
+        error = f"{errors[name]['rel_rmse']*100:.6f}" if name in errors else "--"
+        print(f"{name:<25} {row['median_ms']:>12.4f} {row['sage_cpp_over_variant']:>11.3f}x {error:>16}")
+    print("ExpCast/Sage errors compare different algorithms; only control/Sage and optimized/vc14 use the 0.1% regression gate.")
+    return {"rows":rows,"trial_order":orders,"optimized_vs_vc14":regression,
+            "optimized_kernel":getattr(ops.vc,"DEFAULT_EXPCAST_KERNEL",None),
+            "scope":"Same Q/K/V bytes and scales; no preprocessing; every call includes fresh output allocation and native dispatch. Synchronized wall time, not pure GPU duration."}
+
+
 def kernel_baseline(ops,args):
     version = getattr(ops.ext,"sage_vc_kernel_version",0)
     restored = getattr(getattr(ops,"vc",None),"DEFAULT_EXPCAST_KERNEL",None) == "vc12"
-    baseline = getattr(args,"kernel_baseline",None) or ("vc12" if version >= 11 else "vc13_overlap" if version >= 10 and restored else "vc12" if version >= 10 else "vc11" if version >= 9 else "vc10" if version >= 8 else "vc9" if version >= 7 else "vc7" if version >= 6 else "vc6" if version >= 5 else "vc4")
+    baseline = getattr(args,"kernel_baseline",None) or ("vc14" if version >= 12 else "vc12" if version >= 11 else "vc13_overlap" if version >= 10 and restored else "vc12" if version >= 10 else "vc11" if version >= 9 else "vc10" if version >= 8 else "vc9" if version >= 7 else "vc7" if version >= 6 else "vc6" if version >= 5 else "vc4")
+    if baseline == "vc14" and version < 12:
+        raise RuntimeError("--kernel-baseline vc14 needs vc15; rebuild with bash scripts/build_sage_local.sh")
     if baseline == "vc13_overlap" and (version < 10 or not (restored or version >= 11)):
         raise RuntimeError("--kernel-baseline vc13_overlap needs vc13.1; rebuild with bash scripts/build_sage_local.sh")
     if baseline in ("vc12", "vc13_serial") and version < 10:
@@ -456,8 +532,11 @@ def compare_kernels(ops, fixed, args, device):
         print(f"Kernel comparison trial {trial+1}/{args.trials} complete",flush=True)
     rows = {}
     print(f"\nSame-payload native APIs: {baseline} vs optimized (ms; excludes all preprocessing)")
-    if baseline == "vc12" and getattr(ops.ext,"sage_vc_kernel_version",0) >= 11:
-        print("vc12/vc14 differ only in paired FP32-to-byte conversion/packing. P rounding, decoded-P FP32 denominator, Q/K/V payloads and PV accumulation are unchanged; no shared probability copy.")
+    if baseline == "vc14":
+        print("vc14/vc15 differ only in four-byte assembly: the second paired conversion appends the first pair. P bytes, decoded-P FP32 sums and PV accumulation are unchanged; no shared copy.")
+    elif baseline == "vc12" and getattr(ops.ext,"sage_vc_kernel_version",0) >= 11:
+        resolved = getattr(ops.vc,"DEFAULT_EXPCAST_KERNEL","vc14")
+        print(f"vc12/{resolved} differ only in FP32-to-byte conversion/packing. P rounding, decoded-P FP32 denominator, Q/K/V payloads and PV accumulation are unchanged; no shared probability copy.")
     elif baseline in ("vc12", "vc13_serial", "vc13_overlap"):
         resolved = getattr(ops.vc,"DEFAULT_EXPCAST_KERNEL","vc13_overlap")
         print(f"Loaded optimized ExpCast path: {resolved}. vc12 has no shared copy; vc13_serial sums the copy before PV; vc13_overlap sums during PV. Quantized payloads and P encoding are identical.")
@@ -491,7 +570,7 @@ def compare_probability_schedules(ops, fixed, args, device):
     if getattr(ops.ext, "sage_vc_kernel_version", 0) < 10:
         raise RuntimeError("Probability schedule comparison needs vc13")
     # Older installed vc13 exposes this experiment through optimized.
-    overlap_mode = "vc13_overlap" if getattr(ops.vc,"DEFAULT_EXPCAST_KERNEL",None) in ("vc12", "vc14") else "optimized"
+    overlap_mode = "vc13_overlap" if getattr(ops.vc,"DEFAULT_EXPCAST_KERNEL",None) in ("vc12", "vc14", "vc15") else "optimized"
     modes = ("vc12", "vc13_serial", overlap_mode)
     fixed = {name: state for name, state in fixed.items() if not state["block_values"]}
     calls = {(name, mode): lambda state=state, mode=mode:
@@ -581,6 +660,8 @@ def run(args):
         raise RuntimeError("--compare-kernels needs vc5; rebuild with bash scripts/build_sage_local.sh")
     if args.compare_kernels:
         kernel_baseline(ops,args)
+    if args.compare_sage_core and getattr(ops.ext,"sage_vc_kernel_version",0) < 12:
+        raise RuntimeError("--compare-sage-core needs vc15; rebuild with bash scripts/build_sage_local.sh")
     if args.compare_v_scales and getattr(ops.ext,"sage_vc_kernel_version",0) < 4:
         raise RuntimeError("--compare-v-scales needs vc6; rebuild with bash scripts/build_sage_local.sh")
     if args.compare_grouping:
@@ -678,6 +759,9 @@ def run(args):
     if args.compare_kernels:
         report["kernel_comparison"] = compare_kernels(ops,fixed,args,device)
         path.write_text(json.dumps(report,indent=2,allow_nan=False)+"\n",encoding="utf-8")
+    if args.compare_sage_core:
+        report["sage_core_comparison"] = compare_sage_core(ops,bases[False],args,device)
+        path.write_text(json.dumps(report,indent=2,allow_nan=False)+"\n",encoding="utf-8")
     if args.compare_probability_schedules:
         report["probability_schedules"] = compare_probability_schedules(ops,fixed,args,device)
         path.write_text(json.dumps(report,indent=2,allow_nan=False)+"\n",encoding="utf-8")
@@ -709,6 +793,23 @@ def run(args):
                       f"estimated occupancy: {resource['est. achieved occupancy %']}% "
                       "(estimate, not a hardware utilization counter)", flush=True)
         path.write_text(json.dumps(report,indent=2,allow_nan=False)+"\n",encoding="utf-8")
+        if args.compare_sage_core:
+            report["sage_core_traces"] = {}
+            calls = sage_core_calls(ops,bases[False],*load_sage_core_ops())
+            for name,call in calls.items():
+                call()
+                torch.cuda.synchronize(device)
+                with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU,torch.profiler.ProfilerActivity.CUDA]) as prof:
+                    output = call()
+                    torch.cuda.synchronize(device)
+                output_hnd(output,"BHND",qkv[0].shape,dtype)
+                trace = directory / (name + ".core.trace.json")
+                prof.export_chrome_trace(str(trace))
+                markers = ("qk_int8_sv_f8_attn_kernel",) if name.startswith("sage_") else ("sage_vc_attention_kernel",)
+                summary = trace_summary(json.loads(trace.read_text(encoding="utf-8"))["traceEvents"],markers)
+                report["sage_core_traces"][name] = {"path":str(trace),**summary}
+                print(f"Same-payload trace {name}: core GPU {summary['core_kernel_ms']:.4f} ms; {summary['kernel_launches']} launches",flush=True)
+                path.write_text(json.dumps(report,indent=2,allow_nan=False)+"\n",encoding="utf-8")
     return report
 
 

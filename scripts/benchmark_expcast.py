@@ -17,7 +17,7 @@ import torch
 def load_extension():
     try:
         extension = importlib.import_module("_vc_expcast_bench")
-        if getattr(extension,"benchmark_api_version",0) == 5:
+        if getattr(extension,"benchmark_api_version",0) == 6:
             return extension
     except ImportError:
         pass
@@ -26,9 +26,9 @@ def load_extension():
     os.environ["TORCH_CUDA_ARCH_LIST"] = f"{major}.{minor}"
     os.environ.setdefault("MAX_JOBS","2")
     # New JIT name avoids reusing the old imported DLL in the same process.
-    extension = load(name="_vc_expcast_bench_v5",sources=[str(Path(__file__).with_suffix(".cu"))],
+    extension = load(name="_vc_expcast_bench_v6",sources=[str(Path(__file__).with_suffix(".cu"))],
         extra_cuda_cflags=["-O3","--use_fast_math","--expt-relaxed-constexpr"],verbose=True)
-    if extension.benchmark_api_version != 5:
+    if extension.benchmark_api_version != 6:
         raise RuntimeError("Stale ExpCast benchmark extension")
     return extension
 
@@ -83,6 +83,8 @@ def validate_affine(extension,device="cuda"):
     gain=(scale*11.541560173034668).expand(-1,2048).contiguous()
     bias=(-maximum.double()*11.541560173034668+119.6500015258789).float().expand_as(gain).contiguous()
     actual=extension.affine_check(scores,gain,bias)
+    quad=extension.quad_check(scores,gain[:,::2].contiguous(),bias[:,::2].contiguous())
+    torch.testing.assert_close(quad,actual,rtol=0,atol=0)
     paired=extension.affine_check(scores,gain,bias,True)
     torch.testing.assert_close(paired,actual,rtol=0,atol=0)
     expected=(scores.double()*gain.repeat_interleave(2,-1).double()+bias.repeat_interleave(2,-1).double()).float().round().clamp(0,255).byte()
@@ -170,10 +172,10 @@ def main():
     extension=load_extension()
     output = torch.empty(args.blocks,128,device="cuda",dtype=torch.float32)
     affine_validation=validate_affine(extension,output.device)
-    modes = ("sage_softmax","vc9_expcast","vc10_expcast","vc11_expcast","vc12_expcast","vc14_expcast")
+    modes = ("sage_softmax","vc9_expcast","vc10_expcast","vc11_expcast","vc12_expcast","vc14_expcast","vc15_expcast")
     # Sage's inline FP32->E4M3 pack emits a trap below SM89. The ExpCast
     # helpers support SM86 through CUDA's intrinsic decode implementation.
-    active = [0,1,2,3,4,5] if torch.cuda.get_device_capability() >= (8,9) else [1,2,3,4,5]
+    active = [0,1,2,3,4,5,6] if torch.cuda.get_device_capability() >= (8,9) else [1,2,3,4,5,6]
     resources = {}
     for index in active:
         regs,local_bytes = extension.resources(index)
@@ -188,6 +190,8 @@ def main():
     extension.run(output,4,args.iterations)
     vc12_checksum=output.clone()
     extension.run(output,5,args.iterations)
+    torch.testing.assert_close(output,vc12_checksum,rtol=0,atol=0)
+    extension.run(output,6,args.iterations)
     torch.testing.assert_close(output,vc12_checksum,rtol=0,atol=0)
     events = [torch.cuda.Event(enable_timing=True) for _ in range(2)]
     rng,orders,times = random.Random(710),[],{modes[index]:[] for index in active}
@@ -214,10 +218,12 @@ def main():
     report["vc11_over_vc12"] = report["modes"]["vc11_expcast"]["median_ms"]/report["modes"]["vc12_expcast"]["median_ms"]
     report["vc12_over_vc14"] = report["modes"]["vc12_expcast"]["median_ms"]/report["modes"]["vc14_expcast"]["median_ms"]
     report["vc12_vc14_checksum_exact_match"] = True
+    report["vc14_over_vc15"] = report["modes"]["vc14_expcast"]["median_ms"]/report["modes"]["vc15_expcast"]["median_ms"]
+    report["vc14_vc15_checksum_exact_match"] = True
     report["affine_validation"]=affine_validation
     print("\nComplete probability helpers (no QK/PV or overlap; NOT attention latency):")
-    print(f"{'variant':<20} {'median ms':>12} {'vc12/new':>12}")
-    baseline=report["modes"]["vc12_expcast"]["median_ms"]
+    print(f"{'variant':<20} {'median ms':>12} {'vc14/new':>12}")
+    baseline=report["modes"]["vc14_expcast"]["median_ms"]
     for name,row in report["modes"].items():
         print(f"{name:<20} {row['median_ms']:>12.6f} {baseline/row['median_ms']:>11.3f}x")
     if args.stages:
@@ -226,7 +232,7 @@ def main():
     path.parent.mkdir(parents=True,exist_ok=True)
     path.write_text(json.dumps(report,indent=2)+"\n",encoding="utf-8")
     print(json.dumps(report,indent=2))
-    print("This is NOT an attention speedup. Validate with profile_sage_vc.py --expcast-only --compare-kernels --kernel-baseline vc12.")
+    print("This is NOT an attention speedup. Validate with profile_sage_vc.py --expcast-only --compare-kernels --kernel-baseline vc14.")
 
 
 if __name__ == "__main__":

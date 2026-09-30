@@ -177,6 +177,12 @@ def validate(device="cuda:0"):
                         if not torch.isfinite(previous).all().item() or delta["rel_rmse"] > 0.001:
                             raise AssertionError(f"Optimized/vc7 regression: {row}, delta={delta}")
                         row["optimized_vs_vc7"] = {**delta,"exact_match":torch.equal(actual,previous)}
+                    if getattr(ext,"sage_vc_kernel_version",0) >= 12:
+                        previous = vc.forward_prepared(state,kernel_mode="vc14")
+                        delta = metrics(actual,previous)
+                        if not torch.isfinite(previous).all().item() or delta["rel_rmse"] > .001:
+                            raise AssertionError(f"Optimized/vc14 regression: {row}, delta={delta}")
+                        row["optimized_vs_vc14"] = {**delta,"exact_match":torch.equal(actual,previous)}
                     if getattr(ext,"sage_vc_kernel_version",0) >= 10:
                         previous = vc.forward_prepared(state,kernel_mode="vc12")
                         delta = metrics(actual,previous)
@@ -188,7 +194,7 @@ def validate(device="cuda:0"):
                         if not torch.isfinite(serial).all().item() or delta["rel_rmse"] > .001:
                             raise AssertionError(f"Serial/vc12 regression: {row}, delta={delta}")
                         row["serial_vs_vc12"] = {**delta,"exact_match":torch.equal(serial,previous)}
-                        if getattr(vc,"DEFAULT_EXPCAST_KERNEL",None) in ("vc12", "vc14"):
+                        if getattr(vc,"DEFAULT_EXPCAST_KERNEL",None) in ("vc12", "vc14", "vc15"):
                             overlap = vc.forward_prepared(state,kernel_mode="vc13_overlap")
                             delta = metrics(overlap,previous)
                             if not torch.isfinite(overlap).all().item() or delta["rel_rmse"] > .001:

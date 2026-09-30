@@ -1,21 +1,24 @@
 # Sage+VC 性能诊断
 
-vc14 默认只更改 ExpCast-only 的成对转换/打包。直接与最佳旧版 vc12 比较：
+vc15 合并 ExpCast-only 的四字节拼接，并增加原版 Sage 的同输入核心对照：
 
 ```bash
-python3 scripts/profile_sage_vc.py --expcast-only --compare-kernels --kernel-baseline vc12 --warmup 3 --repeats 10 --trials 9 --output results/h200_vc14_paired.json
+python3 scripts/profile_sage_vc.py --expcast-only --compare-kernels --kernel-baseline vc14 --compare-sage-core --warmup 3 --repeats 10 --trials 9 --trace-dir results/h200_vc15_traces --output results/h200_vc15_pack4.json
 ```
 
 默认 BSHD `[1,37741,28,128]`、BF16。重点看新旧 `sage_vc_expcast` 的同输入 native
 耗时，以及新 ExpCast 对 `sage_vc_control` 和原版 `sage_local` 的耗时；不能只看旧版加速比。
-若要核对当前 nvcc 是否生成成对指令，无需 ncu：
+`--compare-sage-core` 五条路径共享相同 Q/K/V 字节和尺度，每次都分配输出。
+`sage_cpp` 对比 `vc_control` 定位主干差异，`sage_registered` 对比 `sage_cpp` 检查注册入口成本，
+两版 ExpCast 则检查本轮收益。配合 trace 区分 GPU 核心与原生接口计时，单次 trace 有 profiler 开销。
+若要核对当前 nvcc 是否消除最后的拼接指令，无需 ncu：
 
 ```bash
-python3 scripts/inspect_expcast_codegen.py --output results/h200_vc14_codegen.json
+python3 scripts/inspect_expcast_codegen.py --output results/h200_vc15_codegen.json
 ```
 
 它使用 CUDA Toolkit 的 `cuobjdump`，仅统计静态指令，不测 GPU 利用率或速度。
-构建及本地证据见 [vc14 说明](SAGE_VC14.md)。以下是历史诊断背景。
+构建及本地证据见 [vc15 说明](SAGE_VC15.md)。以下是历史诊断背景。
 
 用户提供的 vc3 / H200 / BF16 `[1,37741,28,128]` 诊断结果：
 

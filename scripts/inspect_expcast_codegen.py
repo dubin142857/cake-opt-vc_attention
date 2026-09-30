@@ -1,4 +1,4 @@
-"""Inspect vc12/vc14 machine instructions using cuobjdump; no ncu or GPU timing.
+"""Inspect vc12/vc14/vc15 machine instructions using cuobjdump; no ncu or GPU timing.
 
 Default: inspect the installed extension. --binary can inspect a cross-compiled
 object on a machine without Hopper. Counts include all main/tail/fallback paths.
@@ -35,8 +35,18 @@ def inspect(text):
         rows.append({"kernel":name,"vc12":before,"vc14":after,
             "paired_conversion_reduced":before["F2IP"]>after["F2IP"]>0,
             "packing_instructions_reduced":before["PRMT"]>after["PRMT"]})
+        quad=[values for key,values in functions.items() if "expcast_pack4" in key
+              and key.split("expcast_pack4",1)[1]==suffix]
+        if len(quad)>1:
+            raise RuntimeError(f"Multiple vc15 kernels for {name}")
+        if quad:
+            newest=counts(quad[0])
+            rows[-1].update(vc15=newest,
+                four_byte_assembly_reduced=after["F2IP"]==newest["F2IP"]>0 and after["PRMT"]>newest["PRMT"])
     if len(rows)!=4:
         raise RuntimeError(f"Expected vc14 FP16/BF16, D64/D128 kernels, found {len(rows)}; rebuild package")
+    if any("vc15" in row for row in rows) and not all("vc15" in row for row in rows):
+        raise RuntimeError("Incomplete vc15 kernel set")
     return rows
 
 
@@ -72,8 +82,12 @@ def main():
         print(row["kernel"])
         print("  F2IP: {0} -> {1}; PRMT: {2} -> {3}".format(
             row["vc12"]["F2IP"],row["vc14"]["F2IP"],row["vc12"]["PRMT"],row["vc14"]["PRMT"]))
+        if "vc15" in row:
+            print(f"  vc14 -> vc15: F2IP {row['vc14']['F2IP']} -> {row['vc15']['F2IP']}; PRMT {row['vc14']['PRMT']} -> {row['vc15']['PRMT']}")
     if not all(row["paired_conversion_reduced"] and row["packing_instructions_reduced"] for row in rows):
         print("This compiler did not reproduce both instruction reductions. Use full H200 measurements to decide.")
+    if any("vc15" in row and not row["four_byte_assembly_reduced"] for row in rows):
+        print("This compiler did not reproduce vc15 packing reduction. Use full H200 measurements to decide.")
     print(report["scope"])
     print(f"Report: {args.output}")
 

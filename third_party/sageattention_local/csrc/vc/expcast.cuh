@@ -58,6 +58,24 @@ __device__ __forceinline__ uint32_t vc_expcast_pack_rne(float a,float b) {
   return packed;
 }
 
+// Pack the new pair into the low half and copy upper_pair's LOW two bytes
+// into the high half, using the third input of Hopper's F2IP instruction.
+// Retain upper_pair separately for FP8 decoding; no shift or PRMT is needed.
+__device__ __forceinline__ uint32_t vc_expcast_pack_rne_append(float a,float b,uint32_t upper_pair) {
+  uint32_t packed;
+  asm("{.reg .s32 lo,hi;"
+      " cvt.rni.s32.f32 lo,%1; cvt.rni.s32.f32 hi,%2;"
+      " cvt.pack.sat.u8.s32.b32 %0,hi,lo,%3;}"
+      : "=r"(packed) : "f"(a),"f"(b),"r"(upper_pair));
+  return packed;
+}
+
+__device__ __forceinline__ void vc_expcast_quad_rne(float a,float b,float c,float d,
+    uint32_t& word,uint32_t& upper_pair) {
+  upper_pair=vc_expcast_pack_rne(c,d);
+  word=vc_expcast_pack_rne_append(a,b,upper_pair);
+}
+
 template<bool PairedEncode>
 __device__ __forceinline__ uint32_t vc_expcast_encode_pair(float a,float b) {
   if constexpr(PairedEncode)
