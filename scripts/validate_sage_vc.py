@@ -183,6 +183,16 @@ def validate(device="cuda:0"):
                         if not torch.isfinite(previous).all().item() or delta["rel_rmse"] > .001:
                             raise AssertionError(f"Optimized/vc14 regression: {row}, delta={delta}")
                         row["optimized_vs_vc14"] = {**delta,"exact_match":torch.equal(actual,previous)}
+                    if getattr(ext,"sage_vc_kernel_version",0) >= 13 and not smooth:
+                        modes = ("vc16","vc16_early_v","vc16_serial") if cast else (
+                            "vc16","vc16_early_v","vc16_pack_first","vc16_pack_early")
+                        row["sage_layout_vs_vc15"] = {}
+                        for mode in modes:
+                            candidate = vc.forward_prepared(state,kernel_mode=mode)
+                            delta = metrics(candidate,actual)
+                            if not torch.isfinite(candidate).all().item() or delta["rel_rmse"] > .001:
+                                raise AssertionError(f"{mode}/vc15 regression: {row}, delta={delta}")
+                            row["sage_layout_vs_vc15"][mode] = {**delta,"exact_match":torch.equal(candidate,actual)}
                     if getattr(ext,"sage_vc_kernel_version",0) >= 10:
                         previous = vc.forward_prepared(state,kernel_mode="vc12")
                         delta = metrics(actual,previous)

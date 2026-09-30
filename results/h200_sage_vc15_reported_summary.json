@@ -1,0 +1,39 @@
+{
+  "source": "User-pasted vc15 H200 profile in conversation; aggregate values only, raw trials unavailable",
+  "shape_bshd": [1, 37741, 28, 128],
+  "dtype": "bfloat16",
+  "same_payload_native_api_ms": {
+    "sage_cpp": 24.5821,
+    "sage_registered": 24.5960,
+    "vc_control": 25.5126,
+    "vc14_expcast": 25.7400,
+    "vc15_expcast": 25.4846
+  },
+  "separate_kernel_comparison_ms": {
+    "control_vc14": 25.7968,
+    "control_vc15": 25.6727,
+    "expcast_vc14": 25.7877,
+    "expcast_vc15": 25.5025
+  },
+  "single_same_payload_trace_kernel_ms": {
+    "sage_cpp": 22.2435,
+    "sage_registered": 23.0134,
+    "vc_control": 23.7596,
+    "vc14_expcast": 24.6811,
+    "vc15_expcast": 24.2477
+  },
+  "accuracy_printed_percent": {
+    "control_vs_sage_rel_rmse": 0.000737,
+    "vc14_expcast_vs_sage_rel_rmse": 4.266285,
+    "vc15_expcast_vs_sage_rel_rmse": 4.266285,
+    "vc15_vs_vc14_expcast_rel_rmse": 0.0,
+    "vc15_vs_vc14_expcast_max_abs": 0.0
+  },
+  "notes": [
+    "Core API values include dispatch and output allocation, exclude all preprocessing.",
+    "Single trace GPU kernel durations are not full API or multi-trial native API times.",
+    "Printed zero errors are rounded values; no independent exact-match assertion is inferred.",
+    "ExpCast/Sage errors compare algorithms. Same-algorithm regression gate is 0.1 percent.",
+    "These are vc15 results, not vc16 results."
+  ]
+}

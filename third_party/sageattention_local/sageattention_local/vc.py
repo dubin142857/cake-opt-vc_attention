@@ -10,12 +10,14 @@ import torch
 # vc15 fuses final four-byte assembly into vc14's paired conversion.
 # The vc13 shared-copy schedules remain explicit experiments after regression.
 DEFAULT_EXPCAST_KERNEL = "vc15"
+SAGE_LAYOUT_MODES = {"vc16": 1, "vc16_early_v": 2, "vc16_pack_first": 3,
+                     "vc16_pack_early": 4, "vc16_serial": 5}
 
 
 def _extension():
     from . import _vc_sm90
     if (getattr(_vc_sm90, "sage_vc_api_version", None) != 1 or
-            getattr(_vc_sm90, "sage_vc_kernel_version", None) != 12 or
+            getattr(_vc_sm90, "sage_vc_kernel_version", None) != 13 or
             getattr(_vc_sm90, "sage_vc_preprocess_version", None) != 1):
         raise RuntimeError("Rebuild sageattention-local with bash scripts/build_sage_local.sh")
     return _vc_sm90
@@ -33,13 +35,14 @@ def sage_vc_build_info():
             "grouping_rounding": "FP32 reduction order changes; labels near boundaries can differ",
             "sage_vc_preprocess_version": _extension().sage_vc_preprocess_version,
             "paper_equivalent": False, "sage_vc_api_version": 1,
-            "default_kernel_mode": "optimized", "default_expcast_kernel": DEFAULT_EXPCAST_KERNEL, "kernel_modes": ["optimized", "vc15", "vc14", "vc13_overlap", "vc13_serial", "vc12", "vc11", "vc10", "vc9", "vc7", "vc6", "vc4"],
+            "default_kernel_mode": "optimized", "default_expcast_kernel": DEFAULT_EXPCAST_KERNEL, "kernel_modes": ["optimized", "vc15", "vc14", "vc13_overlap", "vc13_serial", "vc12", "vc11", "vc10", "vc9", "vc7", "vc6", "vc4", *SAGE_LAYOUT_MODES],
+            "sage_layout_candidates": {"modes": SAGE_LAYOUT_MODES, "scope": "v_smooth=False only; pack-first modes require expcast=False; no H200 speed claim; default remains measured vc15"},
             "expcast_probability": "paired saturating u8 RNE/packing + decoded-P FP32 reduction",
             "expcast_interleaving": "vc15: encode two K fragments, issue packed decode, then consume FP32 values",
             "probability_scratch_bytes_per_block": 0,
             "expcast_conversion": "ExpCast-only paired RNE with fused four-byte assembly; exact vc14 P bytes",
             "experimental_probability_scratch_bytes_per_block": 8192,
-            "experimental_kernel_modes": ["vc13_serial", "vc13_overlap"],
+            "experimental_kernel_modes": ["vc13_serial", "vc13_overlap", *SAGE_LAYOUT_MODES],
             "expcast_numerical_contract": "expcast-only folds coefficients in FP32 before FMA/RNE; byte rounding may differ near boundaries; denominator uses decoded P; extreme ranges use vc11",
             "expcast_pipeline": "vc15: tile sums before PV; history scaling overlaps PV; shared-copy schedules are opt-in experiments",
             "compact_values": "D128/channel: two N64 PV fragments, paired mean restoration, 168-register target",
@@ -109,8 +112,15 @@ def prepare(q, k, v, *, expcast=True, v_smooth=True, clusters=8, iterations=2, s
 
 
 def forward_prepared(state, *, kernel_mode="optimized"):
+    sage_schedule = SAGE_LAYOUT_MODES.get(kernel_mode, 0)
+    if sage_schedule:
+        if state["block_values"]:
+            raise ValueError("Sage layout candidates require v_smooth=False")
+        if state["expcast"] and sage_schedule in (3, 4):
+            raise ValueError("Pack-first candidates require expcast=False")
+        kernel_mode = "vc15"
     if kernel_mode not in ("optimized", "vc15", "vc14", "vc13_overlap", "vc13_serial", "vc12", "vc11", "vc10", "vc9", "vc7", "vc6", "vc4"):
-        raise ValueError("kernel_mode must be 'optimized', 'vc15', 'vc14', 'vc13_overlap', 'vc13_serial', 'vc12', 'vc11', 'vc10', 'vc9', 'vc7', 'vc6' or 'vc4'")
+        raise ValueError("Unknown kernel_mode; use a documented vc4..vc16 mode or 'optimized'")
     return _extension().forward(*(state[name] for name in ("q", "k", "v", "qs", "ks", "vs", "means",
                                                           "expcast", "block_values", "output_type", "scale")),
                                 optimized=kernel_mode != "vc4", packed_probability=kernel_mode in ("optimized", "vc15", "vc14", "vc13_overlap", "vc13_serial", "vc12", "vc11", "vc10", "vc9", "vc7"),
@@ -119,14 +129,19 @@ def forward_prepared(state, *, kernel_mode="optimized"):
                                 affine_probability=kernel_mode in ("optimized", "vc15", "vc14", "vc13_overlap", "vc13_serial", "vc12"),
                                 probability_schedule=1 if kernel_mode == "vc13_overlap" else 2 if kernel_mode == "vc13_serial" else 0,
                                 paired_probability=kernel_mode in ("optimized", "vc15", "vc14"),
-                                fused_probability=kernel_mode in ("optimized", "vc15"))
+                                fused_probability=kernel_mode in ("optimized", "vc15"), sage_schedule=sage_schedule)
 
 
 @torch.no_grad()
 def sageattn_vc(q, k, v, tensor_layout="HND", is_causal=False, sm_scale=None, return_lse=False,
                *, expcast=True, v_smooth=True, clusters=8, iterations=2, kernel_mode="optimized", v_scale_mode="channel", grouping_mode="fused"):
-    if kernel_mode not in ("optimized", "vc15", "vc14", "vc13_overlap", "vc13_serial", "vc12", "vc11", "vc10", "vc9", "vc7", "vc6", "vc4"):
-        raise ValueError("kernel_mode must be 'optimized', 'vc15', 'vc14', 'vc13_overlap', 'vc13_serial', 'vc12', 'vc11', 'vc10', 'vc9', 'vc7', 'vc6' or 'vc4'")
+    if kernel_mode not in ("optimized", "vc15", "vc14", "vc13_overlap", "vc13_serial", "vc12", "vc11", "vc10", "vc9", "vc7", "vc6", "vc4", *SAGE_LAYOUT_MODES):
+        raise ValueError("Unknown kernel_mode; use a documented vc4..vc16 mode or 'optimized'")
+    if kernel_mode in SAGE_LAYOUT_MODES:
+        if v_smooth:
+            raise ValueError("Sage layout candidates require v_smooth=False")
+        if expcast and SAGE_LAYOUT_MODES[kernel_mode] in (3, 4):
+            raise ValueError("Pack-first candidates require expcast=False")
     if v_scale_mode not in ("channel", "block"):
         raise ValueError("v_scale_mode must be 'channel' or 'block'")
     if grouping_mode not in ("fused", "legacy"):

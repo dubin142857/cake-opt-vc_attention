@@ -26,7 +26,7 @@ def test_vendored_kernels_match_pinned_sources_and_detect_edits(tmp_path):
     assert result["verified_files"] == 49
     assert result["unchanged_kernel_files"] > 20
     assert result["build_only_patches"] == ["csrc/fused/fused.cu"]
-    assert result["verified_experiment_files"] == 9
+    assert result["verified_experiment_files"] == 10
     copy = tmp_path / "source"
     shutil.copytree(VENDOR, copy, ignore=shutil.ignore_patterns("build", "*.egg-info", "__pycache__"))
     target = copy / "csrc/qattn/qk_int_sv_f8_cuda_sm90.cu"
@@ -97,7 +97,7 @@ def test_source_provenance_separates_baseline_and_vc_derivative():
     manifest = json.loads((VENDOR / "UPSTREAM.json").read_text(encoding="utf-8"))
     assert manifest["commit"] == "eb615cf6cf4d221338033340ee2de1c37fbdba4a"
     assert manifest["local_distribution"] == "sageattention-local"
-    assert manifest["local_version"] == "2.2.0+vc15"
+    assert manifest["local_version"] == "2.2.0+vc16"
     kernel = next(row for row in manifest["experiment_files"] if row["local_path"] == "csrc/vc/vc_sm90.cu")
     assert kernel["derived_from"] == "csrc/qattn/qk_int_sv_f8_cuda_sm90.cu"
     assert {row["upstream_path"] for row in manifest["files"] if row["modified"]} == {

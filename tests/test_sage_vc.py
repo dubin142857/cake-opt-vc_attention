@@ -117,7 +117,31 @@ def test_kernel_mode_dispatch_preserves_previous_schedules(monkeypatch,mode,flag
     state = {key:object() for key in keys}
     assert api.forward_prepared(state,kernel_mode=mode) == "output"
     schedule = 1 if mode == "vc13_overlap" else 2 if mode == "vc13_serial" else 0
-    assert calls == [(tuple(state[key] for key in keys),dict(optimized=flags[0],packed_probability=flags[1],compact_values=flags[2],pipeline_probability=flags[3],interleaved_probability=flags[4],affine_probability=flags[5],probability_schedule=schedule,paired_probability=mode in ("optimized","vc15","vc14"),fused_probability=mode in ("optimized","vc15")))]
+    assert calls == [(tuple(state[key] for key in keys),dict(optimized=flags[0],packed_probability=flags[1],compact_values=flags[2],pipeline_probability=flags[3],interleaved_probability=flags[4],affine_probability=flags[5],probability_schedule=schedule,paired_probability=mode in ("optimized","vc15","vc14"),fused_probability=mode in ("optimized","vc15"),sage_schedule=0))]
+
+
+@pytest.mark.parametrize("mode,schedule",list(api.SAGE_LAYOUT_MODES.items()))
+@pytest.mark.parametrize("cast",[False,True])
+def test_sage_layout_candidates_keep_payload_and_reject_incompatible_paths(monkeypatch,mode,schedule,cast):
+    from types import SimpleNamespace
+    calls=[]
+    monkeypatch.setattr(api,"_extension",lambda:SimpleNamespace(forward=lambda *args,**kwargs:calls.append((args,kwargs))))
+    state=payload(65,129,False,cast)
+    if cast and schedule in (3,4):
+        with pytest.raises(ValueError,match="expcast=False"): api.forward_prepared(state,kernel_mode=mode)
+        assert not calls
+    else:
+        api.forward_prepared(state,kernel_mode=mode)
+        args,kwargs=calls.pop()
+        assert kwargs["sage_schedule"]==schedule and kwargs["fused_probability"]
+        assert args[0] is state["q"] and args[1] is state["k"] and args[2] is state["v"]
+        assert args[7] is cast
+    with pytest.raises(ValueError,match="v_smooth=False"):
+        api.forward_prepared({**state,"block_values":True},kernel_mode=mode)
+    q=torch.zeros(1,2,5,64,dtype=torch.float16)
+    with pytest.raises(ValueError,match="v_smooth=False"):
+        api.sageattn_vc(q,q,q,kernel_mode=mode)
+    assert not calls
 
 
 def test_resource_report_tracks_paired_default_and_preserves_experiment(monkeypatch):

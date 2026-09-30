@@ -1,5 +1,15 @@
 # Sage+VC 性能诊断
 
+vc16 增加原版主体调度的独立候选，默认仍保留 vc15。最新对比命令：
+
+```bash
+python3 scripts/profile_sage_vc.py --expcast-only --compare-sage-layout --warmup 3 --repeats 10 --trials 9 --kernel-samples 20 --kernel-trials 3 --trace-dir results/h200_vc16_traces --output results/h200_vc16_layout.json
+```
+
+新表分别列出原版 Sage、vc15、各候选的固定核心与完整 API。
+`--trace-dir` 还会采集多轮、多次 kernel 耗时，中位数与 API wall time 分开报告。
+默认 shape 不变。构建、候选开关和验收范围见 [vc16 说明](SAGE_VC16.md)。以下保留历史命令。
+
 vc15 合并 ExpCast-only 的四字节拼接，并增加原版 Sage 的同输入核心对照：
 
 ```bash

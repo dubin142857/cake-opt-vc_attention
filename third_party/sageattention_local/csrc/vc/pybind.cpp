@@ -45,13 +45,13 @@ torch::Tensor group_values(torch::Tensor v, int64_t clusters, int64_t iterations
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.attr("sage_vc_api_version") = 1;
-  m.attr("sage_vc_kernel_version") = 12;
+  m.attr("sage_vc_kernel_version") = 13;
   m.attr("sage_vc_preprocess_version") = 1;
   m.def("forward", &vc_forward, pybind11::arg("q"), pybind11::arg("k"), pybind11::arg("v"),
       pybind11::arg("qs"), pybind11::arg("ks"), pybind11::arg("vs"), pybind11::arg("means"),
       pybind11::arg("expcast"), pybind11::arg("block_values"), pybind11::arg("output_type"),
       pybind11::arg("scale"), pybind11::arg("optimized") = true, pybind11::arg("packed_probability") = true,
-      pybind11::arg("compact_values") = true, pybind11::arg("pipeline_probability") = true, pybind11::arg("interleaved_probability") = true, pybind11::arg("affine_probability") = true, pybind11::arg("probability_schedule") = 0, pybind11::arg("paired_probability") = false, pybind11::arg("fused_probability") = false);
+      pybind11::arg("compact_values") = true, pybind11::arg("pipeline_probability") = true, pybind11::arg("interleaved_probability") = true, pybind11::arg("affine_probability") = true, pybind11::arg("probability_schedule") = 0, pybind11::arg("paired_probability") = false, pybind11::arg("fused_probability") = false, pybind11::arg("sage_schedule") = 0);
   m.def("kernel_resources", &vc_kernel_resources, pybind11::arg("output_type") = 1);
   m.def("prepare_values", &vc_prepare_values, pybind11::arg("v"), pybind11::arg("channel_scale") = true);
   m.def("expcast_codes", &vc_expcast_codes);

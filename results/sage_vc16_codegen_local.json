@@ -1,0 +1,262 @@
+{
+  "compiled_variants": 116,
+  "historical_variants": 88,
+  "historical_instruction_text_identical": 88,
+  "new_resources": [
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb0ELb1ELb1ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb0ELb1ELb1ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb0ELb1ELb1ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb0ELb1ELb1ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb0ELb0ELb1ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb0ELb0ELb1ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb0ELb0ELb1ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb0ELb0ELb1ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb0ELb1ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb1ELb0ELb1EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb0ELb1ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb1ELb0ELb1EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb0ELb1ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb1ELb0ELb1EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb0ELb1ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb1ELb0ELb1EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb0ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb0ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb0ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb0ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "ptxas_warnings": 0,
+  "new_kernel_unique_instruction_bodies": 28,
+  "scope": "Local CUDA 12.4 sm90a cross-compilation; instruction text equality excludes encodings/control words and is not H200 latency evidence."
+}

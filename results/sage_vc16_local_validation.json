@@ -1,0 +1,43 @@
+{
+  "package_version": "2.2.0+vc16",
+  "native_kernel_version": 13,
+  "default_kernel": "vc15",
+  "local_environment": {
+    "os": "Windows",
+    "cuda_compiler": "12.4",
+    "torch": "2.3.1+cu121",
+    "runtime_gpu": "RTX 3060 Laptop SM86",
+    "cross_compile_target": "sm_90a"
+  },
+  "checks": {
+    "pytest_passed": 346,
+    "legacy_golden_exact_cases": 16,
+    "compiled_variants": 116,
+    "new_variants": 28,
+    "historical_instruction_text_identical": 88,
+    "new_register_counts": [128, 168],
+    "new_stack_bytes": 0,
+    "new_spill_stores_bytes": 0,
+    "new_spill_loads_bytes": 0,
+    "ptxas_warnings": 0,
+    "native_link": "passed",
+    "source_and_sdist_hashes_verified": 59,
+    "unchanged_upstream_kernel_files": 36
+  },
+  "tests_scope": "Actual unchanged CUDA probability/grouping/preprocessing helpers; Python mode validation and operand identity; all-row regression and NaN gates; fresh-API versus fixed-core orchestration; randomized timing and raw sample retention; CUPTI single-kernel capture counts and per-trial medians.",
+  "remote_validation_added": {
+    "candidate_cases": 168,
+    "dtype": ["float16", "bfloat16"],
+    "head_dim": [64, 128],
+    "query_key_lengths": [[1, 1], [63, 127], [64, 128], [65, 129], [129, 257], [257, 385]],
+    "same_algorithm_rel_rmse_limit": 0.001,
+    "status": "pending H200 execution"
+  },
+  "limitations": [
+    "New full attention candidates have not run on Hopper locally. Compilation and helper tests do not establish their complete numerical correctness.",
+    "No H200 speedup or 22 ms achievement is claimed. Default remains vc15 pending same-session H200 comparison.",
+    "Instruction text equality excludes machine encodings and scheduling control bits; it is not latency evidence.",
+    "CUPTI kernel durations are profiler-active measurements; synchronized core API and full API times have separate scopes.",
+    "No model-quality acceptance claim."
+  ]
+}

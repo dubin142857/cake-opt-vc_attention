@@ -211,6 +211,12 @@ def parse_args(argv=None):
                         help="Compare previous/optimized cores on identical payloads; validate ALL output rows")
     parser.add_argument("--compare-sage-core", action="store_true",
                         help="vc15+: compare original Sage C++, registered Sage, VC control and vc14/vc15 ExpCast on the same payload")
+    parser.add_argument("--compare-sage-layout", action="store_true",
+                        help="vc16+: compare original-loop candidates with vc15 and Sage, including fresh full APIs")
+    parser.add_argument("--kernel-samples", type=int, default=20,
+                        help="GPU launches per variant/trial for --compare-sage-layout with --trace-dir")
+    parser.add_argument("--kernel-trials", type=int, default=3,
+                        help="Randomized CUPTI trials for --compare-sage-layout with --trace-dir")
     parser.add_argument("--expcast-only",action="store_true",
                         help="Measure Sage/control/ExpCast only; skip V grouping/smoothing entirely")
     parser.add_argument("--kernel-baseline",choices=("vc4","vc6","vc7","vc9","vc10","vc11","vc12","vc13_serial","vc13_overlap","vc14"),
@@ -226,7 +232,7 @@ def parse_args(argv=None):
     parser.add_argument("--ncu-variant", choices=tuple(SAGE_VC_VARIANTS),
                         help="Only capture one warmed fixed-payload native call inside cudaProfilerStart/Stop")
     args = parser.parse_args(argv)
-    if min(args.batch,args.heads,args.queries,args.tokens,args.warmup,args.repeats,args.trials) < 1:
+    if min(args.batch,args.heads,args.queries,args.tokens,args.warmup,args.repeats,args.trials,args.kernel_samples,args.kernel_trials) < 1:
         parser.error("shapes, warmup, repeats and trials must be positive")
     if args.check_queries < 0 or args.reference_chunk < 1:
         parser.error("check-queries must be nonnegative and reference-chunk positive")
@@ -234,7 +240,7 @@ def parse_args(argv=None):
         parser.error("--kernel-baseline requires --compare-kernels")
     if args.expcast_only and (args.compare_v_scales or args.compare_grouping or args.ncu_variant):
         parser.error("--expcast-only cannot be combined with V/grouping comparisons or --ncu-variant")
-    if args.ncu_variant and (args.compare_sage_core or args.compare_probability_schedules or args.trace_dir or args.compare_kernels or args.compare_v_scales or args.compare_grouping):
+    if args.ncu_variant and (args.compare_sage_layout or args.compare_sage_core or args.compare_probability_schedules or args.trace_dir or args.compare_kernels or args.compare_v_scales or args.compare_grouping):
         parser.error("--ncu-variant uses a separate profiler run")
     return args
 
@@ -347,6 +353,112 @@ def compare_sage_core(ops, state, args, device):
     return {"rows":rows,"trial_order":orders,"optimized_vs_vc14":regression,
             "optimized_kernel":getattr(ops.vc,"DEFAULT_EXPCAST_KERNEL",None),
             "scope":"Same Q/K/V bytes and scales; no preprocessing; every call includes fresh output allocation and native dispatch. Synchronized wall time, not pure GPU duration."}
+
+
+def sage_layout_calls(ops, state, qkv, native, sage_api):
+    """All native variants share operands. Full APIs recompute preprocessing."""
+    modes = {False:("vc15","vc16","vc16_early_v","vc16_pack_first","vc16_pack_early"),
+             True:("vc15","vc16","vc16_early_v","vc16_serial")}
+    calls, full, metadata = {}, {}, {}
+    for cast, variants in modes.items():
+        payload = {**state,"expcast":cast}
+        for mode in variants:
+            name = ("expcast_" if cast else "control_") + mode
+            calls[name] = lambda payload=payload,mode=mode:ops.vc.forward_prepared(payload,kernel_mode=mode)
+            full[name] = lambda cast=cast,mode=mode:ops.vc.sageattn_vc(*qkv,tensor_layout="HND",expcast=cast,v_smooth=False,kernel_mode=mode)
+            metadata[name] = {"expcast":cast,"kernel_mode":mode,"reference":("expcast_" if cast else "control_")+"vc15"}
+    calls["sage_cpp"] = sage_core_calls(ops,state,native,native)["sage_cpp"]
+    full["sage_cpp"] = lambda:sage_api(*qkv,tensor_layout="HND",is_causal=False)
+    metadata["sage_cpp"] = {"expcast":False,"reference":"control_vc15","full_api":"sage_local public sageattn"}
+    return calls,full,metadata
+
+
+def kernel_sample_summary(events, expected, markers):
+    summary = trace_summary(events,markers)
+    durations = [row["duration_ms"] for row in summary["core_resources"]]
+    if len(durations) != expected or summary["kernel_launches"] != expected:
+        raise RuntimeError(f"Expected {expected} single-kernel calls, captured {len(durations)} core / {summary['kernel_launches']} total launches")
+    if not all(math.isfinite(x) and x > 0 for x in durations):
+        raise RuntimeError("Nonpositive/nonfinite CUPTI kernel durations")
+    return {"median_ms":statistics.median(durations),"min_ms":min(durations),"max_ms":max(durations),
+            "launch_ms":durations,"resources":summary["core_resources"][0]}
+
+
+@torch.no_grad()
+def trace_layout_samples(calls, args, device):
+    directory = Path(args.trace_dir)/"sage_layout_samples"
+    directory.mkdir(parents=True,exist_ok=True)
+    trials = {name:[] for name in calls}
+    rng,orders = random.Random(args.seed+1600), []
+    for trial in range(args.kernel_trials):
+        order=list(calls);rng.shuffle(order);orders.append(order)
+        for name in order:
+            call=calls[name]
+            for _ in range(args.warmup): call()
+            torch.cuda.synchronize(device)
+            with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU,torch.profiler.ProfilerActivity.CUDA]) as prof:
+                for _ in range(args.kernel_samples): output=call()
+                torch.cuda.synchronize(device)
+            trace=directory/f"{name}.{trial}.trace.json"
+            prof.export_chrome_trace(str(trace))
+            markers=("qk_int8_sv_f8_attn_kernel",) if name=="sage_cpp" else ("sage_vc_attention_kernel",)
+            row=kernel_sample_summary(json.loads(trace.read_text(encoding="utf-8"))["traceEvents"],args.kernel_samples,markers)
+            trials[name].append({"path":str(trace),**row})
+            print(f"CUPTI trial {trial+1}/{args.kernel_trials}: {name} median {row['median_ms']:.4f} ms ({args.kernel_samples} launches)",flush=True)
+    summaries = {}
+    for name,rows in trials.items():
+        summary = stats([x["median_ms"] for x in rows])
+        summary["trial_median_ms"] = summary.pop("trial_mean_ms")
+        summaries[name] = {**summary,"trials":rows}
+    return {"variants":summaries,
+            "trial_order":orders,"scope":"CUPTI GPU kernel duration only; median of per-trial launch medians. Profiler-active measurements, distinct from uninstrumented API wall times."}
+
+
+@torch.no_grad()
+def compare_sage_layout(ops,state,qkv,args,device,sage_api):
+    if getattr(ops.ext,"sage_vc_kernel_version",0) < 13:
+        raise RuntimeError("--compare-sage-layout needs vc16; rebuild with bash scripts/build_sage_local.sh")
+    native,_ = load_sage_core_ops()
+    calls,full,metadata = sage_layout_calls(ops,state,qkv,native,sage_api)
+    for call in (*calls.values(),*full.values()):
+        for _ in range(args.warmup): call()
+    torch.cuda.synchronize(device)
+    errors={}
+    for cast in (False,True):
+        reference_name=("expcast_" if cast else "control_")+"vc15"
+        reference=calls[reference_name]()
+        for name,meta in metadata.items():
+            if meta["expcast"]!=cast: continue
+            output=calls[name]()
+            error=output_difference(output,reference)
+            if error["rel_rmse"]>.001:
+                raise AssertionError(f"{name}/{reference_name} exceeds 0.1%: {error}")
+            api_output=full[name]()
+            api_error=output_difference(api_output,output)
+            if api_error["rel_rmse"]>.001:
+                raise AssertionError(f"{name} fresh API/fixed-payload output differs: {api_error}")
+            errors[name]={"vs_same_algorithm_vc15":error,"full_vs_fixed":api_error}
+            del output,api_output
+        del reference
+    jobs={(kind,name):call for kind,group in (("core",calls),("api",full)) for name,call in group.items()}
+    times={key:[] for key in jobs};orders=[];rng=random.Random(args.seed+16)
+    for trial in range(args.trials):
+        order=list(jobs);rng.shuffle(order);orders.append(order)
+        for key in order:
+            _,elapsed=measure_trial(jobs[key],args.repeats,device)
+            times[key].append(elapsed)
+        print(f"Sage layout trial {trial+1}/{args.trials} complete",flush=True)
+    rows={name:{**meta,"core":stats(times["core",name]),"full_api":stats(times["api",name]),**errors[name]}
+          for name,meta in metadata.items()}
+    print("\nOriginal-loop candidates, identical native payloads; fresh preprocessing for full API (ms):")
+    print(f"{'variant':<28} {'core API':>11} {'full API':>11} {'vc15/core':>11} {'vs vc15 RMSE %':>17}")
+    for name,row in rows.items():
+        ref=row["reference"]
+        row["vc15_core_over_variant"]=rows[ref]["core"]["median_ms"]/row["core"]["median_ms"]
+        row["sage_core_over_variant"]=rows["sage_cpp"]["core"]["median_ms"]/row["core"]["median_ms"]
+        print(f"{name:<28} {row['core']['median_ms']:>11.4f} {row['full_api']['median_ms']:>11.4f} {row['vc15_core_over_variant']:>10.3f}x {100*row['vs_same_algorithm_vc15']['rel_rmse']:>17.6f}")
+    print("vc15 remains the default. Rows compare schedules within the same algorithm; 0.1% is an implementation gate, not model quality.")
+    return {"variants":rows,"trial_order":orders,"scope":"Core APIs include allocation/dispatch; full APIs redo all preprocessing. All output rows validated outside timing; default is unchanged."},calls
 
 
 def kernel_baseline(ops,args):
@@ -652,7 +764,7 @@ def print_report(report):
 def run(args):
     device = validate_device(args)
     torch.backends.cuda.matmul.allow_tf32 = False
-    from sageattention_local import sage_vc_build_info
+    from sageattention_local import sageattn, sage_vc_build_info
     info, ops = sage_vc_build_info(), load_ops()
     if args.compare_probability_schedules and getattr(ops.ext,"sage_vc_kernel_version",0) < 10:
         raise RuntimeError("--compare-probability-schedules needs vc13; rebuild with bash scripts/build_sage_local.sh")
@@ -662,6 +774,8 @@ def run(args):
         kernel_baseline(ops,args)
     if args.compare_sage_core and getattr(ops.ext,"sage_vc_kernel_version",0) < 12:
         raise RuntimeError("--compare-sage-core needs vc15; rebuild with bash scripts/build_sage_local.sh")
+    if args.compare_sage_layout and getattr(ops.ext,"sage_vc_kernel_version",0) < 13:
+        raise RuntimeError("--compare-sage-layout needs vc16; rebuild with bash scripts/build_sage_local.sh")
     if args.compare_v_scales and getattr(ops.ext,"sage_vc_kernel_version",0) < 4:
         raise RuntimeError("--compare-v-scales needs vc6; rebuild with bash scripts/build_sage_local.sh")
     if args.compare_grouping:
@@ -762,6 +876,10 @@ def run(args):
     if args.compare_sage_core:
         report["sage_core_comparison"] = compare_sage_core(ops,bases[False],args,device)
         path.write_text(json.dumps(report,indent=2,allow_nan=False)+"\n",encoding="utf-8")
+    layout_calls = None
+    if args.compare_sage_layout:
+        report["sage_layout_comparison"],layout_calls = compare_sage_layout(ops,bases[False],qkv,args,device,sageattn)
+        path.write_text(json.dumps(report,indent=2,allow_nan=False)+"\n",encoding="utf-8")
     if args.compare_probability_schedules:
         report["probability_schedules"] = compare_probability_schedules(ops,fixed,args,device)
         path.write_text(json.dumps(report,indent=2,allow_nan=False)+"\n",encoding="utf-8")
@@ -810,6 +928,12 @@ def run(args):
                 report["sage_core_traces"][name] = {"path":str(trace),**summary}
                 print(f"Same-payload trace {name}: core GPU {summary['core_kernel_ms']:.4f} ms; {summary['kernel_launches']} launches",flush=True)
                 path.write_text(json.dumps(report,indent=2,allow_nan=False)+"\n",encoding="utf-8")
+        if layout_calls is not None:
+            report["sage_layout_kernel_samples"] = trace_layout_samples(layout_calls,args,device)
+            path.write_text(json.dumps(report,indent=2,allow_nan=False)+"\n",encoding="utf-8")
+            print("\nRepeated CUPTI kernel durations (profiler active; separate from API wall time):")
+            for name,row in report["sage_layout_kernel_samples"]["variants"].items():
+                print(f"{name:<28} {row['median_ms']:>10.4f} ms",flush=True)
     return report
 
 

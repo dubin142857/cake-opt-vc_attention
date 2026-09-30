@@ -559,6 +559,123 @@ def test_sage_trace_marker_counts_original_kernel_without_including_other_work()
     with pytest.raises(RuntimeError,match="zero-time"): profile.trace_summary(events)
 
 
+def test_layout_cli_rejects_stale_native_and_invalid_sample_counts():
+    args=profile.parse_args(["--compare-sage-layout","--expcast-only"])
+    assert args.kernel_samples==20 and args.kernel_trials==3
+    ops=SimpleNamespace(ext=SimpleNamespace(sage_vc_kernel_version=12))
+    with pytest.raises(RuntimeError,match="needs vc16"):
+        profile.compare_sage_layout(ops,None,None,args,"cpu",None)
+    for argv in (["--kernel-samples","0"],["--kernel-trials","0"],
+                 ["--compare-sage-layout","--ncu-variant","sage_vc_control"]):
+        with pytest.raises(SystemExit): profile.parse_args(argv)
+
+
+def test_layout_calls_share_native_bytes_and_recompute_full_api():
+    qkv=tuple(torch.ones(1,2,n,64).half() for n in (3,7,7))
+    ops=fake_ops()
+    state=profile.staged_prepare(*qkv,ops,Recorder(),expcast=False,smooth=False)
+    core,public=[],[]
+    def forward(payload,kernel_mode):
+        for key in ("q","k","v","qs","ks","vs","means"): assert payload[key] is state[key]
+        core.append((payload["expcast"],kernel_mode))
+        return qkv[0]
+    def api(*args,**kwargs):
+        assert all(a is b for a,b in zip(args,qkv))
+        public.append(kwargs)
+        return qkv[0]
+    def native(*args):
+        assert args[0] is state["q"] and args[2] is state["v"]
+        args[3].zero_()
+    ops.vc=SimpleNamespace(forward_prepared=forward,sageattn_vc=api)
+    calls,full,meta=profile.sage_layout_calls(ops,state,qkv,native,api)
+    assert len(calls)==len(full)==len(meta)==10
+    for _ in range(2):
+        for name in calls: calls[name]();full[name]()
+    assert len(core)==18 and len(public)==20
+    for kwargs in public:
+        assert kwargs["tensor_layout"]=="HND"
+        if "expcast" in kwargs: assert kwargs["v_smooth"] is False
+    assert (True,"vc16_serial") in core and (False,"vc16_pack_early") in core
+    assert (True,"vc16_pack_early") not in core
+
+
+def test_layout_comparison_checks_all_rows_with_separate_algorithm_references(monkeypatch):
+    names=("control_vc15","control_vc16","expcast_vc15","expcast_vc16","sage_cpp")
+    outputs={name:torch.full((1,1,513,4),2. if name.startswith("expcast") else 1.) for name in names}
+    public={name:x.clone() for name,x in outputs.items()}
+    calls={name:lambda name=name:outputs[name] for name in names}
+    full={name:lambda name=name:public[name] for name in names}
+    meta={name:{"expcast":name.startswith("expcast"),"reference":"expcast_vc15" if name.startswith("expcast") else "control_vc15"} for name in names}
+    ops=SimpleNamespace(ext=SimpleNamespace(sage_vc_kernel_version=13))
+    monkeypatch.setattr(profile,"load_sage_core_ops",lambda:(None,None))
+    monkeypatch.setattr(profile,"sage_layout_calls",lambda *args:(calls,full,meta))
+    monkeypatch.setattr(torch.cuda,"synchronize",lambda *_:None)
+    monkeypatch.setattr(profile,"measure_trial",lambda call,*args:(call(),2.))
+    args=profile.parse_args(["--compare-sage-layout","--warmup","1","--trials","3"])
+    report,returned=profile.compare_sage_layout(ops,None,None,args,"cpu",None)
+    assert returned is calls and len(report["trial_order"])==3
+    for order in report["trial_order"]:
+        assert set(order)=={(kind,name) for kind in ("core","api") for name in names}
+    for row in report["variants"].values():
+        assert row["core"]["trial_mean_ms"]==[2.]*3 and row["full_api"]["trial_mean_ms"]==[2.]*3
+        assert row["vs_same_algorithm_vc15"]["checked_queries"]==513
+        assert row["vs_same_algorithm_vc15"]["exact_match"]
+    for group in (outputs,public):
+        original=group["expcast_vc16"].clone()
+        group["expcast_vc16"][:,:,512]=float("nan")
+        with pytest.raises(RuntimeError,match="Nonfinite"):
+            profile.compare_sage_layout(ops,None,None,args,"cpu",None)
+        group["expcast_vc16"][:,:,512]=100
+        with pytest.raises(AssertionError,match="exceeds|differs"):
+            profile.compare_sage_layout(ops,None,None,args,"cpu",None)
+        group["expcast_vc16"]=original
+
+
+def test_kernel_sample_summary_requires_exact_single_kernel_count_and_keeps_raw_samples():
+    events=[dict(ph="X",cat="kernel",name="sage_vc_attention_kernel_sage_layout",dur=x,args={"registers per thread":168})
+            for x in (21000,23000,22000)]
+    markers=("sage_vc_attention_kernel",)
+    result=profile.kernel_sample_summary(events,3,markers)
+    assert result["median_ms"]==22 and result["launch_ms"]==[21,23,22]
+    assert result["resources"]["registers per thread"]==168
+    with pytest.raises(RuntimeError,match="Expected"): profile.kernel_sample_summary(events,2,markers)
+    with pytest.raises(RuntimeError,match="Expected"):
+        profile.kernel_sample_summary(events+[dict(ph="X",cat="kernel",name="other",dur=1)],3,markers)
+    events[0]["dur"]=float("nan")
+    with pytest.raises(RuntimeError,match="nonfinite"): profile.kernel_sample_summary(events,3,markers)
+
+
+def test_repeated_kernel_report_uses_trial_medians_and_retains_launches(monkeypatch,tmp_path):
+    import json
+    active=[None]
+    class Profiler:
+        def __enter__(self):
+            self.events=[];active[0]=self
+            return self
+        def __exit__(self,*args): active[0]=None
+        def export_chrome_trace(self,path):
+            Path(path).write_text(json.dumps({"traceEvents":self.events}),encoding="utf-8")
+    def call(marker):
+        if active[0] is not None:
+            events=active[0].events
+            events.append(dict(ph="X",cat="kernel",name=marker,dur=(10000,20000,900000)[len(events)]))
+    calls={"sage_cpp":lambda:call("qk_int8_sv_f8_attn_kernel"),
+           "control_vc16":lambda:call("sage_vc_attention_kernel_sage_layout")}
+    monkeypatch.setattr(torch.profiler,"profile",lambda **kw:Profiler())
+    monkeypatch.setattr(torch.cuda,"synchronize",lambda *_:None)
+    args=profile.parse_args(["--compare-sage-layout","--trace-dir",str(tmp_path),
+        "--kernel-samples","3","--kernel-trials","3","--warmup","1"])
+    report=profile.trace_layout_samples(calls,args,"cpu")
+    assert len(report["trial_order"])==3
+    for order in report["trial_order"]: assert set(order)==set(calls)
+    for row in report["variants"].values():
+        assert row["median_ms"]==20 and row["trial_median_ms"]==[20]*3
+        assert "trial_mean_ms" not in row
+        assert len(row["trials"])==3
+        for trial in row["trials"]:
+            assert trial["launch_ms"]==[10,20,900] and Path(trial["path"]).exists()
+
+
 def test_expcast_only_cli_and_partial_report(capsys):
     assert profile.parse_args(["--expcast-only"]).expcast_only
     for flag in ("--compare-v-scales","--compare-grouping"):
