@@ -20,8 +20,8 @@
 
 #pragma once
 
-template<uint32_t CTA_Q, uint32_t CTA_K, uint32_t NUM_THREADS, uint32_t head_dim, QuantGranularity Q_GRAN, QuantGranularity K_GRAN, typename DTypeOut, MaskMode mask_mode = MaskMode::kNone, bool return_lse = false, bool fuse_v_scale=false, bool ExpCast=false, bool EarlyV=false, bool PackFirst=false, bool OverlapHistory=true, int ProbabilityVariant=0>
-__global__ __maxnreg__(168) void sage_vc_attention_kernel_sage_layout(const __grid_constant__ CUtensorMap tensorMapQ,
+template<uint32_t CTA_Q, uint32_t CTA_K, uint32_t NUM_THREADS, uint32_t head_dim, QuantGranularity Q_GRAN, QuantGranularity K_GRAN, typename DTypeOut, MaskMode mask_mode = MaskMode::kNone, bool return_lse = false, bool fuse_v_scale=false, bool ExpCast=false, bool EarlyV=false, bool PackFirst=false, bool OverlapHistory=true, int ProbabilityVariant=0, int RegisterLimit=168, bool CompactPV=false>
+__global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(const __grid_constant__ CUtensorMap tensorMapQ,
                                         const __grid_constant__ CUtensorMap tensorMapK,
                                         const __grid_constant__ CUtensorMap tensorMapV,
                                         float *__restrict__ Q_scale, float *__restrict__ K_scale, float *__restrict__ V_scale,
@@ -33,6 +33,7 @@ __global__ __maxnreg__(168) void sage_vc_attention_kernel_sage_layout(const __gr
   asm volatile("trap;");
 #else
   static_assert(NUM_THREADS == 128);
+  static_assert(RegisterLimit==128 || RegisterLimit==144 || RegisterLimit==168 || RegisterLimit==192);
   static_assert(!ExpCast || !PackFirst);
   static_assert(CTA_Q <= CTA_K);
 
@@ -235,26 +236,33 @@ __global__ __maxnreg__(168) void sage_vc_attention_kernel_sage_layout(const __gr
     // wait for V
     wait(&barrier_V, p);
 
-    float RO_temp[num_tiles_q][num_tiles_v][8];
+    // A separate N64 accumulator reduces PV live registers without changing
+    // the four K32 products per output element or two-level FP32 accumulation.
+    constexpr uint32_t pv_parts = (CompactPV && head_dim==128) ? 2 : 1;
+#pragma unroll
+    for (uint32_t part = 0; part < pv_parts; ++part) {
+    float RO_temp[num_tiles_q][num_tiles_v / pv_parts][8];
     wgmma::warpgroup_arrive();
 #pragma unroll
     for (uint32_t fq = 0; fq < num_tiles_q; fq++)
     {
-      wgmma::wgmma_f8f8f32<head_dim, 0, CTA_K>(RO_temp[fq], RS_f8[fq][0], &sV[0]);
+      wgmma::wgmma_f8f8f32<head_dim / pv_parts, 0, CTA_K>(RO_temp[fq], RS_f8[fq][0], &sV[part * (head_dim / pv_parts) * CTA_K]);
 #pragma unroll
       for (uint32_t v_it = 1; v_it < num_tiles_pv_inner; v_it++)
       {
-        wgmma::wgmma_f8f8f32<head_dim, 1, CTA_K>(RO_temp[fq], RS_f8[fq][v_it], &sV[v_it * 32]);
+        wgmma::wgmma_f8f8f32<head_dim / pv_parts, 1, CTA_K>(RO_temp[fq], RS_f8[fq][v_it], &sV[part * (head_dim / pv_parts) * CTA_K + v_it * 32]);
       }
     }
 
     wgmma::warpgroup_commit_batch();
-    if constexpr (ExpCast && OverlapHistory)
-      vc_probability_finish(RO,d,probability_alpha,tile_mass);
+    // Scale the FULL history and update d once, while the first PV is live.
+    if constexpr (ExpCast && OverlapHistory) {
+      if (part==0) vc_probability_finish(RO,d,probability_alpha,tile_mass);
+    }
     wgmma::warpgroup_wait<0>();
 
     // load V
-    if (EarlyV && threadIdx.x == 0)
+    if (EarlyV && part + 1 == pv_parts && threadIdx.x == 0)
     {
       expect_bytes<(CTA_K * head_dim) * sizeof(int8_t)>(&barrier_V);
       load_async_4D(sV, &tensorMapV, &barrier_V, iter * CTA_K, 0, kv_head_id, batch_id);
@@ -264,15 +272,16 @@ __global__ __maxnreg__(168) void sage_vc_attention_kernel_sage_layout(const __gr
     for (uint32_t fq = 0; fq < num_tiles_q; fq++)
     {
 #pragma unroll
-      for (uint32_t fv = 0; fv < num_tiles_v; fv++)
+      for (uint32_t fv = 0; fv < num_tiles_v / pv_parts; fv++)
       {
 #pragma unroll
         for (uint32_t k = 0; k < 8; k++)
         {
-          RO[fq][fv][k] += RO_temp[fq][fv][k];
+          RO[fq][part * (num_tiles_v / pv_parts) + fv][k] += RO_temp[fq][fv][k];
         }
       }
     }
+    } // all PV channel fragments completed; sV can now be reused
 
     // load V
     if (!EarlyV && threadIdx.x == 0)
@@ -384,37 +393,45 @@ __global__ __maxnreg__(168) void sage_vc_attention_kernel_sage_layout(const __gr
     // wait for V
     wait(&barrier_V, p);
 
-    float RO_temp[num_tiles_q][num_tiles_v][8];
+    // A separate N64 accumulator reduces PV live registers without changing
+    // the four K32 products per output element or two-level FP32 accumulation.
+    constexpr uint32_t pv_parts = (CompactPV && head_dim==128) ? 2 : 1;
+#pragma unroll
+    for (uint32_t part = 0; part < pv_parts; ++part) {
+    float RO_temp[num_tiles_q][num_tiles_v / pv_parts][8];
     wgmma::warpgroup_arrive();
 #pragma unroll
     for (uint32_t fq = 0; fq < num_tiles_q; fq++)
     {
-      wgmma::wgmma_f8f8f32<head_dim, 0, CTA_K>(RO_temp[fq], RS_f8[fq][0], &sV[0]);
+      wgmma::wgmma_f8f8f32<head_dim / pv_parts, 0, CTA_K>(RO_temp[fq], RS_f8[fq][0], &sV[part * (head_dim / pv_parts) * CTA_K]);
 #pragma unroll
       for (uint32_t v_it = 1; v_it < num_tiles_pv_inner; v_it++)
       {
-        wgmma::wgmma_f8f8f32<head_dim, 1, CTA_K>(RO_temp[fq], RS_f8[fq][v_it], &sV[v_it * 32]);
+        wgmma::wgmma_f8f8f32<head_dim / pv_parts, 1, CTA_K>(RO_temp[fq], RS_f8[fq][v_it], &sV[part * (head_dim / pv_parts) * CTA_K + v_it * 32]);
       }
     }
 
     wgmma::warpgroup_commit_batch();
-    if constexpr (ExpCast && OverlapHistory)
-      vc_probability_finish(RO,d,probability_alpha,tile_mass);
+    // Scale the FULL history and update d once, while the first PV is live.
+    if constexpr (ExpCast && OverlapHistory) {
+      if (part==0) vc_probability_finish(RO,d,probability_alpha,tile_mass);
+    }
     wgmma::warpgroup_wait<0>();
 
 #pragma unroll
     for (uint32_t fq = 0; fq < num_tiles_q; fq++)
     {
 #pragma unroll
-      for (uint32_t fv = 0; fv < num_tiles_v; fv++)
+      for (uint32_t fv = 0; fv < num_tiles_v / pv_parts; fv++)
       {
 #pragma unroll
         for (uint32_t k = 0; k < 8; k++)
         {
-          RO[fq][fv][k] += RO_temp[fq][fv][k];
+          RO[fq][part * (num_tiles_v / pv_parts) + fv][k] += RO_temp[fq][fv][k];
         }
       }
     }
+    } // all PV channel fragments completed; sV can now be reused
   }
 
   normalize_d<num_tiles_q, num_tiles_v, ComputeUnit::kCudaCore>(RO, m, d);

@@ -127,7 +127,7 @@ def test_sage_layout_candidates_keep_payload_and_reject_incompatible_paths(monke
     calls=[]
     monkeypatch.setattr(api,"_extension",lambda:SimpleNamespace(forward=lambda *args,**kwargs:calls.append((args,kwargs))))
     state=payload(65,129,False,cast)
-    if not cast and schedule>=6:
+    if not cast and 6<=schedule<=9:
         with pytest.raises(ValueError,match="expcast=True"): api.forward_prepared(state,kernel_mode=mode)
         q=torch.zeros(1,2,5,64,dtype=torch.float16)
         with pytest.raises(ValueError,match="expcast=True"):

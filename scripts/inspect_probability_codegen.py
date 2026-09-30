@@ -17,7 +17,9 @@ def inspect(sass):
         name=part.splitlines()[0].strip()
         if "sage_vc_attention_kernel_sage_layout" not in name: continue
         # ExpCast, late next-V, history overlap; same body for all candidates.
-        mode=re.search(r"L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi([0-4])EEEv",name)
+        # vc18 adds explicit register-cap/PV template arguments. Inspect the
+        # original 168-register, N128 probability variants only.
+        mode=re.search(r"L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi([0-4])E(?:Li168ELb0E)?EEv",name)
         dim=re.search(r"ILj64ELj128ELj128ELj(64|128)E",name)
         if not mode or not dim: continue
         code=re.findall(r"/\*[0-9a-f]+\*/\s+(.*?)\s*;\s*/\*",part)

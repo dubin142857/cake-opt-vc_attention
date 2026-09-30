@@ -195,6 +195,16 @@ def validate(device="cuda:0"):
                             if not torch.isfinite(candidate).all().item() or delta["rel_rmse"] > .001:
                                 raise AssertionError(f"{mode}/vc15 regression: {row}, delta={delta}")
                             row["sage_layout_vs_vc15"][mode] = {**delta,"exact_match":torch.equal(candidate,actual)}
+                        if getattr(ext,"sage_vc_kernel_version",0) >= 15:
+                            # Compare caps to the SAME algorithm/body at 168 registers.
+                            baseline_vc16 = vc.forward_prepared(state,kernel_mode="vc16")
+                            row["register_candidates_vs_vc16"] = {}
+                            for mode in vc.REGISTER_CANDIDATES:
+                                candidate = vc.forward_prepared(state,kernel_mode=mode)
+                                delta = metrics(candidate,baseline_vc16)
+                                if not torch.isfinite(candidate).all().item() or delta["rel_rmse"] > .001:
+                                    raise AssertionError(f"{mode}/vc16 regression: {row}, delta={delta}")
+                                row["register_candidates_vs_vc16"][mode] = {**delta,"exact_match":torch.equal(candidate,baseline_vc16)}
                     if getattr(ext,"sage_vc_kernel_version",0) >= 10:
                         previous = vc.forward_prepared(state,kernel_mode="vc12")
                         delta = metrics(actual,previous)

@@ -1,0 +1,31 @@
+{
+  "package_version": "2.2.0+vc18",
+  "native_kernel_version": 15,
+  "tests": {
+    "passed": 391,
+    "scope": "CPU contracts, benchmark routing and failure gates, provenance, and existing CUDA helpers executable on local SM86. No full Hopper attention execution."
+  },
+  "sm90a_cross_compile": {
+    "cuda_toolkit": "12.4",
+    "status": "passed",
+    "compiled_kernel_instances": 180,
+    "historical_instances": 132,
+    "historical_instruction_text_identical": 132,
+    "comparison": "Normalize added template arguments; compare SASS instruction text, excluding encodings/control words",
+    "new_register_and_pv_instances": 48,
+    "ptxas_warnings": 0,
+    "detail": "sage_vc18_codegen_local.json"
+  },
+  "native_link_and_import": "passed; kernel version 15",
+  "source_and_sdist": {
+    "status": "passed",
+    "verified_source_hashes": 60,
+    "unchanged_upstream_kernel_files": 36
+  },
+  "shell_syntax": "validate_register_h200.sh passed bash -n",
+  "probability_sass_parser": "Successfully parsed the 20 existing probability combinations from the actual vc18 object",
+  "h200_correctness": "not run locally; covered by remote validate_sage_vc.py before timing",
+  "h200_performance": "not measured; no speedup or 22 ms claim",
+  "remote_command": "bash scripts/validate_register_h200.sh",
+  "default_kernel": "vc15 unchanged; new candidates require explicit selection"
+}

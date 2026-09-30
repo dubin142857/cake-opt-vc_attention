@@ -583,7 +583,8 @@ def test_probability_candidates_use_vc16_references_and_reject_stale_native():
         assert row["reference"]==("expcast_vc16" if row["expcast"] else "control_vc16")
 
 
-def test_probability_codegen_classifies_only_matching_full_kernel_schedules():
+@pytest.mark.parametrize("resource_suffix",["","Li168ELb0E"])
+def test_probability_codegen_classifies_only_matching_full_kernel_schedules(resource_suffix):
     path=ROOT/"scripts/inspect_probability_codegen.py"
     spec=importlib.util.spec_from_file_location("probability_codegen",path)
     module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
@@ -591,14 +592,29 @@ def test_probability_codegen_classifies_only_matching_full_kernel_schedules():
     for dim in (64,128):
         for dtype in ("6__half","13__nv_bfloat16"):
             for mode in range(5):
-                name=f"sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj{dim}E{dtype}L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi{mode}EEEv"
+                name=f"sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj{dim}E{dtype}L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi{mode}E{resource_suffix}EEv"
                 parts.append(f"Function : {name}\n/*0000*/ @P0 FADD R1, R2, R3; /* 0x0 */\n/*0010*/ F2FP.F32.F16 R2, R4; /* 0x0 */")
     report=module.inspect("\n".join(parts))
     assert len(report)==20 and all(row["opcodes"]=={"FADD":1,"F2FP":1} for row in report)
     with pytest.raises(RuntimeError,match="Expected 20"): module.inspect("\n".join(parts[:-1]))
+    if resource_suffix:
+        extras="\n".join(parts).replace("Li168ELb0E","Li128ELb1E")
+        assert module.inspect("\n".join(parts)+"\n"+extras)==report
 
 
-def test_layout_calls_share_native_bytes_and_recompute_full_api():
+def test_register_comparison_requires_vc18_and_d128_and_excludes_smoothing():
+    args=profile.parse_args(["--compare-register-candidates"])
+    assert args.expcast_only and args.compare_sage_layout
+    assert not args.compare_probability_candidates
+    ops=SimpleNamespace(ext=SimpleNamespace(sage_vc_kernel_version=14))
+    with pytest.raises(RuntimeError,match="needs vc18"):
+        profile.compare_sage_layout(ops,None,None,args,"cpu",None)
+    for extra in (["--compare-probability-candidates"],["--dim","64"],["--compare-v-scales"],["--compare-grouping"]):
+        with pytest.raises(SystemExit): profile.parse_args(["--compare-register-candidates",*extra])
+
+
+@pytest.mark.parametrize("register_candidates",[False,True])
+def test_layout_calls_share_native_bytes_and_recompute_full_api(register_candidates):
     qkv=tuple(torch.ones(1,2,n,64).half() for n in (3,7,7))
     ops=fake_ops()
     state=profile.staged_prepare(*qkv,ops,Recorder(),expcast=False,smooth=False)
@@ -615,31 +631,51 @@ def test_layout_calls_share_native_bytes_and_recompute_full_api():
         assert args[0] is state["q"] and args[2] is state["v"]
         args[3].zero_()
     ops.vc=SimpleNamespace(forward_prepared=forward,sageattn_vc=api)
-    calls,full,meta=profile.sage_layout_calls(ops,state,qkv,native,api)
-    assert len(calls)==len(full)==len(meta)==10
+    ops.vc.REGISTER_CANDIDATES={"vc18_r128":128,"vc18_r144":144,"vc18_r192":192,
+                                "vc18_pv64_r128":128,"vc18_pv64_r144":144,"vc18_pv64_r168":168}
+    ops.vc.SAGE_LAYOUT_MODES={"vc16":1,**{name:i+10 for i,name in enumerate(ops.vc.REGISTER_CANDIDATES)}}
+    calls,full,meta=profile.sage_layout_calls(ops,state,qkv,native,api,register_candidates=register_candidates)
+    count=15 if register_candidates else 10
+    assert len(calls)==len(full)==len(meta)==count
     for _ in range(2):
         for name in calls: calls[name]();full[name]()
-    assert len(core)==18 and len(public)==20
+    assert len(core)==2*(count-1) and len(public)==2*count
     for kwargs in public:
         assert kwargs["tensor_layout"]=="HND"
         if "expcast" in kwargs: assert kwargs["v_smooth"] is False
-    assert (True,"vc16_serial") in core and (False,"vc16_pack_early") in core
+    if register_candidates:
+        for cast in (False,True):
+            for mode in ops.vc.REGISTER_CANDIDATES:
+                assert (cast,mode) in core
+        for name,row in meta.items():
+            assert row["reference"]==("expcast_vc16" if row["expcast"] else "control_vc16")
+            if name!="sage_cpp": assert "resource_key" in row
+    else:
+        assert (True,"vc16_serial") in core and (False,"vc16_pack_early") in core
     assert (True,"vc16_pack_early") not in core
 
 
-def test_layout_comparison_checks_all_rows_with_separate_algorithm_references(monkeypatch):
+@pytest.mark.parametrize("register_candidates",[False,True])
+def test_layout_comparison_checks_all_rows_with_separate_algorithm_references(monkeypatch,register_candidates):
     names=("control_vc15","control_vc16","expcast_vc15","expcast_vc16","sage_cpp")
     outputs={name:torch.full((1,1,513,4),2. if name.startswith("expcast") else 1.) for name in names}
     public={name:x.clone() for name,x in outputs.items()}
     calls={name:lambda name=name:outputs[name] for name in names}
     full={name:lambda name=name:public[name] for name in names}
     meta={name:{"expcast":name.startswith("expcast"),"reference":"expcast_vc15" if name.startswith("expcast") else "control_vc15"} for name in names}
-    ops=SimpleNamespace(ext=SimpleNamespace(sage_vc_kernel_version=13))
+    resources={name:{"requested_register_limit":128,"pv_fragment_channels":64,"registers_per_thread":128,
+               "local_bytes_per_thread":0,"static_shared_bytes":128,"dynamic_shared_bytes":40960,
+               "predicted_active_blocks_per_sm":4} for name in names if name!="sage_cpp"}
+    if register_candidates:
+        for name,row in meta.items():
+            if name!="sage_cpp": row.update(resource_key=name,register_limit=128)
+    ops=SimpleNamespace(ext=SimpleNamespace(sage_vc_kernel_version=15),vc=SimpleNamespace(kernel_resources=lambda _:resources))
     monkeypatch.setattr(profile,"load_sage_core_ops",lambda:(None,None))
     monkeypatch.setattr(profile,"sage_layout_calls",lambda *args:(calls,full,meta))
     monkeypatch.setattr(torch.cuda,"synchronize",lambda *_:None)
     monkeypatch.setattr(profile,"measure_trial",lambda call,*args:(call(),2.))
-    args=profile.parse_args(["--compare-sage-layout","--warmup","1","--trials","3"])
+    flag="--compare-register-candidates" if register_candidates else "--compare-sage-layout"
+    args=profile.parse_args([flag,"--warmup","1","--trials","3"])
     report,returned=profile.compare_sage_layout(ops,None,None,args,"cpu",None)
     assert returned is calls and len(report["trial_order"])==3
     for order in report["trial_order"]:
@@ -648,6 +684,13 @@ def test_layout_comparison_checks_all_rows_with_separate_algorithm_references(mo
         assert row["core"]["trial_mean_ms"]==[2.]*3 and row["full_api"]["trial_mean_ms"]==[2.]*3
         assert row["vs_same_algorithm_baseline"]["checked_queries"]==513
         assert row["vs_same_algorithm_baseline"]["exact_match"]
+        assert row["sage_full_api_over_variant"]==1 and row["baseline_full_api_over_variant"]==1
+    if register_candidates:
+        assert report["variants"]["expcast_vc16"]["compiled_resources"] is resources["expcast_vc16"]
+        resources["expcast_vc16"]["requested_register_limit"]=144
+        with pytest.raises(RuntimeError,match="metadata does not match"):
+            profile.compare_sage_layout(ops,None,None,args,"cpu",None)
+        resources["expcast_vc16"]["requested_register_limit"]=128
     for group in (outputs,public):
         original=group["expcast_vc16"].clone()
         group["expcast_vc16"][:,:,512]=float("nan")
