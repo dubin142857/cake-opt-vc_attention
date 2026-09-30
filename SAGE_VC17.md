@@ -40,7 +40,13 @@ direct 核心增加约 31.1%，本地 SM86 微基准优势未在 Hopper 完整�
 工具版本及失败状态，并自动查找所选 cuobjdump 的同目录、CUDA_HOME/CUDA_PATH、
 PATH 和 Linux 的 `/usr/local/cuda/bin`，只修改子进程的 PATH。
 已有 `NVDISASM_PATH` 显式设置会保留；`--nvdisasm` 可覆盖它。
-该修复不修改 CUDA 内核，不要求重新安装算子或重新计时：
+**离线机器不必安装 nvdisasm，可以直接跳过导出。已有性能/精度结果有效，
+不用重跑整套脚本或重新编译。** 继续分析已生成的 `results/h200_vc17_probability.json`
+和 `results/h200_vc17_attention.json` 即可。没有 SASS 时，不能验证远端实际指令序列，
+但仍可做分项测量、完整内核对照及 CUPTI 计时。
+
+以下修复及重试仅适用于希望导出机器码且工具可用的环境；不修改 CUDA 内核，
+不要求重新安装算子或重新计时：
 
 ```bash
 git pull --ff-only origin master
@@ -96,16 +102,19 @@ bash scripts/validate_expcast_h200.sh
 2. `benchmark_probability.py`：检查并测量当前 fused-quad 编码、独立解码求和、完整概率 helper。
 3. `profile_sage_vc.py --compare-probability-candidates`：同场比较原版 Sage、vc16 control、
    vc16 ExpCast 与四个候选，包含完整 API、固定输入核心及 3 轮 × 20 次 CUPTI kernel。
-4. `inspect_probability_codegen.py`：导出已安装内核的完整 SASS，统计 20 个 dtype/dimension/mode 组合。
+4. 默认跳过机器码导出；只有设置 `INSPECT_CODEGEN=1` 时才调用
+   `inspect_probability_codegen.py`，导出完整 SASS，统计 20 个 dtype/dimension/mode 组合。
 
-全程使用 `python3`；无需 ncu。编译器使用 nvcc，机器码导出使用 CUDA Toolkit 的 cuobjdump。
+全程使用 `python3`；无需 ncu 或 nvdisasm 完成前 3 步。编译器使用 nvcc；
+可选机器码导出使用 CUDA Toolkit 的 cuobjdump/nvdisasm。前 3 步的编译、精度、
+计时失败仍会使脚本失败，跳过导出不代表这些检查可以跳过。
 如果 CUPTI 不可用，可手动运行下一节命令并去掉 `--trace-dir`。
 
 结果文件：
 
 - `results/h200_vc17_probability.json`：分项微基准，**各组不能相加或作为 attention 的耗时占比**。
 - `results/h200_vc17_attention.json`：真正的 attention 对照，重点看 `expcast_vc17_*` 行。
-- `results/h200_vc17_codegen.json` 及 `.sass.txt`：编译指令及原始机器码，不是动态利用率。
+- `results/h200_vc17_codegen.json` 及 `.sass.txt`：仅在选择导出时生成，编译指令及原始机器码不是动态利用率。
 
 完整对照的基线为 vc16，输出列为 `vc16/core`；最前面的普通报表仍是默认 vc15。
 JSON 的 `vs_same_algorithm_baseline` 与每行 `reference` 对应；全部输出行检查及非有限值拦截
@@ -116,6 +125,7 @@ JSON 的 `vs_same_algorithm_baseline` 与每行 `reference` 对应；全部输�
 ```bash
 python3 scripts/benchmark_probability.py --trials 9 --output results/h200_vc17_probability.json
 python3 scripts/profile_sage_vc.py --expcast-only --compare-probability-candidates --warmup 3 --repeats 10 --trials 9 --kernel-samples 20 --kernel-trials 3 --trace-dir results/h200_vc17_traces --output results/h200_vc17_attention.json
+# 可选：离线机器缺少 nvdisasm 时不要执行下面这行。
 python3 scripts/inspect_probability_codegen.py --output results/h200_vc17_codegen.json
 ```
 

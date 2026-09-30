@@ -5,7 +5,8 @@ fragment 批次 1/4、四条 FP32 累加链、直接解码到 FP32。默认 `opt
 最新 H200 同场 vc16 ExpCast 核心 25.1132 ms、完整 API 26.8277 ms；原版 Sage 分别为 24.7304/26.3704 ms。
 vc17 四个候选均未带来完整 API 加速，direct 核心退化约 31%；22 ms 尚未达到。
 保留 vc16 为下一轮候选基线。运行 `bash scripts/validate_expcast_h200.sh`
-即可构建、检查、测当前概率 helper 和完整 attention，并导出实际机器码。
+即可构建、检查、测当前概率 helper 和完整 attention。机器码导出为可选步骤，
+默认跳过，缺少 nvdisasm 不影响性能与精度验证。
 见 [vc17 说明](SAGE_VC17.md)。下文保留各版本的历史开发记录。
 
 `sageattention-local==2.2.0+vc9` 在已经同场测到 25.8055 ms 的本地 Sage 源码上，
