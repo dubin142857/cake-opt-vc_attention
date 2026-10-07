@@ -2,15 +2,17 @@
 
 当前包版本为 `2.2.0+vc20`，native kernel version 17。新增基于 vc16 的连续提交候选：
 把当前 PV 和下一块 QK 放在同一个 WGMMA 组中等待，并提供相同循环结构的串行对照。
-保留单 K/V 缓冲；寄存器上限提高到 224，新增调度的 H200 正确性及速度尚未验证。
+保留单 K/V 缓冲；寄存器上限提高到 224。H200 目标 shape 实现一致性门槛通过，但没有加速。
 默认 `optimized` 仍为 vc15。见 [vc20 说明](SAGE_VC20.md)。
-最新 H200 同场 vc16 ExpCast 核心 25.3802 ms、完整 API 26.8888 ms；原版 Sage 分别为 24.7880/26.3825 ms。
-vc17、vc18、vc19 候选均未改善完整 API。vc19 四个 ExpCast 候选完整 API 为 27.3374–27.8891 ms，
-预测驻留仍为 3 块且没有 local memory 分配，双缓冲仍未产生净收益；
-保留 168 寄存器、N128 PV 作为后续实验基线，22 ms 尚未达到。
-运行 `bash scripts/validate_compute_h200.sh` 使用现有工具链离线构建、检查并对照 vc20 候选；
-不需要 nvdisasm/ncu。编译资源、全输出精度、核心/完整 API 及重复 CUPTI 分开报告。
-vc19 同场全输出实现门槛已通过，但没有加速；当前无需重新运行这轮实验。见 [vc19 说明](SAGE_VC19.md)。
+最新 H200 同场 vc16 ExpCast 核心 25.4491 ms、完整 API 27.0665 ms；原版 Sage 分别为 25.0432/26.5092 ms。
+vc20 三个 ExpCast 候选完整 API 为 28.0469–28.5444 ms，重复 CUPTI 也确认退步；
+实际寄存器增至 206–224，预测驻留从 3 块降至 2 块，但没有 local memory 分配。
+驻留减少是重要线索，尚不能单独解释全部成本。vc17、vc18、vc19、vc20 均未改善完整 API。
+保留 vc16 的 168 寄存器、N128 PV 作为实验基线，22 ms 尚未达到；当前无需重新运行这轮实验。
+回传记录见 [vc20 结果](results/h200_sage_vc20_reported_summary.json)。
+`bash scripts/validate_compute_h200.sh` 保留用于离线复现，不要求 nvdisasm/ncu；
+编译资源、全输出精度、核心/完整 API 及重复 CUPTI 分开报告。
+[vc19 说明](SAGE_VC19.md) 记录先前双缓冲实验的负结果。
 [vc18 说明](SAGE_VC18.md) 和 [vc17 说明](SAGE_VC17.md) 保留既往实验。下文保留历史开发记录。
 
 `sageattention-local==2.2.0+vc9` 在已经同场测到 25.8055 ms 的本地 Sage 源码上，

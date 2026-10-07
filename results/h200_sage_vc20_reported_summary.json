@@ -1,0 +1,208 @@
+{
+  "source": "User-pasted vc20 H200 profile; original JSON, raw wall-time trials and individual CUPTI launch samples not supplied",
+  "shape_bshd": [
+    1,
+    37741,
+    28,
+    128
+  ],
+  "dtype": "bfloat16",
+  "shape_source": "Prior agreed validate_compute_h200.sh workload; environment header absent from pasted excerpt",
+  "wall_time_trials": 9,
+  "cupti_trials": 3,
+  "cupti_launches_per_trial": 20,
+  "variants": {
+    "control_vc16": {
+      "core_api_ms": 24.9024,
+      "full_api_ms": 26.4065,
+      "printed_vs_same_algorithm_rmse_percent": 0.0,
+      "resources": {
+        "compute_schedule": 0,
+        "requested_register_limit": 168,
+        "registers_per_thread": 168,
+        "local_bytes_per_thread": 0,
+        "shared_bytes": 41088,
+        "predicted_blocks_per_sm": 3
+      },
+      "cupti_trial_median_ms": [
+        24.7149,
+        24.9335,
+        24.7112
+      ],
+      "cupti_median_ms": 24.7149
+    },
+    "control_vc20_pv_qk": {
+      "core_api_ms": 27.0056,
+      "full_api_ms": 28.5784,
+      "printed_vs_same_algorithm_rmse_percent": 0.000737,
+      "resources": {
+        "compute_schedule": 1,
+        "requested_register_limit": 224,
+        "registers_per_thread": 221,
+        "local_bytes_per_thread": 0,
+        "shared_bytes": 41088,
+        "predicted_blocks_per_sm": 2
+      },
+      "cupti_trial_median_ms": [
+        26.9616,
+        26.7725,
+        26.9868
+      ],
+      "cupti_median_ms": 26.9616,
+      "full_api_increase_vs_vc16_percent": 8.22486887698104,
+      "serial_core_over_joint": 1.003154901205676
+    },
+    "control_vc20_serial": {
+      "core_api_ms": 27.0908,
+      "full_api_ms": 28.6348,
+      "printed_vs_same_algorithm_rmse_percent": 0.000737,
+      "resources": {
+        "compute_schedule": 2,
+        "requested_register_limit": 224,
+        "registers_per_thread": 206,
+        "local_bytes_per_thread": 0,
+        "shared_bytes": 41088,
+        "predicted_blocks_per_sm": 2
+      },
+      "cupti_trial_median_ms": [
+        26.4568,
+        27.0476,
+        27.0444
+      ],
+      "cupti_median_ms": 27.0444,
+      "full_api_increase_vs_vc16_percent": 8.438452653702665
+    },
+    "control_vc20_qk_pv": {
+      "core_api_ms": 26.9995,
+      "full_api_ms": 28.6211,
+      "printed_vs_same_algorithm_rmse_percent": 0.000737,
+      "resources": {
+        "compute_schedule": 3,
+        "requested_register_limit": 224,
+        "registers_per_thread": 221,
+        "local_bytes_per_thread": 0,
+        "shared_bytes": 41088,
+        "predicted_blocks_per_sm": 2
+      },
+      "cupti_trial_median_ms": [
+        26.9524,
+        26.8667,
+        26.9644
+      ],
+      "cupti_median_ms": 26.9524,
+      "full_api_increase_vs_vc16_percent": 8.386571488080573,
+      "serial_core_over_joint": 1.0033815441026686
+    },
+    "expcast_vc16": {
+      "core_api_ms": 25.4491,
+      "full_api_ms": 27.0665,
+      "printed_vs_same_algorithm_rmse_percent": 0.0,
+      "resources": {
+        "compute_schedule": 0,
+        "requested_register_limit": 168,
+        "registers_per_thread": 168,
+        "local_bytes_per_thread": 0,
+        "shared_bytes": 41088,
+        "predicted_blocks_per_sm": 3
+      },
+      "cupti_trial_median_ms": [
+        25.3748,
+        25.46,
+        25.3759
+      ],
+      "cupti_median_ms": 25.3759
+    },
+    "expcast_vc20_pv_qk": {
+      "core_api_ms": 26.9492,
+      "full_api_ms": 28.5444,
+      "printed_vs_same_algorithm_rmse_percent": 0.0,
+      "resources": {
+        "compute_schedule": 1,
+        "requested_register_limit": 224,
+        "registers_per_thread": 224,
+        "local_bytes_per_thread": 0,
+        "shared_bytes": 41088,
+        "predicted_blocks_per_sm": 2
+      },
+      "cupti_trial_median_ms": [
+        26.6475,
+        26.878,
+        26.9035
+      ],
+      "cupti_median_ms": 26.878,
+      "full_api_increase_vs_vc16_percent": 5.4602552971385165,
+      "serial_core_over_joint": 0.99808899707598
+    },
+    "expcast_vc20_serial": {
+      "core_api_ms": 26.8977,
+      "full_api_ms": 28.5124,
+      "printed_vs_same_algorithm_rmse_percent": 0.0,
+      "resources": {
+        "compute_schedule": 2,
+        "requested_register_limit": 224,
+        "registers_per_thread": 217,
+        "local_bytes_per_thread": 0,
+        "shared_bytes": 41088,
+        "predicted_blocks_per_sm": 2
+      },
+      "cupti_trial_median_ms": [
+        26.1816,
+        26.9038,
+        26.8962
+      ],
+      "cupti_median_ms": 26.8962,
+      "full_api_increase_vs_vc16_percent": 5.342027968152507
+    },
+    "expcast_vc20_qk_pv": {
+      "core_api_ms": 26.5005,
+      "full_api_ms": 28.0469,
+      "printed_vs_same_algorithm_rmse_percent": 0.0,
+      "resources": {
+        "compute_schedule": 3,
+        "requested_register_limit": 224,
+        "registers_per_thread": 223,
+        "local_bytes_per_thread": 0,
+        "shared_bytes": 41088,
+        "predicted_blocks_per_sm": 2
+      },
+      "cupti_trial_median_ms": [
+        26.5799,
+        26.5985,
+        26.4338
+      ],
+      "cupti_median_ms": 26.5799,
+      "full_api_increase_vs_vc16_percent": 3.6221897918090606,
+      "serial_core_over_joint": 1.01498839644535
+    },
+    "sage_cpp": {
+      "core_api_ms": 25.0432,
+      "full_api_ms": 26.5092,
+      "printed_vs_same_algorithm_rmse_percent": 0.0,
+      "cupti_trial_median_ms": [
+        25.0789,
+        24.8636,
+        24.9067
+      ],
+      "cupti_median_ms": 24.9067
+    }
+  },
+  "correctness": {
+    "comparison_gate": "All-output same-algorithm and fresh/fixed API 0.1% gates passed before the printed timing table",
+    "new_control_printed_rmse_percent": 0.000737,
+    "new_expcast_printed_rmse_percent": 0.0,
+    "exact_match": "Not established by rounded text; original JSON not supplied",
+    "separate_shape_validation": "Build/validation output not included in this excerpt",
+    "model_quality": "Not assessed by this comparison"
+  },
+  "conclusions": [
+    "All six vc20 control/ExpCast candidate rows lose to their vc16 baselines in core API, full API and repeated CUPTI medians.",
+    "New candidates use 206-224 registers versus 168, predicted resident blocks fall from 3 to 2, and local bytes remain zero; shared memory is unchanged.",
+    "Reduced predicted residency is a plausible cost, not proof that it explains all regression; live ranges and loop/instruction scheduling also changed.",
+    "ExpCast next-QK-first joint submission is about 1.5% faster than the matched serial core API but still slower than vc16 and Sage.",
+    "Initial stage tables and one-off traces measure the unchanged default vc15, not vc20 candidates.",
+    "Keep vc16 as experiment baseline and vc15 as public default; retire this compute-overlap candidate as a performance winner. 22 ms full API not reached."
+  ],
+  "best_new_expcast_full_api_increase_vs_sage_percent": 5.80062770660752,
+  "vc16_expcast_vs_sage_full_api_increase_percent": 2.1022890166432884,
+  "vc16_expcast_full_api_reduction_needed_for_22ms_percent": 18.718711322114057
+}
