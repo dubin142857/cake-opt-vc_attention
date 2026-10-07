@@ -120,16 +120,17 @@ def validate_grouping(ext, device="cuda:0"):
 
 
 @torch.no_grad()
-def validate_pipeline(vc, device, *, compute=False, history=False):
+def validate_pipeline(vc, device, *, compute=False, history=False, work=False):
     """Exercise both slot parities, reuse, partial tails and long lookahead loops."""
     from sageattention_local.vc_reference import value_permutation
-    minimum=18 if history else 17 if compute else 16
+    minimum=19 if work else 18 if history else 17 if compute else 16
     if vc._extension().sage_vc_kernel_version < minimum:
         raise RuntimeError("Rebuild sageattention-local for the requested pipeline validation")
-    modes=vc.HISTORY_CANDIDATES if history else vc.COMPUTE_CANDIDATES if compute else vc.PIPELINE_CANDIDATES
-    label="Shared history" if history else "Compute" if compute else "TMA"
+    modes=vc.WORK_CANDIDATES if work else vc.HISTORY_CANDIDATES if history else vc.COMPUTE_CANDIDATES if compute else vc.PIPELINE_CANDIDATES
+    label="Work reduction" if work else "Shared history" if history else "Compute" if compute else "TMA"
     rows = []
     known_answers = 0
+    recurrence_cases = []
     for dtype in (torch.float16, torch.bfloat16):
         for dim in ((128,) if history else (64,128)):
             for nk in (1,127,128,129,255,256,257,383,384,385,511,512,513,1025,37741):
@@ -179,8 +180,35 @@ def validate_pipeline(vc, device, *, compute=False, history=False):
                     actual = vc.forward_prepared({**payload,"expcast":cast},kernel_mode=mode)
                     torch.testing.assert_close(actual,expected,rtol=.004,atol=.004)
                     known_answers += 1
+            if work:
+                # Fixed native operands force tied, falling and increasing
+                # maxima across tiles. Different lane scales/row signs expose
+                # moving the scale after a shuffle or skipping a partial warp.
+                q = torch.zeros(1,2,65,dim,device=device,dtype=dtype)
+                k = torch.zeros(1,2,1025,dim,device=device,dtype=dtype)
+                state = vc.prepare(q,k,torch.randn_like(k),expcast=True,v_smooth=False)
+                signs=(torch.arange(65,device=device).remainder(3)-1).to(torch.int8)
+                state["q"].copy_(signs.view(1,1,65,1).expand_as(state["q"]))
+                levels=torch.tensor([3,3,-7,7,-2,7,8,5,9],device=device,dtype=torch.int8)
+                values=levels[(torch.arange(1025,device=device)//128)]
+                state["k"].copy_(values.view(1,1,1025,1).expand_as(state["k"]))
+                state["qs"].fill_(1.)
+                state["ks"].copy_((torch.arange(state["ks"].shape[-1],device=device).remainder(4)+1).float())
+                for scale in (1e-4,1.,1e3):
+                    payload={**state,"scale":scale}
+                    expected=vc.forward_prepared(payload,kernel_mode="vc16")
+                    if not torch.isfinite(expected).all().item():
+                        raise AssertionError("Nonfinite max-update baseline")
+                    for mode in modes:
+                        actual=vc.forward_prepared(payload,kernel_mode=mode)
+                        delta=metrics(actual,expected)
+                        if not torch.isfinite(actual).all().item() or delta["rel_rmse"]>.001:
+                            raise AssertionError(f"Max-update regression: {dtype}, D{dim}, scale={scale}, {mode}: {delta}")
+                        recurrence_cases.append(dict(dtype=str(dtype),dim=dim,scale=scale,mode=mode,
+                            exact_match=torch.equal(actual,expected),**delta))
             print(f"{label} pipeline slot/tail checks passed: {dtype}, D{dim}",flush=True)
-    return {"cases":rows,"known_answer_cases":known_answers,"status":"passed","implementation_rel_rmse_limit":.001,
+    return {"cases":rows,"known_answer_cases":known_answers,"max_update_cases":recurrence_cases,
+            "status":"passed","implementation_rel_rmse_limit":.001,
             "scope":"All rows versus vc16, both algorithms separately, 3 repeats; no model-quality or speed claim."}
 
 
@@ -206,6 +234,8 @@ def validate(device="cuda:0"):
         report["compute_pipeline"] = validate_pipeline(vc,device,compute=True)
     if getattr(ext,"sage_vc_kernel_version",0) >= 18:
         report["shared_history"] = validate_pipeline(vc,device,history=True)
+    if getattr(ext,"sage_vc_kernel_version",0) >= 19:
+        report["work_reduction"] = validate_pipeline(vc,device,work=True)
     for dtype in (torch.float16, torch.bfloat16):
         for dim in (64, 128):
             for nq, nk in ((1,1), (63,127), (64,128), (65,129), (129,257), (257,385)):
@@ -368,13 +398,14 @@ if __name__ == "__main__":
                         help="vc19 slot/tail/reuse checks only, also suitable for optional compute-sanitizer")
     parser.add_argument("--compute-only", action="store_true", help="vc20 compute carry/tail checks only")
     parser.add_argument("--history-only", action="store_true", help="vc21 FP32 shared history and tail checks only")
+    parser.add_argument("--work-only", action="store_true", help="vc22 max/identity rescale and tail checks only")
     args = parser.parse_args()
-    if sum((args.pipeline_only,args.compute_only,args.history_only))>1:
-        parser.error("Choose --pipeline-only, --compute-only or --history-only")
-    if args.pipeline_only or args.compute_only or args.history_only:
+    if sum((args.pipeline_only,args.compute_only,args.history_only,args.work_only))>1:
+        parser.error("Choose --pipeline-only, --compute-only, --history-only or --work-only")
+    if args.pipeline_only or args.compute_only or args.history_only or args.work_only:
         torch.cuda.set_device(args.device)
         from sageattention_local import vc
-        report = validate_pipeline(vc,args.device,compute=args.compute_only,history=args.history_only)
+        report = validate_pipeline(vc,args.device,compute=args.compute_only,history=args.history_only,work=args.work_only)
     else:
         report = validate(args.device)
     path = Path(args.output)

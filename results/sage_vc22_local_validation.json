@@ -1,0 +1,43 @@
+{
+  "package_version": "2.2.0+vc22",
+  "native_kernel_version": 19,
+  "local_device": "NVIDIA GeForce RTX 3060 Laptop GPU",
+  "tests": {
+    "passed": 454,
+    "helper_cases": 17,
+    "scope": "CPU contracts, profiling payload identity and all-row failure gates, provenance, existing CUDA helpers, and new production probability/history helpers on SM86. No full Hopper attention execution.",
+    "helper_result": "All packed P bytes, maximum, alpha, FP32 mass/denominator and output history match baseline exactly in tested cases. Independent PyTorch max, FP8 decode and recurrence also pass.",
+    "cases": "1/2/7/296 tiles; random/stable/increasing maxima; extreme-range fallback; lane-specific scales; sparse row updates; nondefault stream. DPX intrinsic uses software compatibility on SM86."
+  },
+  "sm90a_cross_compile": {
+    "cuda_toolkit": "12.4",
+    "status": "passed",
+    "instances": 256,
+    "new_instances": 12,
+    "historical_instances": 244,
+    "historical_instruction_text_identical": 244,
+    "d128_registers": 168,
+    "d64_registers": 128,
+    "stack_spill_local_bytes": 0,
+    "d128_dynamic_shared_bytes": 40960,
+    "static_shared_bytes": 128,
+    "integer_max3_instructions": 32,
+    "static_fp32_max_count": {
+      "baseline": 152,
+      "integer_candidate": 82
+    },
+    "scope": "Static instruction counts only, not timing. Original instruction texts compared after normalizing the added default template argument; encodings/control words excluded.",
+    "detail": "sage_vc22_codegen_local.json"
+  },
+  "native_link_and_import": "passed; kernel version 19",
+  "source_and_sdist": {
+    "status": "passed",
+    "verified_source_hashes": 65,
+    "unchanged_upstream_kernel_files": 36
+  },
+  "shell_and_python_syntax": "passed",
+  "h200_validation": "Not run locally. Remote script adds 360 dtype/shape/algorithm/mode cases repeated 3 times, 24 uniform-attention known answers and 36 constructed max-update cases before timing.",
+  "h200_performance": "Not measured. Branch/vote costs and GPU scheduling require measurement; no attention speedup or 22 ms claim.",
+  "default_kernel": "vc15 unchanged; candidates require explicit selection",
+  "remote_command": "bash scripts/validate_work_h200.sh"
+}

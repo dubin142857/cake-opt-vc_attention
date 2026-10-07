@@ -20,7 +20,7 @@
 
 #pragma once
 
-template<uint32_t CTA_Q, uint32_t CTA_K, uint32_t NUM_THREADS, uint32_t head_dim, QuantGranularity Q_GRAN, QuantGranularity K_GRAN, typename DTypeOut, MaskMode mask_mode = MaskMode::kNone, bool return_lse = false, bool fuse_v_scale=false, bool ExpCast=false, bool EarlyV=false, bool PackFirst=false, bool OverlapHistory=true, int ProbabilityVariant=0, int RegisterLimit=168, bool CompactPV=false>
+template<uint32_t CTA_Q, uint32_t CTA_K, uint32_t NUM_THREADS, uint32_t head_dim, QuantGranularity Q_GRAN, QuantGranularity K_GRAN, typename DTypeOut, MaskMode mask_mode = MaskMode::kNone, bool return_lse = false, bool fuse_v_scale=false, bool ExpCast=false, bool EarlyV=false, bool PackFirst=false, bool OverlapHistory=true, int ProbabilityVariant=0, int RegisterLimit=168, bool CompactPV=false, int WorkReduction=0>
 __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(const __grid_constant__ CUtensorMap tensorMapQ,
                                         const __grid_constant__ CUtensorMap tensorMapK,
                                         const __grid_constant__ CUtensorMap tensorMapV,
@@ -33,6 +33,7 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
   asm volatile("trap;");
 #else
   static_assert(NUM_THREADS == 128);
+  static_assert(WorkReduction>=0 && WorkReduction<=3);
   static_assert(RegisterLimit==128 || RegisterLimit==144 || RegisterLimit==168 || RegisterLimit==192);
   static_assert(!ExpCast || !PackFirst);
   static_assert(CTA_Q <= CTA_K);
@@ -191,8 +192,9 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
       load_async_4D(sK, &tensorMapK, &barrier_K, 0, iter * CTA_K, kv_head_id, batch_id);
     }
 
-    // convert RS to float
+    // Integer-max candidates delay conversion until after their max tree.
     float RS_f32[num_tiles_q][num_tiles_k][8];
+    if constexpr (!(ExpCast && (WorkReduction==1 || WorkReduction==3))) {
 #pragma unroll
     for (uint32_t fq = 0; fq < num_tiles_q; fq++)
     {
@@ -207,13 +209,18 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
       }
     }
 
+    }
     uint32_t RS_f8[num_tiles_q][num_tiles_pv_inner][4];
     float tile_mass[num_tiles_q][2], probability_alpha[num_tiles_q][2];
     if constexpr (ExpCast) {
-      // vc15's exact encoder and FP32 recurrence, with a controlled schedule.
-      vc_probability_prepare_variant<ProbabilityVariant>(RS_f32,m,sm_scale,RS_f8,probability_alpha,tile_mass);
+      // Full-tile integer reduction is exact for INT8 D<=128. Encoding and
+      // FP32 history arithmetic follow vc16; the tail keeps its original max.
+      if constexpr (WorkReduction==1 || WorkReduction==3)
+        vc_probability_prepare_integer(RS,m,sm_scale,RS_f8,probability_alpha,tile_mass);
+      else
+        vc_probability_prepare_variant<ProbabilityVariant>(RS_f32,m,sm_scale,RS_f8,probability_alpha,tile_mass);
       if constexpr (!OverlapHistory)
-        vc_probability_finish(RO,d,probability_alpha,tile_mass);
+        vc_probability_finish_work<(WorkReduction==2 || WorkReduction==3)>(RO,d,probability_alpha,tile_mass);
     } else {
     update_mdo<num_tiles_q, num_tiles_k, num_tiles_v, false, true, false>(RS_f32, RO, m, d, sm_scale);
 
@@ -257,7 +264,7 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
     wgmma::warpgroup_commit_batch();
     // Scale the FULL history and update d once, while the first PV is live.
     if constexpr (ExpCast && OverlapHistory) {
-      if (part==0) vc_probability_finish(RO,d,probability_alpha,tile_mass);
+      if (part==0) vc_probability_finish_work<(WorkReduction==2 || WorkReduction==3)>(RO,d,probability_alpha,tile_mass);
     }
     wgmma::warpgroup_wait<0>();
 
@@ -370,7 +377,7 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
       // vc15's exact encoder and FP32 recurrence, with a controlled schedule.
       vc_probability_prepare_variant<ProbabilityVariant>(RS_f32,m,sm_scale,RS_f8,probability_alpha,tile_mass);
       if constexpr (!OverlapHistory)
-        vc_probability_finish(RO,d,probability_alpha,tile_mass);
+        vc_probability_finish_work<(WorkReduction==2 || WorkReduction==3)>(RO,d,probability_alpha,tile_mass);
     } else {
     update_mdo<num_tiles_q, num_tiles_k, num_tiles_v, false, true, false>(RS_f32, RO, m, d, sm_scale);
 
@@ -414,7 +421,7 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
     wgmma::warpgroup_commit_batch();
     // Scale the FULL history and update d once, while the first PV is live.
     if constexpr (ExpCast && OverlapHistory) {
-      if (part==0) vc_probability_finish(RO,d,probability_alpha,tile_mass);
+      if (part==0) vc_probability_finish_work<(WorkReduction==2 || WorkReduction==3)>(RO,d,probability_alpha,tile_mass);
     }
     wgmma::warpgroup_wait<0>();
 

@@ -38,6 +38,7 @@
 namespace sage_vc {
 #include "vc_math.cuh"
 #include "probability_variants.cuh"
+#include "work_reduction.cuh"
 
 template <int BlockMajorSize, int BlockMinorSize, bool swizzle=true, CUtensorMapL2promotion_enum promotion_mode=CU_TENSOR_MAP_L2_PROMOTION_NONE, typename T>
 CUtensorMap create_tensor_map_4D(T* gmem_ptr, int d1, int d2, int d3, int d4, int stride1, int stride2, int stride3) {
@@ -844,14 +845,18 @@ void launch_vc(torch::Tensor q, torch::Tensor k, torch::Tensor v, torch::Tensor 
 // 13..15: split D128 PV into two N64 fragments with register caps 128/144/168.
 template<int Schedule>
 constexpr int sage_register_limit() {
-  return Schedule==23 ? 128 : Schedule==24 ? 168 : Schedule>=20 ? 224 : (Schedule==10 || Schedule==13) ? 128 : (Schedule==11 || Schedule==14) ? 144 : Schedule==12 ? 192 : 168;
+  return Schedule>=25 ? 168 : Schedule==23 ? 128 : Schedule==24 ? 168 : Schedule>=20 ? 224 : (Schedule==10 || Schedule==13) ? 128 : (Schedule==11 || Schedule==14) ? 144 : Schedule==12 ? 192 : 168;
 }
 
 template<int Dim, typename Out, bool Cast, int Schedule>
 auto select_sage_layout() {
-  static_assert(Schedule>=1 && Schedule<=24);
+  static_assert(Schedule>=1 && Schedule<=27);
   static_assert(!Cast || (Schedule!=3 && Schedule!=4));
-  if constexpr (Schedule>=23) {
+  if constexpr (Schedule>=25) {
+    return sage_vc::sage_vc_attention_kernel_sage_layout<64,128,128,Dim,
+        QuantGranularity::kPerThread,QuantGranularity::kPerThread,Out,
+        MaskMode::kNone,false,true,Cast,false,false,Cast,0,168,false,(Cast ? Schedule-24 : 0)>;
+  } else if constexpr (Schedule>=23) {
     if constexpr (Dim==128)
       return sage_vc::sage_vc_attention_kernel_shared_history<64,128,128,Dim,
           QuantGranularity::kPerThread,QuantGranularity::kPerThread,Out,Cast,sage_register_limit<Schedule>()>;
@@ -873,7 +878,7 @@ auto select_sage_layout() {
 // K-only / V-only add one tile; KV and its late-copy control add two.
 template<int Schedule, int Dim>
 constexpr int sage_layout_shared_bytes() {
-  return (64+128+128+(Schedule>=18 && Schedule<=19 ? 256 : Schedule>=16 && Schedule<=17 ? 128 : 0))*Dim + (Schedule>=23 ? 14336 : 0);
+  return (64+128+128+(Schedule>=18 && Schedule<=19 ? 256 : Schedule>=16 && Schedule<=17 ? 128 : 0))*Dim + (Schedule>=23 && Schedule<=24 ? 14336 : 0);
 }
 
 template<int Dim, typename Out, bool Cast, int Schedule>
@@ -932,11 +937,13 @@ std::map<std::string,int64_t> sage_layout_resources() {
   return {{"registers_per_thread",attr.numRegs},{"local_bytes_per_thread",int64_t(attr.localSizeBytes)},
           {"static_shared_bytes",int64_t(attr.sharedSizeBytes)},{"dynamic_shared_bytes",bytes},
           {"threads_per_block",128},{"predicted_active_blocks_per_sm",active},
-          {"requested_register_limit",sage_register_limit<Schedule>()},{"pv_fragment_channels",(Schedule>=13 && Schedule<=15) || Schedule>=23 ? 64 : 128},
+          {"requested_register_limit",sage_register_limit<Schedule>()},{"pv_fragment_channels",(Schedule>=13 && Schedule<=15) || (Schedule>=23 && Schedule<=24) ? 64 : 128},
           {"k_buffers",Schedule==16 || (Schedule>=18 && Schedule<=19) ? 2 : 1},
           {"v_buffers",Schedule>=17 && Schedule<=19 ? 2 : 1},
           {"early_tma_prefetch",Schedule>=16 && Schedule<=18 ? 1 : 0},
-          {"history_shared_bytes",Schedule>=23 ? 14336 : 0},
+          {"history_shared_bytes",Schedule>=23 && Schedule<=24 ? 14336 : 0},
+          {"integer_max",Cast && (Schedule==25 || Schedule==27) ? 1 : 0},
+          {"skip_identity_history",Cast && (Schedule==26 || Schedule==27) ? 1 : 0},
           {"compute_schedule",Schedule>=20 && Schedule<=22 ? Schedule-19 : 0}};
 }
 
@@ -998,8 +1005,8 @@ torch::Tensor vc_forward(torch::Tensor q, torch::Tensor k, torch::Tensor v,
   TORCH_CHECK(probability_schedule == 0 || (optimized && packed_probability && compact_values && pipeline_probability && interleaved_probability && affine_probability), "Scratch schedules require the affine pipeline");
   TORCH_CHECK(!fused_probability || paired_probability,"Fused packing requires paired conversion");
   TORCH_CHECK(!paired_probability || (probability_schedule == 0 && optimized && packed_probability && compact_values && pipeline_probability && interleaved_probability && affine_probability), "Paired conversion requires the affine pipeline without scratch");
-  TORCH_CHECK(sage_schedule>=0 && sage_schedule<=24,"Sage layout schedule must be 0..24");
-  TORCH_CHECK(sage_schedule<23 || q.size(3)==128,"Shared-history candidates require D128");
+  TORCH_CHECK(sage_schedule>=0 && sage_schedule<=27,"Sage layout schedule must be 0..27");
+  TORCH_CHECK(sage_schedule<23 || sage_schedule>24 || q.size(3)==128,"Shared-history candidates require D128");
   TORCH_CHECK(sage_schedule==0 || !block_values,"Sage layout candidates require v_smooth=False");
   TORCH_CHECK(sage_schedule<6 || sage_schedule>9 || expcast,"Probability candidates require expcast=True");
   TORCH_CHECK(!expcast || (sage_schedule!=3 && sage_schedule!=4),"Pack-first candidates are control-only");
@@ -1033,6 +1040,9 @@ torch::Tensor vc_forward(torch::Tensor q, torch::Tensor k, torch::Tensor v,
   else if (sage_schedule==22) dispatch_sage_output<22>(q,k,v,qs,ks,vs,out,scale,output_type,expcast);
   else if (sage_schedule==23) dispatch_sage_output<23>(q,k,v,qs,ks,vs,out,scale,output_type,expcast);
   else if (sage_schedule==24) dispatch_sage_output<24>(q,k,v,qs,ks,vs,out,scale,output_type,expcast);
+  else if (sage_schedule==25) dispatch_sage_output<25>(q,k,v,qs,ks,vs,out,scale,output_type,expcast);
+  else if (sage_schedule==26) dispatch_sage_output<26>(q,k,v,qs,ks,vs,out,scale,output_type,expcast);
+  else if (sage_schedule==27) dispatch_sage_output<27>(q,k,v,qs,ks,vs,out,scale,output_type,expcast);
   else if (fused_probability) dispatch_output<true,true,true,true,true,true,0,true,true>(q,k,v,qs,ks,vs,means,out,scale,output_type,expcast,block_values);
   else if (paired_probability) dispatch_output<true,true,true,true,true,true,0,true>(q,k,v,qs,ks,vs,means,out,scale,output_type,expcast,block_values);
   else if (probability_schedule == 1) dispatch_output<true,true,true,true,true,true,1>(q,k,v,qs,ks,vs,means,out,scale,output_type,expcast,block_values);
@@ -1104,5 +1114,11 @@ std::map<std::string, std::map<std::string, int64_t>> vc_kernel_resources(int64_
   result["expcast_sage_layout_23"] = output_type==0 ? sage_layout_resources<half,true,23>() : sage_layout_resources<nv_bfloat16,true,23>();
   result["control_sage_layout_24"] = output_type==0 ? sage_layout_resources<half,false,24>() : sage_layout_resources<nv_bfloat16,false,24>();
   result["expcast_sage_layout_24"] = output_type==0 ? sage_layout_resources<half,true,24>() : sage_layout_resources<nv_bfloat16,true,24>();
+  result["control_sage_layout_25"] = output_type==0 ? sage_layout_resources<half,false,25>() : sage_layout_resources<nv_bfloat16,false,25>();
+  result["expcast_sage_layout_25"] = output_type==0 ? sage_layout_resources<half,true,25>() : sage_layout_resources<nv_bfloat16,true,25>();
+  result["control_sage_layout_26"] = output_type==0 ? sage_layout_resources<half,false,26>() : sage_layout_resources<nv_bfloat16,false,26>();
+  result["expcast_sage_layout_26"] = output_type==0 ? sage_layout_resources<half,true,26>() : sage_layout_resources<nv_bfloat16,true,26>();
+  result["control_sage_layout_27"] = output_type==0 ? sage_layout_resources<half,false,27>() : sage_layout_resources<nv_bfloat16,false,27>();
+  result["expcast_sage_layout_27"] = output_type==0 ? sage_layout_resources<half,true,27>() : sage_layout_resources<nv_bfloat16,true,27>();
   return result;
 }

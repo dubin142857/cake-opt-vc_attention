@@ -1,0 +1,490 @@
+{
+  "compiled_variants": 256,
+  "historical_variants": 244,
+  "historical_instruction_text_identical": 244,
+  "historical_changed": [],
+  "work_resources": [
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi3EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "dim": 128,
+      "work_mode": 3,
+      "dtype": "bfloat16",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "integer_max3_instructions": 32,
+      "local_load_store_instructions": 0,
+      "warp_vote_instructions": 7,
+      "fp32_max_instructions": 82,
+      "static_gmma_groups_between_waits": [
+        [
+          "QK",
+          "QK",
+          "QK",
+          "QK"
+        ],
+        [
+          "PV",
+          "PV",
+          "PV",
+          "PV"
+        ],
+        [
+          "QK",
+          "QK",
+          "QK",
+          "QK"
+        ],
+        [
+          "PV",
+          "PV",
+          "PV",
+          "PV"
+        ]
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi3EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "dim": 128,
+      "work_mode": 3,
+      "dtype": "float16",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "integer_max3_instructions": 32,
+      "local_load_store_instructions": 0,
+      "warp_vote_instructions": 7,
+      "fp32_max_instructions": 82,
+      "static_gmma_groups_between_waits": [
+        [
+          "QK",
+          "QK",
+          "QK",
+          "QK"
+        ],
+        [
+          "PV",
+          "PV",
+          "PV",
+          "PV"
+        ],
+        [
+          "QK",
+          "QK",
+          "QK",
+          "QK"
+        ],
+        [
+          "PV",
+          "PV",
+          "PV",
+          "PV"
+        ]
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi3EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "dim": 64,
+      "work_mode": 3,
+      "dtype": "bfloat16",
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "integer_max3_instructions": 32,
+      "local_load_store_instructions": 0,
+      "warp_vote_instructions": 7,
+      "fp32_max_instructions": 82,
+      "static_gmma_groups_between_waits": [
+        [
+          "QK",
+          "QK"
+        ],
+        [
+          "PV",
+          "PV",
+          "PV",
+          "PV"
+        ],
+        [
+          "QK",
+          "QK"
+        ],
+        [
+          "PV",
+          "PV",
+          "PV",
+          "PV"
+        ]
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi3EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "dim": 64,
+      "work_mode": 3,
+      "dtype": "float16",
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "integer_max3_instructions": 32,
+      "local_load_store_instructions": 0,
+      "warp_vote_instructions": 7,
+      "fp32_max_instructions": 82,
+      "static_gmma_groups_between_waits": [
+        [
+          "QK",
+          "QK"
+        ],
+        [
+          "PV",
+          "PV",
+          "PV",
+          "PV"
+        ],
+        [
+          "QK",
+          "QK"
+        ],
+        [
+          "PV",
+          "PV",
+          "PV",
+          "PV"
+        ]
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi2EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "dim": 128,
+      "work_mode": 2,
+      "dtype": "bfloat16",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "integer_max3_instructions": 0,
+      "local_load_store_instructions": 0,
+      "warp_vote_instructions": 7,
+      "fp32_max_instructions": 152,
+      "static_gmma_groups_between_waits": [
+        [
+          "QK",
+          "QK",
+          "QK",
+          "QK"
+        ],
+        [
+          "PV",
+          "PV",
+          "PV",
+          "PV"
+        ],
+        [
+          "QK",
+          "QK",
+          "QK",
+          "QK"
+        ],
+        [
+          "PV",
+          "PV",
+          "PV",
+          "PV"
+        ]
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi2EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "dim": 128,
+      "work_mode": 2,
+      "dtype": "float16",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "integer_max3_instructions": 0,
+      "local_load_store_instructions": 0,
+      "warp_vote_instructions": 7,
+      "fp32_max_instructions": 152,
+      "static_gmma_groups_between_waits": [
+        [
+          "QK",
+          "QK",
+          "QK",
+          "QK"
+        ],
+        [
+          "PV",
+          "PV",
+          "PV",
+          "PV"
+        ],
+        [
+          "QK",
+          "QK",
+          "QK",
+          "QK"
+        ],
+        [
+          "PV",
+          "PV",
+          "PV",
+          "PV"
+        ]
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi2EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "dim": 64,
+      "work_mode": 2,
+      "dtype": "bfloat16",
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "integer_max3_instructions": 0,
+      "local_load_store_instructions": 0,
+      "warp_vote_instructions": 7,
+      "fp32_max_instructions": 152,
+      "static_gmma_groups_between_waits": [
+        [
+          "QK",
+          "QK"
+        ],
+        [
+          "PV",
+          "PV",
+          "PV",
+          "PV"
+        ],
+        [
+          "QK",
+          "QK"
+        ],
+        [
+          "PV",
+          "PV",
+          "PV",
+          "PV"
+        ]
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi2EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "dim": 64,
+      "work_mode": 2,
+      "dtype": "float16",
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "integer_max3_instructions": 0,
+      "local_load_store_instructions": 0,
+      "warp_vote_instructions": 7,
+      "fp32_max_instructions": 152,
+      "static_gmma_groups_between_waits": [
+        [
+          "QK",
+          "QK"
+        ],
+        [
+          "PV",
+          "PV",
+          "PV",
+          "PV"
+        ],
+        [
+          "QK",
+          "QK"
+        ],
+        [
+          "PV",
+          "PV",
+          "PV",
+          "PV"
+        ]
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi1EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "dim": 128,
+      "work_mode": 1,
+      "dtype": "bfloat16",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "integer_max3_instructions": 32,
+      "local_load_store_instructions": 0,
+      "warp_vote_instructions": 5,
+      "fp32_max_instructions": 82,
+      "static_gmma_groups_between_waits": [
+        [
+          "QK",
+          "QK",
+          "QK",
+          "QK"
+        ],
+        [
+          "PV",
+          "PV",
+          "PV",
+          "PV"
+        ],
+        [
+          "QK",
+          "QK",
+          "QK",
+          "QK"
+        ],
+        [
+          "PV",
+          "PV",
+          "PV",
+          "PV"
+        ]
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi1EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "dim": 128,
+      "work_mode": 1,
+      "dtype": "float16",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "integer_max3_instructions": 32,
+      "local_load_store_instructions": 0,
+      "warp_vote_instructions": 5,
+      "fp32_max_instructions": 82,
+      "static_gmma_groups_between_waits": [
+        [
+          "QK",
+          "QK",
+          "QK",
+          "QK"
+        ],
+        [
+          "PV",
+          "PV",
+          "PV",
+          "PV"
+        ],
+        [
+          "QK",
+          "QK",
+          "QK",
+          "QK"
+        ],
+        [
+          "PV",
+          "PV",
+          "PV",
+          "PV"
+        ]
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi1EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "dim": 64,
+      "work_mode": 1,
+      "dtype": "bfloat16",
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "integer_max3_instructions": 32,
+      "local_load_store_instructions": 0,
+      "warp_vote_instructions": 5,
+      "fp32_max_instructions": 82,
+      "static_gmma_groups_between_waits": [
+        [
+          "QK",
+          "QK"
+        ],
+        [
+          "PV",
+          "PV",
+          "PV",
+          "PV"
+        ],
+        [
+          "QK",
+          "QK"
+        ],
+        [
+          "PV",
+          "PV",
+          "PV",
+          "PV"
+        ]
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi1EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "dim": 64,
+      "work_mode": 1,
+      "dtype": "float16",
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "integer_max3_instructions": 32,
+      "local_load_store_instructions": 0,
+      "warp_vote_instructions": 5,
+      "fp32_max_instructions": 82,
+      "static_gmma_groups_between_waits": [
+        [
+          "QK",
+          "QK"
+        ],
+        [
+          "PV",
+          "PV",
+          "PV",
+          "PV"
+        ],
+        [
+          "QK",
+          "QK"
+        ],
+        [
+          "PV",
+          "PV",
+          "PV",
+          "PV"
+        ]
+      ]
+    }
+  ],
+  "ptxas_warnings": 0,
+  "scope": "Local CUDA 12.4 sm90a cross-compilation only. Historical SASS instruction text comparison ignores the new default template argument, encodings and control words. No Hopper execution or speed claim; CUDA 13 resources require remote validation."
+}

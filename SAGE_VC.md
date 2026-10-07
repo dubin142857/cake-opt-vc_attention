@@ -1,6 +1,12 @@
 # SageAttention 主体 + VC 两项改动
 
-当前包版本为 `2.2.0+vc21`，native kernel version 18。新 D128 候选回到 vc16 的逐块顺序，
+当前包版本为 `2.2.0+vc22`，native kernel version 19。新候选在 vc16 上缩短完整 K 块的
+整数 max 归约，并独立测试最大值不变时跳过历史输出的恒等缩放。FP8 编码、分母和两级
+FP32 累加保留；本地交叉编译及 helper 检查通过，H200 性能待测，默认仍为 vc15。
+执行 `bash scripts/validate_work_h200.sh`，看后面的 **Work-reduction candidates** 表。
+说明和检查范围见 [vc22 说明](SAGE_VC22.md)。
+
+上一轮 `2.2.0+vc21`（native version 18）的 D128 候选回到 vc16 的逐块顺序，
 把每线程 28/64 个 FP32 历史输出值放入 14 KiB/CTA 共享内存，配合两个 N64 PV 片段，
 以减少长期占用的寄存器。H200 低上限候选达到 128 寄存器、零 local、预测 4 块驻留；
 目标 shape 的实现一致性门槛通过，但完整 API 仍慢于基线。

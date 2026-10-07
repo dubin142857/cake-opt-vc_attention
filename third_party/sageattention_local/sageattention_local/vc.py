@@ -18,6 +18,7 @@ PIPELINE_CANDIDATES = {
     "vc19_kv": {"k_buffers": 2, "v_buffers": 2, "early_tma_prefetch": 1},
     "vc19_kv_late": {"k_buffers": 2, "v_buffers": 2, "early_tma_prefetch": 0},
 }
+WORK_CANDIDATES = {"vc22_intmax": 1, "vc22_skip": 2, "vc22_both": 3}
 HISTORY_CANDIDATES = {"vc21_history_r128": 128, "vc21_history_r168": 168}
 COMPUTE_CANDIDATES = {"vc20_pv_qk": 1, "vc20_serial": 2, "vc20_qk_pv": 3}
 SAGE_LAYOUT_MODES = {"vc16": 1, "vc16_early_v": 2, "vc16_pack_first": 3,
@@ -27,13 +28,14 @@ SAGE_LAYOUT_MODES = {"vc16": 1, "vc16_early_v": 2, "vc16_pack_first": 3,
                      "vc18_pv64_r128": 13, "vc18_pv64_r144": 14, "vc18_pv64_r168": 15,
                      **{mode: i+16 for i,mode in enumerate(PIPELINE_CANDIDATES)},
                      **{mode: schedule+19 for mode,schedule in COMPUTE_CANDIDATES.items()},
-                     **{mode: i+23 for i,mode in enumerate(HISTORY_CANDIDATES)}}
+                     **{mode: i+23 for i,mode in enumerate(HISTORY_CANDIDATES)},
+                     **{mode: i+24 for mode,i in WORK_CANDIDATES.items()}}
 
 
 def _extension():
     from . import _vc_sm90
     if (getattr(_vc_sm90, "sage_vc_api_version", None) != 1 or
-            getattr(_vc_sm90, "sage_vc_kernel_version", None) != 18 or
+            getattr(_vc_sm90, "sage_vc_kernel_version", None) != 19 or
             getattr(_vc_sm90, "sage_vc_preprocess_version", None) != 1):
         raise RuntimeError("Rebuild sageattention-local with bash scripts/build_sage_local.sh")
     return _vc_sm90
@@ -54,9 +56,11 @@ def sage_vc_build_info():
             "default_kernel_mode": "optimized", "default_expcast_kernel": DEFAULT_EXPCAST_KERNEL, "kernel_modes": ["optimized", "vc15", "vc14", "vc13_overlap", "vc13_serial", "vc12", "vc11", "vc10", "vc9", "vc7", "vc6", "vc4", *SAGE_LAYOUT_MODES],
             "sage_layout_candidates": {"modes": SAGE_LAYOUT_MODES, "scope": "v_smooth=False only; pack-first modes require expcast=False; vc17 modes require expcast=True; default remains vc15"},
             "probability_candidates": "vc17: group 1/4 fragments, four FP32 chains, or exact direct FP32 decode; vc16 body and unchanged encoding/history",
+            "work_candidates": {"modes": WORK_CANDIDATES, "baseline": "vc16", "register_cap": 168,
+                                "scope": "ExpCast integer maximum / skip identity history; N128 PV, unchanged P and FP32 recurrence; H200 unverified"},
             "history_candidates": {"modes": HISTORY_CANDIDATES, "baseline": "vc16", "head_dim": 128,
                                    "history_shared_bytes": 14336,
-                                   "scope": "28 of 64 FP32 history values per thread in shared memory, two N64 PV fragments; no V smoothing; H200 unverified"},
+                                   "scope": "28 of 64 FP32 history values per thread in shared memory, two N64 PV fragments; no V smoothing; tested slower than vc16 on the reported H200 workload"},
             "compute_candidates": {"modes": COMPUTE_CANDIDATES, "baseline": "vc16", "register_cap": 224,
                                    "scope": "PV(i) and QK(i+1) joint group versus serial, single K/V buffers, unchanged vc16 math; no V smoothing; tested slower than vc16 on the reported H200 workload"},
             "pipeline_candidates": {"modes": PIPELINE_CANDIDATES, "baseline": "vc16",
