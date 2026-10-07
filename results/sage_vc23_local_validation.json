@@ -1,0 +1,39 @@
+{
+  "package_version": "2.2.0+vc23",
+  "native_kernel_version": 20,
+  "local_device": "NVIDIA GeForce RTX 3060 Laptop GPU",
+  "tests": {
+    "passed": 465,
+    "probability_history_helper_cases": 21,
+    "scope": "CPU contracts, profiling payload identity / baseline selection / all-row failure gates, provenance, existing CUDA helpers, and vc23 production max-state / row-bias helpers on SM86. No full Hopper attention execution.",
+    "helper_result": "Packed P and all tested maximum/alpha/mass/denominator/output values match baseline with zero tolerance. Independent PyTorch max, FP8 decode and recurrence checks also pass.",
+    "cases": "1/2/7/296 tiles; random/stable/rising maxima; fallback; lane-specific scales; sparse updates; nondefault stream; stable maximum with varying gain; tiny max updates whose exponential rounds to one; transitions into/out of affine-safe range."
+  },
+  "sm90a_cross_compile": {
+    "cuda_toolkit": "12.4",
+    "status": "passed",
+    "instances": 264,
+    "new_instances": 8,
+    "historical_instances": 256,
+    "historical_instruction_text_identical": 256,
+    "d128_registers": 168,
+    "d64_registers": 128,
+    "stack_spill_local_bytes": 0,
+    "d128_dynamic_shared_bytes": 40960,
+    "static_shared_bytes": 128,
+    "control_flow": "Two main-loop exponent instructions conditional on max-update vote. Maxstate uses predication; cached-bias candidate branches around exponent and two row-bias FMA instructions. No timing inference.",
+    "scope": "SASS instruction text comparison excludes encodings/control words. Unchanged original QK/PV group ordering in main and masked tail.",
+    "detail": "sage_vc23_codegen_local.json"
+  },
+  "native_link_and_import": "passed; kernel version 20",
+  "source_and_sdist": {
+    "status": "passed",
+    "verified_source_hashes": 66,
+    "unchanged_upstream_kernel_files": 36
+  },
+  "shell_and_python_syntax": "passed",
+  "h200_validation": "Not run locally. Remote validation adds 240 dtype/shape/algorithm/mode cases repeated 3 times, 16 uniform-attention known answers and 24 fixed-payload max-update cases before timing.",
+  "h200_performance": "Not measured. Must beat same-run vc22_both full API; predication/branch costs, persistent bias registers and update frequency can offset savings. No new speedup or 22 ms claim.",
+  "default_kernel": "vc15 unchanged; vc22_both retained as measured experimental baseline",
+  "remote_command": "bash scripts/validate_maxstate_h200.sh"
+}

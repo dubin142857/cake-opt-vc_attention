@@ -1,4 +1,4 @@
-"""Real vc22 helpers, including exact codes, DPX max and history recurrence.
+"""Real vc22/vc23 helpers, including exact codes, max state and history recurrence.
 
 Non-Hopper CUDA implements the DPX intrinsic in software; this checks values,
 not Hopper instruction throughput or WGMMA integration.
@@ -27,7 +27,7 @@ def test_exact_probability_and_independent_history(steps,blocks,pattern):
         initial[...,1]=-129
     products=torch.randn(scores.shape,device="cuda")*torch.linspace(.01,10,8,device="cuda")
     reference=probe.run(scores,scales,initial,products,0)
-    for mode in (1,2,3):
+    for mode in (1,2,3,4,5):
         actual=probe.run(scores,scales,initial,products,mode)
         for a,b in zip(actual,reference):
             torch.testing.assert_close(a,b,rtol=0,atol=0)
@@ -66,6 +66,42 @@ def test_sparse_row_updates_and_nondefault_stream():
         initial=torch.zeros(2,128,2,device="cuda")
         products=torch.randn(scores.shape,device="cuda")
         baseline=probe.run(scores,scales,initial,products,0)
-        actual=probe.run(scores,scales,initial,products,3)
+        actuals=[probe.run(scores,scales,initial,products,mode) for mode in (3,4,5)]
     stream.synchronize()
-    for a,b in zip(actual,baseline): torch.testing.assert_close(a,b,rtol=0,atol=0)
+    for actual in actuals:
+        for a,b in zip(actual,baseline): torch.testing.assert_close(a,b,rtol=0,atol=0)
+
+
+@pytest.mark.parametrize("pattern",["stable_varying_gain","negative_to_safe","safe_to_fallback","tiny_update"])
+def test_maxstate_refresh_and_affine_range_transitions(pattern):
+    steps=9
+    torch.manual_seed(2323)
+    scores=torch.randint(-10000,10001,(steps,2,128,8,8),device="cuda",dtype=torch.int32)
+    scales=torch.linspace(.0001,.0003,steps,device="cuda").view(-1,1,1).expand(steps,2,128).contiguous()
+    initial=torch.full((2,128,2),10.,device="cuda")
+    if pattern=="negative_to_safe":
+        scores.fill_(-10000)
+        scales.copy_(torch.linspace(.02,.001,steps,device="cuda").view(-1,1,1))
+        initial.fill_(-1000.)
+    elif pattern=="safe_to_fallback":
+        scores.fill_(10000)
+        scales.copy_(torch.linspace(.001,.02,steps,device="cuda").view(-1,1,1))
+        initial.zero_()
+    elif pattern=="tiny_update":
+        scores.fill_(10000)
+        scales.copy_(torch.linspace(1e-13,2e-13,steps,device="cuda").view(-1,1,1))
+        initial.zero_()
+    products=torch.randn(scores.shape,device="cuda")
+    baseline=probe.run(scores,scales,initial,products,3)
+    for mode in (4,5):
+        actual=probe.run(scores,scales,initial,products,mode)
+        for a,b in zip(actual,baseline): torch.testing.assert_close(a,b,rtol=0,atol=0)
+    stats=baseline[1]
+    if pattern in ("stable_varying_gain","tiny_update"):
+        assert (stats[...,2:4]==1).all().item()
+    if pattern=="stable_varying_gain":
+        assert not torch.equal(baseline[0][0],baseline[0][-1])
+    if pattern=="negative_to_safe":
+        assert (stats[0,...,:2]<-128).all().item() and (stats[-1,...,:2].abs()<128).all().item()
+    if pattern=="safe_to_fallback":
+        assert (stats[0,...,:2].abs()<128).all().item() and (stats[-1,...,:2]>128).all().item()

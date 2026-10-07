@@ -13,6 +13,7 @@ namespace sage_vc {
 #include "../../third_party/sageattention_local/csrc/vc/vc_math.cuh"
 #include "../../third_party/sageattention_local/csrc/vc/probability_variants.cuh"
 #include "../../third_party/sageattention_local/csrc/vc/work_reduction.cuh"
+#include "../../third_party/sageattention_local/csrc/vc/max_state.cuh"
 }
 
 template<int Mode>
@@ -21,6 +22,8 @@ __global__ void work_probe(const int32_t* scores,const float* scales,const float
   int row=blockIdx.x*128+threadIdx.x;
   int threads=gridDim.x*128;
   float m[1][2]={{initial[row*2],initial[row*2+1]}},d[1][2]={{1,1}},out[1][8][8]={};
+  float bias[1][2]={{__fmaf_rn(-m[0][0],11.541560173034668f,119.6500015258789f),
+                    __fmaf_rn(-m[0][1],11.541560173034668f,119.6500015258789f)}};
   for (int step=0;step<steps;++step) {
     int32_t x[1][8][8];float f[1][8][8],alpha[1][2],mass[1][2];uint32_t p[1][4][4];
     #pragma unroll
@@ -30,10 +33,14 @@ __global__ void work_probe(const int32_t* scores,const float* scales,const float
         x[0][k][c]=scores[((step*threads+row)*8+k)*8+c];
         f[0][k][c]=__int2float_rz(x[0][k][c]);
       }
-    if constexpr (Mode==1 || Mode==3)
+    bool rescale=false;
+    if constexpr (Mode>=4)
+      sage_vc::vc_probability_prepare_maxstate<(Mode==5)>(x,m,scales[step*threads+row],p,alpha,mass,bias,rescale);
+    else if constexpr (Mode==1 || Mode==3)
       sage_vc::vc_probability_prepare_integer(x,m,scales[step*threads+row],p,alpha,mass);
     else sage_vc::vc_probability_prepare<true,true,false,true,true>(f,m,scales[step*threads+row],p,alpha,mass);
-    sage_vc::vc_probability_finish_work<(Mode==2 || Mode==3)>(out,d,alpha,mass);
+    if constexpr (Mode>=4) sage_vc::vc_probability_finish_maxstate(out,d,alpha,mass,rescale);
+    else sage_vc::vc_probability_finish_work<(Mode==2 || Mode==3)>(out,d,alpha,mass);
     #pragma unroll
     for (int k=0;k<8;++k)
       #pragma unroll
@@ -66,14 +73,15 @@ std::vector<torch::Tensor> run(torch::Tensor scores,torch::Tensor scales,torch::
     TORCH_CHECK(t.device()==scores.device() && t.scalar_type()==torch::kFloat32 && t.is_contiguous());
   TORCH_CHECK(scales.sizes()==torch::IntArrayRef({scores.size(0),scores.size(1),128}));
   TORCH_CHECK(initial.sizes()==torch::IntArrayRef({scores.size(1),128,2}));
-  TORCH_CHECK(products.sizes()==scores.sizes() && mode>=0 && mode<=3);
+  TORCH_CHECK(products.sizes()==scores.sizes() && mode>=0 && mode<=5);
   c10::cuda::CUDAGuard guard(scores.device());
   auto p=torch::empty({scores.size(0),scores.size(1),128,16},scores.options());
   auto stats=torch::empty({scores.size(0),scores.size(1),128,8},scales.options());
   auto out=torch::empty({scores.size(1),128,8,8},scales.options());
   auto stream=c10::cuda::getCurrentCUDAStream(scores.get_device());
   #define LAUNCH(M) work_probe<M><<<scores.size(1),128,0,stream>>>(scores.data_ptr<int32_t>(),scales.data_ptr<float>(),initial.data_ptr<float>(),products.data_ptr<float>(),p.data_ptr<int32_t>(),stats.data_ptr<float>(),out.data_ptr<float>(),scores.size(0))
-  switch(mode) {case 0: LAUNCH(0);break;case 1: LAUNCH(1);break;case 2: LAUNCH(2);break;case 3: LAUNCH(3);break;}
+  switch(mode) {case 0: LAUNCH(0);break;case 1: LAUNCH(1);break;case 2: LAUNCH(2);break;
+    case 3: LAUNCH(3);break;case 4: LAUNCH(4);break;case 5: LAUNCH(5);break;}
   #undef LAUNCH
   C10_CUDA_KERNEL_LAUNCH_CHECK();
   return {p,stats,out};

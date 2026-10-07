@@ -1,6 +1,11 @@
 # SageAttention 主体 + VC 两项改动
 
-当前包版本为 `2.2.0+vc22`，native kernel version 19。新候选在 vc16 上缩短完整 K 块的
+当前包版本为 `2.2.0+vc23`，native kernel version 20。新候选提前判断行最大值是否更新，
+最大值不变时跳过 `exp(0)`，并单独测试缓存 ExpCast 行偏置。以 `vc22_both` 为基线，
+本地编译/helper 检查通过，H200 性能待测。执行 `bash scripts/validate_maxstate_h200.sh`，
+看后面的 **Max-state candidates** 表。说明见 [vc23](SAGE_VC23.md)，默认仍为 vc15。
+
+上一轮 `2.2.0+vc22`（native version 19）在 vc16 上缩短完整 K 块的
 整数 max 归约，并独立测试最大值不变时跳过历史输出的恒等缩放。FP8 编码、分母和两级
 FP32 累加保留；本地交叉编译及 helper 检查通过，默认仍为 vc15。
 H200 最新回传：`vc22_both` 完整 API **25.6150 ms**，对照 vc16 为 27.1694 ms、

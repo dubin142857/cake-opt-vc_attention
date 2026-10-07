@@ -1,0 +1,406 @@
+{
+  "compiled_variants": 264,
+  "historical_variants": 256,
+  "historical_instruction_text_identical": 256,
+  "historical_changed": [],
+  "max_state_resources": [
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi5EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "dim": 128,
+      "work_mode": 5,
+      "dtype": "bfloat16",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "integer_max3_instructions": 32,
+      "local_load_store_instructions": 0,
+      "warp_vote_instructions": 7,
+      "ex2_instructions": 4,
+      "branch_instructions": 33,
+      "max_update_guard": {
+        "kind": "branch",
+        "branch_address": "0x1420",
+        "target_address": "0x14c0",
+        "conditional_exponent_instructions": 2,
+        "conditional_bias_fma_instructions": 2
+      },
+      "static_gmma_groups_between_waits": [
+        [
+          "QK",
+          "QK",
+          "QK",
+          "QK"
+        ],
+        [
+          "PV",
+          "PV",
+          "PV",
+          "PV"
+        ],
+        [
+          "QK",
+          "QK",
+          "QK",
+          "QK"
+        ],
+        [
+          "PV",
+          "PV",
+          "PV",
+          "PV"
+        ]
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi5EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "dim": 128,
+      "work_mode": 5,
+      "dtype": "float16",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "integer_max3_instructions": 32,
+      "local_load_store_instructions": 0,
+      "warp_vote_instructions": 7,
+      "ex2_instructions": 4,
+      "branch_instructions": 33,
+      "max_update_guard": {
+        "kind": "branch",
+        "branch_address": "0x1420",
+        "target_address": "0x14c0",
+        "conditional_exponent_instructions": 2,
+        "conditional_bias_fma_instructions": 2
+      },
+      "static_gmma_groups_between_waits": [
+        [
+          "QK",
+          "QK",
+          "QK",
+          "QK"
+        ],
+        [
+          "PV",
+          "PV",
+          "PV",
+          "PV"
+        ],
+        [
+          "QK",
+          "QK",
+          "QK",
+          "QK"
+        ],
+        [
+          "PV",
+          "PV",
+          "PV",
+          "PV"
+        ]
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi5EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "dim": 64,
+      "work_mode": 5,
+      "dtype": "bfloat16",
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "integer_max3_instructions": 32,
+      "local_load_store_instructions": 0,
+      "warp_vote_instructions": 7,
+      "ex2_instructions": 4,
+      "branch_instructions": 35,
+      "max_update_guard": {
+        "kind": "branch",
+        "branch_address": "0x11e0",
+        "target_address": "0x1280",
+        "conditional_exponent_instructions": 2,
+        "conditional_bias_fma_instructions": 2
+      },
+      "static_gmma_groups_between_waits": [
+        [
+          "QK",
+          "QK"
+        ],
+        [
+          "PV",
+          "PV",
+          "PV",
+          "PV"
+        ],
+        [
+          "QK",
+          "QK"
+        ],
+        [
+          "PV",
+          "PV",
+          "PV",
+          "PV"
+        ]
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi5EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "dim": 64,
+      "work_mode": 5,
+      "dtype": "float16",
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "integer_max3_instructions": 32,
+      "local_load_store_instructions": 0,
+      "warp_vote_instructions": 7,
+      "ex2_instructions": 4,
+      "branch_instructions": 35,
+      "max_update_guard": {
+        "kind": "branch",
+        "branch_address": "0x11e0",
+        "target_address": "0x1280",
+        "conditional_exponent_instructions": 2,
+        "conditional_bias_fma_instructions": 2
+      },
+      "static_gmma_groups_between_waits": [
+        [
+          "QK",
+          "QK"
+        ],
+        [
+          "PV",
+          "PV",
+          "PV",
+          "PV"
+        ],
+        [
+          "QK",
+          "QK"
+        ],
+        [
+          "PV",
+          "PV",
+          "PV",
+          "PV"
+        ]
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi4EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "dim": 128,
+      "work_mode": 4,
+      "dtype": "bfloat16",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "integer_max3_instructions": 32,
+      "local_load_store_instructions": 0,
+      "warp_vote_instructions": 7,
+      "ex2_instructions": 4,
+      "branch_instructions": 32,
+      "max_update_guard": {
+        "kind": "predication",
+        "predicate": "P0",
+        "exponent_addresses": [
+          "0x16b0",
+          "0x1720"
+        ],
+        "conditional_exponent_instructions": 2,
+        "conditional_bias_fma_instructions": 0
+      },
+      "static_gmma_groups_between_waits": [
+        [
+          "QK",
+          "QK",
+          "QK",
+          "QK"
+        ],
+        [
+          "PV",
+          "PV",
+          "PV",
+          "PV"
+        ],
+        [
+          "QK",
+          "QK",
+          "QK",
+          "QK"
+        ],
+        [
+          "PV",
+          "PV",
+          "PV",
+          "PV"
+        ]
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi4EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "dim": 128,
+      "work_mode": 4,
+      "dtype": "float16",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "integer_max3_instructions": 32,
+      "local_load_store_instructions": 0,
+      "warp_vote_instructions": 7,
+      "ex2_instructions": 4,
+      "branch_instructions": 32,
+      "max_update_guard": {
+        "kind": "predication",
+        "predicate": "P0",
+        "exponent_addresses": [
+          "0x16b0",
+          "0x1720"
+        ],
+        "conditional_exponent_instructions": 2,
+        "conditional_bias_fma_instructions": 0
+      },
+      "static_gmma_groups_between_waits": [
+        [
+          "QK",
+          "QK",
+          "QK",
+          "QK"
+        ],
+        [
+          "PV",
+          "PV",
+          "PV",
+          "PV"
+        ],
+        [
+          "QK",
+          "QK",
+          "QK",
+          "QK"
+        ],
+        [
+          "PV",
+          "PV",
+          "PV",
+          "PV"
+        ]
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi4EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "dim": 64,
+      "work_mode": 4,
+      "dtype": "bfloat16",
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "integer_max3_instructions": 32,
+      "local_load_store_instructions": 0,
+      "warp_vote_instructions": 7,
+      "ex2_instructions": 4,
+      "branch_instructions": 34,
+      "max_update_guard": {
+        "kind": "predication",
+        "predicate": "P0",
+        "exponent_addresses": [
+          "0x14a0",
+          "0x14f0"
+        ],
+        "conditional_exponent_instructions": 2,
+        "conditional_bias_fma_instructions": 0
+      },
+      "static_gmma_groups_between_waits": [
+        [
+          "QK",
+          "QK"
+        ],
+        [
+          "PV",
+          "PV",
+          "PV",
+          "PV"
+        ],
+        [
+          "QK",
+          "QK"
+        ],
+        [
+          "PV",
+          "PV",
+          "PV",
+          "PV"
+        ]
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi4EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "dim": 64,
+      "work_mode": 4,
+      "dtype": "float16",
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "integer_max3_instructions": 32,
+      "local_load_store_instructions": 0,
+      "warp_vote_instructions": 7,
+      "ex2_instructions": 4,
+      "branch_instructions": 34,
+      "max_update_guard": {
+        "kind": "predication",
+        "predicate": "P0",
+        "exponent_addresses": [
+          "0x14a0",
+          "0x14f0"
+        ],
+        "conditional_exponent_instructions": 2,
+        "conditional_bias_fma_instructions": 0
+      },
+      "static_gmma_groups_between_waits": [
+        [
+          "QK",
+          "QK"
+        ],
+        [
+          "PV",
+          "PV",
+          "PV",
+          "PV"
+        ],
+        [
+          "QK",
+          "QK"
+        ],
+        [
+          "PV",
+          "PV",
+          "PV",
+          "PV"
+        ]
+      ]
+    }
+  ],
+  "ptxas_warnings": 0,
+  "scope": "Local CUDA 12.4 sm90a cross-compilation only. Historical SASS instruction texts compared verbatim, excluding encodings and control words. No full Hopper attention execution or performance evidence. CUDA 13 resources require remote validation."
+}

@@ -120,14 +120,14 @@ def validate_grouping(ext, device="cuda:0"):
 
 
 @torch.no_grad()
-def validate_pipeline(vc, device, *, compute=False, history=False, work=False):
+def validate_pipeline(vc, device, *, compute=False, history=False, work=False, maxstate=False):
     """Exercise both slot parities, reuse, partial tails and long lookahead loops."""
     from sageattention_local.vc_reference import value_permutation
-    minimum=19 if work else 18 if history else 17 if compute else 16
+    minimum=20 if maxstate else 19 if work else 18 if history else 17 if compute else 16
     if vc._extension().sage_vc_kernel_version < minimum:
         raise RuntimeError("Rebuild sageattention-local for the requested pipeline validation")
-    modes=vc.WORK_CANDIDATES if work else vc.HISTORY_CANDIDATES if history else vc.COMPUTE_CANDIDATES if compute else vc.PIPELINE_CANDIDATES
-    label="Work reduction" if work else "Shared history" if history else "Compute" if compute else "TMA"
+    modes=vc.STATE_CANDIDATES if maxstate else vc.WORK_CANDIDATES if work else vc.HISTORY_CANDIDATES if history else vc.COMPUTE_CANDIDATES if compute else vc.PIPELINE_CANDIDATES
+    label="Max state" if maxstate else "Work reduction" if work else "Shared history" if history else "Compute" if compute else "TMA"
     rows = []
     known_answers = 0
     recurrence_cases = []
@@ -145,7 +145,7 @@ def validate_pipeline(vc, device, *, compute=False, history=False, work=False):
                 state = vc.prepare(q,k,v,expcast=False,v_smooth=False)
                 for cast in (False,True):
                     payload = {**state,"expcast":cast}
-                    expected = vc.forward_prepared(payload,kernel_mode="vc16")
+                    expected = vc.forward_prepared(payload,kernel_mode="vc22_both" if maxstate and cast else "vc16")
                     if not torch.isfinite(expected).all().item():
                         raise AssertionError("Nonfinite pipeline baseline")
                     for mode in modes:
@@ -180,7 +180,7 @@ def validate_pipeline(vc, device, *, compute=False, history=False, work=False):
                     actual = vc.forward_prepared({**payload,"expcast":cast},kernel_mode=mode)
                     torch.testing.assert_close(actual,expected,rtol=.004,atol=.004)
                     known_answers += 1
-            if work:
+            if work or maxstate:
                 # Fixed native operands force tied, falling and increasing
                 # maxima across tiles. Different lane scales/row signs expose
                 # moving the scale after a shuffle or skipping a partial warp.
@@ -196,7 +196,7 @@ def validate_pipeline(vc, device, *, compute=False, history=False, work=False):
                 state["ks"].copy_((torch.arange(state["ks"].shape[-1],device=device).remainder(4)+1).float())
                 for scale in (1e-4,1.,1e3):
                     payload={**state,"scale":scale}
-                    expected=vc.forward_prepared(payload,kernel_mode="vc16")
+                    expected=vc.forward_prepared(payload,kernel_mode="vc22_both" if maxstate else "vc16")
                     if not torch.isfinite(expected).all().item():
                         raise AssertionError("Nonfinite max-update baseline")
                     for mode in modes:
@@ -209,7 +209,7 @@ def validate_pipeline(vc, device, *, compute=False, history=False, work=False):
             print(f"{label} pipeline slot/tail checks passed: {dtype}, D{dim}",flush=True)
     return {"cases":rows,"known_answer_cases":known_answers,"max_update_cases":recurrence_cases,
             "status":"passed","implementation_rel_rmse_limit":.001,
-            "scope":"All rows versus vc16, both algorithms separately, 3 repeats; no model-quality or speed claim."}
+            "scope":("All rows versus vc22_both (ExpCast) / vc16 (control), 3 repeats; no model-quality or speed claim." if maxstate else "All rows versus vc16, both algorithms separately, 3 repeats; no model-quality or speed claim.")}
 
 
 @torch.no_grad()
@@ -236,6 +236,8 @@ def validate(device="cuda:0"):
         report["shared_history"] = validate_pipeline(vc,device,history=True)
     if getattr(ext,"sage_vc_kernel_version",0) >= 19:
         report["work_reduction"] = validate_pipeline(vc,device,work=True)
+    if getattr(ext,"sage_vc_kernel_version",0) >= 20:
+        report["max_state"] = validate_pipeline(vc,device,maxstate=True)
     for dtype in (torch.float16, torch.bfloat16):
         for dim in (64, 128):
             for nq, nk in ((1,1), (63,127), (64,128), (65,129), (129,257), (257,385)):
@@ -399,13 +401,14 @@ if __name__ == "__main__":
     parser.add_argument("--compute-only", action="store_true", help="vc20 compute carry/tail checks only")
     parser.add_argument("--history-only", action="store_true", help="vc21 FP32 shared history and tail checks only")
     parser.add_argument("--work-only", action="store_true", help="vc22 max/identity rescale and tail checks only")
+    parser.add_argument("--maxstate-only", action="store_true", help="vc23 max-state / cached bias and tail checks only")
     args = parser.parse_args()
-    if sum((args.pipeline_only,args.compute_only,args.history_only,args.work_only))>1:
-        parser.error("Choose --pipeline-only, --compute-only, --history-only or --work-only")
-    if args.pipeline_only or args.compute_only or args.history_only or args.work_only:
+    if sum((args.pipeline_only,args.compute_only,args.history_only,args.work_only,args.maxstate_only))>1:
+        parser.error("Choose --pipeline-only, --compute-only, --history-only, --work-only or --maxstate-only")
+    if args.pipeline_only or args.compute_only or args.history_only or args.work_only or args.maxstate_only:
         torch.cuda.set_device(args.device)
         from sageattention_local import vc
-        report = validate_pipeline(vc,args.device,compute=args.compute_only,history=args.history_only,work=args.work_only)
+        report = validate_pipeline(vc,args.device,compute=args.compute_only,history=args.history_only,work=args.work_only,maxstate=args.maxstate_only)
     else:
         report = validate(args.device)
     path = Path(args.output)
