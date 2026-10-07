@@ -1,10 +1,18 @@
 # SageAttention 主体 + VC 两项改动
 
-当前包版本为 `2.2.0+vc24`，native kernel version 21。新增 `vc24_bitpack`：
-在 vc22_both 上测试用 FP32 饱和 FMA、舍入加法和字节重排生成相同的 ExpCast 字节，
-解码 P 的 FP32 分母和两级 PV 累加保留。478 项本地检查及 SM90a 交叉编译通过，
-H200 性能待测；默认仍为 vc15。执行 `bash scripts/validate_encoding_h200.sh`，
-关注 **Encoding candidates** 表。改动、数值范围和接受条件见 [vc24](SAGE_VC24.md)。
+当前包版本为 `2.2.0+vc25`，native kernel version 22。新增两个延后分母求和的实验模式：
+`vc25_mass_serial` 在下一块 QK 前解码上一块已完成 PV 的 P；
+`vc25_mass_overlap` 尝试在下一块 QK 等待期间完成相同工作。
+以 `vc22_both` 为基线，保留其编码、FP32 分母及两级 PV 累加，默认仍为 vc15。
+执行 `bash scripts/validate_mass_h200.sh`，关注 **Deferred-mass candidates** 表。
+H200 性能待测，说明及接受条件见 [vc25](SAGE_VC25.md)。
+
+上一轮 vc24 已收到 H200 结果：完整 API **26.9099 ms**，慢于同场 vc22 的
+**25.6664 ms**（+4.85%），三轮 CUPTI 也全部更慢。
+资源仍是 168 寄存器、local 0、预测 3 blocks/SM，实现回归门槛通过。
+不采用该候选；替换转换指令并未带来净收益。vc22 相对同场原版 Sage
+26.5515 ms 提速 **1.034×**，仍是后续实验基线。
+见 [vc24](SAGE_VC24.md) 和 [回传摘要](results/h200_sage_vc24_reported_summary.json)。
 
 上一轮包版本为 `2.2.0+vc23`，native kernel version 20。新候选提前判断行最大值是否更新，
 最大值不变时跳过 `exp(0)`，并单独测试缓存 ExpCast 行偏置。以 `vc22_both` 为基线，

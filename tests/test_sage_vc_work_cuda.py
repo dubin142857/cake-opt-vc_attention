@@ -1,4 +1,4 @@
-"""Real vc22-vc24 helpers, including exact codes, max state and history recurrence.
+"""Real vc22-vc25 helpers, including exact codes, max state and history recurrence.
 
 Non-Hopper CUDA implements the DPX intrinsic in software; this checks values,
 not Hopper instruction throughput or WGMMA integration.
@@ -7,6 +7,26 @@ import pytest
 import torch
 
 probe=pytest.importorskip("_sage_vc_work_probe")
+
+
+@pytest.mark.parametrize("steps",[1,2,7,296])
+@pytest.mark.parametrize("fallback",[False,True])
+def test_deferred_mass_zero_prologue_and_masked_tail(steps,fallback):
+    torch.manual_seed(2525+steps)
+    scores=torch.randint(-10000,10001,(steps,1,128,8,8),device="cuda",dtype=torch.int32)
+    scales=torch.full((steps,1,128),.1 if fallback else .0001,device="cuda")
+    initial=torch.full((1,128,2),-5e6,device="cuda")
+    products=torch.randn(scores.shape,device="cuda")
+    baseline=probe.run(scores,scales,initial,products,0,True)
+    for mode in (7,8):
+        actual=probe.run(scores,scales,initial,products,mode,True)
+        for a,b in zip(actual,baseline):
+            torch.testing.assert_close(a,b,rtol=0,atol=0)
+    # Independent check: masked coordinates encode zero, including single tile.
+    codes=baseline[0][-1].view(torch.uint8).view(128,4,2,2,4)
+    codes=codes.permute(0,1,2,4,3).reshape(128,32,2)
+    masked=torch.arange(32,device="cuda")[None,:]>=1+torch.arange(128,device="cuda")[:,None]%32
+    assert (codes[masked]==0).all().item()
 
 
 @pytest.mark.parametrize("steps,blocks",[(1,1),(2,3),(7,2),(296,1)])
@@ -27,7 +47,7 @@ def test_exact_probability_and_independent_history(steps,blocks,pattern):
         initial[...,1]=-129
     products=torch.randn(scores.shape,device="cuda")*torch.linspace(.01,10,8,device="cuda")
     reference=probe.run(scores,scales,initial,products,0)
-    for mode in (1,2,3,4,5,6):
+    for mode in (1,2,3,4,5,6,7,8):
         actual=probe.run(scores,scales,initial,products,mode)
         for a,b in zip(actual,reference):
             torch.testing.assert_close(a,b,rtol=0,atol=0)
@@ -66,7 +86,7 @@ def test_sparse_row_updates_and_nondefault_stream():
         initial=torch.zeros(2,128,2,device="cuda")
         products=torch.randn(scores.shape,device="cuda")
         baseline=probe.run(scores,scales,initial,products,0)
-        actuals=[probe.run(scores,scales,initial,products,mode) for mode in (3,4,5,6)]
+        actuals=[probe.run(scores,scales,initial,products,mode) for mode in (3,4,5,6,7,8)]
     stream.synchronize()
     for actual in actuals:
         for a,b in zip(actual,baseline): torch.testing.assert_close(a,b,rtol=0,atol=0)
@@ -93,7 +113,7 @@ def test_maxstate_refresh_and_affine_range_transitions(pattern):
         initial.zero_()
     products=torch.randn(scores.shape,device="cuda")
     baseline=probe.run(scores,scales,initial,products,3)
-    for mode in (4,5,6):
+    for mode in (4,5,6,7,8):
         actual=probe.run(scores,scales,initial,products,mode)
         for a,b in zip(actual,baseline): torch.testing.assert_close(a,b,rtol=0,atol=0)
     stats=baseline[1]
@@ -144,3 +164,15 @@ def test_bit_encoding_scale_guard_and_extreme_int_scores(scale):
     expected=probe.run(scores,scales,initial,products,3)
     actual=probe.run(scores,scales,initial,products,6)
     for a,b in zip(actual,expected): torch.testing.assert_close(a,b,rtol=0,atol=0)
+
+
+@pytest.mark.parametrize("pattern",["zero","maximum","each_code","mixed"])
+def test_register_mass_exact_e4m3_sum(pattern):
+    torch.manual_seed(2525)
+    codes=torch.randint(0,121,(121,128,64),device="cuda",dtype=torch.uint8)
+    if pattern=="zero": codes.zero_()
+    elif pattern=="maximum": codes.fill_(120)
+    elif pattern=="each_code": codes.copy_(torch.arange(121,device="cuda",dtype=torch.uint8)[:,None,None])
+    actual=probe.sum_p(codes.view(torch.int32))
+    expected=codes.view(torch.float8_e4m3fn).float().view(121,128,4,2,2,4).sum((2,3,5))
+    torch.testing.assert_close(actual,expected,rtol=0,atol=0)

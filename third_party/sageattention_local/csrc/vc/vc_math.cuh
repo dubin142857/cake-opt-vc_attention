@@ -77,7 +77,7 @@ __device__ __forceinline__ void vc_probability_prepare(
     const float (&scores)[NQ][NK][8], float (&maximum)[NQ][2], float scale,
     uint32_t (&packed)[NQ][NK / 2][4], float (&alpha)[NQ][2], float (&mass)[NQ][2]) {
   static_assert(NK == 8, "Exact FP32 tile sum bound assumes K128");
-  static_assert(!FusedPack || (Interleaved && PairedEncode && !EncodeOnly));
+  static_assert(!FusedPack || (Interleaved && PairedEncode));
   #pragma unroll
   for (int q = 0; q < NQ; ++q) {
     #pragma unroll

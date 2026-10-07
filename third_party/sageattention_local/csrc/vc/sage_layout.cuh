@@ -33,7 +33,7 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
   asm volatile("trap;");
 #else
   static_assert(NUM_THREADS == 128);
-  static_assert(WorkReduction>=0 && WorkReduction<=6);
+  static_assert(WorkReduction>=0 && WorkReduction<=8);
   static_assert(RegisterLimit==128 || RegisterLimit==144 || RegisterLimit==168 || RegisterLimit==192);
   static_assert(!ExpCast || !PackFirst);
   static_assert(CTA_Q <= CTA_K);
@@ -68,6 +68,15 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
   float m[num_tiles_q][2];
   float d[num_tiles_q][2];
   float probability_bias[num_tiles_q][2];
+  constexpr bool carry_mass = WorkReduction>=7;
+  // Neutral initial tile lets the drain execute without a branch inside the
+  // first QK batch: d*1 + 0 == d. This also avoids an undefined carried value.
+  uint32_t carried_probability[num_tiles_q][num_tiles_pv_inner][4] = {};
+  float carried_alpha[num_tiles_q][2];
+  if constexpr (carry_mass) {
+    #pragma unroll
+    for (int i=0;i<num_tiles_q;++i) {carried_alpha[i][0]=1.f;carried_alpha[i][1]=1.f;}
+  }
 
   uint32_t q_scale_idx, k_scale_idx;
 
@@ -175,6 +184,9 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
     // wait for K
     wait(&barrier_K, p);
 
+    if constexpr (WorkReduction==7)
+      vc_probability_drain_mass(carried_probability,carried_alpha,d);
+
     // compute QK^T
     wgmma::warpgroup_arrive();
 #pragma unroll
@@ -189,6 +201,8 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
       }
     }
     wgmma::warpgroup_commit_batch();
+    if constexpr (WorkReduction==8)
+      vc_probability_drain_mass(carried_probability,carried_alpha,d);
     wgmma::warpgroup_wait<0>();
 
     // load K
@@ -216,8 +230,10 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
     }
 
     }
-    uint32_t RS_f8[num_tiles_q][num_tiles_pv_inner][4];
-    float tile_mass[num_tiles_q][2], probability_alpha[num_tiles_q][2];
+    uint32_t local_probability[num_tiles_q][num_tiles_pv_inner][4];
+    float tile_mass[num_tiles_q][2], local_alpha[num_tiles_q][2];
+    auto& RS_f8 = carry_mass ? carried_probability : local_probability;
+    auto& probability_alpha = carry_mass ? carried_alpha : local_alpha;
     bool probability_rescale=false;
     if constexpr (ExpCast) {
       // Full-tile integer reduction is exact for INT8 D<=128. Encoding and
@@ -226,7 +242,7 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
         vc_probability_prepare_maxstate<(WorkReduction==5)>(RS,m,sm_scale,RS_f8,
             probability_alpha,tile_mass,probability_bias,probability_rescale);
       else if constexpr (WorkReduction==1 || WorkReduction>=3)
-        vc_probability_prepare_integer<(WorkReduction==6)>(RS,m,sm_scale,RS_f8,probability_alpha,tile_mass);
+        vc_probability_prepare_integer<(WorkReduction==6),carry_mass>(RS,m,sm_scale,RS_f8,probability_alpha,tile_mass);
       else
         vc_probability_prepare_variant<ProbabilityVariant>(RS_f32,m,sm_scale,RS_f8,probability_alpha,tile_mass);
       if constexpr (!OverlapHistory)
@@ -272,10 +288,12 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
     }
 
     wgmma::warpgroup_commit_batch();
-    // Scale the FULL history and update d once, while the first PV is live.
+    // Scale history while PV is live; carry_mass defers d to the next QK.
     if constexpr (ExpCast && OverlapHistory) {
       if (part==0) {
-        if constexpr (WorkReduction==4 || WorkReduction==5)
+        if constexpr (carry_mass)
+          vc_probability_scale_history(RO,probability_alpha);
+        else if constexpr (WorkReduction==4 || WorkReduction==5)
           vc_probability_finish_maxstate(RO,d,probability_alpha,tile_mass,probability_rescale);
         else vc_probability_finish_work<(WorkReduction>=2)>(RO,d,probability_alpha,tile_mass);
       }
@@ -321,6 +339,9 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
     // wait for K
     wait(&barrier_K, p);
 
+    if constexpr (WorkReduction==7)
+      vc_probability_drain_mass(carried_probability,carried_alpha,d);
+
     // compute QK^T
     wgmma::warpgroup_arrive();
 #pragma unroll
@@ -335,6 +356,8 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
       }
     }
     wgmma::warpgroup_commit_batch();
+    if constexpr (WorkReduction==8)
+      vc_probability_drain_mass(carried_probability,carried_alpha,d);
     wgmma::warpgroup_wait<0>();
 
     // convert RS to float
@@ -389,7 +412,9 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
     float tile_mass[num_tiles_q][2], probability_alpha[num_tiles_q][2];
     if constexpr (ExpCast) {
       // vc15's exact encoder and FP32 recurrence, with a controlled schedule.
-      vc_probability_prepare_variant<ProbabilityVariant>(RS_f32,m,sm_scale,RS_f8,probability_alpha,tile_mass);
+      if constexpr (carry_mass)
+        vc_probability_prepare<true,true,true,true,true>(RS_f32,m,sm_scale,RS_f8,probability_alpha,tile_mass);
+      else vc_probability_prepare_variant<ProbabilityVariant>(RS_f32,m,sm_scale,RS_f8,probability_alpha,tile_mass);
       if constexpr (!OverlapHistory)
         vc_probability_finish_work<(WorkReduction>=2)>(RO,d,probability_alpha,tile_mass);
     } else {
@@ -433,9 +458,12 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
     }
 
     wgmma::warpgroup_commit_batch();
-    // Scale the FULL history and update d once, while the first PV is live.
+    // The final carry_mass denominator is drained after this PV completes.
     if constexpr (ExpCast && OverlapHistory) {
-      if (part==0) vc_probability_finish_work<(WorkReduction>=2)>(RO,d,probability_alpha,tile_mass);
+      if (part==0) {
+        if constexpr (carry_mass) vc_probability_scale_history(RO,probability_alpha);
+        else vc_probability_finish_work<(WorkReduction>=2)>(RO,d,probability_alpha,tile_mass);
+      }
     }
     wgmma::warpgroup_wait<0>();
 
@@ -453,6 +481,8 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
       }
     }
     } // all PV channel fragments completed; sV can now be reused
+    // No following QK: drain the final masked tile after PV and history add.
+    if constexpr (carry_mass) vc_probability_drain_mass(RS_f8,probability_alpha,d);
   }
 
   normalize_d<num_tiles_q, num_tiles_v, ComputeUnit::kCudaCore>(RO, m, d);

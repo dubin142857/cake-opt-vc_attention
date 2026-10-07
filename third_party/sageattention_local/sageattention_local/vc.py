@@ -18,6 +18,7 @@ PIPELINE_CANDIDATES = {
     "vc19_kv": {"k_buffers": 2, "v_buffers": 2, "early_tma_prefetch": 1},
     "vc19_kv_late": {"k_buffers": 2, "v_buffers": 2, "early_tma_prefetch": 0},
 }
+MASS_CANDIDATES = {"vc25_mass_serial": 7, "vc25_mass_overlap": 8}
 ENCODING_CANDIDATES = {"vc24_bitpack": 6}
 STATE_CANDIDATES = {"vc23_maxstate": 4, "vc23_cached_bias": 5}
 WORK_CANDIDATES = {"vc22_intmax": 1, "vc22_skip": 2, "vc22_both": 3}
@@ -33,13 +34,14 @@ SAGE_LAYOUT_MODES = {"vc16": 1, "vc16_early_v": 2, "vc16_pack_first": 3,
                      **{mode: i+23 for i,mode in enumerate(HISTORY_CANDIDATES)},
                      **{mode: i+24 for mode,i in WORK_CANDIDATES.items()},
                      **{mode: i+24 for mode,i in STATE_CANDIDATES.items()},
-                     **{mode: i+24 for mode,i in ENCODING_CANDIDATES.items()}}
+                     **{mode: i+24 for mode,i in ENCODING_CANDIDATES.items()},
+                     **{mode: i+24 for mode,i in MASS_CANDIDATES.items()}}
 
 
 def _extension():
     from . import _vc_sm90
     if (getattr(_vc_sm90, "sage_vc_api_version", None) != 1 or
-            getattr(_vc_sm90, "sage_vc_kernel_version", None) != 21 or
+            getattr(_vc_sm90, "sage_vc_kernel_version", None) != 22 or
             getattr(_vc_sm90, "sage_vc_preprocess_version", None) != 1):
         raise RuntimeError("Rebuild sageattention-local with bash scripts/build_sage_local.sh")
     return _vc_sm90
@@ -60,7 +62,8 @@ def sage_vc_build_info():
             "default_kernel_mode": "optimized", "default_expcast_kernel": DEFAULT_EXPCAST_KERNEL, "kernel_modes": ["optimized", "vc15", "vc14", "vc13_overlap", "vc13_serial", "vc12", "vc11", "vc10", "vc9", "vc7", "vc6", "vc4", *SAGE_LAYOUT_MODES],
             "sage_layout_candidates": {"modes": SAGE_LAYOUT_MODES, "scope": "v_smooth=False only; pack-first modes require expcast=False; vc17 modes require expcast=True; default remains vc15"},
             "probability_candidates": "vc17: group 1/4 fragments, four FP32 chains, or exact direct FP32 decode; vc16 body and unchanged encoding/history",
-            "encoding_candidates": {"modes": ENCODING_CANDIDATES, "baseline": "vc22_both", "scope": "exact FP32 bit-bias RNE encoding; unchanged decoded-P FP32 sum; no V smoothing; H200 unverified"},
+            "mass_candidates": {"modes": MASS_CANDIDATES, "baseline": "vc22_both", "scope": "completed P kept in registers; previous denominator decoded before/during next QK in source; compiler may merge schedules; no scratch or V smoothing; H200 unverified"},
+            "encoding_candidates": {"modes": ENCODING_CANDIDATES, "baseline": "vc22_both", "scope": "exact FP32 bit-bias RNE encoding; unchanged decoded-P FP32 sum; no V smoothing; measured slower than vc22_both on reported H200 workload"},
             "max_state_candidates": {"modes": STATE_CANDIDATES, "baseline": "vc22_both", "register_cap": 168,
                                      "scope": "reuse warp max-update decision; optionally cache affine row bias; v_smooth=False; no full-API improvement over vc22_both in reported H200 test"},
             "work_candidates": {"modes": WORK_CANDIDATES, "baseline": "vc16", "register_cap": 168,

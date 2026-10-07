@@ -1,0 +1,345 @@
+{
+  "source_schedule_pairs": [
+    {
+      "dim": 128,
+      "dtype": "bfloat16",
+      "instruction_text_equal": true
+    },
+    {
+      "dim": 128,
+      "dtype": "float16",
+      "instruction_text_equal": true
+    },
+    {
+      "dim": 64,
+      "dtype": "bfloat16",
+      "instruction_text_equal": true
+    },
+    {
+      "dim": 64,
+      "dtype": "float16",
+      "instruction_text_equal": true
+    }
+  ],
+  "compiled_variants": 276,
+  "historical_variants": 268,
+  "historical_instruction_text_identical": 268,
+  "historical_changed": [],
+  "mass_resources": [
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi8EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "dim": 128,
+      "mode": 8,
+      "dtype": "bfloat16",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "local_load_store_instructions": 0,
+      "groups": [
+        {
+          "kind": "QK",
+          "gmma_instructions": 4,
+          "decode_instructions": 32,
+          "float_add_instructions": 51
+        },
+        {
+          "kind": "PV",
+          "gmma_instructions": 4,
+          "decode_instructions": 0,
+          "float_add_instructions": 0
+        },
+        {
+          "kind": "QK",
+          "gmma_instructions": 4,
+          "decode_instructions": 11,
+          "float_add_instructions": 20
+        },
+        {
+          "kind": "PV",
+          "gmma_instructions": 4,
+          "decode_instructions": 1,
+          "float_add_instructions": 3
+        }
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi8EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "dim": 128,
+      "mode": 8,
+      "dtype": "float16",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "local_load_store_instructions": 0,
+      "groups": [
+        {
+          "kind": "QK",
+          "gmma_instructions": 4,
+          "decode_instructions": 32,
+          "float_add_instructions": 51
+        },
+        {
+          "kind": "PV",
+          "gmma_instructions": 4,
+          "decode_instructions": 0,
+          "float_add_instructions": 0
+        },
+        {
+          "kind": "QK",
+          "gmma_instructions": 4,
+          "decode_instructions": 11,
+          "float_add_instructions": 20
+        },
+        {
+          "kind": "PV",
+          "gmma_instructions": 4,
+          "decode_instructions": 1,
+          "float_add_instructions": 3
+        }
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi8EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "dim": 64,
+      "mode": 8,
+      "dtype": "bfloat16",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "local_load_store_instructions": 0,
+      "groups": [
+        {
+          "kind": "QK",
+          "gmma_instructions": 2,
+          "decode_instructions": 31,
+          "float_add_instructions": 68
+        },
+        {
+          "kind": "PV",
+          "gmma_instructions": 4,
+          "decode_instructions": 0,
+          "float_add_instructions": 0
+        },
+        {
+          "kind": "QK",
+          "gmma_instructions": 2,
+          "decode_instructions": 32,
+          "float_add_instructions": 43
+        },
+        {
+          "kind": "PV",
+          "gmma_instructions": 4,
+          "decode_instructions": 9,
+          "float_add_instructions": 3
+        }
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi8EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "dim": 64,
+      "mode": 8,
+      "dtype": "float16",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "local_load_store_instructions": 0,
+      "groups": [
+        {
+          "kind": "QK",
+          "gmma_instructions": 2,
+          "decode_instructions": 31,
+          "float_add_instructions": 68
+        },
+        {
+          "kind": "PV",
+          "gmma_instructions": 4,
+          "decode_instructions": 0,
+          "float_add_instructions": 0
+        },
+        {
+          "kind": "QK",
+          "gmma_instructions": 2,
+          "decode_instructions": 32,
+          "float_add_instructions": 43
+        },
+        {
+          "kind": "PV",
+          "gmma_instructions": 4,
+          "decode_instructions": 9,
+          "float_add_instructions": 3
+        }
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi7EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "dim": 128,
+      "mode": 7,
+      "dtype": "bfloat16",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "local_load_store_instructions": 0,
+      "groups": [
+        {
+          "kind": "QK",
+          "gmma_instructions": 4,
+          "decode_instructions": 32,
+          "float_add_instructions": 51
+        },
+        {
+          "kind": "PV",
+          "gmma_instructions": 4,
+          "decode_instructions": 0,
+          "float_add_instructions": 0
+        },
+        {
+          "kind": "QK",
+          "gmma_instructions": 4,
+          "decode_instructions": 11,
+          "float_add_instructions": 20
+        },
+        {
+          "kind": "PV",
+          "gmma_instructions": 4,
+          "decode_instructions": 1,
+          "float_add_instructions": 3
+        }
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi7EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "dim": 128,
+      "mode": 7,
+      "dtype": "float16",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "local_load_store_instructions": 0,
+      "groups": [
+        {
+          "kind": "QK",
+          "gmma_instructions": 4,
+          "decode_instructions": 32,
+          "float_add_instructions": 51
+        },
+        {
+          "kind": "PV",
+          "gmma_instructions": 4,
+          "decode_instructions": 0,
+          "float_add_instructions": 0
+        },
+        {
+          "kind": "QK",
+          "gmma_instructions": 4,
+          "decode_instructions": 11,
+          "float_add_instructions": 20
+        },
+        {
+          "kind": "PV",
+          "gmma_instructions": 4,
+          "decode_instructions": 1,
+          "float_add_instructions": 3
+        }
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi7EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "dim": 64,
+      "mode": 7,
+      "dtype": "bfloat16",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "local_load_store_instructions": 0,
+      "groups": [
+        {
+          "kind": "QK",
+          "gmma_instructions": 2,
+          "decode_instructions": 31,
+          "float_add_instructions": 68
+        },
+        {
+          "kind": "PV",
+          "gmma_instructions": 4,
+          "decode_instructions": 0,
+          "float_add_instructions": 0
+        },
+        {
+          "kind": "QK",
+          "gmma_instructions": 2,
+          "decode_instructions": 32,
+          "float_add_instructions": 43
+        },
+        {
+          "kind": "PV",
+          "gmma_instructions": 4,
+          "decode_instructions": 9,
+          "float_add_instructions": 3
+        }
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi7EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "dim": 64,
+      "mode": 7,
+      "dtype": "float16",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "local_load_store_instructions": 0,
+      "groups": [
+        {
+          "kind": "QK",
+          "gmma_instructions": 2,
+          "decode_instructions": 31,
+          "float_add_instructions": 68
+        },
+        {
+          "kind": "PV",
+          "gmma_instructions": 4,
+          "decode_instructions": 0,
+          "float_add_instructions": 0
+        },
+        {
+          "kind": "QK",
+          "gmma_instructions": 2,
+          "decode_instructions": 32,
+          "float_add_instructions": 43
+        },
+        {
+          "kind": "PV",
+          "gmma_instructions": 4,
+          "decode_instructions": 9,
+          "float_add_instructions": 3
+        }
+      ]
+    }
+  ],
+  "ptxas_warnings": 0,
+  "wgmma_serialization_diagnostics": 0,
+  "scope": "Local CUDA 12.4 sm90a cross-compilation only. Instruction text comparison excludes encodings/control words. Deferred mass placement and resources are static evidence, not Hopper performance. No full Hopper execution."
+}

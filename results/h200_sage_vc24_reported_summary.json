@@ -1,0 +1,109 @@
+{
+  "source": "User-pasted vc24 H200 profile; original JSON and individual API/CUPTI launch samples not supplied",
+  "shape_bshd": [
+    1,
+    37741,
+    28,
+    128
+  ],
+  "dtype": "bfloat16",
+  "shape_source": "Agreed validate_encoding_h200.sh workload; environment header absent from excerpt",
+  "api_trials": 9,
+  "cupti_trials": 3,
+  "cupti_launches_per_trial": 20,
+  "variants": {
+    "control_vc16": {
+      "core_api_ms": 24.872,
+      "full_api_ms": 26.4463,
+      "printed_same_algorithm_rmse_percent": 0.0,
+      "bit_encoding": 0,
+      "resources": {
+        "registers": 168,
+        "local_bytes": 0,
+        "shared_bytes": 41088,
+        "predicted_blocks_per_sm": 3
+      },
+      "cupti_trial_median_ms": [
+        24.7271,
+        24.5656,
+        24.7146
+      ],
+      "cupti_median_ms": 24.7146
+    },
+    "expcast_vc22_both": {
+      "core_api_ms": 23.9858,
+      "full_api_ms": 25.6664,
+      "printed_same_algorithm_rmse_percent": 0.0,
+      "bit_encoding": 0,
+      "resources": {
+        "registers": 168,
+        "local_bytes": 0,
+        "shared_bytes": 41088,
+        "predicted_blocks_per_sm": 3
+      },
+      "cupti_trial_median_ms": [
+        23.4394,
+        24.0141,
+        23.8868
+      ],
+      "cupti_median_ms": 23.8868
+    },
+    "expcast_vc16": {
+      "core_api_ms": 25.6148,
+      "full_api_ms": 27.1197,
+      "printed_same_algorithm_rmse_percent": 0.0,
+      "bit_encoding": 0,
+      "resources": {
+        "registers": 168,
+        "local_bytes": 0,
+        "shared_bytes": 41088,
+        "predicted_blocks_per_sm": 3
+      },
+      "cupti_trial_median_ms": [
+        25.6761,
+        25.0903,
+        25.4581
+      ],
+      "cupti_median_ms": 25.4581
+    },
+    "expcast_vc24_bitpack": {
+      "core_api_ms": 25.4895,
+      "full_api_ms": 26.9099,
+      "printed_same_algorithm_rmse_percent": 0.0,
+      "bit_encoding": 1,
+      "resources": {
+        "registers": 168,
+        "local_bytes": 0,
+        "shared_bytes": 41088,
+        "predicted_blocks_per_sm": 3
+      },
+      "cupti_trial_median_ms": [
+        25.2131,
+        25.7804,
+        25.5633
+      ],
+      "cupti_median_ms": 25.5633
+    },
+    "sage_cpp": {
+      "core_api_ms": 24.9889,
+      "full_api_ms": 26.5515,
+      "printed_same_algorithm_rmse_percent": 0.0,
+      "cupti_trial_median_ms": [
+        24.395,
+        25.1073,
+        25.076
+      ],
+      "cupti_median_ms": 25.076
+    }
+  },
+  "full_api_regression_ms": 1.243500000000001,
+  "full_api_regression_percent": 4.844855530966563,
+  "vc22_full_api_speedup_over_sage": 1.0344847738677805,
+  "correctness": "All-output implementation gates passed; printed RMSE is 0.000000%. Rounded output is not a bitwise identity claim, dense-FP32 error or downstream model-quality result. Separate shape validation log absent.",
+  "conclusions": [
+    "vc24 loses to vc22 in core API, full API and all three CUPTI trial medians; retain vc22 as experimental baseline.",
+    "Resources are unchanged: 168 registers, zero local bytes, 41088 shared bytes, predicted 3 blocks. No evidence of an occupancy/spill regression.",
+    "Replacing paired conversions with more FP32 arithmetic and byte permutations did not yield a net benefit; timings do not isolate a specific stall mechanism.",
+    "Initial ordinary tables and one-off traces measure default vc15. Candidate comparison is separate. Full API is operator latency including preprocessing, not model end-to-end."
+  ]
+}

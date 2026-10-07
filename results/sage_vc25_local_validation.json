@@ -1,0 +1,41 @@
+{
+  "package_version": "2.2.0+vc25",
+  "native_kernel_version": 22,
+  "local_device": "NVIDIA GeForce RTX 3060 Laptop GPU",
+  "tests": {
+    "passed": 497,
+    "production_probability_history_helper_cases": 41,
+    "scope": "CPU contracts, profiling payload identity / baseline selection / all-row failure gates, provenance, existing CUDA helpers and production vc25 helpers on SM86. No full Hopper attention execution.",
+    "helper_result": "Tested P bytes, maximum/alpha/mass/denominator/history match same-algorithm baseline at zero tolerance. Independent FP8 decode sum and masked-zero checks pass.",
+    "cases": "1/2/7/296 tiles; stable/rising/sparse maxima; lane-specific scales; nondefault stream; affine/extreme fallback transitions; initial neutral tile; masked final tile including single-tile attention."
+  },
+  "sm90a_cross_compile": {
+    "cuda_toolkit": "12.4",
+    "status": "passed",
+    "instances": 276,
+    "new_instances": 8,
+    "historical_instances": 268,
+    "historical_instruction_text_identical": 268,
+    "d128_registers": 168,
+    "d64_registers": 168,
+    "stack_spill_local_bytes": 0,
+    "wgmma_serialization_diagnostics": 0,
+    "d128_dynamic_shared_bytes": 40960,
+    "static_shared_bytes": 128,
+    "placement": "D128 steady-state QK batch contains 32 paired FP8 decodes before wait. Main PV batch contains zero. Compiler may reschedule independent final-tile work.",
+    "source_schedule_comparison": "Before/during-QK source variants have identical SASS instruction text locally in all four dim/dtype pairs. They do not isolate serial/overlap performance.",
+    "scope": "Static SASS instruction text only; excludes encodings/control words, execution, hardware counters and speed. Remote CUDA 13 may generate different code.",
+    "detail": "sage_vc25_codegen_local.json"
+  },
+  "native_link_and_import": "passed; kernel version 22",
+  "source_and_sdist": {
+    "status": "passed",
+    "verified_source_hashes": 68,
+    "unchanged_upstream_kernel_files": 36
+  },
+  "shell_and_python_syntax": "passed",
+  "h200_validation": "Not run locally. Remote script validates before timing: 240 dtype/shape/algorithm cases repeated 3 times, 16 uniform-attention known answers and 24 fixed-payload maximum/scale cases for new modes.",
+  "h200_performance": "Unmeasured. Acceptance requires same-run vc22_both full API improvement and implementation gate. No speedup or 22 ms claim.",
+  "default_kernel": "vc15 unchanged; vc22_both measured experimental baseline",
+  "remote_command": "bash scripts/validate_mass_h200.sh"
+}

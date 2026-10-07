@@ -2,6 +2,7 @@
 // Included after vc_math.cuh and probability_variants.cuh.
 #pragma once
 #include "bit_encode.cuh"
+#include "deferred_mass.cuh"
 
 template<uint32_t NK>
 __device__ __forceinline__ int vc_integer_row_max(const int32_t (&scores)[NK][8], int r) {
@@ -23,7 +24,7 @@ __device__ __forceinline__ int vc_integer_row_max(const int32_t (&scores)[NK][8]
   return max(b,c);
 }
 
-template<bool BitEncode=false, uint32_t NQ, uint32_t NK>
+template<bool BitEncode=false, bool EncodeOnly=false, uint32_t NQ, uint32_t NK>
 __device__ __forceinline__ void vc_probability_prepare_integer(
     const int32_t (&scores)[NQ][NK][8], float (&maximum)[NQ][2], float scale,
     uint32_t (&packed)[NQ][NK/2][4], float (&alpha)[NQ][2], float (&mass)[NQ][2]) {
@@ -58,7 +59,9 @@ __device__ __forceinline__ void vc_probability_prepare_integer(
       }
     }
     if (__all_sync(0xffffffff,safe))
-      vc_probability_affine_tile<false,true,true>(converted,maximum[q],gain,packed[q],mass[q]);
+      vc_probability_affine_tile<EncodeOnly,true,true>(converted,maximum[q],gain,packed[q],mass[q]);
+    else if constexpr (EncodeOnly)
+      vc_probability_encode_fallback(converted,maximum[q],scale,packed[q]);
     else
       vc_probability_variant_tile<2,2,false,false>(converted,maximum[q],scale,packed[q],mass[q]);
   }
