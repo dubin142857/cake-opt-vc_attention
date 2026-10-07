@@ -34,13 +34,13 @@ __global__ void work_probe(const int32_t* scores,const float* scales,const float
         f[0][k][c]=__int2float_rz(x[0][k][c]);
       }
     bool rescale=false;
-    if constexpr (Mode>=4)
+    if constexpr (Mode==4 || Mode==5)
       sage_vc::vc_probability_prepare_maxstate<(Mode==5)>(x,m,scales[step*threads+row],p,alpha,mass,bias,rescale);
-    else if constexpr (Mode==1 || Mode==3)
-      sage_vc::vc_probability_prepare_integer(x,m,scales[step*threads+row],p,alpha,mass);
+    else if constexpr (Mode==1 || Mode==3 || Mode==6)
+      sage_vc::vc_probability_prepare_integer<(Mode==6)>(x,m,scales[step*threads+row],p,alpha,mass);
     else sage_vc::vc_probability_prepare<true,true,false,true,true>(f,m,scales[step*threads+row],p,alpha,mass);
-    if constexpr (Mode>=4) sage_vc::vc_probability_finish_maxstate(out,d,alpha,mass,rescale);
-    else sage_vc::vc_probability_finish_work<(Mode==2 || Mode==3)>(out,d,alpha,mass);
+    if constexpr (Mode==4 || Mode==5) sage_vc::vc_probability_finish_maxstate(out,d,alpha,mass,rescale);
+    else sage_vc::vc_probability_finish_work<(Mode==2 || Mode==3 || Mode==6)>(out,d,alpha,mass);
     #pragma unroll
     for (int k=0;k<8;++k)
       #pragma unroll
@@ -73,7 +73,7 @@ std::vector<torch::Tensor> run(torch::Tensor scores,torch::Tensor scales,torch::
     TORCH_CHECK(t.device()==scores.device() && t.scalar_type()==torch::kFloat32 && t.is_contiguous());
   TORCH_CHECK(scales.sizes()==torch::IntArrayRef({scores.size(0),scores.size(1),128}));
   TORCH_CHECK(initial.sizes()==torch::IntArrayRef({scores.size(1),128,2}));
-  TORCH_CHECK(products.sizes()==scores.sizes() && mode>=0 && mode<=5);
+  TORCH_CHECK(products.sizes()==scores.sizes() && mode>=0 && mode<=6);
   c10::cuda::CUDAGuard guard(scores.device());
   auto p=torch::empty({scores.size(0),scores.size(1),128,16},scores.options());
   auto stats=torch::empty({scores.size(0),scores.size(1),128,8},scales.options());
@@ -81,9 +81,32 @@ std::vector<torch::Tensor> run(torch::Tensor scores,torch::Tensor scales,torch::
   auto stream=c10::cuda::getCurrentCUDAStream(scores.get_device());
   #define LAUNCH(M) work_probe<M><<<scores.size(1),128,0,stream>>>(scores.data_ptr<int32_t>(),scales.data_ptr<float>(),initial.data_ptr<float>(),products.data_ptr<float>(),p.data_ptr<int32_t>(),stats.data_ptr<float>(),out.data_ptr<float>(),scores.size(0))
   switch(mode) {case 0: LAUNCH(0);break;case 1: LAUNCH(1);break;case 2: LAUNCH(2);break;
-    case 3: LAUNCH(3);break;case 4: LAUNCH(4);break;case 5: LAUNCH(5);break;}
+    case 3: LAUNCH(3);break;case 4: LAUNCH(4);break;case 5: LAUNCH(5);break;case 6: LAUNCH(6);break;}
   #undef LAUNCH
   C10_CUDA_KERNEL_LAUNCH_CHECK();
   return {p,stats,out};
 }
-PYBIND11_MODULE(TORCH_EXTENSION_NAME,m) { m.def("run",&run); }
+__global__ void encoding_probe(const float* input,int32_t* output,float* affine,int64_t n) {
+  int64_t i=blockIdx.x*256+threadIdx.x;
+  if (i>=n) return;
+  float score=input[i*3],gain=input[i*3+1],bias=input[i*3+2];
+  float u=__fmaf_rn(score,gain,bias);
+  uint32_t old;
+  asm("cvt.rni.sat.u8.f32 %0,%1;" : "=r"(old) : "f"(u));
+  output[i*2]=old;
+  output[i*2+1]=sage_vc::vc_affine_bit_code(score,__fmul_rn(gain,0.0078125f),__fmul_rn(bias,0.0078125f))&255u;
+  affine[i]=u;
+}
+
+std::vector<torch::Tensor> encode(torch::Tensor input) {
+  TORCH_CHECK(input.is_cuda() && input.scalar_type()==torch::kFloat32 && input.is_contiguous());
+  TORCH_CHECK(input.dim()==2 && input.size(0)>0 && input.size(1)==3);
+  c10::cuda::CUDAGuard guard(input.device());
+  auto out=torch::empty({input.size(0),2},input.options().dtype(torch::kInt32));
+  auto affine=torch::empty({input.size(0)},input.options());
+  auto stream=c10::cuda::getCurrentCUDAStream(input.get_device());
+  encoding_probe<<<(input.size(0)+255)/256,256,0,stream>>>(input.data_ptr<float>(),out.data_ptr<int32_t>(),affine.data_ptr<float>(),input.size(0));
+  C10_CUDA_KERNEL_LAUNCH_CHECK();
+  return {out,affine};
+}
+PYBIND11_MODULE(TORCH_EXTENSION_NAME,m) { m.def("run",&run); m.def("encode",&encode); }

@@ -1,4 +1,4 @@
-"""Real vc22/vc23 helpers, including exact codes, max state and history recurrence.
+"""Real vc22-vc24 helpers, including exact codes, max state and history recurrence.
 
 Non-Hopper CUDA implements the DPX intrinsic in software; this checks values,
 not Hopper instruction throughput or WGMMA integration.
@@ -27,7 +27,7 @@ def test_exact_probability_and_independent_history(steps,blocks,pattern):
         initial[...,1]=-129
     products=torch.randn(scores.shape,device="cuda")*torch.linspace(.01,10,8,device="cuda")
     reference=probe.run(scores,scales,initial,products,0)
-    for mode in (1,2,3,4,5):
+    for mode in (1,2,3,4,5,6):
         actual=probe.run(scores,scales,initial,products,mode)
         for a,b in zip(actual,reference):
             torch.testing.assert_close(a,b,rtol=0,atol=0)
@@ -66,7 +66,7 @@ def test_sparse_row_updates_and_nondefault_stream():
         initial=torch.zeros(2,128,2,device="cuda")
         products=torch.randn(scores.shape,device="cuda")
         baseline=probe.run(scores,scales,initial,products,0)
-        actuals=[probe.run(scores,scales,initial,products,mode) for mode in (3,4,5)]
+        actuals=[probe.run(scores,scales,initial,products,mode) for mode in (3,4,5,6)]
     stream.synchronize()
     for actual in actuals:
         for a,b in zip(actual,baseline): torch.testing.assert_close(a,b,rtol=0,atol=0)
@@ -93,7 +93,7 @@ def test_maxstate_refresh_and_affine_range_transitions(pattern):
         initial.zero_()
     products=torch.randn(scores.shape,device="cuda")
     baseline=probe.run(scores,scales,initial,products,3)
-    for mode in (4,5):
+    for mode in (4,5,6):
         actual=probe.run(scores,scales,initial,products,mode)
         for a,b in zip(actual,baseline): torch.testing.assert_close(a,b,rtol=0,atol=0)
     stats=baseline[1]
@@ -105,3 +105,42 @@ def test_maxstate_refresh_and_affine_range_transitions(pattern):
         assert (stats[0,...,:2]<-128).all().item() and (stats[-1,...,:2].abs()<128).all().item()
     if pattern=="safe_to_fallback":
         assert (stats[0,...,:2].abs()<128).all().item() and (stats[-1,...,:2]>128).all().item()
+
+
+def test_bit_encoder_half_integer_boundaries_and_random_affine():
+    # Adjacent FP32 numbers around every byte boundary, including exact ties.
+    centers=torch.arange(120,device="cuda",dtype=torch.float32)+.5
+    bits=centers.view(torch.int32)[:,None]+torch.arange(-8,9,device="cuda",dtype=torch.int32)
+    values=bits.reshape(-1).view(torch.float32)
+    values=torch.cat((values,torch.tensor([-float("inf"),-1e30,-1.,-0.,0.,120.49],device="cuda")))
+    inputs=torch.stack((values,torch.ones_like(values),torch.zeros_like(values)),1)
+    codes,u=probe.encode(inputs)
+    expected=torch.round(u.clamp(0,255)).int()
+    torch.testing.assert_close(codes[:,0],expected,rtol=0,atol=0)
+    torch.testing.assert_close(codes[:,1],expected,rtol=0,atol=0)
+    # Nontrivial affine cancellation and different scale exponents, with
+    # positive result below 120.5; rounded FMA is checked against CUDA oracle.
+    torch.manual_seed(2424)
+    for batch in range(8):
+        score=torch.randint(-(2**21),2**21+1,(262144,),device="cuda").float()
+        gain=torch.exp2(torch.empty_like(score).uniform_(-24,-12))
+        target=torch.empty_like(score).uniform_(-1000,119.7)
+        bias=target-score*gain
+        codes,u=probe.encode(torch.stack((score,gain,bias),1))
+        assert (u<120.5).all().item()
+        torch.testing.assert_close(codes[:,1],codes[:,0],rtol=0,atol=0)
+        torch.testing.assert_close(codes[:,1],torch.round(u.clamp(0,255)).int(),rtol=0,atol=0)
+
+
+@pytest.mark.parametrize("scale",[0.,2.**-126,2.**-120,2.**-119,2.**-118,1e-6,1e-3])
+def test_bit_encoding_scale_guard_and_extreme_int_scores(scale):
+    torch.manual_seed(2425)
+    scores=torch.randint(-(2**21),2**21+1,(7,1,128,8,8),device="cuda",dtype=torch.int32)
+    scores[0,...,0,0]=2**21
+    scores[0,...,1,1]=-(2**21)
+    scales=torch.full((7,1,128),scale,device="cuda")
+    initial=torch.zeros(1,128,2,device="cuda")
+    products=torch.randn(scores.shape,device="cuda")
+    expected=probe.run(scores,scales,initial,products,3)
+    actual=probe.run(scores,scales,initial,products,6)
+    for a,b in zip(actual,expected): torch.testing.assert_close(a,b,rtol=0,atol=0)

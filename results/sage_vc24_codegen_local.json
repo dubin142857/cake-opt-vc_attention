@@ -1,0 +1,294 @@
+{
+  "compiled_variants": 268,
+  "historical_variants": 264,
+  "historical_instruction_text_identical": 264,
+  "historical_changed": [],
+  "encoding_resources": [
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi6EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "dim": 128,
+      "dtype": "bfloat16",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "static_instructions": {
+        "F2IP": 128,
+        "FFMA.SAT": 64,
+        "FADD": 666,
+        "PRMT": 62,
+        "VIMNMX": 32,
+        "MUFU.EX2": 4,
+        "LDL": 0,
+        "STL": 0
+      },
+      "vc22_static_instructions": {
+        "F2IP": 128,
+        "FFMA.SAT": 0,
+        "FADD": 536,
+        "PRMT": 14,
+        "VIMNMX": 32,
+        "MUFU.EX2": 4,
+        "LDL": 0,
+        "STL": 0
+      },
+      "saturated_fma_count": 64,
+      "bounded_encoding_path": {
+        "start": "0x4190",
+        "join": "0x56b0",
+        "counts": {
+          "F2IP": 0,
+          "FFMA.SAT": 64,
+          "FADD": 130,
+          "PRMT": 48,
+          "VIMNMX": 0,
+          "MUFU.EX2": 0,
+          "LDL": 0,
+          "STL": 0
+        },
+        "magic_bias_additions": 64
+      },
+      "static_gmma_groups_between_waits": [
+        [
+          "QK",
+          "QK",
+          "QK",
+          "QK"
+        ],
+        [
+          "PV",
+          "PV",
+          "PV",
+          "PV"
+        ],
+        [
+          "QK",
+          "QK",
+          "QK",
+          "QK"
+        ],
+        [
+          "PV",
+          "PV",
+          "PV",
+          "PV"
+        ]
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi6EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "dim": 128,
+      "dtype": "float16",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "static_instructions": {
+        "F2IP": 128,
+        "FFMA.SAT": 64,
+        "FADD": 666,
+        "PRMT": 62,
+        "VIMNMX": 32,
+        "MUFU.EX2": 4,
+        "LDL": 0,
+        "STL": 0
+      },
+      "vc22_static_instructions": {
+        "F2IP": 128,
+        "FFMA.SAT": 0,
+        "FADD": 536,
+        "PRMT": 14,
+        "VIMNMX": 32,
+        "MUFU.EX2": 4,
+        "LDL": 0,
+        "STL": 0
+      },
+      "saturated_fma_count": 64,
+      "bounded_encoding_path": {
+        "start": "0x4190",
+        "join": "0x56b0",
+        "counts": {
+          "F2IP": 0,
+          "FFMA.SAT": 64,
+          "FADD": 130,
+          "PRMT": 48,
+          "VIMNMX": 0,
+          "MUFU.EX2": 0,
+          "LDL": 0,
+          "STL": 0
+        },
+        "magic_bias_additions": 64
+      },
+      "static_gmma_groups_between_waits": [
+        [
+          "QK",
+          "QK",
+          "QK",
+          "QK"
+        ],
+        [
+          "PV",
+          "PV",
+          "PV",
+          "PV"
+        ],
+        [
+          "QK",
+          "QK",
+          "QK",
+          "QK"
+        ],
+        [
+          "PV",
+          "PV",
+          "PV",
+          "PV"
+        ]
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi6EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "dim": 64,
+      "dtype": "bfloat16",
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "static_instructions": {
+        "F2IP": 128,
+        "FFMA.SAT": 64,
+        "FADD": 602,
+        "PRMT": 62,
+        "VIMNMX": 32,
+        "MUFU.EX2": 4,
+        "LDL": 0,
+        "STL": 0
+      },
+      "vc22_static_instructions": {
+        "F2IP": 128,
+        "FFMA.SAT": 0,
+        "FADD": 472,
+        "PRMT": 14,
+        "VIMNMX": 32,
+        "MUFU.EX2": 4,
+        "LDL": 0,
+        "STL": 0
+      },
+      "saturated_fma_count": 64,
+      "bounded_encoding_path": {
+        "start": "0x3f40",
+        "join": "0x5460",
+        "counts": {
+          "F2IP": 0,
+          "FFMA.SAT": 64,
+          "FADD": 130,
+          "PRMT": 48,
+          "VIMNMX": 0,
+          "MUFU.EX2": 0,
+          "LDL": 0,
+          "STL": 0
+        },
+        "magic_bias_additions": 64
+      },
+      "static_gmma_groups_between_waits": [
+        [
+          "QK",
+          "QK"
+        ],
+        [
+          "PV",
+          "PV",
+          "PV",
+          "PV"
+        ],
+        [
+          "QK",
+          "QK"
+        ],
+        [
+          "PV",
+          "PV",
+          "PV",
+          "PV"
+        ]
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi6EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_S5_jjjjjjf",
+      "dim": 64,
+      "dtype": "float16",
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "static_instructions": {
+        "F2IP": 128,
+        "FFMA.SAT": 64,
+        "FADD": 602,
+        "PRMT": 62,
+        "VIMNMX": 32,
+        "MUFU.EX2": 4,
+        "LDL": 0,
+        "STL": 0
+      },
+      "vc22_static_instructions": {
+        "F2IP": 128,
+        "FFMA.SAT": 0,
+        "FADD": 472,
+        "PRMT": 14,
+        "VIMNMX": 32,
+        "MUFU.EX2": 4,
+        "LDL": 0,
+        "STL": 0
+      },
+      "saturated_fma_count": 64,
+      "bounded_encoding_path": {
+        "start": "0x3f40",
+        "join": "0x5460",
+        "counts": {
+          "F2IP": 0,
+          "FFMA.SAT": 64,
+          "FADD": 130,
+          "PRMT": 48,
+          "VIMNMX": 0,
+          "MUFU.EX2": 0,
+          "LDL": 0,
+          "STL": 0
+        },
+        "magic_bias_additions": 64
+      },
+      "static_gmma_groups_between_waits": [
+        [
+          "QK",
+          "QK"
+        ],
+        [
+          "PV",
+          "PV",
+          "PV",
+          "PV"
+        ],
+        [
+          "QK",
+          "QK"
+        ],
+        [
+          "PV",
+          "PV",
+          "PV",
+          "PV"
+        ]
+      ]
+    }
+  ],
+  "ptxas_warnings": 0,
+  "scope": "Local CUDA 12.4 sm90a cross-compilation only; instruction text excludes encodings/control words. Counts include both guarded fallback paths and masked tail; not dynamic instruction counts or speed evidence. No full Hopper execution."
+}

@@ -1,0 +1,41 @@
+{
+  "package_version": "2.2.0+vc24",
+  "native_kernel_version": 21,
+  "local_device": "NVIDIA GeForce RTX 3060 Laptop GPU",
+  "tests": {
+    "passed": 478,
+    "probability_history_helper_cases": 29,
+    "random_affine_inputs": 2097152,
+    "byte_boundary_inputs": 2046,
+    "scope": "CPU contracts, profiling payload identity / baseline selection / all-row failure gates, provenance, existing CUDA helpers and production vc24 helpers on SM86. No full Hopper attention execution.",
+    "helper_result": "Tested P bytes, maximum/alpha/mass/denominator/history match vc22 exactly. RNE boundary and random affine codes agree with old CUDA conversion and independent rounding of the FP32 FMA output.",
+    "cases": "1/2/7/296 tiles; stable/rising/sparse maxima; lane-specific scales; nondefault stream; bounded affine / extreme fallback transitions; zero, tiny and threshold scales; half-integer ties and +/-8 adjacent FP32 values."
+  },
+  "sm90a_cross_compile": {
+    "cuda_toolkit": "12.4",
+    "status": "passed",
+    "instances": 268,
+    "new_instances": 4,
+    "historical_instances": 264,
+    "historical_instruction_text_identical": 264,
+    "d128_registers": 168,
+    "d64_registers": 128,
+    "stack_spill_local_bytes": 0,
+    "d128_dynamic_shared_bytes": 40960,
+    "static_shared_bytes": 128,
+    "bounded_encoding_path": "64 FFMA.SAT and 64 magic-bias FADD; no F2IP within bounded branch. Conversion fallback and tail remain in binary; static totals include untaken branches.",
+    "scope": "SASS instruction text comparison excludes encodings/control words. No new WGMMA group/order or shared memory changes.",
+    "detail": "sage_vc24_codegen_local.json"
+  },
+  "native_link_and_import": "passed; kernel version 21",
+  "source_and_sdist": {
+    "status": "passed",
+    "verified_source_hashes": 67,
+    "unchanged_upstream_kernel_files": 36
+  },
+  "shell_and_python_syntax": "passed",
+  "h200_validation": "Not run locally. Remote script validates before timing: 120 dtype/shape/algorithm cases repeated 3 times, 8 uniform-attention known answers and 32 fixed-payload maximum/scale cases for the new mode.",
+  "h200_performance": "Unmeasured. Must improve same-run vc22_both full API. Moving work from conversion to FP32 arithmetic introduces extra additions and permutations, so no speedup or 22 ms claim.",
+  "default_kernel": "vc15 unchanged; vc22_both measured experimental baseline",
+  "remote_command": "bash scripts/validate_encoding_h200.sh"
+}

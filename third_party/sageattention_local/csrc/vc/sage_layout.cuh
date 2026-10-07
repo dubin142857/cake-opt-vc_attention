@@ -33,7 +33,7 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
   asm volatile("trap;");
 #else
   static_assert(NUM_THREADS == 128);
-  static_assert(WorkReduction>=0 && WorkReduction<=5);
+  static_assert(WorkReduction>=0 && WorkReduction<=6);
   static_assert(RegisterLimit==128 || RegisterLimit==144 || RegisterLimit==168 || RegisterLimit==192);
   static_assert(!ExpCast || !PackFirst);
   static_assert(CTA_Q <= CTA_K);
@@ -222,11 +222,11 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
     if constexpr (ExpCast) {
       // Full-tile integer reduction is exact for INT8 D<=128. Encoding and
       // FP32 history arithmetic follow vc16; the tail keeps its original max.
-      if constexpr (WorkReduction>=4)
+      if constexpr (WorkReduction==4 || WorkReduction==5)
         vc_probability_prepare_maxstate<(WorkReduction==5)>(RS,m,sm_scale,RS_f8,
             probability_alpha,tile_mass,probability_bias,probability_rescale);
       else if constexpr (WorkReduction==1 || WorkReduction>=3)
-        vc_probability_prepare_integer(RS,m,sm_scale,RS_f8,probability_alpha,tile_mass);
+        vc_probability_prepare_integer<(WorkReduction==6)>(RS,m,sm_scale,RS_f8,probability_alpha,tile_mass);
       else
         vc_probability_prepare_variant<ProbabilityVariant>(RS_f32,m,sm_scale,RS_f8,probability_alpha,tile_mass);
       if constexpr (!OverlapHistory)
@@ -275,7 +275,7 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
     // Scale the FULL history and update d once, while the first PV is live.
     if constexpr (ExpCast && OverlapHistory) {
       if (part==0) {
-        if constexpr (WorkReduction>=4)
+        if constexpr (WorkReduction==4 || WorkReduction==5)
           vc_probability_finish_maxstate(RO,d,probability_alpha,tile_mass,probability_rescale);
         else vc_probability_finish_work<(WorkReduction>=2)>(RO,d,probability_alpha,tile_mass);
       }

@@ -1,6 +1,12 @@
 # SageAttention 主体 + VC 两项改动
 
-当前包版本为 `2.2.0+vc23`，native kernel version 20。新候选提前判断行最大值是否更新，
+当前包版本为 `2.2.0+vc24`，native kernel version 21。新增 `vc24_bitpack`：
+在 vc22_both 上测试用 FP32 饱和 FMA、舍入加法和字节重排生成相同的 ExpCast 字节，
+解码 P 的 FP32 分母和两级 PV 累加保留。478 项本地检查及 SM90a 交叉编译通过，
+H200 性能待测；默认仍为 vc15。执行 `bash scripts/validate_encoding_h200.sh`，
+关注 **Encoding candidates** 表。改动、数值范围和接受条件见 [vc24](SAGE_VC24.md)。
+
+上一轮包版本为 `2.2.0+vc23`，native kernel version 20。新候选提前判断行最大值是否更新，
 最大值不变时跳过 `exp(0)`，并单独测试缓存 ExpCast 行偏置。以 `vc22_both` 为基线，
 本地编译/helper 检查通过。H200 回传中，两个 vc23 候选完整 API 为
 25.8416 / 25.8799 ms，未超过同场 `vc22_both` 的 **25.6810 ms**。
@@ -9,7 +15,7 @@
 保留为后续实验基线；达到 22 ms 还需减少 3.6810 ms（14.33%）。
 说明见 [vc23](SAGE_VC23.md)，数据见 [回传摘要](results/h200_sage_vc23_reported_summary.json)。
 默认仍为 vc15；选择实测最快候选须显式设置 `kernel_mode="vc22_both", v_smooth=False`。
-本次结果归档无需重新编译或重跑。
+这段 vc23 结果归档不涉及内核修改；测试上面的 vc24 新候选需要重新编译。
 
 上一轮 `2.2.0+vc22`（native version 19）在 vc16 上缩短完整 K 块的
 整数 max 归约，并独立测试最大值不变时跳过历史输出的恒等缩放。FP8 编码、分母和两级

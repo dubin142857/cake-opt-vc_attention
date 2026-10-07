@@ -1,6 +1,7 @@
 // Exact work-reduction candidates for the vc16 ExpCast loop. Apache-2.0.
 // Included after vc_math.cuh and probability_variants.cuh.
 #pragma once
+#include "bit_encode.cuh"
 
 template<uint32_t NK>
 __device__ __forceinline__ int vc_integer_row_max(const int32_t (&scores)[NK][8], int r) {
@@ -22,7 +23,7 @@ __device__ __forceinline__ int vc_integer_row_max(const int32_t (&scores)[NK][8]
   return max(b,c);
 }
 
-template<uint32_t NQ, uint32_t NK>
+template<bool BitEncode=false, uint32_t NQ, uint32_t NK>
 __device__ __forceinline__ void vc_probability_prepare_integer(
     const int32_t (&scores)[NQ][NK][8], float (&maximum)[NQ][2], float scale,
     uint32_t (&packed)[NQ][NK/2][4], float (&alpha)[NQ][2], float (&mass)[NQ][2]) {
@@ -48,6 +49,14 @@ __device__ __forceinline__ void vc_probability_prepare_integer(
     float gain=__fmul_rn(scale,11.541560173034668f);
     bool safe=scale>=1.1754943508222875e-38f && isfinite(gain) &&
         fabsf(maximum[q][0])<=128.f && fabsf(maximum[q][1])<=128.f;
+    if constexpr (BitEncode) {
+      // Ensure division by 128 leaves gain normal even with --use_fast_math.
+      // The old affine path still handles smaller valid scales unchanged.
+      if (__all_sync(0xffffffff,safe && scale>=0x1p-119f)) {
+        vc_probability_bit_tile(converted,maximum[q],gain,packed[q],mass[q]);
+        continue;
+      }
+    }
     if (__all_sync(0xffffffff,safe))
       vc_probability_affine_tile<false,true,true>(converted,maximum[q],gain,packed[q],mass[q]);
     else
