@@ -2,13 +2,19 @@
 
 当前包版本为 `2.2.0+vc23`，native kernel version 20。新候选提前判断行最大值是否更新，
 最大值不变时跳过 `exp(0)`，并单独测试缓存 ExpCast 行偏置。以 `vc22_both` 为基线，
-本地编译/helper 检查通过，H200 性能待测。执行 `bash scripts/validate_maxstate_h200.sh`，
-看后面的 **Max-state candidates** 表。说明见 [vc23](SAGE_VC23.md)，默认仍为 vc15。
+本地编译/helper 检查通过。H200 回传中，两个 vc23 候选完整 API 为
+25.8416 / 25.8799 ms，未超过同场 `vc22_both` 的 **25.6810 ms**。
+资源均保持 168 寄存器、local 0、预测 3 blocks/SM，全部输出实现门槛通过；
+不将 vc23 视为新的性能改进。vc22 同场相对原版 Sage 26.6324 ms 仍提速 **1.037×**，
+保留为后续实验基线；达到 22 ms 还需减少 3.6810 ms（14.33%）。
+说明见 [vc23](SAGE_VC23.md)，数据见 [回传摘要](results/h200_sage_vc23_reported_summary.json)。
+默认仍为 vc15；选择实测最快候选须显式设置 `kernel_mode="vc22_both", v_smooth=False`。
+本次结果归档无需重新编译或重跑。
 
 上一轮 `2.2.0+vc22`（native version 19）在 vc16 上缩短完整 K 块的
 整数 max 归约，并独立测试最大值不变时跳过历史输出的恒等缩放。FP8 编码、分母和两级
 FP32 累加保留；本地交叉编译及 helper 检查通过，默认仍为 vc15。
-H200 最新回传：`vc22_both` 完整 API **25.6150 ms**，对照 vc16 为 27.1694 ms、
+vc22 首次 H200 回传：`vc22_both` 完整 API **25.6150 ms**，对照 vc16 为 27.1694 ms、
 原版 Sage 为 26.5558 ms，分别提速 **1.061× / 1.037×**。重复 CUPTI 三轮均确认收益方向，
 全输出实现比较通过（打印 RMSE 0.000000%，不代表 dense FP32 零误差）。
 后续实验以 `vc22_both` 为基线；22 ms 还需减少 3.615 ms。使用它须显式设置

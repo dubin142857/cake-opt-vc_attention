@@ -1,0 +1,155 @@
+{
+  "source": "User-pasted vc23 H200 profile; original JSON, raw API wall-time trials and individual CUPTI launch samples not supplied",
+  "shape_bshd": [
+    1,
+    37741,
+    28,
+    128
+  ],
+  "dtype": "bfloat16",
+  "shape_source": "Prior agreed validate_maxstate_h200.sh workload; environment header absent from pasted excerpt",
+  "wall_time_trials": 9,
+  "cupti_trials": 3,
+  "cupti_launches_per_trial": 20,
+  "expcast_baseline": "expcast_vc22_both",
+  "control_baseline": "control_vc16",
+  "variants": {
+    "control_vc16": {
+      "core_api_ms": 24.924,
+      "full_api_ms": 26.5861,
+      "printed_vs_same_algorithm_rmse_percent": 0.0,
+      "max_state_mode": 0,
+      "resources": {
+        "registers_per_thread": 168,
+        "local_bytes_per_thread": 0,
+        "shared_bytes": 41088,
+        "predicted_blocks_per_sm": 3
+      },
+      "cupti_trial_median_ms": [
+        25.0415,
+        25.1872,
+        24.9439
+      ],
+      "cupti_median_ms": 25.0415
+    },
+    "expcast_vc22_both": {
+      "core_api_ms": 24.0736,
+      "full_api_ms": 25.681,
+      "printed_vs_same_algorithm_rmse_percent": 0.0,
+      "max_state_mode": 0,
+      "resources": {
+        "registers_per_thread": 168,
+        "local_bytes_per_thread": 0,
+        "shared_bytes": 41088,
+        "predicted_blocks_per_sm": 3
+      },
+      "cupti_trial_median_ms": [
+        23.5757,
+        24.1138,
+        24.1135
+      ],
+      "cupti_median_ms": 24.1135,
+      "full_api_speedup_vs_vc22_both": 1.0,
+      "full_api_speedup_vs_sage": 1.0370468439702503,
+      "full_api_delta_vs_vc22_both_ms": 0.0,
+      "full_api_increase_vs_vc22_both_percent": 0.0
+    },
+    "expcast_vc16": {
+      "core_api_ms": 25.5495,
+      "full_api_ms": 27.2146,
+      "printed_vs_same_algorithm_rmse_percent": 0.0,
+      "max_state_mode": 0,
+      "resources": {
+        "registers_per_thread": 168,
+        "local_bytes_per_thread": 0,
+        "shared_bytes": 41088,
+        "predicted_blocks_per_sm": 3
+      },
+      "cupti_trial_median_ms": [
+        25.2772,
+        25.4331,
+        25.525
+      ],
+      "cupti_median_ms": 25.4331,
+      "full_api_speedup_vs_vc22_both": 0.9436478948799542,
+      "full_api_speedup_vs_sage": 0.978607071204427,
+      "full_api_delta_vs_vc22_both_ms": 1.5335999999999999,
+      "full_api_increase_vs_vc22_both_percent": 5.9717300728164835
+    },
+    "expcast_vc23_maxstate": {
+      "core_api_ms": 24.1232,
+      "full_api_ms": 25.8416,
+      "printed_vs_same_algorithm_rmse_percent": 0.0,
+      "max_state_mode": 1,
+      "resources": {
+        "registers_per_thread": 168,
+        "local_bytes_per_thread": 0,
+        "shared_bytes": 41088,
+        "predicted_blocks_per_sm": 3
+      },
+      "cupti_trial_median_ms": [
+        23.9872,
+        23.9431,
+        24.0909
+      ],
+      "cupti_median_ms": 23.9872,
+      "full_api_speedup_vs_vc22_both": 0.9937852145377996,
+      "full_api_speedup_vs_sage": 1.0306018203207232,
+      "full_api_delta_vs_vc22_both_ms": 0.16059999999999874,
+      "full_api_increase_vs_vc22_both_percent": 0.6253650558778912
+    },
+    "expcast_vc23_cached_bias": {
+      "core_api_ms": 24.267,
+      "full_api_ms": 25.8799,
+      "printed_vs_same_algorithm_rmse_percent": 0.0,
+      "max_state_mode": 2,
+      "resources": {
+        "registers_per_thread": 168,
+        "local_bytes_per_thread": 0,
+        "shared_bytes": 41088,
+        "predicted_blocks_per_sm": 3
+      },
+      "cupti_trial_median_ms": [
+        23.7651,
+        24.2417,
+        24.125
+      ],
+      "cupti_median_ms": 24.125,
+      "full_api_speedup_vs_vc22_both": 0.9923144988968273,
+      "full_api_speedup_vs_sage": 1.0290766193068752,
+      "full_api_delta_vs_vc22_both_ms": 0.1988999999999983,
+      "full_api_increase_vs_vc22_both_percent": 0.7745025505237368
+    },
+    "sage_cpp": {
+      "core_api_ms": 25.0185,
+      "full_api_ms": 26.6324,
+      "printed_vs_same_algorithm_rmse_percent": 0.0,
+      "cupti_trial_median_ms": [
+        24.8412,
+        25.0781,
+        24.8652
+      ],
+      "cupti_median_ms": 24.8652
+    }
+  },
+  "correctness": {
+    "comparison_gate": "All-output same-algorithm and fresh/fixed API 0.1% gates passed before the printed timing table",
+    "printed_vs_same_algorithm_rmse_percent": 0,
+    "exact_match": "Rounded printed RMSE does not establish bitwise identity; inspect exact_match in the original JSON",
+    "separate_shape_validation": "Build/validation log absent from this excerpt; specific validation case counts are not confirmed",
+    "model_quality": "No dense FP32 or downstream model quality assessment in this comparison"
+  },
+  "conclusions": [
+    "Neither vc23 candidate demonstrates an improvement over vc22_both in full API: 25.8416 and 25.8799 ms versus 25.6810 ms.",
+    "Maxstate CUPTI median is slightly lower (23.9872 versus 24.1135 ms), but per-trial differences have mixed signs and core/full API medians do not improve. Raw API trials are unavailable; no confidence interval or repeatable small regression is inferred.",
+    "Cached-bias CUPTI median is essentially level (24.1250 versus 24.1135 ms). This does not establish a win.",
+    "All custom candidates report 168 registers, zero local bytes, 41088 shared bytes and predicted three resident blocks. These results do not show an occupancy or spill regression.",
+    "The vc22_both gain reproduces: full API 25.6810 versus vc16 27.2146 and original Sage 26.6324 ms. vc22_both is faster in each corresponding CUPTI trial as well.",
+    "Initial stage tables and one-off traces measure default vc15, not the max-state candidates. Compare candidate timings within their own measurement regime.",
+    "Retain vc22_both as the experimental baseline; do not promote vc23. Public default remains vc15. Explicit kernel_mode=\"vc22_both\", v_smooth=False selects the measured winner.",
+    "Hypothesis, not measured stall attribution: skipping two scalar exponentials and bias FMAs may save little critical-path time while earlier vote/predicate/state dependencies offset the savings.",
+    "Full API includes fresh attention preprocessing; it is not full-model inference. This is Sage INT8 QK plus ExpCast without V smoothing, not a complete VC paper reproduction."
+  ],
+  "full_api_gap_to_22ms": 3.681000000000001,
+  "full_api_reduction_needed_for_22ms_percent": 14.333553989330639
+}
