@@ -1,8 +1,49 @@
 # vc22：整数最大值归约与跳过恒等缩放
 
 版本 `sageattention-local==2.2.0+vc22`，native kernel version 19。
-这是基于 vc16 的 ExpCast 无 V 平滑实验；H200 性能尚未验证，默认仍为 vc15。
+这是基于 vc16 的 ExpCast 无 V 平滑实验；H200 回传已测到组合候选收益，默认仍为 vc15。
 目标 shape 为 BSHD `[1,37741,28,128]`，BF16、非因果注意力。
+
+## H200 回传：完整 API 25.615 ms
+
+用户回传了 9 轮 API 比较的中位数，以及 3 轮、每轮 20 次的 CUPTI kernel 数据。
+原始 JSON、API 原始试次和逐次 kernel 样本未提供；shape/dtype 沿用约定脚本，摘录无环境头。
+
+| 候选 | core API ms | full API ms | CUPTI ms |
+|---|---:|---:|---:|
+| `control_vc16` | 24.8623 | 26.5004 | 24.7247 |
+| `expcast_vc16` | 25.5483 | 27.1694 | 25.3727 |
+| `expcast_vc22_intmax` | 24.4487 | 26.0642 | 24.5493 |
+| `expcast_vc22_skip` | 25.0444 | 26.5627 | 24.8647 |
+| **`expcast_vc22_both`** | **24.0625** | **25.6150** | **24.1128** |
+| 原版 `sage_cpp` | 24.9848 | 26.5558 | 24.8441 |
+
+组合候选相对 vc16 完整 API 提速 **1.061×**，耗时降低 **5.72%**；
+相对同场原版 Sage 提速 **1.037×**，耗时降低 **3.54%**、节省 **0.9408 ms**。
+CUPTI 三轮中组合候选每轮都快于 vc16 和 Sage，汇总相对 Sage 提速 1.030×。
+三种候选的寄存器、local、共享内存和预测驻留数完全相同：168 / 0 / 41088 字节 / 3 块。
+本轮收益来自指令路径及其调度变化；预测驻留数没有提高。
+
+整数 max 单独节省 1.1052 ms 完整 API，跳过恒等缩放单独节省 0.6067 ms，
+一起节省 1.5544 ms，不能把两项收益直接相加。后续实验基线改为 `vc22_both`。
+离 **22 ms 完整 API** 还差 **3.615 ms**，需要在当前基础上再降低约 **14.11%** 耗时。
+
+目标 shape 的全输出实现比较通过，各候选打印的相对 vc16 RMSE 为 `0.000000%`。
+打印值经过舍入，不能单凭这一列宣布逐位一致；原 JSON 的 `exact_match` 才能确认。
+这不是相对 dense FP32 的误差，也不是下游模型质量结论。
+此次摘录未包含单独的构建/shape 验证日志，不能据此宣称那些检查的具体执行数量。
+记录见 [vc22 H200 汇总](results/h200_sage_vc22_reported_summary.json)。
+
+使用已测候选时显式选择；输入按本次 BSHD shape 使用 `NHD`：
+
+```python
+from sageattention_local import sageattn_vc
+
+out = sageattn_vc(q, k, v, tensor_layout="NHD", expcast=True,
+                 v_smooth=False, kernel_mode="vc22_both")
+```
+
+默认 `optimized` 仍为 vc15。以上收益限于本次工作负载；V 平滑和完整 VC 论文方案未在本轮验证。
 
 ## 改动及数学依据
 
@@ -46,7 +87,7 @@ V 平滑仍不支持这些模式。Q/K/V 量化数据、ExpCast 编码、解码 
   另用 PyTorch 独立检查最大值、FP8 解码和 FP32 累加。
 
 本地卡为 SM86，只执行 helper；DPX 在该卡上使用兼容实现。
-Hopper 指令已交叉编译检查，完整 attention 的正确性和实际性能仍须在 H200 上验证。
+Hopper 指令已交叉编译检查；完整 attention 的 H200 回传见本文开头，与本地验证分开记录。
 CUDA 13 的寄存器分配可能不同，远端脚本会重新报告资源。
 记录见 [codegen](results/sage_vc22_codegen_local.json) 和
 [本地检查](results/sage_vc22_local_validation.json)。
@@ -75,6 +116,6 @@ bash scripts/validate_work_h200.sh
 比较全部输出行，0.1% 仍只是实现回归门槛。随后 CUPTI 分开测 3 轮、每轮 20 次 kernel。
 不把相对原版 Sage 的算法误差当作实现误差，也不把 helper 或静态指令数量当成 attention 提速。
 
-本轮是否成功由同场完整 API 决定：先快于 vc16，再看是否快于 Sage、距离 22 ms 还有多少。
+同场完整 API 已测到快于 vc16 和 Sage，22 ms 目标尚未达到。
 跳过恒等缩放的收益取决于输入中最大值更新频率，分支和 vote 本身也有成本。
 此轮不继续 vc21 的共享历史路线；上轮资源改善但完整 API 退步的结论仍成立。

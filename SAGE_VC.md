@@ -2,7 +2,12 @@
 
 当前包版本为 `2.2.0+vc22`，native kernel version 19。新候选在 vc16 上缩短完整 K 块的
 整数 max 归约，并独立测试最大值不变时跳过历史输出的恒等缩放。FP8 编码、分母和两级
-FP32 累加保留；本地交叉编译及 helper 检查通过，H200 性能待测，默认仍为 vc15。
+FP32 累加保留；本地交叉编译及 helper 检查通过，默认仍为 vc15。
+H200 最新回传：`vc22_both` 完整 API **25.6150 ms**，对照 vc16 为 27.1694 ms、
+原版 Sage 为 26.5558 ms，分别提速 **1.061× / 1.037×**。重复 CUPTI 三轮均确认收益方向，
+全输出实现比较通过（打印 RMSE 0.000000%，不代表 dense FP32 零误差）。
+后续实验以 `vc22_both` 为基线；22 ms 还需减少 3.615 ms。使用它须显式设置
+`kernel_mode="vc22_both", v_smooth=False`，详见 [vc22 回传记录](results/h200_sage_vc22_reported_summary.json)。
 执行 `bash scripts/validate_work_h200.sh`，看后面的 **Work-reduction candidates** 表。
 说明和检查范围见 [vc22 说明](SAGE_VC22.md)。
 
@@ -15,7 +20,8 @@ FP32 累加保留；本地交叉编译及 helper 检查通过，H200 性能待�
 vc21 最快候选完整 API 28.1399 ms，比 vc16 慢 3.29%；重复 CUPTI 也确认退步。
 共享存储改善了有 local 分配的旧低寄存器候选，但在 168 上限的同类对照中增加成本；
 资源改善没有转化为相对 vc16 的净收益。vc17 至 vc21 均未改善完整 API。
-保留 vc16 的 168 寄存器、N128 PV 作为实验基线，22 ms 尚未达到；当前无需重跑 vc21。
+该轮保留了 vc16 的 168 寄存器、N128 PV 作为实验基线；vc22 回传后的新基线见上文。
+22 ms 尚未达到，当前无需重跑 vc21。
 回传记录见 [vc21 结果](results/h200_sage_vc21_reported_summary.json)。
 `bash scripts/validate_history_h200.sh` 保留用于离线复现，不要求 nvdisasm/ncu；
 全输出精度、编译资源、核心/完整 API 和重复 CUPTI 分开报告。
