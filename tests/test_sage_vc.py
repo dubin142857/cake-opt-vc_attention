@@ -28,11 +28,11 @@ def test_expcast_bytes_and_packing_known_values():
     assert perm.sort().values.tolist() == list(range(256))
 
 
-def payload(nq, nk, block_values, expcast):
-    dim, tiles = 64, (nk+127)//128
+def payload(nq, nk, block_values, expcast, dim=64):
+    tiles = (nk+127)//128
     return {"q": torch.zeros(1,1,nq,dim,dtype=torch.int8),
             "k": torch.zeros(1,1,nk,dim,dtype=torch.int8),
-            "v": torch.zeros(1,1,dim,tiles*128,dtype=torch.float8_e4m3fn),
+            "v": torch.zeros(1,1,dim,tiles*128,dtype=torch.uint8).view(torch.float8_e4m3fn),
             "qs": torch.ones(1,1,((nq+63)//64)*32), "ks": torch.ones(1,1,tiles*4),
             "vs": torch.ones(1,1,tiles,dim) if block_values else torch.ones(1,1,dim),
             "means": torch.zeros(1,1,tiles,dim,dtype=torch.float16) if block_values else torch.empty(0,dtype=torch.float16),
@@ -126,7 +126,8 @@ def test_sage_layout_candidates_keep_payload_and_reject_incompatible_paths(monke
     from types import SimpleNamespace
     calls=[]
     monkeypatch.setattr(api,"_extension",lambda:SimpleNamespace(forward=lambda *args,**kwargs:calls.append((args,kwargs))))
-    state=payload(65,129,False,cast)
+    dim=128 if mode in api.HISTORY_CANDIDATES else 64
+    state=payload(65,129,False,cast,dim=dim)
     if not cast and 6<=schedule<=9:
         with pytest.raises(ValueError,match="expcast=True"): api.forward_prepared(state,kernel_mode=mode)
         q=torch.zeros(1,2,5,64,dtype=torch.float16)
@@ -145,7 +146,7 @@ def test_sage_layout_candidates_keep_payload_and_reject_incompatible_paths(monke
         assert args[7] is cast
     with pytest.raises(ValueError,match="v_smooth=False"):
         api.forward_prepared({**state,"block_values":True},kernel_mode=mode)
-    q=torch.zeros(1,2,5,64,dtype=torch.float16)
+    q=torch.zeros(1,2,5,dim,dtype=torch.float16)
     with pytest.raises(ValueError,match="v_smooth=False"):
         api.sageattn_vc(q,q,q,kernel_mode=mode)
     assert not calls
@@ -187,3 +188,14 @@ def test_gqa_cpu_and_mixed_dtypes_are_not_silent_fallbacks():
         api.sageattn_vc(q,q.float(),q)
     with pytest.raises(ValueError,match="Hopper"):
         api.sageattn_vc(q,q,q)
+
+
+@pytest.mark.parametrize("mode",list(api.HISTORY_CANDIDATES))
+def test_shared_history_rejects_d64_before_native_dispatch(monkeypatch,mode):
+    def forbidden(): raise AssertionError("Native extension must not load")
+    monkeypatch.setattr(api,"_extension",forbidden)
+    with pytest.raises(ValueError,match="D128"):
+        api.forward_prepared(payload(65,129,False,True),kernel_mode=mode)
+    q=torch.zeros(1,1,65,64,dtype=torch.bfloat16)
+    with pytest.raises(ValueError,match="D128"):
+        api.sageattn_vc(q,q,q,v_smooth=False,kernel_mode=mode)

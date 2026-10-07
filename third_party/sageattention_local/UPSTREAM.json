@@ -4,7 +4,7 @@
   "commit": "eb615cf6cf4d221338033340ee2de1c37fbdba4a",
   "license": "Apache-2.0",
   "local_distribution": "sageattention-local",
-  "local_version": "2.2.0+vc20",
+  "local_version": "2.2.0+vc21",
   "scope": "Baseline CUDA/C++ bodies and Triton sources unchanged, with a build-only CUDAContext.h removal; isolated package/operator namespaces and SM90 fake-name fix. Separate Sage+VC experiment in csrc/vc, retaining INT8 QK and adding optional V clustering/block smoothing and ExpCast.",
   "files": [
     {
@@ -375,6 +375,12 @@
       "origin": "New VC integration/diagnostic code in vc-attention"
     },
     {
+      "local_path": "csrc/vc/history_storage.cuh",
+      "local_sha256": "3bf384eb5b58d355ccdf3464e3360a45dfbe569bc9f4613157d776cf7b97dd47",
+      "license": "Apache-2.0",
+      "origin": "New VC integration/diagnostic code in vc-attention"
+    },
+    {
       "local_path": "csrc/vc/preprocess.cu",
       "local_sha256": "c885acaadb8ce4e79084fded5c4c74430531c1680d4c1d5298b7bc5e4f596f49",
       "license": "Apache-2.0",
@@ -388,7 +394,7 @@
     },
     {
       "local_path": "csrc/vc/pybind.cpp",
-      "local_sha256": "6e077be1ac67cea4a6a8c6bbb2498d82837c4c87964b902d4e33bade82112a29",
+      "local_sha256": "4462ff33338d23e5a8f7f697af7527e5c3cf096d0953ccf713dd6e75980601cb",
       "license": "Apache-2.0",
       "origin": "New VC integration/diagnostic code in vc-attention"
     },
@@ -399,6 +405,14 @@
       "derived_from": "csrc/qattn/qk_int_sv_f8_cuda_sm90.cu",
       "upstream_sha256": "ad2b0ff7c5f171ad524f2e529dc7eb7d9f167f29094563d99a3d9da888d22572",
       "modifications": "Separate original-loop candidate with independent sum/pack, V-prefetch and ExpCast history schedules; upstream baseline unchanged."
+    },
+    {
+      "local_path": "csrc/vc/shared_history.cuh",
+      "local_sha256": "a6fd2f61decf22524c5d53d09ba6881bcddf06743a2af9fa431262cdf12e31a2",
+      "license": "Apache-2.0",
+      "derived_from": "csrc/qattn/qk_int_sv_f8_cuda_sm90.cu",
+      "upstream_sha256": "ad2b0ff7c5f171ad524f2e529dc7eb7d9f167f29094563d99a3d9da888d22572",
+      "modifications": "D128 28/64 FP32 output history in thread-private shared vectors, N64 PV fragments, register-limit controls; vc16 quantization unchanged."
     },
     {
       "local_path": "csrc/vc/tma_pipeline.cuh",
@@ -422,7 +436,7 @@
     },
     {
       "local_path": "csrc/vc/vc_sm90.cu",
-      "local_sha256": "0ec797ca46b7a48cd38355ba18359c84801da4dc7ab4f6200de11e267c3b585e",
+      "local_sha256": "a013984e01dc97e792a5f56f59d0f35fe0228207a5228a82c38326be75dec543",
       "license": "Apache-2.0",
       "derived_from": "csrc/qattn/qk_int_sv_f8_cuda_sm90.cu",
       "upstream_sha256": "ad2b0ff7c5f171ad524f2e529dc7eb7d9f167f29094563d99a3d9da888d22572",
@@ -430,7 +444,7 @@
     },
     {
       "local_path": "sageattention_local/vc.py",
-      "local_sha256": "bfb335128fb07ebada98e2322da2d66edf2d8b0ee0cebc6cccf957d409b2b683",
+      "local_sha256": "777496d5649dda8d8280c674583d87f9031aa4f9ba0131dbd6f13bd75c003a5c",
       "license": "Apache-2.0",
       "origin": "New VC integration/diagnostic code in vc-attention"
     },

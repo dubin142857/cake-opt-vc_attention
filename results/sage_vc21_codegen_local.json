@@ -1,0 +1,443 @@
+{
+  "compiled_variants": 244,
+  "historical_variants": 236,
+  "historical_instruction_text_identical": 236,
+  "history_resources": [
+    {
+      "name": "_ZN7sage_vc39sage_vc_attention_kernel_shared_historyILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16Lb0ELi168EEEv14CUtensorMap_stS3_S3_PfS4_S4_PT5_S4_jjjjjjf",
+      "dim": 128,
+      "register_limit": 168,
+      "expcast": false,
+      "dtype": "bfloat16",
+      "registers": 154,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "vector_shared_load_instructions": 20,
+      "vector_shared_store_instructions": 21,
+      "local_load_store_instructions": 0,
+      "static_gmma_groups_between_waits": [
+        [
+          "QK",
+          "QK",
+          "QK",
+          "QK"
+        ],
+        [
+          "PV64",
+          "PV64",
+          "PV64",
+          "PV64"
+        ],
+        [
+          "PV64",
+          "PV64",
+          "PV64",
+          "PV64"
+        ],
+        [
+          "QK",
+          "QK",
+          "QK",
+          "QK"
+        ],
+        [
+          "PV64",
+          "PV64",
+          "PV64",
+          "PV64"
+        ],
+        [
+          "PV64",
+          "PV64",
+          "PV64",
+          "PV64"
+        ]
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc39sage_vc_attention_kernel_shared_historyILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16Lb1ELi168EEEv14CUtensorMap_stS3_S3_PfS4_S4_PT5_S4_jjjjjjf",
+      "dim": 128,
+      "register_limit": 168,
+      "expcast": true,
+      "dtype": "bfloat16",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "vector_shared_load_instructions": 20,
+      "vector_shared_store_instructions": 21,
+      "local_load_store_instructions": 0,
+      "static_gmma_groups_between_waits": [
+        [
+          "QK",
+          "QK",
+          "QK",
+          "QK"
+        ],
+        [
+          "PV64",
+          "PV64",
+          "PV64",
+          "PV64"
+        ],
+        [
+          "PV64",
+          "PV64",
+          "PV64",
+          "PV64"
+        ],
+        [
+          "QK",
+          "QK",
+          "QK",
+          "QK"
+        ],
+        [
+          "PV64",
+          "PV64",
+          "PV64",
+          "PV64"
+        ],
+        [
+          "PV64",
+          "PV64",
+          "PV64",
+          "PV64"
+        ]
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc39sage_vc_attention_kernel_shared_historyILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfLb0ELi168EEEv14CUtensorMap_stS3_S3_PfS4_S4_PT5_S4_jjjjjjf",
+      "dim": 128,
+      "register_limit": 168,
+      "expcast": false,
+      "dtype": "float16",
+      "registers": 154,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "vector_shared_load_instructions": 20,
+      "vector_shared_store_instructions": 21,
+      "local_load_store_instructions": 0,
+      "static_gmma_groups_between_waits": [
+        [
+          "QK",
+          "QK",
+          "QK",
+          "QK"
+        ],
+        [
+          "PV64",
+          "PV64",
+          "PV64",
+          "PV64"
+        ],
+        [
+          "PV64",
+          "PV64",
+          "PV64",
+          "PV64"
+        ],
+        [
+          "QK",
+          "QK",
+          "QK",
+          "QK"
+        ],
+        [
+          "PV64",
+          "PV64",
+          "PV64",
+          "PV64"
+        ],
+        [
+          "PV64",
+          "PV64",
+          "PV64",
+          "PV64"
+        ]
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc39sage_vc_attention_kernel_shared_historyILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfLb1ELi168EEEv14CUtensorMap_stS3_S3_PfS4_S4_PT5_S4_jjjjjjf",
+      "dim": 128,
+      "register_limit": 168,
+      "expcast": true,
+      "dtype": "float16",
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "vector_shared_load_instructions": 20,
+      "vector_shared_store_instructions": 21,
+      "local_load_store_instructions": 0,
+      "static_gmma_groups_between_waits": [
+        [
+          "QK",
+          "QK",
+          "QK",
+          "QK"
+        ],
+        [
+          "PV64",
+          "PV64",
+          "PV64",
+          "PV64"
+        ],
+        [
+          "PV64",
+          "PV64",
+          "PV64",
+          "PV64"
+        ],
+        [
+          "QK",
+          "QK",
+          "QK",
+          "QK"
+        ],
+        [
+          "PV64",
+          "PV64",
+          "PV64",
+          "PV64"
+        ],
+        [
+          "PV64",
+          "PV64",
+          "PV64",
+          "PV64"
+        ]
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc39sage_vc_attention_kernel_shared_historyILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16Lb0ELi128EEEv14CUtensorMap_stS3_S3_PfS4_S4_PT5_S4_jjjjjjf",
+      "dim": 128,
+      "register_limit": 128,
+      "expcast": false,
+      "dtype": "bfloat16",
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "vector_shared_load_instructions": 20,
+      "vector_shared_store_instructions": 21,
+      "local_load_store_instructions": 0,
+      "static_gmma_groups_between_waits": [
+        [
+          "QK",
+          "QK",
+          "QK",
+          "QK"
+        ],
+        [
+          "PV64",
+          "PV64",
+          "PV64",
+          "PV64"
+        ],
+        [
+          "PV64",
+          "PV64",
+          "PV64",
+          "PV64"
+        ],
+        [
+          "QK",
+          "QK",
+          "QK",
+          "QK"
+        ],
+        [
+          "PV64",
+          "PV64",
+          "PV64",
+          "PV64"
+        ],
+        [
+          "PV64",
+          "PV64",
+          "PV64",
+          "PV64"
+        ]
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc39sage_vc_attention_kernel_shared_historyILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16Lb1ELi128EEEv14CUtensorMap_stS3_S3_PfS4_S4_PT5_S4_jjjjjjf",
+      "dim": 128,
+      "register_limit": 128,
+      "expcast": true,
+      "dtype": "bfloat16",
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "vector_shared_load_instructions": 20,
+      "vector_shared_store_instructions": 21,
+      "local_load_store_instructions": 0,
+      "static_gmma_groups_between_waits": [
+        [
+          "QK",
+          "QK",
+          "QK",
+          "QK"
+        ],
+        [
+          "PV64",
+          "PV64",
+          "PV64",
+          "PV64"
+        ],
+        [
+          "PV64",
+          "PV64",
+          "PV64",
+          "PV64"
+        ],
+        [
+          "QK",
+          "QK",
+          "QK",
+          "QK"
+        ],
+        [
+          "PV64",
+          "PV64",
+          "PV64",
+          "PV64"
+        ],
+        [
+          "PV64",
+          "PV64",
+          "PV64",
+          "PV64"
+        ]
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc39sage_vc_attention_kernel_shared_historyILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfLb0ELi128EEEv14CUtensorMap_stS3_S3_PfS4_S4_PT5_S4_jjjjjjf",
+      "dim": 128,
+      "register_limit": 128,
+      "expcast": false,
+      "dtype": "float16",
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "vector_shared_load_instructions": 20,
+      "vector_shared_store_instructions": 21,
+      "local_load_store_instructions": 0,
+      "static_gmma_groups_between_waits": [
+        [
+          "QK",
+          "QK",
+          "QK",
+          "QK"
+        ],
+        [
+          "PV64",
+          "PV64",
+          "PV64",
+          "PV64"
+        ],
+        [
+          "PV64",
+          "PV64",
+          "PV64",
+          "PV64"
+        ],
+        [
+          "QK",
+          "QK",
+          "QK",
+          "QK"
+        ],
+        [
+          "PV64",
+          "PV64",
+          "PV64",
+          "PV64"
+        ],
+        [
+          "PV64",
+          "PV64",
+          "PV64",
+          "PV64"
+        ]
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc39sage_vc_attention_kernel_shared_historyILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfLb1ELi128EEEv14CUtensorMap_stS3_S3_PfS4_S4_PT5_S4_jjjjjjf",
+      "dim": 128,
+      "register_limit": 128,
+      "expcast": true,
+      "dtype": "float16",
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "vector_shared_load_instructions": 20,
+      "vector_shared_store_instructions": 21,
+      "local_load_store_instructions": 0,
+      "static_gmma_groups_between_waits": [
+        [
+          "QK",
+          "QK",
+          "QK",
+          "QK"
+        ],
+        [
+          "PV64",
+          "PV64",
+          "PV64",
+          "PV64"
+        ],
+        [
+          "PV64",
+          "PV64",
+          "PV64",
+          "PV64"
+        ],
+        [
+          "QK",
+          "QK",
+          "QK",
+          "QK"
+        ],
+        [
+          "PV64",
+          "PV64",
+          "PV64",
+          "PV64"
+        ],
+        [
+          "PV64",
+          "PV64",
+          "PV64",
+          "PV64"
+        ]
+      ]
+    }
+  ],
+  "ptxas_warnings": 0,
+  "dynamic_shared_bytes": 55296,
+  "history_shared_bytes": 14336,
+  "scope": "Local CUDA 12.4 sm90a cross-compilation; historical SASS instruction text compared verbatim, excluding encodings/control words. No Hopper execution or latency evidence. Remote CUDA 13 resources must be queried."
+}

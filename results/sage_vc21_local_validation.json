@@ -1,0 +1,44 @@
+{
+  "package_version": "2.2.0+vc21",
+  "native_kernel_version": 18,
+  "local_device": "NVIDIA GeForce RTX 3060 Laptop GPU",
+  "tests": {
+    "passed": 428,
+    "scope": "CPU contracts, profiler routing/resources and all-output failure gates, provenance, existing CUDA helpers and new shared FP32 storage helpers on local SM86. No full Hopper attention execution.",
+    "shared_history_helper_cases": 8,
+    "helper_steps": [
+      1,
+      2,
+      5,
+      296
+    ],
+    "helper_result": "Exact FP32 recurrence agreement with independent PyTorch multiply/add, including separate row scales, channel values, zero/one rescaling, multiple CTAs, and a retained final float4."
+  },
+  "sm90a_cross_compile": {
+    "cuda_toolkit": "12.4",
+    "status": "passed",
+    "compiled_kernel_instances": 244,
+    "historical_instances": 236,
+    "historical_instruction_text_identical": 236,
+    "comparison": "Verbatim SASS instruction text, excluding encodings/control words",
+    "new_history_instances": 8,
+    "ptxas_warnings": 0,
+    "d128_fp16_bf16": "r128 control/ExpCast use 128/128 registers; r168 use 154/168. All zero stack/spill bytes and no local load/store instructions.",
+    "dynamic_shared_bytes": 55296,
+    "history_shared_bytes": 14336,
+    "static_instruction_check": "Sequential QK, N64 PV, N64 PV groups in main and tail, with vector shared loads/stores. Not speed evidence.",
+    "detail": "sage_vc21_codegen_local.json"
+  },
+  "native_link_and_import": "passed; kernel version 18",
+  "source_and_sdist": {
+    "status": "passed",
+    "verified_source_hashes": 64,
+    "unchanged_upstream_kernel_files": 36
+  },
+  "shell_syntax": "validate_history_h200.sh passed bash -n",
+  "python_syntax": "validate_sage_vc.py, profile_sage_vc.py and vc.py passed py_compile",
+  "h200_correctness": "Not run locally; remote validation includes 120 D128 dtype/length/algorithm/mode cases with 3 repeats and 8 distinct-channel uniform-attention decoded-V known answers before timing.",
+  "h200_performance": "Not measured. No speedup or 22 ms claim. Shared storage adds traffic; local CUDA 12.4 register allocation is not a remote CUDA 13.0 result.",
+  "remote_command": "bash scripts/validate_history_h200.sh",
+  "default_kernel": "vc15 unchanged; new candidates require explicit selection"
+}

@@ -120,18 +120,18 @@ def validate_grouping(ext, device="cuda:0"):
 
 
 @torch.no_grad()
-def validate_pipeline(vc, device, *, compute=False):
+def validate_pipeline(vc, device, *, compute=False, history=False):
     """Exercise both slot parities, reuse, partial tails and long lookahead loops."""
     from sageattention_local.vc_reference import value_permutation
-    minimum=17 if compute else 16
+    minimum=18 if history else 17 if compute else 16
     if vc._extension().sage_vc_kernel_version < minimum:
         raise RuntimeError("Rebuild sageattention-local for the requested pipeline validation")
-    modes=vc.COMPUTE_CANDIDATES if compute else vc.PIPELINE_CANDIDATES
-    label="Compute" if compute else "TMA"
+    modes=vc.HISTORY_CANDIDATES if history else vc.COMPUTE_CANDIDATES if compute else vc.PIPELINE_CANDIDATES
+    label="Shared history" if history else "Compute" if compute else "TMA"
     rows = []
     known_answers = 0
     for dtype in (torch.float16, torch.bfloat16):
-        for dim in (64, 128):
+        for dim in ((128,) if history else (64,128)):
             for nk in (1,127,128,129,255,256,257,383,384,385,511,512,513,1025,37741):
                 torch.manual_seed(1900+nk)
                 batch, heads = (2,3) if nk==513 else (1,1)
@@ -162,6 +162,10 @@ def validate_pipeline(vc, device, *, compute=False):
             q = torch.zeros(1,1,65,dim,device=device,dtype=dtype)
             k = torch.zeros(1,1,513,dim,device=device,dtype=dtype)
             v = torch.arange(513,device=device).view(1,1,513,1).expand_as(k).to(dtype)/128-2
+            if history:
+                # Distinct channels/halves expose slot, float4 and epilogue errors.
+                v = (v * torch.linspace(.5,1.5,dim,device=device).to(dtype)
+                     + torch.arange(dim,device=device).remainder(11).to(dtype)*.125).contiguous()
             payload = vc.prepare(q,k,v,expcast=False,v_smooth=False)
             decoded = payload["v"].float()
             decoded = decoded.index_select(-1,value_permutation(decoded.shape[-1],decoded.device))
@@ -200,6 +204,8 @@ def validate(device="cuda:0"):
         report["pipeline"] = validate_pipeline(vc,device)
     if getattr(ext,"sage_vc_kernel_version",0) >= 17:
         report["compute_pipeline"] = validate_pipeline(vc,device,compute=True)
+    if getattr(ext,"sage_vc_kernel_version",0) >= 18:
+        report["shared_history"] = validate_pipeline(vc,device,history=True)
     for dtype in (torch.float16, torch.bfloat16):
         for dim in (64, 128):
             for nq, nk in ((1,1), (63,127), (64,128), (65,129), (129,257), (257,385)):
@@ -361,13 +367,14 @@ if __name__ == "__main__":
     parser.add_argument("--pipeline-only", action="store_true",
                         help="vc19 slot/tail/reuse checks only, also suitable for optional compute-sanitizer")
     parser.add_argument("--compute-only", action="store_true", help="vc20 compute carry/tail checks only")
+    parser.add_argument("--history-only", action="store_true", help="vc21 FP32 shared history and tail checks only")
     args = parser.parse_args()
-    if args.pipeline_only and args.compute_only:
-        parser.error("Choose --pipeline-only or --compute-only")
-    if args.pipeline_only or args.compute_only:
+    if sum((args.pipeline_only,args.compute_only,args.history_only))>1:
+        parser.error("Choose --pipeline-only, --compute-only or --history-only")
+    if args.pipeline_only or args.compute_only or args.history_only:
         torch.cuda.set_device(args.device)
         from sageattention_local import vc
-        report = validate_pipeline(vc,args.device,compute=args.compute_only)
+        report = validate_pipeline(vc,args.device,compute=args.compute_only,history=args.history_only)
     else:
         report = validate(args.device)
     path = Path(args.output)

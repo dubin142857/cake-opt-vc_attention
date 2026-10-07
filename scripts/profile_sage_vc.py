@@ -221,6 +221,8 @@ def parse_args(argv=None):
                         help="vc19+: vc16 versus K/V double buffering and late-copy control, with fresh full APIs and compiled resources")
     parser.add_argument("--compare-compute-candidates", action="store_true",
                         help="vc20+: joint PV/current and QK/next submission versus a serial peeled-loop control; full APIs and resources")
+    parser.add_argument("--compare-history-candidates", action="store_true",
+                        help="vc21+: 28/64 FP32 history values per thread in shared memory; compare vc16, register-only PV64 controls and 128/168-register history candidates")
     parser.add_argument("--kernel-samples", type=int, default=20,
                         help="GPU launches per variant/trial for --compare-sage-layout with --trace-dir")
     parser.add_argument("--kernel-trials", type=int, default=3,
@@ -240,13 +242,13 @@ def parse_args(argv=None):
     parser.add_argument("--ncu-variant", choices=tuple(SAGE_VC_VARIANTS),
                         help="Only capture one warmed fixed-payload native call inside cudaProfilerStart/Stop")
     args = parser.parse_args(argv)
-    if sum((args.compare_register_candidates,args.compare_probability_candidates,args.compare_pipeline_candidates,args.compare_compute_candidates)) > 1:
-        parser.error("Choose one of register, probability, pipeline or compute candidates in one comparison")
-    if (args.compare_register_candidates or args.compare_pipeline_candidates or args.compare_compute_candidates) and args.dim != 128:
-        parser.error("Register/pipeline/compute comparisons currently report D128 resources; use --dim 128")
-    if args.compare_register_candidates or args.compare_pipeline_candidates or args.compare_compute_candidates:
+    if sum((args.compare_register_candidates,args.compare_probability_candidates,args.compare_pipeline_candidates,args.compare_compute_candidates,args.compare_history_candidates)) > 1:
+        parser.error("Choose one of register, probability, pipeline, compute or history candidates in one comparison")
+    if (args.compare_register_candidates or args.compare_pipeline_candidates or args.compare_compute_candidates or args.compare_history_candidates) and args.dim != 128:
+        parser.error("Register/pipeline/compute/history comparisons currently report D128 resources; use --dim 128")
+    if args.compare_register_candidates or args.compare_pipeline_candidates or args.compare_compute_candidates or args.compare_history_candidates:
         args.expcast_only = True
-    if args.compare_probability_candidates or args.compare_register_candidates or args.compare_pipeline_candidates or args.compare_compute_candidates:
+    if args.compare_probability_candidates or args.compare_register_candidates or args.compare_pipeline_candidates or args.compare_compute_candidates or args.compare_history_candidates:
         args.compare_sage_layout = True
     if min(args.batch,args.heads,args.queries,args.tokens,args.warmup,args.repeats,args.trials,args.kernel_samples,args.kernel_trials) < 1:
         parser.error("shapes, warmup, repeats and trials must be positive")
@@ -371,7 +373,7 @@ def compare_sage_core(ops, state, args, device):
             "scope":"Same Q/K/V bytes and scales; no preprocessing; every call includes fresh output allocation and native dispatch. Synchronized wall time, not pure GPU duration."}
 
 
-def sage_layout_calls(ops, state, qkv, native, sage_api, probability_candidates=False, register_candidates=False, pipeline_candidates=False, compute_candidates=False):
+def sage_layout_calls(ops, state, qkv, native, sage_api, probability_candidates=False, register_candidates=False, pipeline_candidates=False, compute_candidates=False, history_candidates=False):
     """All native variants share operands. Full APIs recompute preprocessing."""
     modes = {False:("vc15","vc16","vc16_early_v","vc16_pack_first","vc16_pack_early"),
              True:("vc15","vc16","vc16_early_v","vc16_serial")}
@@ -383,6 +385,8 @@ def sage_layout_calls(ops, state, qkv, native, sage_api, probability_candidates=
         modes = {cast:("vc16",*ops.vc.PIPELINE_CANDIDATES) for cast in (False,True)}
     if compute_candidates:
         modes = {cast:("vc16",*ops.vc.COMPUTE_CANDIDATES) for cast in (False,True)}
+    if history_candidates:
+        modes = {cast:("vc16","vc18_pv64_r128","vc18_pv64_r168",*ops.vc.HISTORY_CANDIDATES) for cast in (False,True)}
     calls, full, metadata = {}, {}, {}
     for cast, variants in modes.items():
         payload = {**state,"expcast":cast}
@@ -391,7 +395,7 @@ def sage_layout_calls(ops, state, qkv, native, sage_api, probability_candidates=
             calls[name] = lambda payload=payload,mode=mode:ops.vc.forward_prepared(payload,kernel_mode=mode)
             full[name] = lambda cast=cast,mode=mode:ops.vc.sageattn_vc(*qkv,tensor_layout="HND",expcast=cast,v_smooth=False,kernel_mode=mode)
             metadata[name] = {"expcast":cast,"kernel_mode":mode,"reference":("expcast_" if cast else "control_")+modes[cast][0]}
-            if register_candidates or pipeline_candidates or compute_candidates:
+            if register_candidates or pipeline_candidates or compute_candidates or history_candidates:
                 metadata[name].update(register_limit=ops.vc.REGISTER_CANDIDATES.get(mode,168) if register_candidates else 224 if compute_candidates and mode!="vc16" else 168,
                     resource_key=("expcast_" if cast else "control_")+f"sage_layout_{ops.vc.SAGE_LAYOUT_MODES[mode]}")
             if pipeline_candidates:
@@ -402,6 +406,12 @@ def sage_layout_calls(ops, state, qkv, native, sage_api, probability_candidates=
                 metadata[name]["expected_compute_resources"] = dict(
                     compute_schedule=ops.vc.COMPUTE_CANDIDATES.get(mode,0),
                     k_buffers=1,v_buffers=1,dynamic_shared_bytes=40960,pv_fragment_channels=128)
+            if history_candidates:
+                history_bytes = 14336 if mode in ops.vc.HISTORY_CANDIDATES else 0
+                metadata[name]["register_limit"] = ops.vc.HISTORY_CANDIDATES.get(mode,ops.vc.REGISTER_CANDIDATES.get(mode,168))
+                metadata[name]["expected_history_resources"] = dict(
+                    history_shared_bytes=history_bytes, compute_schedule=0,k_buffers=1,v_buffers=1,
+                    dynamic_shared_bytes=40960+history_bytes,pv_fragment_channels=128 if mode=="vc16" else 64)
     calls["sage_cpp"] = sage_core_calls(ops,state,native,native)["sage_cpp"]
     full["sage_cpp"] = lambda:sage_api(*qkv,tensor_layout="HND",is_causal=False)
     metadata["sage_cpp"] = {"expcast":False,"reference":"control_"+modes[False][0],"full_api":"sage_local public sageattn"}
@@ -453,6 +463,9 @@ def trace_layout_samples(calls, args, device):
 def compare_sage_layout(ops,state,qkv,args,device,sage_api):
     pipeline = args.compare_pipeline_candidates
     compute = args.compare_compute_candidates
+    history = args.compare_history_candidates
+    if history and getattr(ops.ext,"sage_vc_kernel_version",0) < 18:
+        raise RuntimeError("--compare-history-candidates needs vc21; rebuild with bash scripts/build_sage_local.sh")
     if compute and getattr(ops.ext,"sage_vc_kernel_version",0) < 17:
         raise RuntimeError("--compare-compute-candidates needs vc20; rebuild with bash scripts/build_sage_local.sh")
     if pipeline and getattr(ops.ext,"sage_vc_kernel_version",0) < 16:
@@ -464,15 +477,15 @@ def compare_sage_layout(ops,state,qkv,args,device,sage_api):
     if getattr(ops.ext,"sage_vc_kernel_version",0) < 13:
         raise RuntimeError("--compare-sage-layout needs vc16; rebuild with bash scripts/build_sage_local.sh")
     native,_ = load_sage_core_ops()
-    calls,full,metadata = sage_layout_calls(ops,state,qkv,native,sage_api,args.compare_probability_candidates,args.compare_register_candidates,pipeline,compute)
-    if args.compare_register_candidates or pipeline or compute:
+    calls,full,metadata = sage_layout_calls(ops,state,qkv,native,sage_api,args.compare_probability_candidates,args.compare_register_candidates,pipeline,compute,history)
+    if args.compare_register_candidates or pipeline or compute or history:
         resources = ops.vc.kernel_resources(0 if args.dtype=="float16" else 1)
         for meta in metadata.values():
             if "resource_key" in meta:
                 meta["compiled_resources"] = resources[meta["resource_key"]]
                 if meta["compiled_resources"]["requested_register_limit"] != meta["register_limit"]:
                     raise RuntimeError(f"Register cap metadata does not match the loaded binary: {meta}")
-                for key,value in {**meta.get("expected_pipeline_resources",{}),**meta.get("expected_compute_resources",{})}.items():
+                for key,value in {**meta.get("expected_pipeline_resources",{}),**meta.get("expected_compute_resources",{}),**meta.get("expected_history_resources",{})}.items():
                     if meta["compiled_resources"].get(key) != value:
                         raise RuntimeError(f"Pipeline metadata does not match the loaded binary: {key}, {meta}")
     for call in (*calls.values(),*full.values()):
@@ -505,9 +518,9 @@ def compare_sage_layout(ops,state,qkv,args,device,sage_api):
         print(f"Sage layout trial {trial+1}/{args.trials} complete",flush=True)
     rows={name:{**meta,"core":stats(times["core",name]),"full_api":stats(times["api",name]),**errors[name]}
           for name,meta in metadata.items()}
-    title="Compute pipeline candidates" if compute else "Original-loop candidates"
+    title="Shared-history candidates" if history else "Compute pipeline candidates" if compute else "Original-loop candidates"
     print(f"\n{title}, identical native payloads; fresh preprocessing for full API (ms):")
-    baseline_label="vc16" if args.compare_probability_candidates or args.compare_register_candidates or pipeline or compute else "vc15"
+    baseline_label="vc16" if args.compare_probability_candidates or args.compare_register_candidates or pipeline or compute or history else "vc15"
     print(f"{'variant':<28} {'core API':>11} {'full API':>11} {baseline_label+'/core':>11} {'vs base RMSE %':>17}")
     for name,row in rows.items():
         ref=row["reference"]
@@ -555,6 +568,20 @@ def compare_sage_layout(ops,state,qkv,args,device,sage_api):
                 joint["serial_core_over_joint"]=serial["core"]["median_ms"]/joint["core"]["median_ms"]
                 print(f"{cast} {mode}: serial/joint core = {joint['serial_core_over_joint']:.4f}x")
         print("Compare full API against vc16 and Sage; beating only the serial control is insufficient. Higher live register demand may lower residency. No claim that Tensor Core operations run simultaneously.")
+    if history:
+        print("\nShared history resources: FP32 throughout; two N64 PV fragments; default remains vc15")
+        print(f"{'variant':<28} {'history B':>10} {'cap':>5} {'regs':>5} {'local B':>9} {'shared B':>10} {'blocks/SM':>10} {'Sage/full':>11}")
+        for name,row in rows.items():
+            if "compiled_resources" not in row: continue
+            r=row["compiled_resources"]
+            print(f"{name:<28} {r['history_shared_bytes']:>10} {row['register_limit']:>5} {r['registers_per_thread']:>5} {r['local_bytes_per_thread']:>9} "
+                  f"{r['static_shared_bytes']+r['dynamic_shared_bytes']:>10} {r['predicted_active_blocks_per_sm']:>10} {row['sage_full_api_over_variant']:>10.3f}x")
+        for cast in ("control","expcast"):
+            for cap in (128,168):
+                old,new=rows[f"{cast}_vc18_pv64_r{cap}"],rows[f"{cast}_vc21_history_r{cap}"]
+                new["register_history_core_over_shared"] = old["core"]["median_ms"]/new["core"]["median_ms"]
+                print(f"{cast} cap {cap}: register/shared-history core = {new['register_history_core_over_shared']:.4f}x")
+        print("Shared memory adds loads/stores. Predicted residency is not utilization; success requires full API faster than vc16 AND Sage, not just the low-register control.")
     return {"variants":rows,"trial_order":orders,"scope":"Core APIs include allocation/dispatch; full APIs redo all preprocessing. All output rows validated outside timing; default is unchanged."},calls
 
 
@@ -904,7 +931,7 @@ def run(args):
     if args.dim == 128 and getattr(ops.ext,"sage_vc_kernel_version",0) >= 6:
         environment["compiled_d128_channel_resources"] = getattr(ops.vc,"kernel_resources",ops.ext.kernel_resources)(0 if dtype == torch.float16 else 1)
     print(json.dumps(environment,indent=2),flush=True)
-    if args.compare_register_candidates or args.compare_pipeline_candidates or args.compare_compute_candidates:
+    if args.compare_register_candidates or args.compare_pipeline_candidates or args.compare_compute_candidates or args.compare_history_candidates:
         print("Initial stage tables use the installed default kernel; the requested vc16/candidate table follows separately.",flush=True)
     bases = {}
     variants = {name: flags for name,flags in SAGE_VC_VARIANTS.items() if not args.expcast_only or not flags[1]}
