@@ -1,0 +1,248 @@
+{
+  "source": "User-pasted vc21 H200 profile; original JSON, raw wall-time trials and individual CUPTI launch samples not supplied",
+  "shape_bshd": [
+    1,
+    37741,
+    28,
+    128
+  ],
+  "dtype": "bfloat16",
+  "shape_source": "Prior agreed validate_history_h200.sh workload; environment header absent from pasted excerpt",
+  "wall_time_trials": 9,
+  "cupti_trials": 3,
+  "cupti_launches_per_trial": 20,
+  "variants": {
+    "control_vc16": {
+      "core_api_ms": 24.8946,
+      "full_api_ms": 26.4506,
+      "printed_vs_same_algorithm_rmse_percent": 0.0,
+      "resources": {
+        "history_shared_bytes": 0,
+        "requested_register_limit": 168,
+        "registers_per_thread": 168,
+        "local_bytes_per_thread": 0,
+        "shared_bytes": 41088,
+        "predicted_blocks_per_sm": 3
+      },
+      "cupti_trial_median_ms": [
+        24.7096,
+        24.9441,
+        24.9439
+      ],
+      "cupti_median_ms": 24.9439
+    },
+    "control_vc18_pv64_r128": {
+      "core_api_ms": 27.1495,
+      "full_api_ms": 28.7187,
+      "printed_vs_same_algorithm_rmse_percent": 0.0,
+      "resources": {
+        "history_shared_bytes": 0,
+        "requested_register_limit": 128,
+        "registers_per_thread": 128,
+        "local_bytes_per_thread": 144,
+        "shared_bytes": 41088,
+        "predicted_blocks_per_sm": 4
+      },
+      "cupti_trial_median_ms": [
+        26.8857,
+        27.0208,
+        27.0227
+      ],
+      "cupti_median_ms": 27.0208
+    },
+    "control_vc18_pv64_r168": {
+      "core_api_ms": 25.7505,
+      "full_api_ms": 27.4625,
+      "printed_vs_same_algorithm_rmse_percent": 0.0,
+      "resources": {
+        "history_shared_bytes": 0,
+        "requested_register_limit": 168,
+        "registers_per_thread": 168,
+        "local_bytes_per_thread": 0,
+        "shared_bytes": 41088,
+        "predicted_blocks_per_sm": 3
+      },
+      "cupti_trial_median_ms": [
+        25.9024,
+        25.743,
+        25.6985
+      ],
+      "cupti_median_ms": 25.743
+    },
+    "control_vc21_history_r128": {
+      "core_api_ms": 26.1753,
+      "full_api_ms": 27.6676,
+      "printed_vs_same_algorithm_rmse_percent": 0.000517,
+      "resources": {
+        "history_shared_bytes": 14336,
+        "requested_register_limit": 128,
+        "registers_per_thread": 128,
+        "local_bytes_per_thread": 0,
+        "shared_bytes": 55424,
+        "predicted_blocks_per_sm": 4
+      },
+      "cupti_trial_median_ms": [
+        26.0556,
+        25.959,
+        25.9655
+      ],
+      "cupti_median_ms": 25.9655,
+      "full_api_increase_vs_vc16_percent": 4.601029844313542,
+      "register_only_core_over_shared_history": 1.0372182935821175,
+      "core_change_vs_matching_pv64_control_ms": -0.9741999999999997
+    },
+    "control_vc21_history_r168": {
+      "core_api_ms": 27.2503,
+      "full_api_ms": 28.9115,
+      "printed_vs_same_algorithm_rmse_percent": 0.000517,
+      "resources": {
+        "history_shared_bytes": 14336,
+        "requested_register_limit": 168,
+        "registers_per_thread": 154,
+        "local_bytes_per_thread": 0,
+        "shared_bytes": 55424,
+        "predicted_blocks_per_sm": 3
+      },
+      "cupti_trial_median_ms": [
+        27.114,
+        27.0181,
+        26.8153
+      ],
+      "cupti_median_ms": 27.0181,
+      "full_api_increase_vs_vc16_percent": 9.303758704906496,
+      "register_only_core_over_shared_history": 0.9449620738120315,
+      "core_change_vs_matching_pv64_control_ms": 1.4998000000000005
+    },
+    "expcast_vc16": {
+      "core_api_ms": 25.4766,
+      "full_api_ms": 27.2441,
+      "printed_vs_same_algorithm_rmse_percent": 0.0,
+      "resources": {
+        "history_shared_bytes": 0,
+        "requested_register_limit": 168,
+        "registers_per_thread": 168,
+        "local_bytes_per_thread": 0,
+        "shared_bytes": 41088,
+        "predicted_blocks_per_sm": 3
+      },
+      "cupti_trial_median_ms": [
+        25.5565,
+        25.4576,
+        25.3777
+      ],
+      "cupti_median_ms": 25.4576
+    },
+    "expcast_vc18_pv64_r128": {
+      "core_api_ms": 27.5035,
+      "full_api_ms": 29.2042,
+      "printed_vs_same_algorithm_rmse_percent": 0.0,
+      "resources": {
+        "history_shared_bytes": 0,
+        "requested_register_limit": 128,
+        "registers_per_thread": 128,
+        "local_bytes_per_thread": 120,
+        "shared_bytes": 41088,
+        "predicted_blocks_per_sm": 4
+      },
+      "cupti_trial_median_ms": [
+        27.3449,
+        27.3537,
+        27.3592
+      ],
+      "cupti_median_ms": 27.3537
+    },
+    "expcast_vc18_pv64_r168": {
+      "core_api_ms": 25.8998,
+      "full_api_ms": 27.4639,
+      "printed_vs_same_algorithm_rmse_percent": 0.0,
+      "resources": {
+        "history_shared_bytes": 0,
+        "requested_register_limit": 168,
+        "registers_per_thread": 168,
+        "local_bytes_per_thread": 0,
+        "shared_bytes": 41088,
+        "predicted_blocks_per_sm": 3
+      },
+      "cupti_trial_median_ms": [
+        25.7834,
+        25.6162,
+        25.6198
+      ],
+      "cupti_median_ms": 25.6198
+    },
+    "expcast_vc21_history_r128": {
+      "core_api_ms": 26.5187,
+      "full_api_ms": 28.1399,
+      "printed_vs_same_algorithm_rmse_percent": 0.0,
+      "resources": {
+        "history_shared_bytes": 14336,
+        "requested_register_limit": 128,
+        "registers_per_thread": 128,
+        "local_bytes_per_thread": 0,
+        "shared_bytes": 55424,
+        "predicted_blocks_per_sm": 4
+      },
+      "cupti_trial_median_ms": [
+        25.7745,
+        26.4776,
+        26.4265
+      ],
+      "cupti_median_ms": 26.4265,
+      "full_api_increase_vs_vc16_percent": 3.2880513579086834,
+      "register_only_core_over_shared_history": 1.0371360587057434,
+      "core_change_vs_matching_pv64_control_ms": -0.9847999999999999
+    },
+    "expcast_vc21_history_r168": {
+      "core_api_ms": 27.2178,
+      "full_api_ms": 28.8158,
+      "printed_vs_same_algorithm_rmse_percent": 0.0,
+      "resources": {
+        "history_shared_bytes": 14336,
+        "requested_register_limit": 168,
+        "registers_per_thread": 168,
+        "local_bytes_per_thread": 0,
+        "shared_bytes": 55424,
+        "predicted_blocks_per_sm": 3
+      },
+      "cupti_trial_median_ms": [
+        26.559,
+        27.0358,
+        27.0651
+      ],
+      "cupti_median_ms": 27.0358,
+      "full_api_increase_vs_vc16_percent": 5.768955480269122,
+      "register_only_core_over_shared_history": 0.9515758070086487,
+      "core_change_vs_matching_pv64_control_ms": 1.3180000000000014
+    },
+    "sage_cpp": {
+      "core_api_ms": 25.0419,
+      "full_api_ms": 26.5753,
+      "printed_vs_same_algorithm_rmse_percent": 0.0,
+      "cupti_trial_median_ms": [
+        24.8293,
+        24.8635,
+        24.8368
+      ],
+      "cupti_median_ms": 24.8368
+    }
+  },
+  "correctness": {
+    "comparison_gate": "All-output same-algorithm and fresh/fixed API 0.1% gates passed before the printed timing table",
+    "new_control_printed_rmse_percent": 0.000517,
+    "new_expcast_printed_rmse_percent": 0.0,
+    "exact_match": "Not established by rounded text; original JSON not supplied",
+    "separate_shape_validation": "Build/validation output not included in this excerpt",
+    "model_quality": "Not assessed by this comparison"
+  },
+  "conclusions": [
+    "All four vc21 control/ExpCast candidate rows lose to their vc16 baselines in core API, full API and repeated CUPTI medians.",
+    "r128 achieves 128 registers, zero local bytes and predicted four resident blocks per SM. These resource targets did not deliver a net speedup.",
+    "At cap 128, shared history improves on the old PV64 candidate that has local allocation. At cap 168, both PV64 versions have zero local bytes and predicted three blocks, and shared history is slower.",
+    "The matched controls support an added cost of the shared-history implementation, offset only partly at cap 128; their timing differences are not pure memory-traffic measurements.",
+    "Predicted occupancy alone is not a sufficient tuning target for this workload. Actual utilization and stall/bandwidth attribution remain unmeasured.",
+    "Initial stage tables and one-off traces measure unchanged default vc15, not vc21 candidates.",
+    "Keep vc16 as experiment baseline and vc15 as public default; retire vc21 as a performance winner. 22 ms full API not reached."
+  ],
+  "best_new_expcast_full_api_increase_vs_sage_percent": 5.887421778869872,
+  "vc16_expcast_full_api_reduction_needed_for_22ms_percent": 19.248571250289046
+}

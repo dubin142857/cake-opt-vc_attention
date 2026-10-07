@@ -2,16 +2,17 @@
 
 当前包版本为 `2.2.0+vc21`，native kernel version 18。新 D128 候选回到 vc16 的逐块顺序，
 把每线程 28/64 个 FP32 历史输出值放入 14 KiB/CTA 共享内存，配合两个 N64 PV 片段，
-以减少长期占用的寄存器。低上限候选本地编译为 128 寄存器、零 spill；完整 H200 正确性与速度待测。
+以减少长期占用的寄存器。H200 低上限候选达到 128 寄存器、零 local、预测 4 块驻留；
+目标 shape 的实现一致性门槛通过，但完整 API 仍慢于基线。
 默认 `optimized` 仍为 vc15。见 [vc21 说明](SAGE_VC21.md)。
-最新 H200 同场 vc16 ExpCast 核心 25.4491 ms、完整 API 27.0665 ms；原版 Sage 分别为 25.0432/26.5092 ms。
-vc20 三个 ExpCast 候选完整 API 为 28.0469–28.5444 ms，重复 CUPTI 也确认退步；
-实际寄存器增至 206–224，预测驻留从 3 块降至 2 块，但没有 local memory 分配。
-驻留减少是重要线索，尚不能单独解释全部成本。vc17、vc18、vc19、vc20 均未改善完整 API。
-保留 vc16 的 168 寄存器、N128 PV 作为实验基线，22 ms 尚未达到；无需重跑 vc20。
-回传记录见 [vc20 结果](results/h200_sage_vc20_reported_summary.json)。
-运行 `bash scripts/validate_history_h200.sh` 离线构建、验证并比较 vc21，不要求 nvdisasm/ncu；
-同时比较原版 Sage、vc16、旧 N64 PV 与新共享存储，分别报告全输出精度、编译资源、核心/完整 API 和重复 CUPTI。
+最新 H200 同场 vc16 ExpCast 核心 25.4766 ms、完整 API 27.2441 ms；原版 Sage 分别为 25.0419/26.5753 ms。
+vc21 最快候选完整 API 28.1399 ms，比 vc16 慢 3.29%；重复 CUPTI 也确认退步。
+共享存储改善了有 local 分配的旧低寄存器候选，但在 168 上限的同类对照中增加成本；
+资源改善没有转化为相对 vc16 的净收益。vc17 至 vc21 均未改善完整 API。
+保留 vc16 的 168 寄存器、N128 PV 作为实验基线，22 ms 尚未达到；当前无需重跑 vc21。
+回传记录见 [vc21 结果](results/h200_sage_vc21_reported_summary.json)。
+`bash scripts/validate_history_h200.sh` 保留用于离线复现，不要求 nvdisasm/ncu；
+全输出精度、编译资源、核心/完整 API 和重复 CUPTI 分开报告。
 [vc20 说明](SAGE_VC20.md) 保留连续提交实验的负结果。
 [vc19 说明](SAGE_VC19.md) 记录先前双缓冲实验的负结果。
 [vc18 说明](SAGE_VC18.md) 和 [vc17 说明](SAGE_VC17.md) 保留既往实验。下文保留历史开发记录。
