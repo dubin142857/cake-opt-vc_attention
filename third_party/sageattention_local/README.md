@@ -6,10 +6,11 @@
 `sageattn` 是原版内核的独立源码构建。`2.2.0+vc3` 新增独立的
 `sageattn_vc` 实验入口：Sage INT8 QK + VC 的 V 聚类/分块平滑、ExpCast，
 不能称为完整 VC 论文复现。使用与对照见仓库根目录 [SAGE_VC.md](../../SAGE_VC.md)。
-当前版本 `2.2.0+vc27.1`（native kernel version 25）的 `sageattn_vc_fp8`：带块 scale 的 FP8 QK、
-FP8 PV、可选 ExpCast。独立验证入口为 `bash scripts/validate_fp8_qk_h200.sh`，见 [vc27](../../SAGE_VC27.md)。
-vc27.1 修复 FP8 入口 V 零通道的 NaN，保留非零通道量化算法及原有两个 V kernel；需要重新编译。
-H200 完整 attention 精度/性能仍需验证；INT8 入口的默认配置不变。
+当前 H200 主路线为 `sageattn_vc` 的 INT8 QK + FP8 PV，见 [H200_INT8.md](../../H200_INT8.md)。
+已安装 `2.2.0+vc27.1`（native kernel version 25）可从仓库根目录直接运行
+`bash scripts/validate_int8_h200.sh --skip-build`，不需重编译。
+`sageattn_vc_fp8` 保留为 [vc27 历史实验](../../SAGE_VC27.md)，不进入上述主测试流程。
+INT8 入口默认仍为支持 V 平滑的 vc15；ExpCast-only 性能候选须显式选 `vc22_both`。
 此前 `2.2.0+vc17` 增加 vc16 主体上的概率处理候选，native kernel version 14。
 默认 `"optimized"` 仍等于已测的 `"vc15"`，新候选通过 `kernel_mode="vc16"` 等显式选择。
 vc17 候选还要求 `expcast=True`，测试 fragment 批次、FP32 求和链和直接 FP32 解码。

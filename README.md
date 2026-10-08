@@ -1,5 +1,13 @@
 # MiniMax-H3 / A5 VC-Attention 实验
 
+**当前 H200 主路线（2026-10-08）：`sageattn_vc`，INT8 QK + FP8 PV。**
+继续在 SageAttention2 的 INT8 Q/K 内核上对齐 V-Smooth 与 ExpCast；vc27 FP8 QK 归为历史实验。
+已安装 `2.2.0+vc27.1` 时运行 `bash scripts/validate_int8_h200.sh --skip-build`，不需重编译。
+导入、四组消融及 vc22 性能候选见 [H200_INT8.md](H200_INT8.md)。
+此前“VC 论文 QK 统一使用 FP8”的说法不准确，H200 路线不以此为依据。
+
+以下保留独立 `vc_attention` 0.x / NPU 原型历史，**不是当前 H200 主入口**。
+
 新增 H800 CUDA C++ 后端：`Config(backend="cuda_fp8")`。源码、`pip install .`
 构建方式和远端验证步骤见 [CUDA_README.md](CUDA_README.md)。旧路径 QK/PV 使用真实
 cuBLASLt FP8 矩阵乘；用户提供的 H200 日志中，旧版 0.1.0 已通过原生自检和 60 项测试。

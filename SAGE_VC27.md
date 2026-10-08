@@ -1,5 +1,12 @@
 # vc27：FP8 QK 实验分支
 
+**2026-10-08 状态调整：本页归为历史实验，H200 后续主路线回到 INT8 QK + FP8 PV。**
+此前“论文 QK 统一用 FP8”的表述不准确；作者主流程为 INT8，B300 另有 FP8 变体。
+主入口与验证命令见 [H200_INT8.md](H200_INT8.md)，不再默认运行本页的 FP8 QK 测速。
+用户随后回传的 vc27.1 随机输入完整 API 为 26.5016 ms（FP8 ExpCast），
+同场 INT8 vc22 为 25.6884 ms；FP8 核心虽稍快，完整调用并未提速。
+下面保留当时的实现与验证记录；这些随机输入结果不是模型质量验收。
+
 当前包版本 `sageattention-local==2.2.0+vc27.1`，native kernel version 25。
 新增 `sageattn_vc_fp8`，在现有融合 CUDA attention 中让 QK 与 PV 都使用 E4M3 Tensor Core。
 INT8 的 `sageattn_vc` 默认选择保持 vc15；实测候选 vc22 继续作为对照。

@@ -12,7 +12,9 @@
 
 今天实际使用的源码基座是 **SageAttention 2.2.0**，汇报时统一使用这个名称。
 当前实现称为 **Sage + VC 混合实验版**：保留 Sage 的 INT8 QK，在其 Hopper 内核上加入 VC 的 V 聚类/平滑和 ExpCast。
-尚未实现完整 VC 论文的 FP8 QK/Hadamard 和去噪步数调度。
+尚未实现 Hadamard、RoPE/预处理融合和去噪步数调度。
+2026-10-08 勘误：此前将 FP8 QK 列为“完整 VC”的必要条件不准确；作者主流程使用 INT8 QK，
+另有 B300 FP8 变体，H200 主路线保持 INT8。说明及来源见 [H200_INT8.md](H200_INT8.md)。
 
 **可直接口头汇报的摘要**
 

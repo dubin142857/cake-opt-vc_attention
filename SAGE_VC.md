@@ -1,11 +1,15 @@
 # SageAttention 主体 + VC 两项改动
 
-当前包版本 `2.2.0+vc27.1`，native kernel version 25。独立入口 `sageattn_vc_fp8`：
-Q/K 使用带 scale 的分块 E4M3，QK/PV 均走 FP8；第一轮关闭 V 平滑、尚未加入 Hadamard。
-INT8 的默认入口不变，vc22 留作同场对照。运行 `bash scripts/validate_fp8_qk_h200.sh`，
-验证后对比完整 API、固定输入核心和 CUPTI。算法边界及导入方式见 [vc27](SAGE_VC27.md)。
-vc27.1 修复首轮 H200 常量测试暴露的 V 零通道 NaN，必须重新编译；
-本地编译及预处理数值检查通过，H200 完整内核精度与提速幅度仍需验证。
+**当前 H200 主路线（2026-10-08）为 `sageattn_vc`：INT8 QK + FP8 PV。**
+继续在该路线对齐 V-Smooth 与 ExpCast。此前将“完整 VC”泛称为 FP8 QK 不准确：
+作者主流程为 INT8 QK，论文另有 B300 FP8 QK 变体，来源与范围见 [H200_INT8.md](H200_INT8.md)。
+当前包 `2.2.0+vc27.1`、native kernel version 25 已含所需 INT8 内核，运行
+`bash scripts/validate_int8_h200.sh --skip-build` 即可，不用为这次路线调整重新编译。
+四组 vc15 算法开关和独立的 `vc22_both` 性能候选分开对比；vc22 不支持 V 平滑。
+默认仍为支持四组开关的 vc15，没有静默切换默认内核。
+
+vc27 的独立 FP8 QK 入口保留为历史实验，不纳入主验证和测速流程。
+其零 V 通道修复及历史说明见 [vc27](SAGE_VC27.md)；不代表 H200 对齐论文必须改用 FP8 QK。
 
 此前包版本为 `2.2.0+vc25`，native kernel version 22，新增两个延后分母求和的实验模式：
 `vc25_mass_serial` 在下一块 QK 前解码上一块已完成 PV 的 P；
@@ -66,7 +70,8 @@ vc21 最快候选完整 API 28.1399 ms，比 vc16 慢 3.29%；重复 CUPTI 也�
 **25.8055 ms 是用户提供的原版源码构建结果，不是本次新入口的速度。**
 
 这是 **Sage+VC 混合实验**：QK 保留 Sage per-thread INT8；新增 V 聚类/块平滑和 ExpCast。
-没有改为完整 VC 的 FP8 QK/Hadamard，也尚未接入论文的去噪步数调度。
+QK 量化格式与作者 INT8 主流程一致；仍缺少 Hadamard、RoPE/预处理融合及去噪步数调度，
+尚不能称为完整论文复现。FP8 QK 是另一实验变体，不是此处缺失的必选步骤。
 
 vc9 优化每次调用的聚类预处理。此前 H200 的 `cluster_sort` 约为 5.55 ms，
 本轮将每 2048 行重复执行的平方、距离、argmin、scatter 等 ATen 操作改成 CUDA kernel：
