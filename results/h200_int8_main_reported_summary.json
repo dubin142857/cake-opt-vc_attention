@@ -1,0 +1,14 @@
+{
+  "source": "User-provided console table from profile_int8_h200.py; original JSON and raw trials not supplied",
+  "scope": "Uninstrumented synchronized API wall-time medians in ms; full API includes fresh preprocessing, fixed core excludes preprocessing but includes dispatch/allocation. FP32 RMSE in percent.",
+  "workload_context": "H200, BF16, equivalent NHD [1,37741,28,128], seed 0 are the agreed script defaults; the pasted table did not include the environment or arguments.",
+  "rows": {
+    "int8_control": {"full_api_ms": 27.1220, "fixed_core_ms": 25.5686, "fp32_rmse_percent": 3.863258},
+    "int8_expcast": {"full_api_ms": 27.2192, "fixed_core_ms": 25.5037, "fp32_rmse_percent": 4.197492},
+    "int8_v_smooth": {"full_api_ms": 33.4996, "fixed_core_ms": 30.6134, "fp32_rmse_percent": 3.835524},
+    "int8_vc": {"full_api_ms": 37.3795, "fixed_core_ms": 33.5372, "fp32_rmse_percent": 4.197574},
+    "int8_expcast_vc22": {"full_api_ms": 25.2288, "fixed_core_ms": 24.0906, "fp32_rmse_percent": 4.197492},
+    "sage_cpp": {"full_api_ms": 26.3233, "fixed_core_ms": 24.4615, "fp32_rmse_percent": 3.863257}
+  },
+  "interpretation": "vc22 remains the measured ExpCast-only baseline. Full V smoothing + ExpCast is slower on this input. No vc28 or FlashAttention-4 measurements in this table; no model-quality or model end-to-end speed claim."
+}

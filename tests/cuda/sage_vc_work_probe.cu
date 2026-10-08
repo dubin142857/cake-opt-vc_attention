@@ -26,7 +26,7 @@ __global__ void work_probe(const int32_t* scores,const float* scales,const float
                     __fmaf_rn(-m[0][1],11.541560173034668f,119.6500015258789f)}};
   uint32_t carried[1][4][4]={};float carried_alpha[1][2]={{1.f,1.f}};
   for (int step=0;step<steps;++step) {
-    if constexpr (Mode>=7) {
+    if constexpr ((Mode==7 || Mode==8)) {
       sage_vc::vc_probability_drain_mass(carried,carried_alpha,d);
       if (step>0) {
         for (int r=0;r<2;++r) stats[((step-1)*threads+row)*8+6+r]=d[0][r];
@@ -44,20 +44,20 @@ __global__ void work_probe(const int32_t* scores,const float* scales,const float
       }
     bool rescale=false;
     if (masked_tail && step+1==steps)
-      sage_vc::vc_probability_prepare<true,true,(Mode>=7),true,true>(f,m,scales[step*threads+row],p,alpha,mass);
+      sage_vc::vc_probability_prepare<true,true,((Mode==7 || Mode==8)),true,true>(f,m,scales[step*threads+row],p,alpha,mass);
     else if constexpr (Mode==4 || Mode==5)
       sage_vc::vc_probability_prepare_maxstate<(Mode==5)>(x,m,scales[step*threads+row],p,alpha,mass,bias,rescale);
     else if constexpr (Mode==1 || Mode==3 || Mode>=6)
-      sage_vc::vc_probability_prepare_integer<(Mode==6),(Mode>=7)>(x,m,scales[step*threads+row],p,alpha,mass);
+      sage_vc::vc_probability_prepare_integer<(Mode==6),((Mode==7 || Mode==8)),(Mode==9)>(x,m,scales[step*threads+row],p,alpha,mass);
     else sage_vc::vc_probability_prepare<true,true,false,true,true>(f,m,scales[step*threads+row],p,alpha,mass);
-    if constexpr (Mode>=7) {
+    if constexpr ((Mode==7 || Mode==8)) {
       sage_vc::vc_probability_scale_history(out,alpha);
       // Diagnostic mass output only; real denominator is drained next step.
       sage_vc::vc_probability_register_mass(p,mass);
       for (int r=0;r<2;++r) carried_alpha[0][r]=alpha[0][r];
       for (int k=0;k<4;++k) for (int r=0;r<4;++r) carried[0][k][r]=p[0][k][r];
     } else if constexpr (Mode==4 || Mode==5) sage_vc::vc_probability_finish_maxstate(out,d,alpha,mass,rescale);
-    else sage_vc::vc_probability_finish_work<(Mode==2 || Mode==3 || Mode==6)>(out,d,alpha,mass);
+    else sage_vc::vc_probability_finish_work<(Mode==2 || Mode==3 || Mode==6 || Mode==9)>(out,d,alpha,mass);
     #pragma unroll
     for (int k=0;k<8;++k)
       #pragma unroll
@@ -72,10 +72,10 @@ __global__ void work_probe(const int32_t* scores,const float* scales,const float
       stats[(step*threads+row)*8+r]=m[0][r];
       stats[(step*threads+row)*8+2+r]=alpha[0][r];
       stats[(step*threads+row)*8+4+r]=mass[0][r];
-      if constexpr (Mode<7) stats[(step*threads+row)*8+6+r]=d[0][r];
+      if constexpr ((Mode<7 || Mode==9)) stats[(step*threads+row)*8+6+r]=d[0][r];
     }
   }
-  if constexpr (Mode>=7) {
+  if constexpr ((Mode==7 || Mode==8)) {
     sage_vc::vc_probability_drain_mass(carried,carried_alpha,d);
     for (int r=0;r<2;++r) stats[((steps-1)*threads+row)*8+6+r]=d[0][r];
   }
@@ -94,7 +94,7 @@ std::vector<torch::Tensor> run(torch::Tensor scores,torch::Tensor scales,torch::
     TORCH_CHECK(t.device()==scores.device() && t.scalar_type()==torch::kFloat32 && t.is_contiguous());
   TORCH_CHECK(scales.sizes()==torch::IntArrayRef({scores.size(0),scores.size(1),128}));
   TORCH_CHECK(initial.sizes()==torch::IntArrayRef({scores.size(1),128,2}));
-  TORCH_CHECK(products.sizes()==scores.sizes() && mode>=0 && mode<=8);
+  TORCH_CHECK(products.sizes()==scores.sizes() && mode>=0 && mode<=9);
   c10::cuda::CUDAGuard guard(scores.device());
   auto p=torch::empty({scores.size(0),scores.size(1),128,16},scores.options());
   auto stats=torch::empty({scores.size(0),scores.size(1),128,8},scales.options());
@@ -103,7 +103,7 @@ std::vector<torch::Tensor> run(torch::Tensor scores,torch::Tensor scales,torch::
   #define LAUNCH(M) work_probe<M><<<scores.size(1),128,0,stream>>>(scores.data_ptr<int32_t>(),scales.data_ptr<float>(),initial.data_ptr<float>(),products.data_ptr<float>(),p.data_ptr<int32_t>(),stats.data_ptr<float>(),out.data_ptr<float>(),scores.size(0),masked_tail)
   switch(mode) {case 0: LAUNCH(0);break;case 1: LAUNCH(1);break;case 2: LAUNCH(2);break;
     case 3: LAUNCH(3);break;case 4: LAUNCH(4);break;case 5: LAUNCH(5);break;case 6: LAUNCH(6);break;
-    case 7: LAUNCH(7);break;case 8: LAUNCH(8);break;}
+    case 7: LAUNCH(7);break;case 8: LAUNCH(8);break;case 9: LAUNCH(9);break;}
   #undef LAUNCH
   C10_CUDA_KERNEL_LAUNCH_CHECK();
   return {p,stats,out};

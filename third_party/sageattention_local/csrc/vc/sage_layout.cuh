@@ -36,7 +36,7 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
   static_assert(!FP8QK || (CTA_Q==64 && CTA_K==128 &&
       Q_GRAN==QuantGranularity::kPerBlock && K_GRAN==QuantGranularity::kPerBlock &&
       (WorkReduction==0 || WorkReduction==2)), "FP8 QK uses block scales and FP32 max");
-  static_assert(WorkReduction>=0 && WorkReduction<=8);
+  static_assert(WorkReduction>=0 && WorkReduction<=9);
   static_assert(RegisterLimit==128 || RegisterLimit==144 || RegisterLimit==168 || RegisterLimit==192);
   static_assert(!ExpCast || !PackFirst);
   static_assert(CTA_Q <= CTA_K);
@@ -71,7 +71,7 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
   float m[num_tiles_q][2];
   float d[num_tiles_q][2];
   float probability_bias[num_tiles_q][2];
-  constexpr bool carry_mass = WorkReduction>=7;
+  constexpr bool carry_mass = WorkReduction==7 || WorkReduction==8;
   // Neutral initial tile lets the drain execute without a branch inside the
   // first QK batch: d*1 + 0 == d. This also avoids an undefined carried value.
   uint32_t carried_probability[num_tiles_q][num_tiles_pv_inner][4] = {};
@@ -248,7 +248,7 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
         vc_probability_prepare_maxstate<(WorkReduction==5)>(RS,m,sm_scale,RS_f8,
             probability_alpha,tile_mass,probability_bias,probability_rescale);
       else if constexpr (WorkReduction==1 || WorkReduction>=3)
-        vc_probability_prepare_integer<(WorkReduction==6),carry_mass>(RS,m,sm_scale,RS_f8,probability_alpha,tile_mass);
+        vc_probability_prepare_integer<(WorkReduction==6),carry_mass,(WorkReduction==9)>(RS,m,sm_scale,RS_f8,probability_alpha,tile_mass);
       else
         vc_probability_prepare_variant<ProbabilityVariant>(RS_f32,m,sm_scale,RS_f8,probability_alpha,tile_mass);
       if constexpr (!OverlapHistory)

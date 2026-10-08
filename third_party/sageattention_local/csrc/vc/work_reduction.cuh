@@ -3,6 +3,7 @@
 #pragma once
 #include "bit_encode.cuh"
 #include "deferred_mass.cuh"
+#include "streamed_probability.cuh"
 
 template<uint32_t NK>
 __device__ __forceinline__ int vc_integer_row_max(const int32_t (&scores)[NK][8], int r) {
@@ -24,7 +25,7 @@ __device__ __forceinline__ int vc_integer_row_max(const int32_t (&scores)[NK][8]
   return max(b,c);
 }
 
-template<bool BitEncode=false, bool EncodeOnly=false, uint32_t NQ, uint32_t NK>
+template<bool BitEncode=false, bool EncodeOnly=false, bool StreamConvert=false, uint32_t NQ, uint32_t NK>
 __device__ __forceinline__ void vc_probability_prepare_integer(
     const int32_t (&scores)[NQ][NK][8], float (&maximum)[NQ][2], float scale,
     uint32_t (&packed)[NQ][NK/2][4], float (&alpha)[NQ][2], float (&mass)[NQ][2]) {
@@ -41,6 +42,23 @@ __device__ __forceinline__ void vc_probability_prepare_integer(
       float next=fmaxf(maximum[q][r],local);
       alpha[q][r]=expf(maximum[q][r]-next);
       maximum[q][r]=next;
+    }
+    if constexpr (StreamConvert) {
+      static_assert(!BitEncode && !EncodeOnly);
+      float gain=__fmul_rn(scale,11.541560173034668f);
+      bool safe=scale>=1.1754943508222875e-38f && isfinite(gain) &&
+          fabsf(maximum[q][0])<=128.f && fabsf(maximum[q][1])<=128.f;
+      if (__all_sync(0xffffffff,safe)) {
+        vc_probability_int_affine_tile(scores[q],maximum[q],gain,packed[q],mass[q]);
+      } else {
+        float converted[NK][8];
+        #pragma unroll
+        for (int k=0;k<NK;++k)
+          #pragma unroll
+          for (int j=0;j<8;++j) converted[k][j]=__int2float_rz(scores[q][k][j]);
+        vc_probability_variant_tile<2,2,false,false>(converted,maximum[q],scale,packed[q],mass[q]);
+      }
+      continue;
     }
     float converted[NK][8];
     #pragma unroll

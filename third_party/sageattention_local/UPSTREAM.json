@@ -4,8 +4,8 @@
   "commit": "eb615cf6cf4d221338033340ee2de1c37fbdba4a",
   "license": "Apache-2.0",
   "local_distribution": "sageattention-local",
-  "local_version": "2.2.0+vc27.1",
-  "scope": "Baseline CUDA/C++ bodies and Triton sources unchanged, with a build-only CUDAContext.h removal; isolated package/operator namespaces and SM90 fake-name fix. Separate Sage+VC experiment in csrc/vc, retaining INT8 QK and adding optional V clustering/block smoothing and ExpCast. vc27 adds a separate opt-in block-scaled E4M3 QK entry with FP32 K centering, no Hadamard or V smoothing; existing INT8 defaults retained. vc27.1 fixes all-zero V channels in the FP8 QK entry using a local zero-safe derivative of MeanScaleKernel; pinned baseline sources are unchanged.",
+  "local_version": "2.2.0+vc28",
+  "scope": "Baseline CUDA/C++ bodies and Triton sources unchanged, with a build-only CUDAContext.h removal; isolated package/operator namespaces and SM90 fake-name fix. Separate Sage+VC experiment in csrc/vc, retaining INT8 QK and adding optional V clustering/block smoothing and ExpCast. vc27 adds a separate opt-in block-scaled E4M3 QK entry with FP32 K centering, no Hadamard or V smoothing; existing INT8 defaults retained. vc27.1 fixes all-zero V channels in the FP8 QK entry using a local zero-safe derivative of MeanScaleKernel; pinned baseline sources are unchanged. vc28 returns the H200 main route to INT8 QK and adds an opt-in streamed I2F/ExpCast encoding candidate on vc22; default vc15 and pinned Sage kernels unchanged. H200 performance unverified.",
   "files": [
     {
       "upstream_path": "LICENSE",
@@ -426,13 +426,13 @@
     },
     {
       "local_path": "csrc/vc/pybind.cpp",
-      "local_sha256": "c601ac38393165d2483e48ec629b7e0e47e99fb729b4ca54e77ed505d6e2ea6c",
+      "local_sha256": "3e0e46482064176c8b58ab6b392c232021748241c83db5204c60f4becdd139c7",
       "license": "Apache-2.0",
       "origin": "New VC integration/diagnostic code in vc-attention"
     },
     {
       "local_path": "csrc/vc/sage_layout.cuh",
-      "local_sha256": "ad9ee949e30dfb3399bdaa6ad164ba7f78f3f3ea7039e6a85768faa5759ce5cc",
+      "local_sha256": "be9e94b65219a71916b1d2ffa011420a2e1afd4a554c4701a640ee0cacb0d5cc",
       "license": "Apache-2.0",
       "derived_from": "csrc/qattn/qk_int_sv_f8_cuda_sm90.cu",
       "upstream_sha256": "ad2b0ff7c5f171ad524f2e529dc7eb7d9f167f29094563d99a3d9da888d22572",
@@ -468,7 +468,7 @@
     },
     {
       "local_path": "csrc/vc/vc_sm90.cu",
-      "local_sha256": "f73512648d106a89eb4e13d54ad85bf00f09b42d9db092fc39b46831cdebfaec",
+      "local_sha256": "6c68560bbaa8b2c6387213f6c220f9fa48f0f568ef7c1f7dcc8053d99406c8ea",
       "license": "Apache-2.0",
       "derived_from": "csrc/qattn/qk_int_sv_f8_cuda_sm90.cu",
       "upstream_sha256": "ad2b0ff7c5f171ad524f2e529dc7eb7d9f167f29094563d99a3d9da888d22572",
@@ -476,13 +476,13 @@
     },
     {
       "local_path": "csrc/vc/work_reduction.cuh",
-      "local_sha256": "399f1c3dbb33532d1e10b0e7506346c75d987aed33cd4ba1480af5289fe68ec2",
+      "local_sha256": "24227e0b5ad231d9c9382548772dd20e8507c5a6b722da9656cd584f7ed6c3fc",
       "license": "Apache-2.0",
       "origin": "New VC integration/diagnostic code in vc-attention"
     },
     {
       "local_path": "sageattention_local/vc.py",
-      "local_sha256": "e3a7275863200360a8b552e79666ab8d620f2790a97b9c31e93c28b82c56ae8a",
+      "local_sha256": "51d4d4a65637e6d23964f1d3a52b746bd2aa18b336d6c87aac2a3e284c37615f",
       "license": "Apache-2.0",
       "origin": "New VC integration/diagnostic code in vc-attention"
     },
@@ -531,6 +531,12 @@
       "upstream_sha256": "71edcb594551dfba46f4c07b7ff6e04ac5779917040b1ddb76a155582aa09d99",
       "modifications": "Unsmoothed MeanScaleKernel with zero-safe reciprocal; original nonzero math and hardware FP8 packing. SM86 preprocessing tests use the CUDA intrinsic software encoder.",
       "local_sha256": "4f6a4e69fbddc9874e86c8565a8f48a6f4807f253185b9b15231e82ee0671800"
+    },
+    {
+      "local_path": "csrc/vc/streamed_probability.cuh",
+      "license": "Apache-2.0",
+      "origin": "New grouped INT32 score conversion and existing ExpCast FP32 FMA/RNE encoding in vc-attention",
+      "local_sha256": "6cdb5a618eef3c0471c3904231ee5d1680c579e28d76360a93bca6ad01fb2528"
     }
   ]
 }

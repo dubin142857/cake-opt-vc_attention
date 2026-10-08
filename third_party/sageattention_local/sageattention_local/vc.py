@@ -12,6 +12,7 @@ import torch
 # vc15 fuses final four-byte assembly into vc14's paired conversion.
 # The vc13 shared-copy schedules remain explicit experiments after regression.
 DEFAULT_EXPCAST_KERNEL = "vc15"
+STREAM_CONVERT_CANDIDATES = {"vc28_stream_i2f": 35}
 REGISTER_CANDIDATES = {"vc18_r128": 128, "vc18_r144": 144, "vc18_r192": 192,
                        "vc18_pv64_r128": 128, "vc18_pv64_r144": 144, "vc18_pv64_r168": 168}
 PIPELINE_CANDIDATES = {
@@ -39,13 +40,14 @@ SAGE_LAYOUT_MODES = {"vc16": 1, "vc16_early_v": 2, "vc16_pack_first": 3,
                      **{mode: i+24 for mode,i in STATE_CANDIDATES.items()},
                      **{mode: i+24 for mode,i in ENCODING_CANDIDATES.items()},
                      **{mode: i+24 for mode,i in MASS_CANDIDATES.items()},
-                     **{mode: i+32 for mode,i in DUAL_QUERY_CANDIDATES.items()}}
+                     **{mode: i+32 for mode,i in DUAL_QUERY_CANDIDATES.items()},
+                     **STREAM_CONVERT_CANDIDATES}
 
 
 def _extension():
     from . import _vc_sm90
     if (getattr(_vc_sm90, "sage_vc_api_version", None) != 1 or
-            getattr(_vc_sm90, "sage_vc_kernel_version", None) != 25 or
+            getattr(_vc_sm90, "sage_vc_kernel_version", None) != 26 or
             getattr(_vc_sm90, "sage_vc_preprocess_version", None) != 1):
         raise RuntimeError("Rebuild sageattention-local with bash scripts/build_sage_local.sh")
     return _vc_sm90
@@ -57,6 +59,8 @@ def sage_vc_build_info():
             "kernel_math_modified": True,
             "algorithm": "Sage per-thread INT8 QK + VC block V residual/mean + ExpCast",
             "qk_hadamard": False, "v_block": 128, "mean_dtype": "float16",
+            "stream_convert_candidate": {"mode": "vc28_stream_i2f", "baseline": "vc22_both",
+                                         "scope": "INT32-to-FP32 conversion inside encoding groups; unchanged probability bytes and FP32 sums; H200 performance unverified"},
             "clustering": "8 clusters, 2 Lloyd iterations, stable order; fresh every call",
             "grouping_modes": ["fused", "legacy"], "default_grouping_mode": "fused",
             "grouping_implementation": "fused assignment/statistics for <=8 effective clusters; legacy otherwise",

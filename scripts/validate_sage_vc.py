@@ -120,14 +120,14 @@ def validate_grouping(ext, device="cuda:0"):
 
 
 @torch.no_grad()
-def validate_pipeline(vc, device, *, compute=False, history=False, work=False, maxstate=False, encoding=False, mass=False):
+def validate_pipeline(vc, device, *, compute=False, history=False, work=False, maxstate=False, encoding=False, mass=False, streamed=False):
     """Exercise both slot parities, reuse, partial tails and long lookahead loops."""
     from sageattention_local.vc_reference import value_permutation
-    minimum=22 if mass else 21 if encoding else 20 if maxstate else 19 if work else 18 if history else 17 if compute else 16
+    minimum=26 if streamed else 22 if mass else 21 if encoding else 20 if maxstate else 19 if work else 18 if history else 17 if compute else 16
     if vc._extension().sage_vc_kernel_version < minimum:
         raise RuntimeError("Rebuild sageattention-local for the requested pipeline validation")
-    modes=vc.MASS_CANDIDATES if mass else vc.ENCODING_CANDIDATES if encoding else vc.STATE_CANDIDATES if maxstate else vc.WORK_CANDIDATES if work else vc.HISTORY_CANDIDATES if history else vc.COMPUTE_CANDIDATES if compute else vc.PIPELINE_CANDIDATES
-    label="Deferred mass" if mass else "Bit encoding" if encoding else "Max state" if maxstate else "Work reduction" if work else "Shared history" if history else "Compute" if compute else "TMA"
+    modes=vc.STREAM_CONVERT_CANDIDATES if streamed else vc.MASS_CANDIDATES if mass else vc.ENCODING_CANDIDATES if encoding else vc.STATE_CANDIDATES if maxstate else vc.WORK_CANDIDATES if work else vc.HISTORY_CANDIDATES if history else vc.COMPUTE_CANDIDATES if compute else vc.PIPELINE_CANDIDATES
+    label="Streamed I2F" if streamed else "Deferred mass" if mass else "Bit encoding" if encoding else "Max state" if maxstate else "Work reduction" if work else "Shared history" if history else "Compute" if compute else "TMA"
     rows = []
     known_answers = 0
     recurrence_cases = []
@@ -145,7 +145,7 @@ def validate_pipeline(vc, device, *, compute=False, history=False, work=False, m
                 state = vc.prepare(q,k,v,expcast=False,v_smooth=False)
                 for cast in (False,True):
                     payload = {**state,"expcast":cast}
-                    expected = vc.forward_prepared(payload,kernel_mode="vc22_both" if (maxstate or encoding or mass) and cast else "vc16")
+                    expected = vc.forward_prepared(payload,kernel_mode="vc22_both" if (maxstate or encoding or mass or streamed) and cast else "vc16")
                     if not torch.isfinite(expected).all().item():
                         raise AssertionError("Nonfinite pipeline baseline")
                     for mode in modes:
@@ -180,7 +180,7 @@ def validate_pipeline(vc, device, *, compute=False, history=False, work=False, m
                     actual = vc.forward_prepared({**payload,"expcast":cast},kernel_mode=mode)
                     torch.testing.assert_close(actual,expected,rtol=.004,atol=.004)
                     known_answers += 1
-            if work or maxstate or encoding or mass:
+            if work or maxstate or encoding or mass or streamed:
                 # Fixed native operands force tied, falling and increasing
                 # maxima across tiles. Different lane scales/row signs expose
                 # moving the scale after a shuffle or skipping a partial warp.
@@ -194,9 +194,9 @@ def validate_pipeline(vc, device, *, compute=False, history=False, work=False, m
                 state["k"].copy_(values.view(1,1,1025,1).expand_as(state["k"]))
                 state["qs"].fill_(1.)
                 state["ks"].copy_((torch.arange(state["ks"].shape[-1],device=device).remainder(4)+1).float())
-                for scale in ((2.**-126,2.**-120,2.**-119,2.**-118,1e-6,1e-4,1.,1e3) if encoding else (1e-4,1.,1e3)):
+                for scale in ((2.**-126,2.**-120,2.**-119,2.**-118,1e-6,1e-4,1.,1e3) if encoding or streamed else (1e-4,1.,1e3)):
                     payload={**state,"scale":scale}
-                    expected=vc.forward_prepared(payload,kernel_mode="vc22_both" if maxstate or encoding or mass else "vc16")
+                    expected=vc.forward_prepared(payload,kernel_mode="vc22_both" if maxstate or encoding or mass or streamed else "vc16")
                     if not torch.isfinite(expected).all().item():
                         raise AssertionError("Nonfinite max-update baseline")
                     for mode in modes:
@@ -209,7 +209,7 @@ def validate_pipeline(vc, device, *, compute=False, history=False, work=False, m
             print(f"{label} pipeline slot/tail checks passed: {dtype}, D{dim}",flush=True)
     return {"cases":rows,"known_answer_cases":known_answers,"max_update_cases":recurrence_cases,
             "status":"passed","implementation_rel_rmse_limit":.001,
-            "scope":("All rows versus vc22_both (ExpCast) / vc16 (control), 3 repeats; no model-quality or speed claim." if maxstate or encoding or mass else "All rows versus vc16, both algorithms separately, 3 repeats; no model-quality or speed claim.")}
+            "scope":("All rows versus vc22_both (ExpCast) / vc16 (control), 3 repeats; no model-quality or speed claim." if maxstate or encoding or mass or streamed else "All rows versus vc16, both algorithms separately, 3 repeats; no model-quality or speed claim.")}
 
 
 DUAL_QUERY_SHAPES = ([(n,513) for n in (1,63,64,65,127,128,129,191,192,193,255,256,257)]
@@ -337,6 +337,8 @@ def validate(device="cuda:0"):
         report["work_reduction"] = validate_pipeline(vc,device,work=True)
     if getattr(ext,"sage_vc_kernel_version",0) >= 22:
         report["deferred_mass"] = validate_pipeline(vc,device,mass=True)
+    if getattr(ext,"sage_vc_kernel_version",0) >= 26:
+        report["streamed_i2f"] = validate_pipeline(vc,device,streamed=True)
     if getattr(ext,"sage_vc_kernel_version",0) >= 23:
         report["dual_query"] = validate_dual_query(vc,device)
     if getattr(ext,"sage_vc_kernel_version",0) >= 21:

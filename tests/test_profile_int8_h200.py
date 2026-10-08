@@ -67,7 +67,8 @@ def test_feature_pairs_share_payloads_but_full_calls_preprocess_fresh_inputs():
     assert all("expcast" not in base for base in bases.values())
     assert states["int8_vc"]["q"] is not states["int8_expcast"]["q"]
     assert {mode for _, _, _, mode in profile.VARIANTS[:4]} == {"vc15"}
-    assert profile.VARIANTS[-1][1:] == (True, False, "vc22_both")
+    assert profile.VARIANTS[-2][1:] == (True, False, "vc22_both")
+    assert profile.VARIANTS[-1][1:] == (True, False, "vc28_stream_i2f")
     assert "sage_cpp" in core and "sage_cpp" in apis
 
 
@@ -94,10 +95,35 @@ def test_cli_workload_and_measurement_validation():
     assert (args.batch, args.queries, args.heads, args.dim) == (1, 37741, 28, 128)
     assert args.tokens == 37741 and args.dtype == "bfloat16"
     assert args.trace_dir is None
+    assert not args.skip_flash4
+    assert profile.parse_args(["--skip-flash4"]).skip_flash4
     assert profile.parse_args(["--check-queries", "0"]).check_queries == 0
     for argv in (["--trials", "0"], ["--tokens", "0"], ["--check-queries", "-1"]):
         with pytest.raises(SystemExit):
             profile.parse_args(argv)
+
+
+def test_flash4_uses_identical_values_in_its_native_layout(monkeypatch):
+    qkv = (torch.randn(2, 3, 5, 64), torch.randn(2, 3, 7, 64), torch.randn(2, 3, 7, 64))
+    sentinel = object()
+    def backend(name, hnd, nhd):
+        assert name == "flash4"
+        assert all(a is b for a, b in zip(hnd, qkv))
+        for original, converted in zip(qkv, nhd):
+            assert converted.is_contiguous()
+            torch.testing.assert_close(converted.transpose(1, 2), original, rtol=0, atol=0)
+        return sentinel
+    monkeypatch.setattr(profile, "external_backend", backend)
+    assert profile.make_flash4(qkv) is sentinel
+
+
+def test_full_only_external_api_does_not_get_a_fabricated_core_time():
+    samples = {"core": {"int8_expcast_vc22": [24., 26.]},
+               "full_api": {"int8_expcast_vc22": [25., 27.], "flash4": [29., 31.]}}
+    rows = profile.summarize_samples(samples)
+    assert rows["flash4"]["full_api"]["median_ms"] == 30.
+    assert "core" not in rows["flash4"]
+    assert rows["int8_expcast_vc22"]["core"]["median_ms"] == 25.
 
 
 def run_shell(args=(), fail=""):

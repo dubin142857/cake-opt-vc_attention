@@ -2,8 +2,9 @@
 
 **当前 H200 主路线（2026-10-08）：`sageattn_vc`，INT8 QK + FP8 PV。**
 继续在 SageAttention2 的 INT8 Q/K 内核上对齐 V-Smooth 与 ExpCast；vc27 FP8 QK 归为历史实验。
-已安装 `2.2.0+vc27.1` 时运行 `bash scripts/validate_int8_h200.sh --skip-build`，不需重编译。
-导入、四组消融及 vc22 性能候选见 [H200_INT8.md](H200_INT8.md)。
+本轮 `2.2.0+vc28` 增加 INT8 ExpCast 转换调度候选，**需要重编译**：
+`bash scripts/validate_int8_h200.sh`。验证后同场比较 vc22、vc28、原版 Sage 和 FlashAttention-4。
+导入、四组消融及测速说明见 [H200_INT8.md](H200_INT8.md)，候选实现见 [SAGE_VC28.md](SAGE_VC28.md)。
 此前“VC 论文 QK 统一使用 FP8”的说法不准确，H200 路线不以此为依据。
 
 以下保留独立 `vc_attention` 0.x / NPU 原型历史，**不是当前 H200 主入口**。
