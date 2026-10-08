@@ -1,0 +1,57 @@
+{
+  "source": "User-pasted H200 results; not a local benchmark",
+  "scope": "Synchronized API wall time; raw trials and CUPTI not supplied",
+  "rows": {
+    "int8_control": {
+      "full_api_ms": 27.1478,
+      "fixed_core_ms": 25.6039,
+      "fp32_rmse_percent": 3.863258
+    },
+    "int8_expcast": {
+      "full_api_ms": 27.0372,
+      "fixed_core_ms": 25.716,
+      "fp32_rmse_percent": 4.197492
+    },
+    "int8_v_smooth": {
+      "full_api_ms": 33.8644,
+      "fixed_core_ms": 30.2201,
+      "fp32_rmse_percent": 3.835524
+    },
+    "int8_vc": {
+      "full_api_ms": 37.1394,
+      "fixed_core_ms": 33.7246,
+      "fp32_rmse_percent": 4.197574
+    },
+    "int8_expcast_vc22": {
+      "full_api_ms": 25.7316,
+      "fixed_core_ms": 23.8696,
+      "fp32_rmse_percent": 4.197492
+    },
+    "int8_expcast_vc28": {
+      "full_api_ms": 24.7105,
+      "fixed_core_ms": 23.3783,
+      "fp32_rmse_percent": 4.197492
+    },
+    "int8_expcast_vc29": {
+      "full_api_ms": 24.9269,
+      "fixed_core_ms": 23.5742,
+      "fp32_rmse_percent": 4.197492
+    },
+    "int8_expcast_vc30": {
+      "full_api_ms": 25.1741,
+      "fixed_core_ms": 23.4844,
+      "fp32_rmse_percent": 4.197492
+    },
+    "sage_cpp": {
+      "full_api_ms": 26.1365,
+      "fixed_core_ms": 25.0521,
+      "fp32_rmse_percent": 3.863257
+    },
+    "flash4": {
+      "full_api_ms": 30.4412,
+      "fixed_core_ms": null,
+      "fp32_rmse_percent": 0.231735
+    }
+  },
+  "conclusion": "vc30 did not beat vc28 in this run; retain vc28. No statistical significance claimed."
+}

@@ -21,12 +21,12 @@
 #pragma once
 #include "descriptor_mma.cuh"
 
-template<uint32_t CTA_Q, uint32_t CTA_K, uint32_t NUM_THREADS, uint32_t head_dim, QuantGranularity Q_GRAN, QuantGranularity K_GRAN, typename DTypeOut, MaskMode mask_mode = MaskMode::kNone, bool return_lse = false, bool fuse_v_scale=false, bool ExpCast=false, bool EarlyV=false, bool PackFirst=false, bool OverlapHistory=true, int ProbabilityVariant=0, int RegisterLimit=168, bool CompactPV=false, int WorkReduction=0, bool FP8QK=false>
+template<uint32_t CTA_Q, uint32_t CTA_K, uint32_t NUM_THREADS, uint32_t head_dim, QuantGranularity Q_GRAN, QuantGranularity K_GRAN, typename DTypeOut, MaskMode mask_mode = MaskMode::kNone, bool return_lse = false, bool fuse_v_scale=false, bool ExpCast=false, bool EarlyV=false, bool PackFirst=false, bool OverlapHistory=true, int ProbabilityVariant=0, int RegisterLimit=168, bool CompactPV=false, int WorkReduction=0, bool FP8QK=false, bool BlockValues=false>
 __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(const __grid_constant__ CUtensorMap tensorMapQ,
                                         const __grid_constant__ CUtensorMap tensorMapK,
                                         const __grid_constant__ CUtensorMap tensorMapV,
                                         float *__restrict__ Q_scale, float *__restrict__ K_scale, float *__restrict__ V_scale,
-                                        DTypeOut* O, float *__restrict__ Lse, uint32_t stride_bz_o, uint32_t stride_h_o, uint32_t stride_seq_o,
+                                        DTypeOut* O, void *__restrict__ auxiliary, uint32_t stride_bz_o, uint32_t stride_h_o, uint32_t stride_seq_o,
                                         const uint32_t qo_len, const uint32_t kv_len, const uint32_t num_kv_groups,
                                         float sm_scale)
 {
@@ -34,6 +34,10 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
   asm volatile("trap;");
 #else
   static_assert(NUM_THREADS == 128);
+  static_assert(!BlockValues || (!return_lse && !FP8QK &&
+      (WorkReduction==0 || WorkReduction==9)), "vc31 uses channel V scales and vc28 scheduling");
+  // Auxiliary metadata is FP16 block means for vc31, otherwise optional FP32 LSE.
+  const half* V_mean = static_cast<const half*>(auxiliary);
   static_assert(!FP8QK || (CTA_Q==64 && CTA_K==128 &&
       Q_GRAN==QuantGranularity::kPerBlock && K_GRAN==QuantGranularity::kPerBlock &&
       (WorkReduction==0 || WorkReduction==2)), "FP8 QK uses block scales and FP32 max");
@@ -41,7 +45,7 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
   static_assert(RegisterLimit==128 || RegisterLimit==144 || RegisterLimit==168 || RegisterLimit==192);
   static_assert(!ExpCast || !PackFirst);
   static_assert(CTA_Q <= CTA_K);
-  static_assert(WorkReduction<4 || (ExpCast && OverlapHistory && !CompactPV));
+  static_assert(WorkReduction<4 || (ExpCast && OverlapHistory && (!CompactPV || BlockValues)));
 
   const uint32_t warp_idx = (threadIdx.x % 128) / 32;
   const uint32_t lane_id = threadIdx.x % 32;
@@ -249,7 +253,7 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
 
     }
     uint32_t local_probability[num_tiles_q][num_tiles_pv_inner][4];
-    float tile_mass[num_tiles_q][2], local_alpha[num_tiles_q][2];
+    float tile_mass[num_tiles_q][2] = {}, local_alpha[num_tiles_q][2];
     auto& RS_f8 = carry_mass ? carried_probability : local_probability;
     auto& probability_alpha = carry_mass ? carried_alpha : local_alpha;
     bool probability_rescale=false;
@@ -268,7 +272,7 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
     } else {
     update_mdo<num_tiles_q, num_tiles_k, num_tiles_v, false, true, false>(RS_f32, RO, m, d, sm_scale);
 
-      if constexpr (PackFirst) RS_32_to_8<num_tiles_q, num_tiles_k>(RS_f32, RS_f8);
+      if constexpr (PackFirst || BlockValues) RS_32_to_8<num_tiles_q, num_tiles_k>(RS_f32, RS_f8);
     // accumulate d on thread basis
 #pragma unroll
     for (uint32_t fq = 0; fq < num_tiles_q; fq++)
@@ -278,10 +282,14 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
       {
         d[fq][0] += (RS_f32[fq][fk][0] + RS_f32[fq][fk][1] + RS_f32[fq][fk][4] + RS_f32[fq][fk][5]);
         d[fq][1] += (RS_f32[fq][fk][2] + RS_f32[fq][fk][3] + RS_f32[fq][fk][6] + RS_f32[fq][fk][7]);
+        if constexpr (BlockValues) {
+          tile_mass[fq][0] += (RS_f32[fq][fk][0] + RS_f32[fq][fk][1] + RS_f32[fq][fk][4] + RS_f32[fq][fk][5]);
+          tile_mass[fq][1] += (RS_f32[fq][fk][2] + RS_f32[fq][fk][3] + RS_f32[fq][fk][6] + RS_f32[fq][fk][7]);
+        }
       }
     }
 
-      if constexpr (!PackFirst) RS_32_to_8<num_tiles_q, num_tiles_k>(RS_f32, RS_f8);
+      if constexpr (!PackFirst && !BlockValues) RS_32_to_8<num_tiles_q, num_tiles_k>(RS_f32, RS_f8);
     }
 
     // wait for V
@@ -327,6 +335,11 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
       load_async_4D(sV, &tensorMapV, &barrier_V, iter * CTA_K, 0, kv_head_id, batch_id);
     }
 
+    if constexpr (BlockValues) {
+      vc_restore_block_means(RO,RO_temp,tile_mass,V_mean,
+          batch_id*num_qo_heads+head_id,iter - 1,div_ceil(kv_len,CTA_K),head_dim,lane_id,
+          part * (num_tiles_v / pv_parts));
+    } else {
 #pragma unroll
     for (uint32_t fq = 0; fq < num_tiles_q; fq++)
     {
@@ -339,6 +352,7 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
           RO[fq][part * (num_tiles_v / pv_parts) + fv][k] += RO_temp[fq][fv][k];
         }
       }
+    }
     }
     } // all PV channel fragments completed; sV can now be reused
 
@@ -434,7 +448,7 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
     }
 
     uint32_t RS_f8[num_tiles_q][num_tiles_pv_inner][4];
-    float tile_mass[num_tiles_q][2], probability_alpha[num_tiles_q][2];
+    float tile_mass[num_tiles_q][2] = {}, probability_alpha[num_tiles_q][2];
     if constexpr (ExpCast) {
       // vc15's exact encoder and FP32 recurrence, with a controlled schedule.
       if constexpr (carry_mass)
@@ -445,7 +459,7 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
     } else {
     update_mdo<num_tiles_q, num_tiles_k, num_tiles_v, false, true, false>(RS_f32, RO, m, d, sm_scale);
 
-      if constexpr (PackFirst) RS_32_to_8<num_tiles_q, num_tiles_k>(RS_f32, RS_f8);
+      if constexpr (PackFirst || BlockValues) RS_32_to_8<num_tiles_q, num_tiles_k>(RS_f32, RS_f8);
     // accumulate d on thread basis
 #pragma unroll
     for (uint32_t fq = 0; fq < num_tiles_q; fq++)
@@ -455,10 +469,14 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
       {
         d[fq][0] += (RS_f32[fq][fk][0] + RS_f32[fq][fk][1] + RS_f32[fq][fk][4] + RS_f32[fq][fk][5]);
         d[fq][1] += (RS_f32[fq][fk][2] + RS_f32[fq][fk][3] + RS_f32[fq][fk][6] + RS_f32[fq][fk][7]);
+        if constexpr (BlockValues) {
+          tile_mass[fq][0] += (RS_f32[fq][fk][0] + RS_f32[fq][fk][1] + RS_f32[fq][fk][4] + RS_f32[fq][fk][5]);
+          tile_mass[fq][1] += (RS_f32[fq][fk][2] + RS_f32[fq][fk][3] + RS_f32[fq][fk][6] + RS_f32[fq][fk][7]);
+        }
       }
     }
 
-      if constexpr (!PackFirst) RS_32_to_8<num_tiles_q, num_tiles_k>(RS_f32, RS_f8);
+      if constexpr (!PackFirst && !BlockValues) RS_32_to_8<num_tiles_q, num_tiles_k>(RS_f32, RS_f8);
     }
 
     // wait for V
@@ -494,6 +512,11 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
     }
     wgmma::warpgroup_wait<0>();
 
+    if constexpr (BlockValues) {
+      vc_restore_block_means(RO,RO_temp,tile_mass,V_mean,
+          batch_id*num_qo_heads+head_id,num_iterations - 1,div_ceil(kv_len,CTA_K),head_dim,lane_id,
+          part * (num_tiles_v / pv_parts));
+    } else {
 #pragma unroll
     for (uint32_t fq = 0; fq < num_tiles_q; fq++)
     {
@@ -506,6 +529,7 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
           RO[fq][part * (num_tiles_v / pv_parts) + fv][k] += RO_temp[fq][fv][k];
         }
       }
+    }
     }
     } // all PV channel fragments completed; sV can now be reused
     // No following QK: drain the final masked tile after PV and history add.
@@ -579,7 +603,7 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
     {
       // only works for CTA_Q = 64
       uint32_t lse_idx = bx * CTA_Q + lane_id / 4 + 8 * (lane_id % 4) + 16 * warp_idx;
-      float *lse_lane_ptr = Lse + batch_id * (qo_len * num_qo_heads) + head_id * qo_len + lse_idx;
+      float *lse_lane_ptr = static_cast<float*>(auxiliary) + batch_id * (qo_len * num_qo_heads) + head_id * qo_len + lse_idx;
       uint32_t fq = (lane_id % 4) / 2;
       uint32_t k = (lane_id % 4) % 2;
 

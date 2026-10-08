@@ -1,7 +1,8 @@
 """H200 main route: INT8 QK + FP8 PV, with independent VC feature switches.
 
 Four vc15 variants isolate ExpCast and V smoothing. vc22/vc28/vc29/vc30 are
-separate ExpCast-only performance candidates. FA4 has a full-API row only.
+separate ExpCast-only performance candidates. vc31 has four matched feature arms.
+FA4 has a full-API row and optional CUPTI kernel timing, not a prepared-core row.
 Full APIs preprocess fresh original inputs;
 fixed-core APIs reuse quantized payloads and still allocate their outputs.
 """
@@ -15,6 +16,7 @@ import torch
 
 from benchmark_cuda import measure_trial, query_indices, fp32_reference, external_backend, output_hnd
 from profile_sage_vc import stats, load_sage_core_ops, sage_core_calls, trace_layout_samples
+from kernel_timing import profile_kernels
 
 
 # name, ExpCast, V smoothing, native schedule
@@ -27,7 +29,43 @@ VARIANTS = (
     ("int8_expcast_vc28", True, False, "vc28_stream_i2f"),
     ("int8_expcast_vc29", True, False, "vc29_interleave_rows"),
     ("int8_expcast_vc30", True, False, "vc30_desc"),
+    ("vc31_control", False, False, "vc31_unified"),
+    ("vc31_expcast", True, False, "vc31_unified"),
+    ("vc31_smooth", False, True, "vc31_unified"),
+    ("vc31_both", True, True, "vc31_unified"),
 )
+
+KERNEL_BACKENDS = ("sage_cpp", "int8_expcast_vc28", "vc31_control", "vc31_expcast",
+                   "vc31_smooth", "vc31_both", "flash4")
+
+
+def load_inputs(args, device):
+    if args.qkv_file is None:
+        dtype = getattr(torch, args.dtype)
+        q = torch.randn(args.batch, args.heads, args.queries, args.dim, device=device, dtype=dtype)
+        k = torch.randn(args.batch, args.heads, args.tokens, args.dim, device=device, dtype=dtype)
+        return (q, k, torch.randn_like(k)), {"kind": "random", "post_rope": False}
+    data = torch.load(args.qkv_file, map_location="cpu", weights_only=True)
+    if not isinstance(data, dict) or not all(isinstance(data.get(k), torch.Tensor) for k in ("q", "k", "v")):
+        raise ValueError("QKV file must contain tensors under q, k, v")
+    qkv = tuple(data[k] for k in ("q", "k", "v"))
+    if any(x.ndim != 4 for x in qkv):
+        raise ValueError("Captured Q/K/V must be four-dimensional")
+    if args.qkv_layout == "NHD":
+        qkv = tuple(x.transpose(1, 2) for x in qkv)
+    q, k, v = qkv
+    if (q.dtype not in (torch.float16, torch.bfloat16) or
+            any(x.dtype != q.dtype for x in qkv) or k.shape != v.shape or
+            q.shape[:2] != k.shape[:2] or q.shape[-1] != k.shape[-1] or
+            q.shape[-1] not in (64, 128) or any(x.numel() == 0 for x in qkv)):
+        raise ValueError("Captured QKV require matching FP16/BF16 MHA, D64/128, nonempty shapes")
+    if not all(torch.isfinite(x).all() for x in qkv):
+        raise ValueError("Captured QKV contain NaN/Inf")
+    args.batch, args.heads, args.queries, args.dim = q.shape
+    args.tokens, args.dtype = k.shape[2], str(q.dtype).removeprefix("torch.")
+    return tuple(x.to(device).contiguous() for x in qkv), {
+        "kind": "captured", "file": str(args.qkv_file), "layout": args.qkv_layout,
+        "post_rope": "caller must capture after RoPE; no transform is applied by this benchmark"}
 
 
 def require_int8_state(state):
@@ -103,6 +141,12 @@ def parse_args(argv=None):
     p.add_argument("--dtype", choices=("float16", "bfloat16"), default="bfloat16")
     p.add_argument("--device", default="cuda:0")
     p.add_argument("--trace-dir", type=Path)
+    p.add_argument("--paper-kernels", action="store_true", help="Additional CUPTI windows; no ncu/nvdisasm needed")
+    p.add_argument("--kernel-backends", nargs="+", choices=KERNEL_BACKENDS, default=list(KERNEL_BACKENDS))
+    p.add_argument("--kernel-warmup-seconds", type=float, default=20.)
+    p.add_argument("--kernel-seconds", type=float, default=10.)
+    p.add_argument("--qkv-file", type=Path, help="Optional local torch.save dict(q=q,k=k,v=v), captured after RoPE")
+    p.add_argument("--qkv-layout", choices=("HND", "NHD"), default="NHD")
     p.add_argument("--skip-flash4", action="store_true", help="Explicitly omit FA4; default requires the installed flash-attn-4")
     p.add_argument("--output", type=Path, default=Path("results/h200_int8_main.json"))
     args = p.parse_args(argv)
@@ -112,6 +156,9 @@ def parse_args(argv=None):
             p.error(name + " must be positive")
     if args.check_queries < 0:
         p.error("check-queries must be nonnegative (0 means all)")
+    for value in (args.kernel_warmup_seconds, args.kernel_seconds):
+        if not 0 < value < float("inf"):
+            p.error("kernel windows must be positive finite seconds")
     return args
 
 
@@ -119,8 +166,8 @@ def parse_args(argv=None):
 def main():
     args = parse_args()
     from sageattention_local import vc, vc_reference, sageattn
-    if vc._extension().sage_vc_kernel_version < 28:
-        raise RuntimeError("vc30 requires rebuilding: bash scripts/validate_int8_h200.sh (without --skip-build)")
+    if vc._extension().sage_vc_kernel_version < 29:
+        raise RuntimeError("vc31 requires rebuilding: bash scripts/validate_int8_h200.sh (without --skip-build)")
     device = torch.device(args.device)
     torch.cuda.set_device(device)
     if torch.cuda.get_device_capability(device) != (9, 0):
@@ -128,11 +175,9 @@ def main():
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
     torch.manual_seed(args.seed)
-    dtype = getattr(torch, args.dtype)
-    q = torch.randn(args.batch, args.heads, args.queries, args.dim, device=device, dtype=dtype)
-    k = torch.randn(args.batch, args.heads, args.tokens, args.dim, device=device, dtype=dtype)
-    v = torch.randn_like(k)
-    qkv = (q, k, v)
+    qkv, input_info = load_inputs(args, device)
+    q, k, v = qkv
+    dtype = q.dtype
     flash4 = None if args.skip_flash4 else make_flash4(qkv)
     if flash4:
         print("FlashAttention-4:", json.dumps(flash4.info), flush=True)
@@ -166,7 +211,7 @@ def main():
         if name in states:
             oracle = vc_reference.reference(states[name], query_indices=ids, chunk=32).to(dtype).float().cpu()
             entry["vs_decoded_quantized_reference"] = metrics(sample, oracle, limit=.01)
-        if name in ("int8_control", "int8_expcast"):
+        if name in ("int8_control", "int8_expcast", "int8_v_smooth", "int8_vc"):
             baselines[name] = out
         if name == "int8_expcast_vc22":
             entry["vs_vc15_all_rows"] = metrics(out, baselines.pop("int8_expcast"), limit=.001)
@@ -178,12 +223,21 @@ def main():
             entry["vs_vc28_all_rows"] = metrics(out, baselines["int8_expcast_vc28"], limit=.001)
         if name == "int8_expcast_vc30":
             entry["exact_vc28_all_rows"] = torch.equal(out, baselines["int8_expcast_vc28"])
-            entry["vs_vc28_all_rows"] = metrics(out, baselines.pop("int8_expcast_vc28"), limit=.001)
+            entry["vs_vc28_all_rows"] = metrics(out, baselines["int8_expcast_vc28"], limit=.001)
+        if name.startswith("vc31_"):
+            baseline = {"vc31_control": "int8_control", "vc31_expcast": "int8_expcast_vc28",
+                        "vc31_smooth": "int8_v_smooth", "vc31_both": "int8_vc"}[name]
+            entry["vs_previous_all_rows"] = metrics(out, baselines[baseline], limit=.001)
+            entry["previous_variant"] = baseline
+            entry["exact_previous_all_rows"] = torch.equal(out, baselines[baseline])
+            if name == "vc31_expcast" and not entry["exact_previous_all_rows"]:
+                raise AssertionError("Unsmoothed vc31 must use the identical vc28 native kernel")
         if name == "sage_cpp":
             entry["control_vs_sage_all_rows"] = metrics(baselines.pop("int8_control"), out, limit=.001)
         accuracy[name] = entry
         print("Checked", name, json.dumps(entry), flush=True)
     del raw, out, sample, oracle
+    baselines.clear()
     for call in [*core.values(), *full.values()]:
         for _ in range(args.warmup):
             call()
@@ -211,7 +265,7 @@ def main():
         print(f"{name:<25} {latency:>12.4f} {core_text:>12} "
               f"{sage_ms/latency:>9.3f}x {fa4_text:>10} {100*accuracy[name]['vs_dense_fp32']['relative_rmse']:>14.6f}")
     print("Sage/API and FA4/API >1 mean faster than that baseline's FULL API.")
-    print("Four vc15 arms isolate feature switches; vc22/vc28/vc29/vc30 are separate candidates. FA4 has no fixed-payload core row.")
+    print("Four vc15 and four vc31 arms isolate feature switches separately; vc22/vc28/vc29/vc30 are ExpCast-only. FA4 has no prepared-core row.")
     print("Full API includes fresh preprocessing/grouping; fixed core includes allocation/dispatch.")
     print("1% decoded-reference / 0.1% same-algorithm gates check implementation, NOT model quality.")
     for before, after in (("vc22", "vc28"), ("vc28", "vc29"), ("vc28", "vc30")):
@@ -226,6 +280,7 @@ def main():
                         "native_kernel_version": vc._extension().sage_vc_kernel_version,
                         "tf32_enabled": False},
         "args": {key: str(value) if isinstance(value, Path) else value for key, value in vars(args).items()},
+        "inputs": input_info,
         "quantization": {"qk": "Sage per-thread INT8, input-dtype K centering, FP32 scales",
                          "pv": "FP8 E4M3, two-level FP32 accumulation",
                          "v": "per-channel FP8; optional block residuals and separate means",
@@ -234,16 +289,29 @@ def main():
                      for name, cast, smooth, mode in VARIANTS},
         "external_backends": {"flash4": flash4.info} if flash4 else {},
         "compiled_resources_d128": {key: value for key, value in vc.kernel_resources(0 if dtype==torch.float16 else 1).items()
-                                   if key in ("expcast_sage_layout_27", "expcast_sage_layout_35", "expcast_sage_layout_36", "expcast_sage_layout_37")},
+                                   if key in ("expcast_sage_layout_27", "expcast_sage_layout_35", "expcast_sage_layout_36", "expcast_sage_layout_37", "vc31_smooth", "vc31_both")},
         "rows": rows, "accuracy": accuracy, "trial_order": orders,
-        "scope": "Random inputs, native contiguous layouts (Sage/VC HND, FA4 NHD); layout copies and first-use JIT excluded. "
+        "scope": "See inputs for random/captured origin; native contiguous layouts (Sage/VC HND, FA4 NHD); layout copies and first-use JIT excluded. "
                  "VC uses INT8 QK/FP8 PV; FA4 receives original input dtype, no external quantization. "
                  "Not full paper reproduction or model end-to-end speed. "
                  "Dense-FP32 errors use selected queries/all keys; same-algorithm gates use all output rows.",
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
-    if args.trace_dir:
+    if args.paper_kernels:
+        calls = {name: core[name] for name in args.kernel_backends if name != "flash4"}
+        if "flash4" in args.kernel_backends and flash4:
+            calls["flash4"] = flash4.call
+        def save_windows(progress):
+            report["kernel_windows"] = progress
+            args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+        try:
+            profile_kernels(calls, args, device, on_result=save_windows)
+        except Exception as exc:
+            report.setdefault("kernel_windows", {}).update(status="failed", error=str(exc))
+            args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+            raise RuntimeError(f"CUPTI timing failed; API/accuracy results preserved in {args.output}. {exc}") from exc
+    elif args.trace_dir:
         report["cupti"] = trace_layout_samples(core, args, device)
         args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print("Saved:", args.output, flush=True)

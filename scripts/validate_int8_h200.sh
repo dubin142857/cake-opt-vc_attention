@@ -10,5 +10,6 @@ else
   echo "Usage: bash scripts/validate_int8_h200.sh [--skip-build]" >&2
   exit 2
 fi
-# No FP8 QK entry is invoked. CUPTI is optional in the Python profiler.
+# Check unified attention before any benchmark. No FP8 QK entry is invoked.
+python3 scripts/validate_sage_vc31.py --output results/sage_vc31_validation.json
 python3 scripts/profile_int8_h200.py --output results/h200_int8_main.json

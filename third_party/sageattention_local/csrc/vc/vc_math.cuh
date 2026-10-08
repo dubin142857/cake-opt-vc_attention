@@ -472,3 +472,27 @@ __device__ __forceinline__ void vc_accumulate(
     }
   }
 }
+
+// vc31: denominator remains lane-partial until normalize_d; only the mean
+// outer product uses a four-lane row sum. Caller has already updated d/scaled
+// history with the PARTIAL mass before part zero. Reuse the now-dead partial
+// mass registers for the full row sum; later PV fragments must not reduce again.
+template<uint32_t NQ, uint32_t NV, uint32_t NP>
+__device__ __forceinline__ void vc_restore_block_means(
+    float (&out)[NQ][NV][8], const float (&product)[NQ][NP][8],
+    float (&partial_mass)[NQ][2], const half* means,
+    int head, int tile, int tiles, int dim, int lane, int offset=0) {
+  if (offset==0) {
+  #pragma unroll
+  for (int q=0;q<NQ;++q)
+    #pragma unroll
+    for (int r=0;r<2;++r) {
+      float value=partial_mass[q][r];
+      value+=__shfl_xor_sync(0xffffffff,value,1);
+      value+=__shfl_xor_sync(0xffffffff,value,2);
+      partial_mass[q][r]=value;
+    }
+  }
+  vc_accumulate<true,true,true,true>(out,product,partial_mass,nullptr,means,
+      head,tile,tiles,dim,lane,offset);
+}

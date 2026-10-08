@@ -4,8 +4,8 @@
   "commit": "eb615cf6cf4d221338033340ee2de1c37fbdba4a",
   "license": "Apache-2.0",
   "local_distribution": "sageattention-local",
-  "local_version": "2.2.0+vc30",
-  "scope": "Baseline CUDA/C++ bodies and Triton sources unchanged, with a build-only CUDAContext.h removal; isolated package/operator namespaces and SM90 fake-name fix. Separate Sage+VC experiment in csrc/vc, retaining INT8 QK and adding optional V clustering/block smoothing and ExpCast. vc27 adds a separate opt-in block-scaled E4M3 QK entry with FP32 K centering, no Hadamard or V smoothing; existing INT8 defaults retained. vc27.1 fixes all-zero V channels in the FP8 QK entry using a local zero-safe derivative of MeanScaleKernel; pinned baseline sources are unchanged. vc28 returns the H200 main route to INT8 QK and adds an opt-in streamed I2F/ExpCast encoding candidate on vc22; default vc15 and pinned Sage kernels unchanged. H200 performance unverified. vc29 adds opt-in two-row interleaved INT8 score conversion and ExpCast encoding on measured vc28; unchanged quantization, P rounding, FP32 sums, default vc15 and pinned Sage kernels. vc29 H200 performance unverified. vc30 adds opt-in reuse of aligned WGMMA descriptor anchors on vc28, retaining descriptor bit patterns and all numerical operations. H200 performance unverified.",
+  "local_version": "2.2.0+vc31",
+  "scope": "Baseline CUDA/C++ bodies and Triton sources unchanged, with a build-only CUDAContext.h removal; isolated package/operator namespaces and SM90 fake-name fix. Separate Sage+VC experiment in csrc/vc, retaining INT8 QK and adding optional V clustering/block smoothing and ExpCast. vc27 adds a separate opt-in block-scaled E4M3 QK entry with FP32 K centering, no Hadamard or V smoothing; existing INT8 defaults retained. vc27.1 fixes all-zero V channels in the FP8 QK entry using a local zero-safe derivative of MeanScaleKernel; pinned baseline sources are unchanged. vc28 returns the H200 main route to INT8 QK and adds an opt-in streamed I2F/ExpCast encoding candidate on vc22; default vc15 and pinned Sage kernels unchanged. H200 performance unverified. vc29 adds opt-in two-row interleaved INT8 score conversion and ExpCast encoding on measured vc28; unchanged quantization, P rounding, FP32 sums, default vc15 and pinned Sage kernels. vc29 H200 performance unverified. vc30 adds opt-in reuse of aligned WGMMA descriptor anchors on vc28, retaining descriptor bit patterns and all numerical operations. H200 performance unverified. vc31 adds an opt-in unified vc28 probability/V-Smooth path, preserving the vc28 unsmoothed native calls; complete H200 execution remains unverified locally.",
   "files": [
     {
       "upstream_path": "LICENSE",
@@ -426,13 +426,13 @@
     },
     {
       "local_path": "csrc/vc/pybind.cpp",
-      "local_sha256": "163f032d9559885ce51707b4219d1e4ff7b12cd02e590db08d89a6efbf8a9eb2",
+      "local_sha256": "c9e2441686163fbb990ea380351fe29988f47754979d2310498fe82687af6cdd",
       "license": "Apache-2.0",
       "origin": "New VC integration/diagnostic code in vc-attention"
     },
     {
       "local_path": "csrc/vc/sage_layout.cuh",
-      "local_sha256": "4eca3bf985b40462b250dc7f52248e07bebe1be36af5fba1c7a56314cd449a09",
+      "local_sha256": "cc97121732825e641bc4bc6146e4c96f996a469f021c38d3e85476bfc793dd7b",
       "license": "Apache-2.0",
       "derived_from": "csrc/qattn/qk_int_sv_f8_cuda_sm90.cu",
       "upstream_sha256": "ad2b0ff7c5f171ad524f2e529dc7eb7d9f167f29094563d99a3d9da888d22572",
@@ -462,13 +462,13 @@
     },
     {
       "local_path": "csrc/vc/vc_math.cuh",
-      "local_sha256": "fc091cf737f22d2d5c9a878cea894673167377595beb950eeb9728f4ede41037",
+      "local_sha256": "45d885cd79e3d4d72733aaacc1b31cde6a9e0ba81a407e7cb184dd7dfd665c53",
       "license": "Apache-2.0",
       "origin": "New VC integration/diagnostic code in vc-attention"
     },
     {
       "local_path": "csrc/vc/vc_sm90.cu",
-      "local_sha256": "454b509517d37542df4c7a7afd53deeebb1ff2a3edffa51b09a0eca3f7c454d1",
+      "local_sha256": "56aab22f436754f1cac6b7a75aec54d8c7acc449b1d66e1aeccaa893bd4ad3fe",
       "license": "Apache-2.0",
       "derived_from": "csrc/qattn/qk_int_sv_f8_cuda_sm90.cu",
       "upstream_sha256": "ad2b0ff7c5f171ad524f2e529dc7eb7d9f167f29094563d99a3d9da888d22572",
@@ -482,7 +482,7 @@
     },
     {
       "local_path": "sageattention_local/vc.py",
-      "local_sha256": "32dfa04b601a2153ce1bda97d03a43fd5d6f42059ddf6d2a291574105988bee7",
+      "local_sha256": "318275fc828d8bc4c928047d2cfd20d7c260f8dc327035f1a97ba46681953de5",
       "license": "Apache-2.0",
       "origin": "New VC integration/diagnostic code in vc-attention"
     },

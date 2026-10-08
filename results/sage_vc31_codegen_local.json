@@ -1,0 +1,108 @@
+{
+  "instances": 320,
+  "historical_instances": 312,
+  "historical_instruction_text_identical": 312,
+  "historical_missing": [],
+  "historical_changed": [],
+  "candidates": [
+    {
+      "dim": 128,
+      "dtype": "bfloat16",
+      "expcast": false,
+      "registers": 168,
+      "stack_spill": [
+        8,
+        4,
+        4
+      ],
+      "static_instructions": 2376
+    },
+    {
+      "dim": 128,
+      "dtype": "bfloat16",
+      "expcast": true,
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "static_instructions": 3296
+    },
+    {
+      "dim": 128,
+      "dtype": "float16",
+      "expcast": false,
+      "registers": 168,
+      "stack_spill": [
+        8,
+        4,
+        4
+      ],
+      "static_instructions": 2376
+    },
+    {
+      "dim": 128,
+      "dtype": "float16",
+      "expcast": true,
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "static_instructions": 3296
+    },
+    {
+      "dim": 64,
+      "dtype": "bfloat16",
+      "expcast": false,
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "static_instructions": 1848
+    },
+    {
+      "dim": 64,
+      "dtype": "bfloat16",
+      "expcast": true,
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "static_instructions": 2760
+    },
+    {
+      "dim": 64,
+      "dtype": "float16",
+      "expcast": false,
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "static_instructions": 1848
+    },
+    {
+      "dim": 64,
+      "dtype": "float16",
+      "expcast": true,
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "static_instructions": 2760
+    }
+  ],
+  "ptxas_warnings": [],
+  "wgmma_serialization_diagnostics": 0,
+  "scope": "CUDA 12.4 SM90a cross-compile; normalize added false template argument and void auxiliary pointer to compare old instruction text. Not Hopper execution or speed evidence."
+}

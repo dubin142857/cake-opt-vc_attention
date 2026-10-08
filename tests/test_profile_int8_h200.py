@@ -67,10 +67,10 @@ def test_feature_pairs_share_payloads_but_full_calls_preprocess_fresh_inputs():
     assert all("expcast" not in base for base in bases.values())
     assert states["int8_vc"]["q"] is not states["int8_expcast"]["q"]
     assert {mode for _, _, _, mode in profile.VARIANTS[:4]} == {"vc15"}
-    assert profile.VARIANTS[-4][1:] == (True, False, "vc22_both")
-    assert profile.VARIANTS[-3][1:] == (True, False, "vc28_stream_i2f")
-    assert profile.VARIANTS[-2][1:] == (True, False, "vc29_interleave_rows")
-    assert profile.VARIANTS[-1][1:] == (True, False, "vc30_desc")
+    assert profile.VARIANTS[4][1:] == (True, False, "vc22_both")
+    assert profile.VARIANTS[5][1:] == (True, False, "vc28_stream_i2f")
+    assert profile.VARIANTS[6][1:] == (True, False, "vc29_interleave_rows")
+    assert profile.VARIANTS[7][1:] == (True, False, "vc30_desc")
     assert "sage_cpp" in core and "sage_cpp" in apis
 
 
@@ -126,6 +126,26 @@ def test_full_only_external_api_does_not_get_a_fabricated_core_time():
     assert rows["flash4"]["full_api"]["median_ms"] == 30.
     assert "core" not in rows["flash4"]
     assert rows["int8_expcast_vc22"]["core"]["median_ms"] == 25.
+
+
+def test_capture_inputs_keep_values_and_override_random_shape(tmp_path):
+    q = torch.randn(1, 65, 2, 64, dtype=torch.bfloat16)
+    k = torch.randn(1, 129, 2, 64, dtype=torch.bfloat16)
+    path = tmp_path / "qkv.pt"
+    torch.save(dict(q=q, k=k, v=k+1), path)
+    args = profile.parse_args(["--qkv-file", str(path), "--qkv-layout", "NHD"])
+    qkv, info = profile.load_inputs(args, torch.device("cpu"))
+    assert (args.queries, args.tokens, args.heads, args.dim) == (65, 129, 2, 64)
+    assert info["kind"] == "captured"
+    for converted, original in zip(qkv, (q, k, k+1)):
+        assert converted.is_contiguous()
+        torch.testing.assert_close(converted.transpose(1, 2), original, rtol=0, atol=0)
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "nan", "inf"])
+def test_invalid_kernel_window_rejected(value):
+    with pytest.raises(SystemExit):
+        profile.parse_args(["--kernel-seconds", value])
 
 
 def run_shell(args=(), fail=""):
