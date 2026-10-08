@@ -1,10 +1,11 @@
 # SageAttention 主体 + VC 两项改动
 
-当前包版本 `2.2.0+vc27`，native kernel version 24。新增独立入口 `sageattn_vc_fp8`：
+当前包版本 `2.2.0+vc27.1`，native kernel version 25。独立入口 `sageattn_vc_fp8`：
 Q/K 使用带 scale 的分块 E4M3，QK/PV 均走 FP8；第一轮关闭 V 平滑、尚未加入 Hadamard。
 INT8 的默认入口不变，vc22 留作同场对照。运行 `bash scripts/validate_fp8_qk_h200.sh`，
 验证后对比完整 API、固定输入核心和 CUPTI。算法边界及导入方式见 [vc27](SAGE_VC27.md)。
-本地编译及预处理数值检查通过，H200 完整内核精度与提速幅度待测。
+vc27.1 修复首轮 H200 常量测试暴露的 V 零通道 NaN，必须重新编译；
+本地编译及预处理数值检查通过，H200 完整内核精度与提速幅度仍需验证。
 
 此前包版本为 `2.2.0+vc25`，native kernel version 22，新增两个延后分母求和的实验模式：
 `vc25_mass_serial` 在下一块 QK 前解码上一块已完成 PV 的 P；

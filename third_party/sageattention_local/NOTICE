@@ -6,7 +6,7 @@ License: Apache License 2.0 (see LICENSE).
 
 Local integration in vc-attention:
 - Independent sageattention_local Python package and Torch operator namespaces.
-- Independent sageattention-local distribution, version 2.2.0+vc25.
+- Independent sageattention-local distribution, version 2.2.0+vc27.1.
 - Hopper-only build of the baseline _qattn_sm90 and _fused CUDA extensions.
 - Distinct name for the SM90 fake implementation, avoiding shadowing the CUDA callable.
 - Remove the unused CUDAContext.h include in fused.cu to avoid unnecessary cuSPARSE headers.
@@ -37,3 +37,6 @@ vc27 FP8 QK experiment, separate entry sageattn_vc_fp8:
 - Extends the local sage_layout template with an opt-in FP8 shared/shared QK instruction;
   no upstream baseline kernel is changed. FP32 probability max and optional ExpCast remain fused.
 - No Hadamard, V grouping/smoothing or denoising-step scheduling in this first FP8 entry.
+- vc27.1 adds global_values.cuh, derived from the pinned fused.cu MeanScaleKernel,
+  retaining its Apache-2.0 notice. The FP8 entry handles zero V channels inside the
+  existing quantization pass; nonzero math and baseline kernel sources are unchanged.

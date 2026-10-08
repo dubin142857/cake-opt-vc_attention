@@ -116,7 +116,7 @@ def main():
             "args":{key:str(value) if isinstance(value,Path) else value for key,value in vars(args).items()},
             "quantization":{"int8":"Sage per-thread; input-dtype K centering",
                             "fp8":"E4M3 block Q64/K128; FP32 K centering; scales=max(amax/448,1e-12)",
-                            "v":"identical unsmoothed Sage per-channel FP8 payload", "hadamard":False},
+                            "v":"same unsmoothed Sage per-channel FP8 payload on these random inputs; FP8 entry additionally handles zero channels", "hadamard":False},
             "rows":rows,"accuracy":accuracy,"trial_order":orders,
             "compiled_resources":vc._extension().fp8_kernel_resources(0 if dtype==torch.float16 else 1,args.dim),
             "scope":"Random inputs; fresh preprocessing in full API. Fixed core includes allocation/dispatch. No model-quality or dtype-only speedup claim."}

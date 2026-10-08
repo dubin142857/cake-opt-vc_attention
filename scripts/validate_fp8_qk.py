@@ -76,6 +76,54 @@ def check_implementation(actual, expected):
     return error
 
 
+def require_finite_payload(state, context):
+    for name in ("q","k","v","qs","ks","vs"):
+        if not torch.isfinite(state[name].float()).all():
+            raise AssertionError(f"{context}: nonfinite quantized payload {name}; attention not launched")
+
+
+@torch.no_grad()
+def validate_global_values(ext, *, compare_upstream=False):
+    """Check zero channels before attention, including native nondefault streams."""
+    torch.manual_seed(27101)
+    cases=0
+    for dtype in (torch.float16,torch.bfloat16):
+        for dim in (64,128):
+            for n in (1,128,129,257,4097):
+                for kind in ("mixed_random","mixed_constant","all_zero"):
+                    v=torch.randn(2,3,n,dim,device="cuda",dtype=dtype)
+                    if kind=="mixed_constant":
+                        v.copy_(torch.arange(dim,device="cuda",dtype=dtype).remainder(8).view(1,1,1,dim)/8)
+                    if kind=="all_zero": v.zero_()
+                    v[...,::8]=0
+                    padded=torch.nn.functional.pad(v,(0,0,0,(-n)%128))
+                    length=padded.shape[2]
+                    ids=torch.arange(length,device=v.device)
+                    r=ids%16
+                    permutation=(ids//16)*16+(r//8)*2+((r//2)%4)*4+r%2
+                    packed=padded.transpose(2,3).index_select(-1,permutation.argsort()).contiguous()
+                    current=torch.cuda.current_stream()
+                    side=torch.cuda.Stream();side.wait_stream(current)
+                    with torch.cuda.stream(side): codes,scales=ext.prepare_global_values(packed)
+                    current.wait_stream(side)
+                    codes.record_stream(current);scales.record_stream(current)
+                    assert torch.isfinite(codes.float()).all(), (dtype,dim,n,kind,"V codes")
+                    assert torch.isfinite(scales).all(), (dtype,dim,n,kind,"V scales")
+                    zero=packed.abs().amax(-1)==0
+                    assert torch.all(scales[zero]==0)
+                    assert torch.count_nonzero(codes.view(torch.uint8)[zero])==0
+                    torch.testing.assert_close(scales,packed.float().abs().amax(-1)/448,rtol=2e-7,atol=0)
+                    if compare_upstream:
+                        from sageattention_local.quant import per_channel_fp8
+                        legacy,legacy_scales,_=per_channel_fp8(padded,tensor_layout="HND",smooth_v=False)
+                        torch.testing.assert_close(scales,legacy_scales,rtol=0,atol=0)
+                        assert torch.equal(codes.view(torch.uint8)[~zero],legacy.view(torch.uint8)[~zero]), "Nonzero V bytes changed"
+                    cases+=1
+    return {"cases":cases,"zero_channels":"finite zero codes and zero scales",
+            "nonzero_upstream_byte_parity": "passed" if compare_upstream else "not requested",
+            "stream":"native current stream with explicit dependencies"}
+
+
 @torch.no_grad()
 def validate_attention(api, oracle):
     torch.manual_seed(2702)
@@ -106,19 +154,27 @@ def validate_attention(api, oracle):
                     row=dict(dtype=str(dtype),dim=dim,queries=nq,keys=nk,expcast=cast,**error)
                     rows.append(row)
                     print(json.dumps(row),flush=True)
-            # Known constant output catches scale, tail masks, and V layout bugs.
+            # Zero V channels must be finite before MMA; check this explicitly
+            # so a preprocessing regression is not misreported as QK error.
             q=torch.zeros(1,2,65,dim,device="cuda",dtype=dtype)
-            k=torch.zeros(1,2,257,dim,device="cuda",dtype=dtype)
-            v=torch.arange(dim,device="cuda",dtype=dtype).remainder(8).view(1,1,1,dim).expand_as(k).contiguous()/8
-            for cast in (False,True):
-                out=api.sageattn_vc_fp8(q,k,v,expcast=cast)
-                torch.testing.assert_close(out,v[:,:,:1].expand_as(out),rtol=.004,atol=.002)
+            for nk in (1,129,257):
+                k=torch.zeros(1,2,nk,dim,device="cuda",dtype=dtype)
+                for all_zero in (False,True):
+                    v=torch.arange(dim,device="cuda",dtype=dtype).remainder(8).view(1,1,1,dim).expand_as(k).contiguous()/8
+                    if all_zero: v.zero_()
+                    state=api.prepare(q,k,v)
+                    context=f"Known V case dtype={dtype}, D={dim}, K={nk}, all_zero={all_zero}"
+                    require_finite_payload(state,context)
+                    for cast in (False,True):
+                        out=api.sageattn_vc_fp8(q,k,v,expcast=cast)
+                        if not torch.isfinite(out).all(): raise AssertionError(f"{context}, expcast={cast}: nonfinite output")
+                        torch.testing.assert_close(out,v[:,:,:1].expand_as(out),rtol=.004,atol=.002)
             with torch.cuda.stream(side):
                 try: api.sageattn_vc_fp8(q,k,v)
                 except ValueError as e:
                     assert "default CUDA stream" in str(e)
                 else: raise AssertionError("Public default-stream guard missing")
-    return {"all_row_cases":rows,"known_constant_cases":8,"public_stream_guard_cases":4,
+    return {"all_row_cases":rows,"known_constant_cases":48,"public_stream_guard_cases":4,
             "scope":"Native/decoded FP8 oracle, not dense-attention quality", "implementation_gate_relative_rmse":.01}
 
 
@@ -131,8 +187,9 @@ def main():
     if torch.cuda.get_device_capability() != (9,0): raise RuntimeError("Hopper required for attention validation")
     torch.backends.cuda.matmul.allow_tf32=False
     torch.backends.cudnn.allow_tf32=False
-    report={"version":27,"native_kernel_version":ext.sage_vc_kernel_version,
+    report={"version":"27.1","native_kernel_version":ext.sage_vc_kernel_version,
             "device":torch.cuda.get_device_name(),"quantization":validate_quantization(ext),
+            "global_values":validate_global_values(ext,compare_upstream=True),
             "attention":validate_attention(vc_fp8,vc_reference),"status":"passed"}
     args.output.parent.mkdir(parents=True,exist_ok=True)
     args.output.write_text(json.dumps(report,indent=2)+"\n",encoding="utf-8")

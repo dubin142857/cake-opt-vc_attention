@@ -45,7 +45,7 @@ SAGE_LAYOUT_MODES = {"vc16": 1, "vc16_early_v": 2, "vc16_pack_first": 3,
 def _extension():
     from . import _vc_sm90
     if (getattr(_vc_sm90, "sage_vc_api_version", None) != 1 or
-            getattr(_vc_sm90, "sage_vc_kernel_version", None) != 24 or
+            getattr(_vc_sm90, "sage_vc_kernel_version", None) != 25 or
             getattr(_vc_sm90, "sage_vc_preprocess_version", None) != 1):
         raise RuntimeError("Rebuild sageattention-local with bash scripts/build_sage_local.sh")
     return _vc_sm90

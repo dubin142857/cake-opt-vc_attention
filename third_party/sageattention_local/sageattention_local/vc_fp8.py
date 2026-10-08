@@ -14,12 +14,16 @@ def prepare(q, k, v, *, expcast=True, sm_scale=None):
     """Private HND/default-stream preparation; finite contiguous inputs required."""
     if torch.cuda.current_stream(q.device) != torch.cuda.default_stream(q.device):
         raise ValueError("FP8 full preprocessing currently requires the default CUDA stream")
-    from .quant import per_channel_fp8
+    from . import _fused
     q8, qs, k8, ks, km = _extension().prepare_qk_fp8(q, k)
     pad = (-v.shape[2]) % 128
     if pad:
         v = torch.cat((v, v.new_zeros(v.shape[0], v.shape[1], pad, v.shape[3])), dim=2)
-    v8, vs, _ = per_channel_fp8(v, tensor_layout="HND", smooth_v=False)
+    # Keep the upstream layout and two-pass V pipeline. The local quantizer
+    # handles amax==0 inside its existing pass: zero codes, zero scale, no NaN.
+    packed = torch.empty((v.shape[0],v.shape[1],v.shape[3],v.shape[2]),device=v.device,dtype=v.dtype)
+    _fused.transpose_pad_permute_cuda(v,packed,1)
+    v8, vs = _extension().prepare_global_values(packed)
     return {"q": q8, "k": k8, "v": v8, "qs": qs, "ks": ks, "vs": vs,
             "means": torch.empty(0, device=q.device, dtype=torch.float16),
             "k_mean": km, "qk_format": "fp8_block", "expcast": expcast,

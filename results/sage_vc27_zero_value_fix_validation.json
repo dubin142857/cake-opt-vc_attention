@@ -1,0 +1,64 @@
+{
+  "package_version": "2.2.0+vc27.1",
+  "native_kernel_version": 25,
+  "failure_reported_on_h200": {
+    "dtype": "float16",
+    "dim": 64,
+    "constant_test_mismatches": 1040,
+    "constant_test_elements": 8320,
+    "nan_channel_fraction": 0.125,
+    "preceding_random_case": {
+      "queries": 193,
+      "keys": 513,
+      "ordinary_relative_rmse": 0.0037947860546410084,
+      "expcast_relative_rmse": 0.0030550735536962748
+    },
+    "root_cause": "Unsmoothed V channel amax=0 produces reciprocal infinity; zero times infinity encodes NaN before PV. The constant test contains one zero channel out of every eight."
+  },
+  "fix": {
+    "scope": "FP8 QK entry only; local derivative of pinned Sage MeanScaleKernel",
+    "zero_channel": "Reciprocal zero, finite zero FP8 values and zero scale",
+    "nonzero_channel": "Original scale, reciprocal, multiplication and hardware FP8 conversion",
+    "additional_gpu_launches": 0,
+    "attention_kernel_sources_changed": false,
+    "upstream_baseline_sources_changed": false,
+    "accuracy_tolerances_changed": false
+  },
+  "local_validation": {
+    "device": "NVIDIA GeForce RTX 3060 Laptop GPU, SM86",
+    "pytest_passed": 560,
+    "pytest_seconds": 10.0,
+    "legacy_zero_division_probe": {
+      "cases": 4,
+      "dtypes": ["float16", "bfloat16"],
+      "dims": [64, 128],
+      "old_nan_fraction": 0.125,
+      "fixed_nan_fraction": 0.0,
+      "nonzero_bytes_and_all_scales": "exactly equal on these constant-channel cases",
+      "scope": "Production quantization body with the zero guard disabled/enabled. SM86 uses CUDA software FP8 conversion; Hopper hardware conversion is not executed here."
+    },
+    "native_global_value_cases": 60,
+    "native_value_coverage": "Mixed random/zero channels, mixed constant channels, all-zero V; D64/D128, FP16/BF16, lengths 1/128/129/257/4097, B2 H3, explicit nondefault-stream dependencies",
+    "native_qk_cases": 36,
+    "scope": "CPU tests and GPU preprocessing/helpers. Full Hopper attention is not executed locally."
+  },
+  "sm90a_v_kernel_cross_compile": {
+    "toolkit": "CUDA 12.4",
+    "status": "passed",
+    "dtype_instances": 2,
+    "registers_per_thread": 32,
+    "static_shared_bytes": 260,
+    "stack_bytes": 0,
+    "spill_store_bytes": 0,
+    "spill_load_bytes": 0,
+    "scope": "New V quantizer only. Existing vc27 attention object reused unchanged for the local extension link."
+  },
+  "packaging": {
+    "source_and_sdist_hashes_verified": 76,
+    "new_sources_in_sdist": true,
+    "remote_shell_gates": "Build/reuse ordering, argument checks and stop-before-timing on validation failure passed"
+  },
+  "pending_h200": "Rebuild, run all 72 random native/oracle cases and public HND/NHD equality checks, 48 constant cases, 60 native V cases with nonzero upstream byte parity, then performance comparison.",
+  "remote_command": "bash scripts/validate_fp8_qk_h200.sh",
+  "performance_claim": "None; this is a NaN correctness fix."
+}
