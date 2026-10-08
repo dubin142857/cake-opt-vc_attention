@@ -1,0 +1,28 @@
+{
+  "local_package": "2.2.0+vc30",
+  "native_kernel_version": 28,
+  "status": "local_checks_passed",
+  "pytest": {"passed": 600, "seconds": 10.10},
+  "cuda_cross_compile": {
+    "toolkit": "12.4",
+    "architecture": "sm_90a",
+    "instances": 312,
+    "historical_instruction_text_identical": 308,
+    "new_candidate_instances": 4,
+    "stack_or_spills": false,
+    "wgmma_serialization_diagnostics": 0,
+    "d128_static_instruction_count": {"vc28": 2856, "vc30": 2808},
+    "d64_static_instruction_count": {"vc28": 2536, "vc30": 2512},
+    "instruction_count_scope": "Whole kernel including fallback and tail; not dynamic loop count or measured speedup."
+  },
+  "package_source_integrity": {
+    "manifest_files": 78,
+    "upstream_files": 49,
+    "experiment_files": 29,
+    "unchanged_upstream_kernel_files": 36,
+    "sdist_hash_verification": "passed"
+  },
+  "execution_scope": "SM86 GPU helper/preprocessing execution and CPU script/dispatch/source checks. SM90a attention cross-compiled and linked only; full H200 kernels and FA4 benchmark were not executed locally.",
+  "descriptor_scope": "Actual CUDA shared addresses at 256 aligned anchor offsets, strides 64/128, fragments 0/32/64/96 bytes, default/nondefault stream. Production offset helper matched the pinned upstream full descriptor construction bitwise. No Hopper MMA execution in this probe.",
+  "performance": "vc30 unmeasured on H200. vc29 reported about 1.2% slower than vc28; retain vc28 as measured baseline."
+}

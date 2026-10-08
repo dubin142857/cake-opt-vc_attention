@@ -12,6 +12,7 @@ import torch
 # vc15 fuses final four-byte assembly into vc14's paired conversion.
 # The vc13 shared-copy schedules remain explicit experiments after regression.
 DEFAULT_EXPCAST_KERNEL = "vc15"
+DESCRIPTOR_CANDIDATES = {"vc30_desc": 37}
 STREAM_CONVERT_CANDIDATES = {"vc28_stream_i2f": 35, "vc29_interleave_rows": 36}
 REGISTER_CANDIDATES = {"vc18_r128": 128, "vc18_r144": 144, "vc18_r192": 192,
                        "vc18_pv64_r128": 128, "vc18_pv64_r144": 144, "vc18_pv64_r168": 168}
@@ -41,13 +42,13 @@ SAGE_LAYOUT_MODES = {"vc16": 1, "vc16_early_v": 2, "vc16_pack_first": 3,
                      **{mode: i+24 for mode,i in ENCODING_CANDIDATES.items()},
                      **{mode: i+24 for mode,i in MASS_CANDIDATES.items()},
                      **{mode: i+32 for mode,i in DUAL_QUERY_CANDIDATES.items()},
-                     **STREAM_CONVERT_CANDIDATES}
+                     **STREAM_CONVERT_CANDIDATES, **DESCRIPTOR_CANDIDATES}
 
 
 def _extension():
     from . import _vc_sm90
     if (getattr(_vc_sm90, "sage_vc_api_version", None) != 1 or
-            getattr(_vc_sm90, "sage_vc_kernel_version", None) != 27 or
+            getattr(_vc_sm90, "sage_vc_kernel_version", None) != 28 or
             getattr(_vc_sm90, "sage_vc_preprocess_version", None) != 1):
         raise RuntimeError("Rebuild sageattention-local with bash scripts/build_sage_local.sh")
     return _vc_sm90
@@ -62,7 +63,9 @@ def sage_vc_build_info():
             "stream_convert_candidate": {"mode": "vc28_stream_i2f", "baseline": "vc22_both",
                                          "scope": "INT32-to-FP32 conversion inside encoding groups; unchanged probability bytes and FP32 sums; reported H200 full API 1.0156x over vc22"},
             "interleaved_encode_candidate": {"mode": "vc29_interleave_rows", "baseline": "vc28_stream_i2f",
-                                             "scope": "interleave two independent row conversion/encoding chains; same P bytes and FP32 sums; H200 performance unverified"},
+                                             "scope": "interleave two independent row conversion/encoding chains; same P bytes and FP32 sums; reported H200 full/core API about 1.2% slower than vc28"},
+            "descriptor_candidate": {"mode": "vc30_desc", "baseline": "vc28_stream_i2f",
+                                     "scope": "reuse aligned Q/K/V WGMMA descriptor anchors; unchanged INT8 QK, vc28 ExpCast and FP32 PV; H200 performance unverified"},
             "clustering": "8 clusters, 2 Lloyd iterations, stable order; fresh every call",
             "grouping_modes": ["fused", "legacy"], "default_grouping_mode": "fused",
             "grouping_implementation": "fused assignment/statistics for <=8 effective clusters; legacy otherwise",

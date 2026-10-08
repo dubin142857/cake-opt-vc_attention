@@ -1,0 +1,30 @@
+{
+  "source": "User-pasted results/h200_int8_main.json console summary after vc29 build",
+  "context": {
+    "expected_nhd_shape": [1, 37741, 28, 128],
+    "expected_dtype": "bfloat16",
+    "note": "Shape/dtype follow the agreed script defaults; excerpt has no environment header or raw API trial samples."
+  },
+  "rows": {
+    "int8_control": {"full_api_ms": 27.2155, "fixed_core_ms": 25.7420, "dense_fp32_rmse_percent": 3.863258},
+    "int8_expcast": {"full_api_ms": 27.1901, "fixed_core_ms": 25.6500, "dense_fp32_rmse_percent": 4.197492},
+    "int8_v_smooth": {"full_api_ms": 33.5549, "fixed_core_ms": 30.2787, "dense_fp32_rmse_percent": 3.835524},
+    "int8_vc": {"full_api_ms": 36.8810, "fixed_core_ms": 33.9801, "dense_fp32_rmse_percent": 4.197574},
+    "int8_expcast_vc22": {"full_api_ms": 25.2833, "fixed_core_ms": 23.4796, "dense_fp32_rmse_percent": 4.197492},
+    "int8_expcast_vc28": {"full_api_ms": 24.6613, "fixed_core_ms": 23.3914, "dense_fp32_rmse_percent": 4.197492},
+    "int8_expcast_vc29": {"full_api_ms": 24.9602, "fixed_core_ms": 23.6772, "dense_fp32_rmse_percent": 4.197492},
+    "sage_cpp": {"full_api_ms": 26.4892, "fixed_core_ms": 24.5187, "dense_fp32_rmse_percent": 3.863257},
+    "flash4": {"full_api_ms": 30.2829, "fixed_core_ms": null, "dense_fp32_rmse_percent": 0.231735}
+  },
+  "printed_comparisons": {
+    "vc22_over_vc28": {"full_api_speedup": 1.0252, "fixed_core_speedup": 1.0038, "all_rows_rmse_percent": 0.0},
+    "vc28_over_vc29": {"full_api_speedup": 0.9880, "fixed_core_speedup": 0.9879, "all_rows_rmse_percent": 0.0}
+  },
+  "decision": "vc29 did not improve either full or core API in this run. Retain vc28 as the measured performance baseline.",
+  "limitations": [
+    "No raw trials or repeated CUPTI data supplied for this run; no statistical significance or hardware stall claim.",
+    "Rounded zero implementation RMSE does not establish bitwise equality or model quality.",
+    "FA4 uses original BF16/FP16 values and has lower dense-FP32 error; these timings are attention APIs, not model end-to-end speed.",
+    "Reported H200 summary, not a locally reproduced benchmark."
+  ]
+}

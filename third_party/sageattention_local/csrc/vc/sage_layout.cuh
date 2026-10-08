@@ -19,6 +19,7 @@
  */
 
 #pragma once
+#include "descriptor_mma.cuh"
 
 template<uint32_t CTA_Q, uint32_t CTA_K, uint32_t NUM_THREADS, uint32_t head_dim, QuantGranularity Q_GRAN, QuantGranularity K_GRAN, typename DTypeOut, MaskMode mask_mode = MaskMode::kNone, bool return_lse = false, bool fuse_v_scale=false, bool ExpCast=false, bool EarlyV=false, bool PackFirst=false, bool OverlapHistory=true, int ProbabilityVariant=0, int RegisterLimit=168, bool CompactPV=false, int WorkReduction=0, bool FP8QK=false>
 __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(const __grid_constant__ CUtensorMap tensorMapQ,
@@ -36,7 +37,7 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
   static_assert(!FP8QK || (CTA_Q==64 && CTA_K==128 &&
       Q_GRAN==QuantGranularity::kPerBlock && K_GRAN==QuantGranularity::kPerBlock &&
       (WorkReduction==0 || WorkReduction==2)), "FP8 QK uses block scales and FP32 max");
-  static_assert(WorkReduction>=0 && WorkReduction<=10);
+  static_assert(WorkReduction>=0 && WorkReduction<=11);
   static_assert(RegisterLimit==128 || RegisterLimit==144 || RegisterLimit==168 || RegisterLimit==192);
   static_assert(!ExpCast || !PackFirst);
   static_assert(CTA_Q <= CTA_K);
@@ -65,6 +66,15 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
   int8_t *sK = (int8_t*)(smem_ + CTA_Q * head_dim * sizeof(int8_t));
   int8_t *sV = (int8_t*)(smem_ + CTA_Q * head_dim * sizeof(int8_t) + CTA_K * head_dim * sizeof(int8_t));
   half *sO = (half*)smem_;
+
+  uint64_t q_desc=0, k_desc=0, v_desc=0;
+  if constexpr (WorkReduction==11) {
+    static_assert(CTA_Q==64 && CTA_K==128 && !FP8QK && !CompactPV);
+    // Buffers retain their addresses across every K iteration, including tail.
+    q_desc=wgmma::make_smem_desc<head_dim>(sQ);
+    k_desc=wgmma::make_smem_desc<head_dim>(sK);
+    v_desc=wgmma::make_smem_desc<CTA_K>(sV);
+  }
 
   typename std::conditional<FP8QK,float,int32_t>::type RS[num_tiles_q][num_tiles_k][8];
   float RO[num_tiles_q][num_tiles_v][8];
@@ -197,11 +207,13 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
     {
       int8_t *sQ_local = sQ + fq * 64 * head_dim;
       if constexpr (FP8QK) vc_wgmma_fp8_qk<0,head_dim>(RS[fq],sQ_local,sK);
+      else if constexpr (WorkReduction==11) vc_desc_qk<0>(RS[fq],q_desc,k_desc);
       else wgmma::wgmma_s8s8s32<CTA_K, 0, head_dim>(RS[fq], sQ_local, sK);
 #pragma unroll
       for (int k_it = 1; k_it < num_tiles_qk_inner; k_it++)
       {
         if constexpr (FP8QK) vc_wgmma_fp8_qk<1,head_dim>(RS[fq],&sQ_local[k_it*32],&sK[k_it*32]);
+        else if constexpr (WorkReduction==11) vc_desc_qk<1>(RS[fq],vc_descriptor_k32(q_desc,k_it),vc_descriptor_k32(k_desc,k_it));
         else wgmma::wgmma_s8s8s32<CTA_K, 1, head_dim>(RS[fq], &sQ_local[k_it*32], &sK[k_it*32]);
       }
     }
@@ -285,11 +297,13 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
 #pragma unroll
     for (uint32_t fq = 0; fq < num_tiles_q; fq++)
     {
-      wgmma::wgmma_f8f8f32<head_dim / pv_parts, 0, CTA_K>(RO_temp[fq], RS_f8[fq][0], &sV[part * (head_dim / pv_parts) * CTA_K]);
+      if constexpr (WorkReduction==11) vc_desc_pv<head_dim,0>(RO_temp[fq],RS_f8[fq][0],v_desc);
+      else wgmma::wgmma_f8f8f32<head_dim / pv_parts, 0, CTA_K>(RO_temp[fq], RS_f8[fq][0], &sV[part * (head_dim / pv_parts) * CTA_K]);
 #pragma unroll
       for (uint32_t v_it = 1; v_it < num_tiles_pv_inner; v_it++)
       {
-        wgmma::wgmma_f8f8f32<head_dim / pv_parts, 1, CTA_K>(RO_temp[fq], RS_f8[fq][v_it], &sV[part * (head_dim / pv_parts) * CTA_K + v_it * 32]);
+        if constexpr (WorkReduction==11) vc_desc_pv<head_dim,1>(RO_temp[fq],RS_f8[fq][v_it],vc_descriptor_k32(v_desc,v_it));
+        else wgmma::wgmma_f8f8f32<head_dim / pv_parts, 1, CTA_K>(RO_temp[fq], RS_f8[fq][v_it], &sV[part * (head_dim / pv_parts) * CTA_K + v_it * 32]);
       }
     }
 
@@ -355,11 +369,13 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
     {
       int8_t *sQ_local = sQ + fq * 64 * head_dim;
       if constexpr (FP8QK) vc_wgmma_fp8_qk<0,head_dim>(RS[fq],sQ_local,sK);
+      else if constexpr (WorkReduction==11) vc_desc_qk<0>(RS[fq],q_desc,k_desc);
       else wgmma::wgmma_s8s8s32<CTA_K, 0, head_dim>(RS[fq], sQ_local, sK);
 #pragma unroll
       for (int k_it = 1; k_it < num_tiles_qk_inner; k_it++)
       {
         if constexpr (FP8QK) vc_wgmma_fp8_qk<1,head_dim>(RS[fq],&sQ_local[k_it*32],&sK[k_it*32]);
+        else if constexpr (WorkReduction==11) vc_desc_qk<1>(RS[fq],vc_descriptor_k32(q_desc,k_it),vc_descriptor_k32(k_desc,k_it));
         else wgmma::wgmma_s8s8s32<CTA_K, 1, head_dim>(RS[fq], &sQ_local[k_it*32], &sK[k_it*32]);
       }
     }
@@ -458,11 +474,13 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
 #pragma unroll
     for (uint32_t fq = 0; fq < num_tiles_q; fq++)
     {
-      wgmma::wgmma_f8f8f32<head_dim / pv_parts, 0, CTA_K>(RO_temp[fq], RS_f8[fq][0], &sV[part * (head_dim / pv_parts) * CTA_K]);
+      if constexpr (WorkReduction==11) vc_desc_pv<head_dim,0>(RO_temp[fq],RS_f8[fq][0],v_desc);
+      else wgmma::wgmma_f8f8f32<head_dim / pv_parts, 0, CTA_K>(RO_temp[fq], RS_f8[fq][0], &sV[part * (head_dim / pv_parts) * CTA_K]);
 #pragma unroll
       for (uint32_t v_it = 1; v_it < num_tiles_pv_inner; v_it++)
       {
-        wgmma::wgmma_f8f8f32<head_dim / pv_parts, 1, CTA_K>(RO_temp[fq], RS_f8[fq][v_it], &sV[part * (head_dim / pv_parts) * CTA_K + v_it * 32]);
+        if constexpr (WorkReduction==11) vc_desc_pv<head_dim,1>(RO_temp[fq],RS_f8[fq][v_it],vc_descriptor_k32(v_desc,v_it));
+        else wgmma::wgmma_f8f8f32<head_dim / pv_parts, 1, CTA_K>(RO_temp[fq], RS_f8[fq][v_it], &sV[part * (head_dim / pv_parts) * CTA_K + v_it * 32]);
       }
     }
 
