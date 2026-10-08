@@ -19,7 +19,9 @@ def inspect(sass):
         # ExpCast, late next-V, history overlap; same body for all candidates.
         # vc18 adds explicit register-cap/PV template arguments. Inspect the
         # original 168-register, N128 probability variants only.
-        mode=re.search(r"L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi([0-4])E(?:Li168ELb0E)?EEv",name)
+        # Later templates add WorkReduction=0 and FP8QK=false. Require those
+        # defaults so vc22 experiments and the new FP8 cores aren't mislabeled.
+        mode=re.search(r"L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi([0-4])E(?:Li168ELb0E(?:Li0E(?:Lb0E)?)?)?EEv",name)
         dim=re.search(r"ILj64ELj128ELj128ELj(64|128)E",name)
         if not mode or not dim: continue
         code=re.findall(r"/\*[0-9a-f]+\*/\s+(.*?)\s*;\s*/\*",part)

@@ -20,7 +20,7 @@
 
 #pragma once
 
-template<uint32_t CTA_Q, uint32_t CTA_K, uint32_t NUM_THREADS, uint32_t head_dim, QuantGranularity Q_GRAN, QuantGranularity K_GRAN, typename DTypeOut, MaskMode mask_mode = MaskMode::kNone, bool return_lse = false, bool fuse_v_scale=false, bool ExpCast=false, bool EarlyV=false, bool PackFirst=false, bool OverlapHistory=true, int ProbabilityVariant=0, int RegisterLimit=168, bool CompactPV=false, int WorkReduction=0>
+template<uint32_t CTA_Q, uint32_t CTA_K, uint32_t NUM_THREADS, uint32_t head_dim, QuantGranularity Q_GRAN, QuantGranularity K_GRAN, typename DTypeOut, MaskMode mask_mode = MaskMode::kNone, bool return_lse = false, bool fuse_v_scale=false, bool ExpCast=false, bool EarlyV=false, bool PackFirst=false, bool OverlapHistory=true, int ProbabilityVariant=0, int RegisterLimit=168, bool CompactPV=false, int WorkReduction=0, bool FP8QK=false>
 __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(const __grid_constant__ CUtensorMap tensorMapQ,
                                         const __grid_constant__ CUtensorMap tensorMapK,
                                         const __grid_constant__ CUtensorMap tensorMapV,
@@ -33,6 +33,9 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
   asm volatile("trap;");
 #else
   static_assert(NUM_THREADS == 128);
+  static_assert(!FP8QK || (CTA_Q==64 && CTA_K==128 &&
+      Q_GRAN==QuantGranularity::kPerBlock && K_GRAN==QuantGranularity::kPerBlock &&
+      (WorkReduction==0 || WorkReduction==2)), "FP8 QK uses block scales and FP32 max");
   static_assert(WorkReduction>=0 && WorkReduction<=8);
   static_assert(RegisterLimit==128 || RegisterLimit==144 || RegisterLimit==168 || RegisterLimit==192);
   static_assert(!ExpCast || !PackFirst);
@@ -63,7 +66,7 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
   int8_t *sV = (int8_t*)(smem_ + CTA_Q * head_dim * sizeof(int8_t) + CTA_K * head_dim * sizeof(int8_t));
   half *sO = (half*)smem_;
 
-  int32_t RS[num_tiles_q][num_tiles_k][8];
+  typename std::conditional<FP8QK,float,int32_t>::type RS[num_tiles_q][num_tiles_k][8];
   float RO[num_tiles_q][num_tiles_v][8];
   float m[num_tiles_q][2];
   float d[num_tiles_q][2];
@@ -193,11 +196,13 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
     for (uint32_t fq = 0; fq < num_tiles_q; fq++)
     {
       int8_t *sQ_local = sQ + fq * 64 * head_dim;
-      wgmma::wgmma_s8s8s32<CTA_K, 0, head_dim>(RS[fq], sQ_local, sK);
+      if constexpr (FP8QK) vc_wgmma_fp8_qk<0,head_dim>(RS[fq],sQ_local,sK);
+      else wgmma::wgmma_s8s8s32<CTA_K, 0, head_dim>(RS[fq], sQ_local, sK);
 #pragma unroll
       for (int k_it = 1; k_it < num_tiles_qk_inner; k_it++)
       {
-        wgmma::wgmma_s8s8s32<CTA_K, 1, head_dim>(RS[fq], &sQ_local[k_it*32], &sK[k_it*32]);
+        if constexpr (FP8QK) vc_wgmma_fp8_qk<1,head_dim>(RS[fq],&sQ_local[k_it*32],&sK[k_it*32]);
+        else wgmma::wgmma_s8s8s32<CTA_K, 1, head_dim>(RS[fq], &sQ_local[k_it*32], &sK[k_it*32]);
       }
     }
     wgmma::warpgroup_commit_batch();
@@ -224,7 +229,8 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
 #pragma unroll
         for (uint32_t k = 0; k < 8; k++)
         {
-          RS_f32[fq][fk][k] = __int2float_rz(RS[fq][fk][k]);
+          if constexpr (FP8QK) RS_f32[fq][fk][k] = RS[fq][fk][k];
+          else RS_f32[fq][fk][k] = __int2float_rz(RS[fq][fk][k]);
         }
       }
     }
@@ -348,11 +354,13 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
     for (uint32_t fq = 0; fq < num_tiles_q; fq++)
     {
       int8_t *sQ_local = sQ + fq * 64 * head_dim;
-      wgmma::wgmma_s8s8s32<CTA_K, 0, head_dim>(RS[fq], sQ_local, sK);
+      if constexpr (FP8QK) vc_wgmma_fp8_qk<0,head_dim>(RS[fq],sQ_local,sK);
+      else wgmma::wgmma_s8s8s32<CTA_K, 0, head_dim>(RS[fq], sQ_local, sK);
 #pragma unroll
       for (int k_it = 1; k_it < num_tiles_qk_inner; k_it++)
       {
-        wgmma::wgmma_s8s8s32<CTA_K, 1, head_dim>(RS[fq], &sQ_local[k_it*32], &sK[k_it*32]);
+        if constexpr (FP8QK) vc_wgmma_fp8_qk<1,head_dim>(RS[fq],&sQ_local[k_it*32],&sK[k_it*32]);
+        else wgmma::wgmma_s8s8s32<CTA_K, 1, head_dim>(RS[fq], &sQ_local[k_it*32], &sK[k_it*32]);
       }
     }
     wgmma::warpgroup_commit_batch();
@@ -371,7 +379,8 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
 #pragma unroll
         for (uint32_t k = 0; k < 8; k++)
         {
-          RS_f32[fq][fk][k] = __int2float_rz(RS[fq][fk][k]) * dequant_scale;
+          if constexpr (FP8QK) RS_f32[fq][fk][k] = RS[fq][fk][k] * dequant_scale;
+          else RS_f32[fq][fk][k] = __int2float_rz(RS[fq][fk][k]) * dequant_scale;
         }
       }
     }

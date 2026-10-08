@@ -11,6 +11,21 @@ spec=importlib.util.spec_from_file_location("inspect_probability_codegen",ROOT/"
 codegen=importlib.util.module_from_spec(spec);spec.loader.exec_module(codegen)
 
 
+@pytest.mark.parametrize("suffix",["", "Li168ELb0E", "Li168ELb0ELi0E", "Li168ELb0ELi0ELb0E"])
+def test_template_extensions_retain_probability_candidate_inspection(suffix):
+    parts=[]
+    for dim in (64,128):
+        for dtype in ("6__half","13__nv_bfloat16"):
+            for mode in range(5):
+                name=(f"sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj{dim}E{dtype}"
+                      f"L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi{mode}E{suffix}EEv")
+                parts.append("Function : "+name+"\n /*0000*/ FADD R1, R2, R3 ; /* fixture */\n")
+    if suffix.endswith("Lb0E"):
+        # FP8QK=true must not become a second vc16 result.
+        parts.append(parts[0].replace("Li0ELb0EEE", "Li0ELb1EEE") if "Li0ELb0E" in suffix else "")
+    assert len(codegen.inspect("\n".join(parts)))==20
+
+
 def test_nonzero_exit_saves_full_stderr_partial_sass_and_overwrites_stale_success(monkeypatch,tmp_path):
     commands=[]
     def run(command,**kwargs):

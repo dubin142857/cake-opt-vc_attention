@@ -1,7 +1,7 @@
 """Independent decoded-payload FP32 oracle, for diagnostics only (never dispatched).
 
 Quantization is done on full Q/K/V first; selected queries retain their original
-INT8 scale indices. Uses all keys in 128-token blocks and never allocates N x N.
+INT8 or FP8 block scale indices. Uses all keys in 128-token blocks, never N x N.
 """
 import torch
 
@@ -20,6 +20,7 @@ def value_permutation(n, device):
 @torch.no_grad()
 def reference(state, query_indices=None, chunk=32):
     q, k, v = (state[x] for x in ("q", "k", "v"))
+    fp8_qk = state.get("qk_format") == "fp8_block"
     ids = torch.arange(q.shape[2], device=q.device) if query_indices is None else torch.as_tensor(query_indices, device=q.device, dtype=torch.long)
     if chunk < 1 or ids.numel() == 0:
         raise ValueError("Reference requires positive chunk and nonempty queries")
@@ -32,14 +33,15 @@ def reference(state, query_indices=None, chunk=32):
     for begin in range(0, ids.numel(), chunk):
         rows = ids[begin:begin + chunk]
         query = q.index_select(2, rows).float()
-        qs = state["qs"].index_select(2, (rows // 16) * 8 + rows % 8).unsqueeze(-1)
+        qs = state["qs"].index_select(2, rows // 64 if fp8_qk else (rows // 16) * 8 + rows % 8).unsqueeze(-1)
         maximum = torch.full((*query.shape[:-1], 1), -5e6, device=q.device)
         denom = torch.zeros_like(maximum)
         out = torch.zeros_like(query)
         for tile in range(tiles):
             start, end = tile * 128, min((tile + 1) * 128, k.shape[2])
             keys = torch.arange(start, end, device=q.device)
-            ks = state["ks"].index_select(2, tile * 4 + (keys % 8) // 2).unsqueeze(-2)
+            ks = (state["ks"][:, :, tile, None, None] if fp8_qk else
+                  state["ks"].index_select(2, tile * 4 + (keys % 8) // 2).unsqueeze(-2))
             raw = query @ k[:, :, start:end].float().transpose(-1, -2)
             dequant = qs * ks
             base = raw * dequant if tile == tiles - 1 else raw
@@ -49,6 +51,19 @@ def reference(state, query_indices=None, chunk=32):
                 new_max = torch.maximum(maximum, logits.amax(-1, keepdim=True))
                 alpha = (maximum - new_max).exp()
                 p = expcast_codes(logits - new_max).view(torch.float8_e4m3fn).float()
+                if fp8_qk:
+                    # vc15 folded affine encoding: FP32 multiply, then one FMA.
+                    # Its fallback is warp-wide. On extreme ranges this oracle
+                    # uses the unfused path per row; differences near byte ties
+                    # are included in the native/decoded-oracle error budget.
+                    a = torch.tensor(11.541560173034668, device=q.device)
+                    b = torch.tensor(119.6500015258789, device=q.device)
+                    gain = factor * a
+                    bias = (-new_max.double() * a.double() + b.double()).float()
+                    affine = (base.double() * gain.double() + bias.double()).float()
+                    safe = (factor >= torch.finfo(torch.float32).tiny) & torch.isfinite(gain) & (new_max.abs() <= 128)
+                    codes = affine.round().clamp(0, 120).to(torch.uint8)
+                    p = torch.where(safe, codes.view(torch.float8_e4m3fn).float(), p)
                 denominator_p = p
             else:
                 # Sage offset is applied by a single FP32 FMA before the row maximum.

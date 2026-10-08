@@ -1,0 +1,147 @@
+{
+  "instances": 300,
+  "new_instances": 8,
+  "historical_instruction_text_identical": 292,
+  "historical_changed": [],
+  "fp8_resources": [
+    {
+      "dim": 128,
+      "dtype": "bfloat16",
+      "expcast": true,
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "dynamic_shared_bytes": 40960,
+      "static_shared_bytes": 128,
+      "fp8_mma": 16,
+      "int8_mma": 0,
+      "int_to_float": 1,
+      "local_load_store": 0
+    },
+    {
+      "dim": 128,
+      "dtype": "bfloat16",
+      "expcast": false,
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "dynamic_shared_bytes": 40960,
+      "static_shared_bytes": 128,
+      "fp8_mma": 16,
+      "int8_mma": 0,
+      "int_to_float": 1,
+      "local_load_store": 0
+    },
+    {
+      "dim": 128,
+      "dtype": "float16",
+      "expcast": true,
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "dynamic_shared_bytes": 40960,
+      "static_shared_bytes": 128,
+      "fp8_mma": 16,
+      "int8_mma": 0,
+      "int_to_float": 1,
+      "local_load_store": 0
+    },
+    {
+      "dim": 128,
+      "dtype": "float16",
+      "expcast": false,
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "dynamic_shared_bytes": 40960,
+      "static_shared_bytes": 128,
+      "fp8_mma": 16,
+      "int8_mma": 0,
+      "int_to_float": 1,
+      "local_load_store": 0
+    },
+    {
+      "dim": 64,
+      "dtype": "bfloat16",
+      "expcast": true,
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "dynamic_shared_bytes": 20480,
+      "static_shared_bytes": 128,
+      "fp8_mma": 12,
+      "int8_mma": 0,
+      "int_to_float": 1,
+      "local_load_store": 0
+    },
+    {
+      "dim": 64,
+      "dtype": "bfloat16",
+      "expcast": false,
+      "registers": 121,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "dynamic_shared_bytes": 20480,
+      "static_shared_bytes": 128,
+      "fp8_mma": 12,
+      "int8_mma": 0,
+      "int_to_float": 1,
+      "local_load_store": 0
+    },
+    {
+      "dim": 64,
+      "dtype": "float16",
+      "expcast": true,
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "dynamic_shared_bytes": 20480,
+      "static_shared_bytes": 128,
+      "fp8_mma": 12,
+      "int8_mma": 0,
+      "int_to_float": 1,
+      "local_load_store": 0
+    },
+    {
+      "dim": 64,
+      "dtype": "float16",
+      "expcast": false,
+      "registers": 121,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "dynamic_shared_bytes": 20480,
+      "static_shared_bytes": 128,
+      "fp8_mma": 12,
+      "int8_mma": 0,
+      "int_to_float": 1,
+      "local_load_store": 0
+    }
+  ],
+  "ptxas_warnings": 0,
+  "wgmma_serialization_diagnostics": 0,
+  "scope": "Local CUDA12.4 SM90a static instruction inspection, not Hopper execution or performance."
+}

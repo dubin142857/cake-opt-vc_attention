@@ -749,6 +749,7 @@ __global__ __maxnreg__(168) void sage_vc_attention_kernel_expcast_deferred(
       O,Lse,stride_bz_o,stride_h_o,stride_seq_o,qo_len,kv_len,num_kv_groups,sm_scale);
 }
 
+#include "fp8_qk_mma.cuh"
 #include "sage_layout.cuh"
 #include "tma_pipeline.cuh"
 #include "compute_pipeline.cuh"
@@ -1157,3 +1158,4 @@ std::map<std::string, std::map<std::string, int64_t>> vc_kernel_resources(int64_
   result["expcast_sage_layout_29"] = output_type==0 ? sage_layout_resources<half,true,29>() : sage_layout_resources<nv_bfloat16,true,29>();
   return result;
 }
+#include "fp8_dispatch.cuh"

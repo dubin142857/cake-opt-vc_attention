@@ -1,0 +1,44 @@
+{
+  "package_version": "2.2.0+vc27",
+  "native_kernel_version": 24,
+  "local_device": "NVIDIA GeForce RTX 3060 Laptop GPU",
+  "tests": {
+    "passed": 554,
+    "fp8_native_preparation_cases": 36,
+    "scope": "CPU contracts/oracles/profiler and existing CUDA helper regressions on SM86. Native FP8 QK preprocessing executed on SM86, including nondefault stream dependencies. No Hopper attention execution.",
+    "quantization": "FP8 codes and scales exactly match a PyTorch oracle with explicitly RN division. K mean independently checked against FP64 statistics.",
+    "sampling": "FP8 Q64/K128 scale indexing checked across block boundaries; selected queries agree with full-query oracle.",
+    "known_answers": "Zero-logit oracle cases cover V scaling and tail masks for ordinary/ExpCast probability paths. Native Hopper known-answer cases are in the remote validator."
+  },
+  "sm90a_cross_compile": {
+    "cuda_toolkit": "12.4",
+    "status": "passed",
+    "instances": 300,
+    "new_instances": 8,
+    "historical_instruction_text_identical": 292,
+    "d128_registers_per_thread": 168,
+    "d128_dynamic_shared_bytes": 40960,
+    "static_shared_bytes": 128,
+    "stack_spill_local_bytes": 0,
+    "ptxas_warnings": 0,
+    "wgmma_serialization_diagnostics": 0,
+    "detail": "sage_vc27_codegen_local.json",
+    "scope": "Static SASS text comparison excludes encodings/control words and hardware execution. FP8 cores contain FP8 QK/PV MMA and no INT8 MMA. CUDA13 codegen may differ."
+  },
+  "native_link_and_import": "passed; version 24",
+  "source_and_sdist": {
+    "status": "passed",
+    "verified_source_hashes": 74,
+    "unchanged_upstream_kernel_files": 36,
+    "new_cuda_and_python_sources_packaged": true
+  },
+  "python_syntax": "passed",
+  "shell_checks": "Passed syntax, build/reuse invocation order, invalid arguments, and validation-failure prevention of timing.",
+  "legacy_codegen_inspection": "20 vc16/vc17 candidates remain identifiable after additional template arguments; FP8 candidates excluded.",
+  "h200_validation": "Pending: 72 all-output-row random native/oracle comparisons, 144 public HND/NHD comparisons, 8 native known constants, and 4 public nondefault-stream guards.",
+  "h200_performance": "Unmeasured. Compare full API, fixed payload API and profiler-active CUPTI separately. No 22 ms claim.",
+  "fp8_entry": "sageattention_local.sageattn_vc_fp8",
+  "quantization_scope": "Q64/K128 scaled E4M3, FP32 K centering, unchanged global channel FP8 V; no QK Hadamard or V smoothing yet.",
+  "default_int8_kernel": "vc15 unchanged; vc22_both retained as measured experimental baseline",
+  "remote_command": "bash scripts/validate_fp8_qk_h200.sh"
+}

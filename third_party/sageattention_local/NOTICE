@@ -30,3 +30,10 @@ Sage+VC experiment, separate entry sageattn_vc and extension _vc_sm90:
 - vc18-vc24 retain selectable register, buffering, history, integer-max and probability-encoding experiments. The reported vc22_both path remains the measured experimental baseline.
 - vc25 adds deferred_mass.cuh and source scheduling candidates on vc22: preserve completed FP8 P for denominator reduction during the next QK, with neutral initial state and final masked-tile drain. Source schedules may compile identically; no Hopper speed claim from local checks. Default remains vc15.
 Modified and new experiment files are recorded separately in UPSTREAM.json.
+
+vc27 FP8 QK experiment, separate entry sageattn_vc_fp8:
+- Adds block-scaled E4M3 Q/K with native FP32 K centering and unchanged global FP8 V.
+- fp8_qk_mma.cuh derives from the pinned csrc/wgmma.cuh with its Apache-2.0 header retained.
+- Extends the local sage_layout template with an opt-in FP8 shared/shared QK instruction;
+  no upstream baseline kernel is changed. FP32 probability max and optional ExpCast remain fused.
+- No Hadamard, V grouping/smoothing or denoising-step scheduling in this first FP8 entry.
