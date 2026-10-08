@@ -1,0 +1,40 @@
+{
+  "package_version": "2.2.0+vc26",
+  "native_kernel_version": 23,
+  "local_device": "NVIDIA GeForce RTX 3060 Laptop GPU",
+  "tests": {
+    "passed": 534,
+    "dual_query_helper_cases": 30,
+    "scope": "CPU dispatch/profiler gates and CUDA helper tests on SM86. Dual-query probe models group completion with a subgroup barrier, then exercises the production named-barrier handoff; no TMA/WGMMA execution."
+  },
+  "sm90a_cross_compile": {
+    "cuda_toolkit": "12.4",
+    "status": "passed",
+    "instances": 292,
+    "new_instances": 16,
+    "historical_instruction_text_identical": 276,
+    "d128_registers_range": [
+      167,
+      168
+    ],
+    "d128_threads_per_cta": 256,
+    "d128_dynamic_shared_bytes": 49152,
+    "static_shared_bytes": 128,
+    "stack_spill_local_bytes": 0,
+    "ptxas_warnings": 0,
+    "wgmma_serialization_diagnostics": 0,
+    "scope": "Static instruction text comparison excludes encodings/control words, execution and hardware counters; remote CUDA 13 may differ.",
+    "detail": "sage_vc26_codegen_local.json"
+  },
+  "native_link_and_import": "passed; version 23",
+  "source_and_sdist": {
+    "status": "passed",
+    "verified_source_hashes": 70,
+    "unchanged_upstream_kernel_files": 36
+  },
+  "python_syntax": "passed",
+  "h200_validation": "Not run locally. Remote build script runs 352 new dtype/dim/shape/algorithm/mode cases, 3 repetitions each; 16 uniform-attention answers with nonzero V padding; 32 HND/NHD public API checks on a nondefault stream.",
+  "h200_performance": "Unmeasured. Compare same-run full API against vc22_both and original Sage; no 22 ms claim.",
+  "default_kernel": "vc15 unchanged",
+  "remote_command": "bash scripts/validate_dual_query_h200.sh"
+}

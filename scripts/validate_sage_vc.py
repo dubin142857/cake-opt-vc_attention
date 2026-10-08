@@ -213,6 +213,84 @@ def validate_pipeline(vc, device, *, compute=False, history=False, work=False, m
 
 
 @torch.no_grad()
+def validate_dual_query(vc, device):
+    """Real Hopper integration: two groups, Q64 scale strides and shared reuse."""
+    from sageattention_local.vc_reference import value_permutation
+    if torch.cuda.get_device_capability(device) != (9,0):
+        raise RuntimeError("Dual-query attention validation requires Hopper")
+    if vc._extension().sage_vc_kernel_version < 23:
+        raise RuntimeError("Dual-query validation needs vc26; rebuild sageattention-local")
+    rows, known = [], 0
+    shapes = [(n,513) for n in (1,63,64,65,127,128,129,191,192,193,255,256,257)]
+    shapes += [(129,n) for n in (1,127,128,129,255,256,257,1025,37741)]
+    stream = torch.cuda.Stream(device=device)
+    stream.wait_stream(torch.cuda.current_stream(device))
+    for dtype in (torch.float16,torch.bfloat16):
+        for dim in (64,128):
+            with torch.cuda.stream(stream):
+                for nq,nk in shapes:
+                    torch.manual_seed(2600+nq+nk)
+                    batch,heads = (2,3) if nq in (129,193) and nk==513 else (1,2)
+                    q,k,v = (torch.randn(batch,heads,n,dim,device=device,dtype=dtype) for n in (nq,nk,nk))
+                    # Different adjacent Q64/K128 tiles expose wrong scale
+                    # indices and stale shared-buffer generations.
+                    q.mul_((1+torch.arange(nq,device=device)//64).to(dtype).view(1,1,nq,1))
+                    k.mul_((1+(torch.arange(nk,device=device)//128)%3).to(dtype).view(1,1,nk,1))
+                    v.add_(((torch.arange(nk,device=device)//128)%7-3).to(dtype).view(1,1,nk,1))
+                    state=vc.prepare(q,k,v,expcast=False,v_smooth=False)
+                    for cast in (False,True):
+                        payload={**state,"expcast":cast}
+                        baseline="vc22_both" if cast else "vc16"
+                        expected=vc.forward_prepared(payload,kernel_mode=baseline)
+                        if not torch.isfinite(expected).all().item():
+                            raise AssertionError("Nonfinite dual-query baseline")
+                        for mode in vc.DUAL_QUERY_CANDIDATES:
+                            repeats=[]
+                            for repeat in range(3):
+                                actual=vc.forward_prepared(payload,kernel_mode=mode)
+                                delta=metrics(actual,expected)
+                                if not torch.isfinite(actual).all().item() or delta["rel_rmse"]>.001:
+                                    raise AssertionError(f"Dual query {mode}, {dtype}, D{dim}, Q{nq}/K{nk}, repeat {repeat}: {delta}")
+                                repeats.append({**delta,"exact_match":torch.equal(actual,expected)})
+                            rows.append(dict(mode=mode,dtype=str(dtype),dim=dim,queries=nq,keys=nk,
+                                batch=batch,heads=heads,expcast=cast,repeats=repeats))
+                            if (nq,nk)==(193,513):
+                                for layout in ("HND","NHD"):
+                                    inputs=(q,k,v) if layout=="HND" else tuple(x.transpose(1,2).contiguous() for x in (q,k,v))
+                                    out=vc.sageattn_vc(*inputs,tensor_layout=layout,expcast=cast,v_smooth=False,kernel_mode=mode)
+                                    if layout=="NHD": out=out.transpose(1,2)
+                                    delta=metrics(out,expected)
+                                    if not torch.isfinite(out).all().item() or delta["rel_rmse"]>.001:
+                                        raise AssertionError(f"Dual query {mode} public {layout}: {delta}")
+                # Independent known answer, varying heads/channels. Deliberately
+                # nonzero V padding exposes accidental inclusion of masked keys.
+                q=torch.zeros(2,3,193,dim,device=device,dtype=dtype)
+                k=torch.zeros(2,3,257,dim,device=device,dtype=dtype)
+                v=(torch.arange(257,device=device).view(1,1,257,1)/128-1
+                   +torch.arange(dim,device=device).view(1,1,1,dim).remainder(7)*.125
+                   +torch.arange(6,device=device).view(2,3,1,1)*.25).to(dtype)
+                state=vc.prepare(q,k,v,expcast=False,v_smooth=False)
+                perm=value_permutation(state["v"].shape[-1],device)
+                decoded=state["v"].float().index_select(-1,perm)
+                mean=(decoded[...,:257].mean(-1)*state["vs"]).unsqueeze(2).expand_as(q)
+                decoded[...,257:]=448.
+                state["v"]=decoded.index_select(-1,perm.argsort()).to(torch.float8_e4m3fn)
+                for cast in (False,True):
+                    weight=1. if cast else 448./(2**float(torch.tensor(8.807)))
+                    expected=(mean*weight).to(dtype)
+                    for mode in vc.DUAL_QUERY_CANDIDATES:
+                        out=vc.forward_prepared({**state,"expcast":cast},kernel_mode=mode)
+                        torch.testing.assert_close(out,expected,rtol=.004,atol=.004)
+                        known+=1
+            stream.synchronize()
+            print(f"Dual Q64 tails/scales/reuse/current-stream checks passed: {dtype}, D{dim}",flush=True)
+    torch.cuda.current_stream(device).wait_stream(stream)
+    return {"status":"passed","cases":rows,"known_answer_cases":known,
+            "implementation_rel_rmse_limit":.001,"stream":"nondefault",
+            "scope":"All output rows vs vc22_both (ExpCast) / vc16 (control), 3 repeats; HND/NHD public parity and independent uniform attention. No model-quality or performance claim."}
+
+
+@torch.no_grad()
 def validate(device="cuda:0"):
     if not torch.cuda.is_available() or torch.cuda.get_device_capability(device) != (9, 0):
         raise RuntimeError("Full Sage VC validation requires Hopper")
@@ -238,6 +316,8 @@ def validate(device="cuda:0"):
         report["work_reduction"] = validate_pipeline(vc,device,work=True)
     if getattr(ext,"sage_vc_kernel_version",0) >= 22:
         report["deferred_mass"] = validate_pipeline(vc,device,mass=True)
+    if getattr(ext,"sage_vc_kernel_version",0) >= 23:
+        report["dual_query"] = validate_dual_query(vc,device)
     if getattr(ext,"sage_vc_kernel_version",0) >= 21:
         report["bit_encoding"] = validate_pipeline(vc,device,encoding=True)
     if getattr(ext,"sage_vc_kernel_version",0) >= 20:
@@ -408,10 +488,15 @@ if __name__ == "__main__":
     parser.add_argument("--maxstate-only", action="store_true", help="vc23 max-state / cached bias and tail checks only")
     parser.add_argument("--encoding-only", action="store_true", help="vc24 bit-bias encoding, recurrence and masked-tail checks")
     parser.add_argument("--mass-only", action="store_true", help="vc25 delayed denominator and tail checks")
+    parser.add_argument("--dual-query-only", action="store_true", help="vc26 two-warpgroup shared K/V, Q64 scale and tail checks")
     args = parser.parse_args()
-    if sum((args.pipeline_only,args.compute_only,args.history_only,args.work_only,args.maxstate_only,args.encoding_only,args.mass_only))>1:
-        parser.error("Choose --pipeline-only, --compute-only, --history-only, --work-only, --maxstate-only, --encoding-only or --mass-only")
-    if args.pipeline_only or args.compute_only or args.history_only or args.work_only or args.maxstate_only or args.encoding_only or args.mass_only:
+    if sum((args.pipeline_only,args.compute_only,args.history_only,args.work_only,args.maxstate_only,args.encoding_only,args.mass_only,args.dual_query_only))>1:
+        parser.error("Choose one validation-only mode")
+    if args.dual_query_only:
+        torch.cuda.set_device(args.device)
+        from sageattention_local import vc
+        report = validate_dual_query(vc,args.device)
+    elif args.pipeline_only or args.compute_only or args.history_only or args.work_only or args.maxstate_only or args.encoding_only or args.mass_only:
         torch.cuda.set_device(args.device)
         from sageattention_local import vc
         report = validate_pipeline(vc,args.device,compute=args.compute_only,history=args.history_only,work=args.work_only,maxstate=args.maxstate_only,encoding=args.encoding_only,mass=args.mass_only)

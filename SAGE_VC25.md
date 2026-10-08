@@ -2,7 +2,13 @@
 
 包版本 `sageattention-local==2.2.0+vc25`，native kernel version 22。
 实验基线为 `vc22_both`；默认仍为 vc15，两个新模式均显式选择、关闭 V 平滑。
-本轮没有本地 H200 性能结果，22 ms 仍是完整 attention API 的目标。
+22 ms 仍是完整 attention API 的目标。
+
+2026-10-08 用户回传：同场 `vc22_both` 完整 API 25.5605 ms，
+`vc25_mass_serial` 25.8718 ms，`vc25_mass_overlap` 25.8467 ms。
+两种新候选均未改善完整 API，继续以 vc22 为实验基线。
+CUPTI 的细小差异不足以说明稳定收益；详细记录见
+[回传摘要](results/h200_sage_vc25_reported_summary.json)。下一轮实验见 [vc26](SAGE_VC26.md)。
 
 ## 为什么改这里
 

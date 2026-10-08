@@ -1,0 +1,87 @@
+{
+  "source": "User-pasted vc25 output, attachment 26eaeb27-2155-490a-b191-2cfcb6da5994",
+  "reported_date": "2026-10-08",
+  "shape_context": {
+    "BSHD": [
+      1,
+      37741,
+      28,
+      128
+    ],
+    "dtype": "bfloat16",
+    "note": "From agreed experiment context; pasted excerpt has no environment header."
+  },
+  "scope": "Transcribed printed medians; raw per-repeat timings/full validation log not supplied. Printed zero RMSE does not establish bitwise equality or dense FP32/model quality.",
+  "variants": {
+    "control_vc16": {
+      "core_api_ms": 24.8209,
+      "full_api_ms": 26.4004,
+      "reported_vs_baseline_rmse_percent": 0.0,
+      "cupti_trial_medians_ms": [
+        24.7463,
+        25.1631,
+        24.949
+      ],
+      "cupti_median_ms": 24.949
+    },
+    "expcast_vc22_both": {
+      "core_api_ms": 23.9268,
+      "full_api_ms": 25.5605,
+      "reported_vs_baseline_rmse_percent": 0.0,
+      "cupti_trial_medians_ms": [
+        23.4381,
+        24.0842,
+        24.1286
+      ],
+      "cupti_median_ms": 24.0842
+    },
+    "expcast_vc16": {
+      "core_api_ms": 25.4157,
+      "full_api_ms": 26.9743,
+      "reported_vs_baseline_rmse_percent": 0.0,
+      "cupti_trial_medians_ms": [
+        25.1726,
+        25.0988,
+        25.4588
+      ],
+      "cupti_median_ms": 25.1726
+    },
+    "expcast_vc25_mass_serial": {
+      "core_api_ms": 24.2368,
+      "full_api_ms": 25.8718,
+      "reported_vs_baseline_rmse_percent": 0.0,
+      "cupti_trial_medians_ms": [
+        23.8812,
+        24.0242,
+        24.2826
+      ],
+      "cupti_median_ms": 24.0242
+    },
+    "expcast_vc25_mass_overlap": {
+      "core_api_ms": 24.3217,
+      "full_api_ms": 25.8467,
+      "reported_vs_baseline_rmse_percent": 0.0,
+      "cupti_trial_medians_ms": [
+        23.865,
+        24.4082,
+        24.1017
+      ],
+      "cupti_median_ms": 24.1017
+    },
+    "sage_cpp": {
+      "core_api_ms": 24.9829,
+      "full_api_ms": 26.4675,
+      "reported_vs_baseline_rmse_percent": 0.0,
+      "cupti_trial_medians_ms": [
+        24.8013,
+        25.1396,
+        24.8184
+      ],
+      "cupti_median_ms": 24.8184
+    }
+  },
+  "vc22_sage_full_api_speedup": 1.0354844388803035,
+  "vc22_latency_reduction_vs_sage_percent": 3.426844242939453,
+  "remaining_to_22_ms_percent": 13.929696210950492,
+  "conclusion": "Both vc25 candidates regress full API against vc22. Small mixed CUPTI differences do not establish a stable win. Retain vc22 experimental baseline and vc15 public default."
+}

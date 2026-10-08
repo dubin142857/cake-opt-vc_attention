@@ -1,0 +1,699 @@
+{
+  "compiled_variants": 292,
+  "historical_variants": 276,
+  "historical_instruction_text_identical": 276,
+  "historical_changed": [],
+  "dual_query_resources": [
+    {
+      "name": "_ZN7sage_vc35sage_vc_attention_kernel_dual_queryILj128E13__nv_bfloat16Lb0ELb1EEEv14CUtensorMap_stS2_S2_PfS3_S3_PT0_S3_jjjjjjf",
+      "dim": 128,
+      "dtype": "bfloat16",
+      "expcast": false,
+      "mode": "vc26_stagger",
+      "threads_per_cta": 256,
+      "registers": 167,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "static_shared_bytes": 128,
+      "dynamic_shared_bytes": 49152,
+      "local_load_store_instructions": 0,
+      "named_barrier_instructions": [
+        "BAR.SYNC.DEFER_BLOCKING 0x0",
+        "@!P0 BAR.SYNC.DEFER_BLOCKING 0x1, 0x100",
+        "@!P0 BAR.ARV 0x1, 0x100",
+        "BAR.SYNC.DEFER_BLOCKING 0x0",
+        "@!P0 BAR.SYNC.DEFER_BLOCKING 0x1, 0x100",
+        "@!P0 BAR.ARV 0x1, 0x100",
+        "BAR.SYNC.DEFER_BLOCKING 0x0"
+      ],
+      "groups": [
+        {
+          "kind": "QK",
+          "gmma_instructions": 4
+        },
+        {
+          "kind": "PV",
+          "gmma_instructions": 4
+        },
+        {
+          "kind": "QK",
+          "gmma_instructions": 4
+        },
+        {
+          "kind": "PV",
+          "gmma_instructions": 4
+        }
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc35sage_vc_attention_kernel_dual_queryILj128E13__nv_bfloat16Lb1ELb1EEEv14CUtensorMap_stS2_S2_PfS3_S3_PT0_S3_jjjjjjf",
+      "dim": 128,
+      "dtype": "bfloat16",
+      "expcast": true,
+      "mode": "vc26_stagger",
+      "threads_per_cta": 256,
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "static_shared_bytes": 128,
+      "dynamic_shared_bytes": 49152,
+      "local_load_store_instructions": 0,
+      "named_barrier_instructions": [
+        "BAR.SYNC.DEFER_BLOCKING 0x0",
+        "@!P0 BAR.SYNC.DEFER_BLOCKING 0x1, 0x100",
+        "@!P2 BAR.ARV 0x1, 0x100",
+        "BAR.SYNC.DEFER_BLOCKING 0x0",
+        "@!P0 BAR.SYNC.DEFER_BLOCKING 0x1, 0x100",
+        "@!P0 BAR.ARV 0x1, 0x100",
+        "BAR.SYNC.DEFER_BLOCKING 0x0"
+      ],
+      "groups": [
+        {
+          "kind": "QK",
+          "gmma_instructions": 4
+        },
+        {
+          "kind": "PV",
+          "gmma_instructions": 4
+        },
+        {
+          "kind": "QK",
+          "gmma_instructions": 4
+        },
+        {
+          "kind": "PV",
+          "gmma_instructions": 4
+        }
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc35sage_vc_attention_kernel_dual_queryILj128E6__halfLb0ELb1EEEv14CUtensorMap_stS2_S2_PfS3_S3_PT0_S3_jjjjjjf",
+      "dim": 128,
+      "dtype": "float16",
+      "expcast": false,
+      "mode": "vc26_stagger",
+      "threads_per_cta": 256,
+      "registers": 167,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "static_shared_bytes": 128,
+      "dynamic_shared_bytes": 49152,
+      "local_load_store_instructions": 0,
+      "named_barrier_instructions": [
+        "BAR.SYNC.DEFER_BLOCKING 0x0",
+        "@!P0 BAR.SYNC.DEFER_BLOCKING 0x1, 0x100",
+        "@!P0 BAR.ARV 0x1, 0x100",
+        "BAR.SYNC.DEFER_BLOCKING 0x0",
+        "@!P0 BAR.SYNC.DEFER_BLOCKING 0x1, 0x100",
+        "@!P0 BAR.ARV 0x1, 0x100",
+        "BAR.SYNC.DEFER_BLOCKING 0x0"
+      ],
+      "groups": [
+        {
+          "kind": "QK",
+          "gmma_instructions": 4
+        },
+        {
+          "kind": "PV",
+          "gmma_instructions": 4
+        },
+        {
+          "kind": "QK",
+          "gmma_instructions": 4
+        },
+        {
+          "kind": "PV",
+          "gmma_instructions": 4
+        }
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc35sage_vc_attention_kernel_dual_queryILj128E6__halfLb1ELb1EEEv14CUtensorMap_stS2_S2_PfS3_S3_PT0_S3_jjjjjjf",
+      "dim": 128,
+      "dtype": "float16",
+      "expcast": true,
+      "mode": "vc26_stagger",
+      "threads_per_cta": 256,
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "static_shared_bytes": 128,
+      "dynamic_shared_bytes": 49152,
+      "local_load_store_instructions": 0,
+      "named_barrier_instructions": [
+        "BAR.SYNC.DEFER_BLOCKING 0x0",
+        "@!P0 BAR.SYNC.DEFER_BLOCKING 0x1, 0x100",
+        "@!P2 BAR.ARV 0x1, 0x100",
+        "BAR.SYNC.DEFER_BLOCKING 0x0",
+        "@!P0 BAR.SYNC.DEFER_BLOCKING 0x1, 0x100",
+        "@!P0 BAR.ARV 0x1, 0x100",
+        "BAR.SYNC.DEFER_BLOCKING 0x0"
+      ],
+      "groups": [
+        {
+          "kind": "QK",
+          "gmma_instructions": 4
+        },
+        {
+          "kind": "PV",
+          "gmma_instructions": 4
+        },
+        {
+          "kind": "QK",
+          "gmma_instructions": 4
+        },
+        {
+          "kind": "PV",
+          "gmma_instructions": 4
+        }
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc35sage_vc_attention_kernel_dual_queryILj64E13__nv_bfloat16Lb0ELb1EEEv14CUtensorMap_stS2_S2_PfS3_S3_PT0_S3_jjjjjjf",
+      "dim": 64,
+      "dtype": "bfloat16",
+      "expcast": false,
+      "mode": "vc26_stagger",
+      "threads_per_cta": 256,
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "static_shared_bytes": 128,
+      "dynamic_shared_bytes": 24576,
+      "local_load_store_instructions": 0,
+      "named_barrier_instructions": [
+        "BAR.SYNC.DEFER_BLOCKING 0x0",
+        "@!P0 BAR.SYNC.DEFER_BLOCKING 0x1, 0x100",
+        "@!P0 BAR.ARV 0x1, 0x100",
+        "BAR.SYNC.DEFER_BLOCKING 0x0",
+        "@!P0 BAR.SYNC.DEFER_BLOCKING 0x1, 0x100",
+        "@!P1 BAR.ARV 0x1, 0x100",
+        "BAR.SYNC.DEFER_BLOCKING 0x0"
+      ],
+      "groups": [
+        {
+          "kind": "QK",
+          "gmma_instructions": 2
+        },
+        {
+          "kind": "PV",
+          "gmma_instructions": 4
+        },
+        {
+          "kind": "QK",
+          "gmma_instructions": 2
+        },
+        {
+          "kind": "PV",
+          "gmma_instructions": 4
+        }
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc35sage_vc_attention_kernel_dual_queryILj64E13__nv_bfloat16Lb1ELb1EEEv14CUtensorMap_stS2_S2_PfS3_S3_PT0_S3_jjjjjjf",
+      "dim": 64,
+      "dtype": "bfloat16",
+      "expcast": true,
+      "mode": "vc26_stagger",
+      "threads_per_cta": 256,
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "static_shared_bytes": 128,
+      "dynamic_shared_bytes": 24576,
+      "local_load_store_instructions": 0,
+      "named_barrier_instructions": [
+        "BAR.SYNC.DEFER_BLOCKING 0x0",
+        "@!P0 BAR.SYNC.DEFER_BLOCKING 0x1, 0x100",
+        "@!P3 BAR.ARV 0x1, 0x100",
+        "BAR.SYNC.DEFER_BLOCKING 0x0",
+        "@!P0 BAR.SYNC.DEFER_BLOCKING 0x1, 0x100",
+        "@!P5 BAR.ARV 0x1, 0x100",
+        "BAR.SYNC.DEFER_BLOCKING 0x0"
+      ],
+      "groups": [
+        {
+          "kind": "QK",
+          "gmma_instructions": 2
+        },
+        {
+          "kind": "PV",
+          "gmma_instructions": 4
+        },
+        {
+          "kind": "QK",
+          "gmma_instructions": 2
+        },
+        {
+          "kind": "PV",
+          "gmma_instructions": 4
+        }
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc35sage_vc_attention_kernel_dual_queryILj64E6__halfLb0ELb1EEEv14CUtensorMap_stS2_S2_PfS3_S3_PT0_S3_jjjjjjf",
+      "dim": 64,
+      "dtype": "float16",
+      "expcast": false,
+      "mode": "vc26_stagger",
+      "threads_per_cta": 256,
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "static_shared_bytes": 128,
+      "dynamic_shared_bytes": 24576,
+      "local_load_store_instructions": 0,
+      "named_barrier_instructions": [
+        "BAR.SYNC.DEFER_BLOCKING 0x0",
+        "@!P0 BAR.SYNC.DEFER_BLOCKING 0x1, 0x100",
+        "@!P0 BAR.ARV 0x1, 0x100",
+        "BAR.SYNC.DEFER_BLOCKING 0x0",
+        "@!P0 BAR.SYNC.DEFER_BLOCKING 0x1, 0x100",
+        "@!P1 BAR.ARV 0x1, 0x100",
+        "BAR.SYNC.DEFER_BLOCKING 0x0"
+      ],
+      "groups": [
+        {
+          "kind": "QK",
+          "gmma_instructions": 2
+        },
+        {
+          "kind": "PV",
+          "gmma_instructions": 4
+        },
+        {
+          "kind": "QK",
+          "gmma_instructions": 2
+        },
+        {
+          "kind": "PV",
+          "gmma_instructions": 4
+        }
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc35sage_vc_attention_kernel_dual_queryILj64E6__halfLb1ELb1EEEv14CUtensorMap_stS2_S2_PfS3_S3_PT0_S3_jjjjjjf",
+      "dim": 64,
+      "dtype": "float16",
+      "expcast": true,
+      "mode": "vc26_stagger",
+      "threads_per_cta": 256,
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "static_shared_bytes": 128,
+      "dynamic_shared_bytes": 24576,
+      "local_load_store_instructions": 0,
+      "named_barrier_instructions": [
+        "BAR.SYNC.DEFER_BLOCKING 0x0",
+        "@!P0 BAR.SYNC.DEFER_BLOCKING 0x1, 0x100",
+        "@!P3 BAR.ARV 0x1, 0x100",
+        "BAR.SYNC.DEFER_BLOCKING 0x0",
+        "@!P0 BAR.SYNC.DEFER_BLOCKING 0x1, 0x100",
+        "@!P5 BAR.ARV 0x1, 0x100",
+        "BAR.SYNC.DEFER_BLOCKING 0x0"
+      ],
+      "groups": [
+        {
+          "kind": "QK",
+          "gmma_instructions": 2
+        },
+        {
+          "kind": "PV",
+          "gmma_instructions": 4
+        },
+        {
+          "kind": "QK",
+          "gmma_instructions": 2
+        },
+        {
+          "kind": "PV",
+          "gmma_instructions": 4
+        }
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc35sage_vc_attention_kernel_dual_queryILj128E13__nv_bfloat16Lb0ELb0EEEv14CUtensorMap_stS2_S2_PfS3_S3_PT0_S3_jjjjjjf",
+      "dim": 128,
+      "dtype": "bfloat16",
+      "expcast": false,
+      "mode": "vc26_shared",
+      "threads_per_cta": 256,
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "static_shared_bytes": 128,
+      "dynamic_shared_bytes": 49152,
+      "local_load_store_instructions": 0,
+      "named_barrier_instructions": [
+        "BAR.SYNC.DEFER_BLOCKING 0x0",
+        "BAR.SYNC.DEFER_BLOCKING 0x0",
+        "BAR.SYNC.DEFER_BLOCKING 0x0",
+        "BAR.SYNC.DEFER_BLOCKING 0x0",
+        "BAR.SYNC.DEFER_BLOCKING 0x0"
+      ],
+      "groups": [
+        {
+          "kind": "QK",
+          "gmma_instructions": 4
+        },
+        {
+          "kind": "PV",
+          "gmma_instructions": 4
+        },
+        {
+          "kind": "QK",
+          "gmma_instructions": 4
+        },
+        {
+          "kind": "PV",
+          "gmma_instructions": 4
+        }
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc35sage_vc_attention_kernel_dual_queryILj128E13__nv_bfloat16Lb1ELb0EEEv14CUtensorMap_stS2_S2_PfS3_S3_PT0_S3_jjjjjjf",
+      "dim": 128,
+      "dtype": "bfloat16",
+      "expcast": true,
+      "mode": "vc26_shared",
+      "threads_per_cta": 256,
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "static_shared_bytes": 128,
+      "dynamic_shared_bytes": 49152,
+      "local_load_store_instructions": 0,
+      "named_barrier_instructions": [
+        "BAR.SYNC.DEFER_BLOCKING 0x0",
+        "BAR.SYNC.DEFER_BLOCKING 0x0",
+        "BAR.SYNC.DEFER_BLOCKING 0x0",
+        "BAR.SYNC.DEFER_BLOCKING 0x0",
+        "BAR.SYNC.DEFER_BLOCKING 0x0"
+      ],
+      "groups": [
+        {
+          "kind": "QK",
+          "gmma_instructions": 4
+        },
+        {
+          "kind": "PV",
+          "gmma_instructions": 4
+        },
+        {
+          "kind": "QK",
+          "gmma_instructions": 4
+        },
+        {
+          "kind": "PV",
+          "gmma_instructions": 4
+        }
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc35sage_vc_attention_kernel_dual_queryILj128E6__halfLb0ELb0EEEv14CUtensorMap_stS2_S2_PfS3_S3_PT0_S3_jjjjjjf",
+      "dim": 128,
+      "dtype": "float16",
+      "expcast": false,
+      "mode": "vc26_shared",
+      "threads_per_cta": 256,
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "static_shared_bytes": 128,
+      "dynamic_shared_bytes": 49152,
+      "local_load_store_instructions": 0,
+      "named_barrier_instructions": [
+        "BAR.SYNC.DEFER_BLOCKING 0x0",
+        "BAR.SYNC.DEFER_BLOCKING 0x0",
+        "BAR.SYNC.DEFER_BLOCKING 0x0",
+        "BAR.SYNC.DEFER_BLOCKING 0x0",
+        "BAR.SYNC.DEFER_BLOCKING 0x0"
+      ],
+      "groups": [
+        {
+          "kind": "QK",
+          "gmma_instructions": 4
+        },
+        {
+          "kind": "PV",
+          "gmma_instructions": 4
+        },
+        {
+          "kind": "QK",
+          "gmma_instructions": 4
+        },
+        {
+          "kind": "PV",
+          "gmma_instructions": 4
+        }
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc35sage_vc_attention_kernel_dual_queryILj128E6__halfLb1ELb0EEEv14CUtensorMap_stS2_S2_PfS3_S3_PT0_S3_jjjjjjf",
+      "dim": 128,
+      "dtype": "float16",
+      "expcast": true,
+      "mode": "vc26_shared",
+      "threads_per_cta": 256,
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "static_shared_bytes": 128,
+      "dynamic_shared_bytes": 49152,
+      "local_load_store_instructions": 0,
+      "named_barrier_instructions": [
+        "BAR.SYNC.DEFER_BLOCKING 0x0",
+        "BAR.SYNC.DEFER_BLOCKING 0x0",
+        "BAR.SYNC.DEFER_BLOCKING 0x0",
+        "BAR.SYNC.DEFER_BLOCKING 0x0",
+        "BAR.SYNC.DEFER_BLOCKING 0x0"
+      ],
+      "groups": [
+        {
+          "kind": "QK",
+          "gmma_instructions": 4
+        },
+        {
+          "kind": "PV",
+          "gmma_instructions": 4
+        },
+        {
+          "kind": "QK",
+          "gmma_instructions": 4
+        },
+        {
+          "kind": "PV",
+          "gmma_instructions": 4
+        }
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc35sage_vc_attention_kernel_dual_queryILj64E13__nv_bfloat16Lb0ELb0EEEv14CUtensorMap_stS2_S2_PfS3_S3_PT0_S3_jjjjjjf",
+      "dim": 64,
+      "dtype": "bfloat16",
+      "expcast": false,
+      "mode": "vc26_shared",
+      "threads_per_cta": 256,
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "static_shared_bytes": 128,
+      "dynamic_shared_bytes": 24576,
+      "local_load_store_instructions": 0,
+      "named_barrier_instructions": [
+        "BAR.SYNC.DEFER_BLOCKING 0x0",
+        "BAR.SYNC.DEFER_BLOCKING 0x0",
+        "BAR.SYNC.DEFER_BLOCKING 0x0",
+        "BAR.SYNC.DEFER_BLOCKING 0x0",
+        "BAR.SYNC.DEFER_BLOCKING 0x0"
+      ],
+      "groups": [
+        {
+          "kind": "QK",
+          "gmma_instructions": 2
+        },
+        {
+          "kind": "PV",
+          "gmma_instructions": 4
+        },
+        {
+          "kind": "QK",
+          "gmma_instructions": 2
+        },
+        {
+          "kind": "PV",
+          "gmma_instructions": 4
+        }
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc35sage_vc_attention_kernel_dual_queryILj64E13__nv_bfloat16Lb1ELb0EEEv14CUtensorMap_stS2_S2_PfS3_S3_PT0_S3_jjjjjjf",
+      "dim": 64,
+      "dtype": "bfloat16",
+      "expcast": true,
+      "mode": "vc26_shared",
+      "threads_per_cta": 256,
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "static_shared_bytes": 128,
+      "dynamic_shared_bytes": 24576,
+      "local_load_store_instructions": 0,
+      "named_barrier_instructions": [
+        "BAR.SYNC.DEFER_BLOCKING 0x0",
+        "BAR.SYNC.DEFER_BLOCKING 0x0",
+        "BAR.SYNC.DEFER_BLOCKING 0x0",
+        "BAR.SYNC.DEFER_BLOCKING 0x0",
+        "BAR.SYNC.DEFER_BLOCKING 0x0"
+      ],
+      "groups": [
+        {
+          "kind": "QK",
+          "gmma_instructions": 2
+        },
+        {
+          "kind": "PV",
+          "gmma_instructions": 4
+        },
+        {
+          "kind": "QK",
+          "gmma_instructions": 2
+        },
+        {
+          "kind": "PV",
+          "gmma_instructions": 4
+        }
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc35sage_vc_attention_kernel_dual_queryILj64E6__halfLb0ELb0EEEv14CUtensorMap_stS2_S2_PfS3_S3_PT0_S3_jjjjjjf",
+      "dim": 64,
+      "dtype": "float16",
+      "expcast": false,
+      "mode": "vc26_shared",
+      "threads_per_cta": 256,
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "static_shared_bytes": 128,
+      "dynamic_shared_bytes": 24576,
+      "local_load_store_instructions": 0,
+      "named_barrier_instructions": [
+        "BAR.SYNC.DEFER_BLOCKING 0x0",
+        "BAR.SYNC.DEFER_BLOCKING 0x0",
+        "BAR.SYNC.DEFER_BLOCKING 0x0",
+        "BAR.SYNC.DEFER_BLOCKING 0x0",
+        "BAR.SYNC.DEFER_BLOCKING 0x0"
+      ],
+      "groups": [
+        {
+          "kind": "QK",
+          "gmma_instructions": 2
+        },
+        {
+          "kind": "PV",
+          "gmma_instructions": 4
+        },
+        {
+          "kind": "QK",
+          "gmma_instructions": 2
+        },
+        {
+          "kind": "PV",
+          "gmma_instructions": 4
+        }
+      ]
+    },
+    {
+      "name": "_ZN7sage_vc35sage_vc_attention_kernel_dual_queryILj64E6__halfLb1ELb0EEEv14CUtensorMap_stS2_S2_PfS3_S3_PT0_S3_jjjjjjf",
+      "dim": 64,
+      "dtype": "float16",
+      "expcast": true,
+      "mode": "vc26_shared",
+      "threads_per_cta": 256,
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "static_shared_bytes": 128,
+      "dynamic_shared_bytes": 24576,
+      "local_load_store_instructions": 0,
+      "named_barrier_instructions": [
+        "BAR.SYNC.DEFER_BLOCKING 0x0",
+        "BAR.SYNC.DEFER_BLOCKING 0x0",
+        "BAR.SYNC.DEFER_BLOCKING 0x0",
+        "BAR.SYNC.DEFER_BLOCKING 0x0",
+        "BAR.SYNC.DEFER_BLOCKING 0x0"
+      ],
+      "groups": [
+        {
+          "kind": "QK",
+          "gmma_instructions": 2
+        },
+        {
+          "kind": "PV",
+          "gmma_instructions": 4
+        },
+        {
+          "kind": "QK",
+          "gmma_instructions": 2
+        },
+        {
+          "kind": "PV",
+          "gmma_instructions": 4
+        }
+      ]
+    }
+  ],
+  "ptxas_warnings": 0,
+  "wgmma_serialization_diagnostics": 0,
+  "scope": "Local CUDA 12.4 sm90a cross-compilation only. SASS instruction text excludes encodings/control words. No Hopper execution, correctness, occupancy measurement or speed claim."
+}
