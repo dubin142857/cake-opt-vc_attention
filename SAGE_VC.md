@@ -3,11 +3,11 @@
 **当前 H200 主路线（2026-10-08）为 `sageattn_vc`：INT8 QK + FP8 PV。**
 继续在该路线对齐 V-Smooth 与 ExpCast。此前将“完整 VC”泛称为 FP8 QK 不准确：
 作者主流程为 INT8 QK，论文另有 B300 FP8 QK 变体，来源与范围见 [H200_INT8.md](H200_INT8.md)。
-当前包 `2.2.0+vc28`、native kernel version 26，新增 `vc28_stream_i2f`：
-在 vc22 上将 INT32→FP32 转换放入小组 ExpCast 编码，缩短临时分数存活范围。
+当前包 `2.2.0+vc29`、native kernel version 27，新增 `vc29_interleave_rows`：
+以 vc28 为基线，交错安排两行的 INT32→FP32 转换与 ExpCast 编码。
 **本轮改了内核，需要重新编译**：`bash scripts/validate_int8_h200.sh`。
-同场比较四组 vc15 算法开关、vc22/vc28 候选、原版 Sage 和 FlashAttention-4。
-vc22/vc28 不支持 V 平滑；候选是否提速需 H200 实测，详见 [vc28](SAGE_VC28.md)。
+同场比较四组 vc15 算法开关、vc22/vc28/vc29 候选、原版 Sage 和 FlashAttention-4。
+这些候选不支持 V 平滑；vc28 已测小幅改善，vc29 尚待 H200 实测，详见 [vc29](SAGE_VC29.md)。
 默认仍为支持四组开关的 vc15，没有静默切换默认内核。
 
 vc27 的独立 FP8 QK 入口保留为历史实验，不纳入主验证和测速流程。

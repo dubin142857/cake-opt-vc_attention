@@ -67,8 +67,9 @@ def test_feature_pairs_share_payloads_but_full_calls_preprocess_fresh_inputs():
     assert all("expcast" not in base for base in bases.values())
     assert states["int8_vc"]["q"] is not states["int8_expcast"]["q"]
     assert {mode for _, _, _, mode in profile.VARIANTS[:4]} == {"vc15"}
-    assert profile.VARIANTS[-2][1:] == (True, False, "vc22_both")
-    assert profile.VARIANTS[-1][1:] == (True, False, "vc28_stream_i2f")
+    assert profile.VARIANTS[-3][1:] == (True, False, "vc22_both")
+    assert profile.VARIANTS[-2][1:] == (True, False, "vc28_stream_i2f")
+    assert profile.VARIANTS[-1][1:] == (True, False, "vc29_interleave_rows")
     assert "sage_cpp" in core and "sage_cpp" in apis
 
 

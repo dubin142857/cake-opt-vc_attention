@@ -1,6 +1,6 @@
 """H200 main route: INT8 QK + FP8 PV, with independent VC feature switches.
 
-Four vc15 variants isolate ExpCast and V smoothing. vc22_both and vc28 are
+Four vc15 variants isolate ExpCast and V smoothing. vc22, vc28 and vc29 are
 separate ExpCast-only performance candidates. FA4 has a full-API row only.
 Full APIs preprocess fresh original inputs;
 fixed-core APIs reuse quantized payloads and still allocate their outputs.
@@ -25,6 +25,7 @@ VARIANTS = (
     ("int8_vc", True, True, "vc15"),
     ("int8_expcast_vc22", True, False, "vc22_both"),
     ("int8_expcast_vc28", True, False, "vc28_stream_i2f"),
+    ("int8_expcast_vc29", True, False, "vc29_interleave_rows"),
 )
 
 
@@ -117,8 +118,8 @@ def parse_args(argv=None):
 def main():
     args = parse_args()
     from sageattention_local import vc, vc_reference, sageattn
-    if vc._extension().sage_vc_kernel_version < 26:
-        raise RuntimeError("vc28 requires rebuilding: bash scripts/validate_int8_h200.sh (without --skip-build)")
+    if vc._extension().sage_vc_kernel_version < 27:
+        raise RuntimeError("vc29 requires rebuilding: bash scripts/validate_int8_h200.sh (without --skip-build)")
     device = torch.device(args.device)
     torch.cuda.set_device(device)
     if torch.cuda.get_device_capability(device) != (9, 0):
@@ -171,6 +172,9 @@ def main():
             baselines[name] = out
         if name == "int8_expcast_vc28":
             entry["vs_vc22_all_rows"] = metrics(out, baselines.pop("int8_expcast_vc22"), limit=.001)
+            baselines[name] = out
+        if name == "int8_expcast_vc29":
+            entry["vs_vc28_all_rows"] = metrics(out, baselines.pop("int8_expcast_vc28"), limit=.001)
         if name == "sage_cpp":
             entry["control_vs_sage_all_rows"] = metrics(baselines.pop("int8_control"), out, limit=.001)
         accuracy[name] = entry
@@ -203,13 +207,15 @@ def main():
         print(f"{name:<25} {latency:>12.4f} {core_text:>12} "
               f"{sage_ms/latency:>9.3f}x {fa4_text:>10} {100*accuracy[name]['vs_dense_fp32']['relative_rmse']:>14.6f}")
     print("Sage/API and FA4/API >1 mean faster than that baseline's FULL API.")
-    print("Four vc15 arms isolate feature switches; vc22/vc28 are separate candidates. FA4 has no fixed-payload core row.")
+    print("Four vc15 arms isolate feature switches; vc22/vc28/vc29 are separate candidates. FA4 has no fixed-payload core row.")
     print("Full API includes fresh preprocessing/grouping; fixed core includes allocation/dispatch.")
     print("1% decoded-reference / 0.1% same-algorithm gates check implementation, NOT model quality.")
-    old, new = rows["int8_expcast_vc22"], rows["int8_expcast_vc28"]
-    print(f"vc22/vc28: full API {old['full_api']['median_ms']/new['full_api']['median_ms']:.4f}x; "
-          f"fixed core {old['core']['median_ms']/new['core']['median_ms']:.4f}x; "
-          f"ALL-row same-payload RMSE {100*accuracy['int8_expcast_vc28']['vs_vc22_all_rows']['relative_rmse']:.6f}%")
+    for before, after in (("vc22", "vc28"), ("vc28", "vc29")):
+        old, new = rows["int8_expcast_"+before], rows["int8_expcast_"+after]
+        error = accuracy["int8_expcast_"+after][f"vs_{before}_all_rows"]["relative_rmse"]
+        print(f"{before}/{after}: full API {old['full_api']['median_ms']/new['full_api']['median_ms']:.4f}x; "
+              f"fixed core {old['core']['median_ms']/new['core']['median_ms']:.4f}x; "
+              f"ALL-row same-payload RMSE {100*error:.6f}%")
     report = {
         "environment": {"torch": torch.__version__, "cuda": torch.version.cuda,
                         "gpu": torch.cuda.get_device_name(device), "device": str(device),
@@ -224,7 +230,7 @@ def main():
                      for name, cast, smooth, mode in VARIANTS},
         "external_backends": {"flash4": flash4.info} if flash4 else {},
         "compiled_resources_d128": {key: value for key, value in vc.kernel_resources(0 if dtype==torch.float16 else 1).items()
-                                   if key in ("expcast_sage_layout_27", "expcast_sage_layout_35")},
+                                   if key in ("expcast_sage_layout_27", "expcast_sage_layout_35", "expcast_sage_layout_36")},
         "rows": rows, "accuracy": accuracy, "trial_order": orders,
         "scope": "Random inputs, native contiguous layouts (Sage/VC HND, FA4 NHD); layout copies and first-use JIT excluded. "
                  "VC uses INT8 QK/FP8 PV; FA4 receives original input dtype, no external quantization. "

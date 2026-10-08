@@ -1,0 +1,279 @@
+{
+  "source": "User-pasted H200 vc28 recheck output; attachment bed1c415-36bb-4de8-af01-16024c3c4e8e",
+  "reported_result_path": "results/h200_vc28_recheck.json",
+  "context": {
+    "expected_nhd_shape": [
+      1,
+      37741,
+      28,
+      128
+    ],
+    "expected_dtype": "bfloat16",
+    "note": "Shape/dtype from agreed command; environment header and raw API trial samples absent from excerpt."
+  },
+  "rows": {
+    "int8_control": {
+      "full_api_ms": 27.6151,
+      "fixed_core_ms": 25.6643,
+      "printed_sage_over_api": 0.953,
+      "printed_fa4_over_api": 1.121,
+      "dense_fp32_rmse_percent": 3.863258
+    },
+    "int8_expcast": {
+      "full_api_ms": 27.3297,
+      "fixed_core_ms": 25.6007,
+      "printed_sage_over_api": 0.963,
+      "printed_fa4_over_api": 1.133,
+      "dense_fp32_rmse_percent": 4.197492
+    },
+    "int8_v_smooth": {
+      "full_api_ms": 33.6105,
+      "fixed_core_ms": 30.0375,
+      "printed_sage_over_api": 0.783,
+      "printed_fa4_over_api": 0.921,
+      "dense_fp32_rmse_percent": 3.835524
+    },
+    "int8_vc": {
+      "full_api_ms": 37.4352,
+      "fixed_core_ms": 33.7919,
+      "printed_sage_over_api": 0.703,
+      "printed_fa4_over_api": 0.827,
+      "dense_fp32_rmse_percent": 4.197574
+    },
+    "int8_expcast_vc22": {
+      "full_api_ms": 25.5764,
+      "fixed_core_ms": 23.8977,
+      "printed_sage_over_api": 1.029,
+      "printed_fa4_over_api": 1.211,
+      "dense_fp32_rmse_percent": 4.197492
+    },
+    "int8_expcast_vc28": {
+      "full_api_ms": 25.1828,
+      "fixed_core_ms": 23.5695,
+      "printed_sage_over_api": 1.045,
+      "printed_fa4_over_api": 1.23,
+      "dense_fp32_rmse_percent": 4.197492
+    },
+    "sage_cpp": {
+      "full_api_ms": 26.3211,
+      "fixed_core_ms": 24.9288,
+      "printed_sage_over_api": 1.0,
+      "printed_fa4_over_api": 1.177,
+      "dense_fp32_rmse_percent": 3.863257
+    },
+    "flash4": {
+      "full_api_ms": 30.9672,
+      "fixed_core_ms": null,
+      "printed_sage_over_api": 0.85,
+      "printed_fa4_over_api": 1.0,
+      "dense_fp32_rmse_percent": 0.231735
+    }
+  },
+  "cupti_trials": {
+    "sage_cpp": [
+      {
+        "trial": 1,
+        "median_ms": 24.3932,
+        "launches": 20
+      },
+      {
+        "trial": 2,
+        "median_ms": 24.8633,
+        "launches": 20
+      },
+      {
+        "trial": 3,
+        "median_ms": 25.0721,
+        "launches": 20
+      },
+      {
+        "trial": 4,
+        "median_ms": 24.8712,
+        "launches": 20
+      },
+      {
+        "trial": 5,
+        "median_ms": 24.4149,
+        "launches": 20
+      }
+    ],
+    "int8_vc": [
+      {
+        "trial": 1,
+        "median_ms": 33.4506,
+        "launches": 20
+      },
+      {
+        "trial": 2,
+        "median_ms": 33.6582,
+        "launches": 20
+      },
+      {
+        "trial": 3,
+        "median_ms": 33.6605,
+        "launches": 20
+      },
+      {
+        "trial": 4,
+        "median_ms": 33.66,
+        "launches": 20
+      },
+      {
+        "trial": 5,
+        "median_ms": 33.0927,
+        "launches": 20
+      }
+    ],
+    "int8_expcast_vc28": [
+      {
+        "trial": 1,
+        "median_ms": 24.0174,
+        "launches": 20
+      },
+      {
+        "trial": 2,
+        "median_ms": 23.8497,
+        "launches": 20
+      },
+      {
+        "trial": 3,
+        "median_ms": 23.7673,
+        "launches": 20
+      },
+      {
+        "trial": 4,
+        "median_ms": 23.6186,
+        "launches": 20
+      },
+      {
+        "trial": 5,
+        "median_ms": 23.6309,
+        "launches": 20
+      }
+    ],
+    "int8_expcast": [
+      {
+        "trial": 1,
+        "median_ms": 26.0077,
+        "launches": 20
+      },
+      {
+        "trial": 2,
+        "median_ms": 25.8687,
+        "launches": 20
+      },
+      {
+        "trial": 3,
+        "median_ms": 25.8197,
+        "launches": 20
+      },
+      {
+        "trial": 4,
+        "median_ms": 25.8744,
+        "launches": 20
+      },
+      {
+        "trial": 5,
+        "median_ms": 25.8345,
+        "launches": 20
+      }
+    ],
+    "int8_expcast_vc22": [
+      {
+        "trial": 1,
+        "median_ms": 23.6604,
+        "launches": 20
+      },
+      {
+        "trial": 2,
+        "median_ms": 23.89,
+        "launches": 20
+      },
+      {
+        "trial": 3,
+        "median_ms": 24.0667,
+        "launches": 20
+      },
+      {
+        "trial": 4,
+        "median_ms": 24.0296,
+        "launches": 20
+      },
+      {
+        "trial": 5,
+        "median_ms": 24.0768,
+        "launches": 20
+      }
+    ],
+    "int8_v_smooth": [
+      {
+        "trial": 1,
+        "median_ms": 30.0787,
+        "launches": 20
+      },
+      {
+        "trial": 2,
+        "median_ms": 30.2679,
+        "launches": 20
+      },
+      {
+        "trial": 3,
+        "median_ms": 30.2759,
+        "launches": 20
+      },
+      {
+        "trial": 4,
+        "median_ms": 30.2644,
+        "launches": 20
+      },
+      {
+        "trial": 5,
+        "median_ms": 30.2708,
+        "launches": 20
+      }
+    ],
+    "int8_control": [
+      {
+        "trial": 1,
+        "median_ms": 25.6827,
+        "launches": 20
+      },
+      {
+        "trial": 2,
+        "median_ms": 26.0697,
+        "launches": 20
+      },
+      {
+        "trial": 3,
+        "median_ms": 25.8306,
+        "launches": 20
+      },
+      {
+        "trial": 4,
+        "median_ms": 25.8473,
+        "launches": 20
+      },
+      {
+        "trial": 5,
+        "median_ms": 25.832,
+        "launches": 20
+      }
+    ]
+  },
+  "cupti_median_of_trial_medians_ms": {
+    "sage_cpp": 24.8633,
+    "int8_vc": 33.6582,
+    "int8_expcast_vc28": 23.7673,
+    "int8_expcast": 25.8687,
+    "int8_expcast_vc22": 24.0296,
+    "int8_v_smooth": 30.2679,
+    "int8_control": 25.832
+  },
+  "printed_vc28_vs_vc22_all_rows_rmse_percent": 0.0,
+  "limitations": [
+    "Rounded printed RMSE does not establish bitwise equality.",
+    "API wall time and profiler-active kernel durations were measured separately; do not add them.",
+    "No model quality result or statistical significance claim.",
+    "This is a reported summary, not a locally reproduced H200 benchmark."
+  ]
+}

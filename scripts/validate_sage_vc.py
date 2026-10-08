@@ -123,7 +123,7 @@ def validate_grouping(ext, device="cuda:0"):
 def validate_pipeline(vc, device, *, compute=False, history=False, work=False, maxstate=False, encoding=False, mass=False, streamed=False):
     """Exercise both slot parities, reuse, partial tails and long lookahead loops."""
     from sageattention_local.vc_reference import value_permutation
-    minimum=26 if streamed else 22 if mass else 21 if encoding else 20 if maxstate else 19 if work else 18 if history else 17 if compute else 16
+    minimum=27 if streamed else 22 if mass else 21 if encoding else 20 if maxstate else 19 if work else 18 if history else 17 if compute else 16
     if vc._extension().sage_vc_kernel_version < minimum:
         raise RuntimeError("Rebuild sageattention-local for the requested pipeline validation")
     modes=vc.STREAM_CONVERT_CANDIDATES if streamed else vc.MASS_CANDIDATES if mass else vc.ENCODING_CANDIDATES if encoding else vc.STATE_CANDIDATES if maxstate else vc.WORK_CANDIDATES if work else vc.HISTORY_CANDIDATES if history else vc.COMPUTE_CANDIDATES if compute else vc.PIPELINE_CANDIDATES
@@ -337,7 +337,7 @@ def validate(device="cuda:0"):
         report["work_reduction"] = validate_pipeline(vc,device,work=True)
     if getattr(ext,"sage_vc_kernel_version",0) >= 22:
         report["deferred_mass"] = validate_pipeline(vc,device,mass=True)
-    if getattr(ext,"sage_vc_kernel_version",0) >= 26:
+    if getattr(ext,"sage_vc_kernel_version",0) >= 27:
         report["streamed_i2f"] = validate_pipeline(vc,device,streamed=True)
     if getattr(ext,"sage_vc_kernel_version",0) >= 23:
         report["dual_query"] = validate_dual_query(vc,device)

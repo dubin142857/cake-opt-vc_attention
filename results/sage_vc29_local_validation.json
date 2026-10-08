@@ -1,0 +1,25 @@
+{
+  "local_package": "2.2.0+vc29",
+  "native_kernel_version": 27,
+  "status": "local_checks_passed",
+  "pytest": {"passed": 594, "seconds": 10.80},
+  "cuda_cross_compile": {
+    "toolkit": "12.4",
+    "architecture": "sm_90a",
+    "instances": 308,
+    "historical_instruction_text_identical": 304,
+    "new_candidate_instances": 4,
+    "stack_or_spills": false,
+    "wgmma_serialization_diagnostics": 0
+  },
+  "package_source_integrity": {
+    "manifest_files": 77,
+    "upstream_files": 49,
+    "experiment_files": 28,
+    "unchanged_upstream_kernel_files": 36,
+    "sdist_hash_verification": "passed"
+  },
+  "execution_scope": "SM86 GPU helper/preprocessing execution and CPU script/dispatch/source checks. SM90a attention cross-compiled and linked only; full H200 kernels and FA4 benchmark were not executed locally.",
+  "helper_scope": "Production interleaved-row encoder: all bytes checked against vc28 and an independent FP64-to-FP32 FMA/RNE oracle on ties, neighboring FP32 values and 262144 random eight-score groups. Probability/max/alpha/mass/denominator/history checks include tails, scale transitions, fallback, nondefault stream and up to 296 steps.",
+  "performance": "vc29 unmeasured on H200. Retain vc28 as measured candidate; no H200 speedup inferred from local static codegen or helper execution."
+}

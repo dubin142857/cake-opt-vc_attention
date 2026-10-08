@@ -853,12 +853,12 @@ constexpr int sage_register_limit() {
 
 template<int Dim, typename Out, bool Cast, int Schedule>
 auto select_sage_layout() {
-  static_assert(Schedule>=1 && Schedule<=35);
+  static_assert(Schedule>=1 && Schedule<=36);
   static_assert(!Cast || (Schedule!=3 && Schedule!=4));
-  if constexpr (Schedule==35) {
+  if constexpr (Schedule>=35) {
     return sage_vc::sage_vc_attention_kernel_sage_layout<64,128,128,Dim,
         QuantGranularity::kPerThread,QuantGranularity::kPerThread,Out,
-        MaskMode::kNone,false,true,Cast,false,false,Cast,0,168,false,(Cast ? 9 : 0)>;
+        MaskMode::kNone,false,true,Cast,false,false,Cast,0,168,false,(Cast ? Schedule-26 : 0)>;
   } else if constexpr ((Schedule>=33 && Schedule<=34)) {
     return sage_vc::sage_vc_attention_kernel_dual_query<Dim,Out,Cast,(Schedule==34)>;
   } else if constexpr (Schedule>=25) {
@@ -957,7 +957,8 @@ std::map<std::string,int64_t> sage_layout_resources() {
           {"history_shared_bytes",Schedule>=23 && Schedule<=24 ? 14336 : 0},
           {"integer_max",Cast && (Schedule==25 || Schedule>=27) ? 1 : 0},
           {"skip_identity_history",Cast && Schedule>=26 ? 1 : 0},
-          {"streamed_i2f",Cast && Schedule==35 ? 1 : 0},
+          {"streamed_i2f",Cast && Schedule>=35 ? 1 : 0},
+          {"interleaved_encode_rows",Cast && Schedule==36 ? 1 : 0},
           {"deferred_mass_schedule",Cast && Schedule>=31 && Schedule<=32 ? Schedule-30 : 0},
           {"bit_probability_encoding",Cast && Schedule==30 ? 1 : 0},
           {"max_state_mode",Cast && Schedule>=28 && Schedule<=29 ? Schedule-27 : 0},
@@ -1025,7 +1026,7 @@ torch::Tensor vc_forward(torch::Tensor q, torch::Tensor k, torch::Tensor v,
   TORCH_CHECK(probability_schedule == 0 || (optimized && packed_probability && compact_values && pipeline_probability && interleaved_probability && affine_probability), "Scratch schedules require the affine pipeline");
   TORCH_CHECK(!fused_probability || paired_probability,"Fused packing requires paired conversion");
   TORCH_CHECK(!paired_probability || (probability_schedule == 0 && optimized && packed_probability && compact_values && pipeline_probability && interleaved_probability && affine_probability), "Paired conversion requires the affine pipeline without scratch");
-  TORCH_CHECK(sage_schedule>=0 && sage_schedule<=35,"Sage layout schedule must be 0..35");
+  TORCH_CHECK(sage_schedule>=0 && sage_schedule<=36,"Sage layout schedule must be 0..36");
   TORCH_CHECK(sage_schedule<23 || sage_schedule>24 || q.size(3)==128,"Shared-history candidates require D128");
   TORCH_CHECK(sage_schedule==0 || !block_values,"Sage layout candidates require v_smooth=False");
   TORCH_CHECK(sage_schedule<6 || sage_schedule>9 || expcast,"Probability candidates require expcast=True");
@@ -1071,6 +1072,7 @@ torch::Tensor vc_forward(torch::Tensor q, torch::Tensor k, torch::Tensor v,
   else if (sage_schedule==33) dispatch_sage_output<33>(q,k,v,qs,ks,vs,out,scale,output_type,expcast);
   else if (sage_schedule==34) dispatch_sage_output<34>(q,k,v,qs,ks,vs,out,scale,output_type,expcast);
   else if (sage_schedule==35) dispatch_sage_output<35>(q,k,v,qs,ks,vs,out,scale,output_type,expcast);
+  else if (sage_schedule==36) dispatch_sage_output<36>(q,k,v,qs,ks,vs,out,scale,output_type,expcast);
   else if (fused_probability) dispatch_output<true,true,true,true,true,true,0,true,true>(q,k,v,qs,ks,vs,means,out,scale,output_type,expcast,block_values);
   else if (paired_probability) dispatch_output<true,true,true,true,true,true,0,true>(q,k,v,qs,ks,vs,means,out,scale,output_type,expcast,block_values);
   else if (probability_schedule == 1) dispatch_output<true,true,true,true,true,true,1>(q,k,v,qs,ks,vs,means,out,scale,output_type,expcast,block_values);
@@ -1156,6 +1158,8 @@ std::map<std::string, std::map<std::string, int64_t>> vc_kernel_resources(int64_
   result["expcast_sage_layout_33"] = output_type==0 ? sage_layout_resources<half,true,33>() : sage_layout_resources<nv_bfloat16,true,33>();
   result["control_sage_layout_35"] = output_type==0 ? sage_layout_resources<half,false,35>() : sage_layout_resources<nv_bfloat16,false,35>();
   result["expcast_sage_layout_35"] = output_type==0 ? sage_layout_resources<half,true,35>() : sage_layout_resources<nv_bfloat16,true,35>();
+  result["control_sage_layout_36"] = output_type==0 ? sage_layout_resources<half,false,36>() : sage_layout_resources<nv_bfloat16,false,36>();
+  result["expcast_sage_layout_36"] = output_type==0 ? sage_layout_resources<half,true,36>() : sage_layout_resources<nv_bfloat16,true,36>();
   result["control_sage_layout_34"] = output_type==0 ? sage_layout_resources<half,false,34>() : sage_layout_resources<nv_bfloat16,false,34>();
   result["expcast_sage_layout_34"] = output_type==0 ? sage_layout_resources<half,true,34>() : sage_layout_resources<nv_bfloat16,true,34>();
   result["control_sage_layout_32"] = output_type==0 ? sage_layout_resources<half,false,32>() : sage_layout_resources<nv_bfloat16,false,32>();

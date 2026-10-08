@@ -1,4 +1,4 @@
-"""Real vc22-vc28 helpers, including exact codes, max state and history recurrence.
+"""Real vc22-vc29 helpers, including exact codes, max state and history recurrence.
 
 Non-Hopper CUDA implements the DPX intrinsic in software; this checks values,
 not Hopper instruction throughput or WGMMA integration.
@@ -7,6 +7,39 @@ import pytest
 import torch
 
 probe=pytest.importorskip("_sage_vc_work_probe")
+
+
+@pytest.mark.parametrize("pattern",["ties","neighbors","random"])
+def test_interleaved_row_encoding_exact_bytes(pattern):
+    torch.manual_seed(2929)
+    if pattern == "random":
+        scores=torch.randint(-(2**21),2**21+1,(262144,8),device="cuda",dtype=torch.int32)
+        gains=torch.exp2(torch.empty(scores.size(0),device="cuda").uniform_(-24,-12))
+        biases=torch.empty(scores.size(0),2,device="cuda").uniform_(-256,120)
+    else:
+        # Unit gain gives exact n+0.5 ties; adjacent biases exercise both sides.
+        scores=torch.arange(-2,123,device="cuda",dtype=torch.int32)[:,None].expand(-1,8).contiguous()
+        gains=torch.ones(scores.size(0),device="cuda")
+        biases=torch.tensor([.5,-.5],device="cuda").expand(scores.size(0),-1).contiguous()
+        if pattern == "neighbors":
+            scores=scores.repeat_interleave(17,dim=0)
+            gains=gains.repeat_interleave(17)
+            bits=biases.view(torch.int32).repeat_interleave(17,dim=0)
+            offsets=torch.arange(-8,9,device="cuda",dtype=torch.int32).repeat(125)
+            biases=(bits+offsets[:,None]).view(torch.float32)
+    out=probe.encode_rows(scores,gains,biases)
+    torch.testing.assert_close(out[:,1],out[:,0],rtol=0,atol=0)
+    # An int21 * FP32 product + a similar-size FP32 bias is exactly represented
+    # in FP64 here; one cast provides the rounded FP32 FMA result independently.
+    affine=(scores.double()*gains.double()[:,None]+biases.double()[:,[0,0,1,1,0,0,1,1]]).float()
+    codes=torch.round(affine).clamp(0,255).to(torch.int64)
+    words=[];uppers=[]
+    for r in range(2):
+        ids=[r*2,r*2+1,r*2+4,r*2+5]
+        words.append(sum(codes[:,j] << (8*i) for i,j in enumerate(ids)))
+        uppers.append(codes[:,ids[2]] | (codes[:,ids[3]] << 8))
+    expected=torch.stack((torch.stack(words,1),torch.stack(uppers,1)),2).int()
+    torch.testing.assert_close(out[:,1],expected,rtol=0,atol=0)
 
 
 @pytest.mark.parametrize("steps",[1,2,7,296])
@@ -18,7 +51,7 @@ def test_deferred_mass_zero_prologue_and_masked_tail(steps,fallback):
     initial=torch.full((1,128,2),-5e6,device="cuda")
     products=torch.randn(scores.shape,device="cuda")
     baseline=probe.run(scores,scales,initial,products,0,True)
-    for mode in (7,8,9):
+    for mode in (7,8,9,10):
         actual=probe.run(scores,scales,initial,products,mode,True)
         for a,b in zip(actual,baseline):
             torch.testing.assert_close(a,b,rtol=0,atol=0)
@@ -47,7 +80,7 @@ def test_exact_probability_and_independent_history(steps,blocks,pattern):
         initial[...,1]=-129
     products=torch.randn(scores.shape,device="cuda")*torch.linspace(.01,10,8,device="cuda")
     reference=probe.run(scores,scales,initial,products,0)
-    for mode in (1,2,3,4,5,6,7,8,9):
+    for mode in (1,2,3,4,5,6,7,8,9,10):
         actual=probe.run(scores,scales,initial,products,mode)
         for a,b in zip(actual,reference):
             torch.testing.assert_close(a,b,rtol=0,atol=0)
@@ -86,7 +119,7 @@ def test_sparse_row_updates_and_nondefault_stream():
         initial=torch.zeros(2,128,2,device="cuda")
         products=torch.randn(scores.shape,device="cuda")
         baseline=probe.run(scores,scales,initial,products,0)
-        actuals=[probe.run(scores,scales,initial,products,mode) for mode in (3,4,5,6,7,8,9)]
+        actuals=[probe.run(scores,scales,initial,products,mode) for mode in (3,4,5,6,7,8,9,10)]
     stream.synchronize()
     for actual in actuals:
         for a,b in zip(actual,baseline): torch.testing.assert_close(a,b,rtol=0,atol=0)
@@ -113,7 +146,7 @@ def test_maxstate_refresh_and_affine_range_transitions(pattern):
         initial.zero_()
     products=torch.randn(scores.shape,device="cuda")
     baseline=probe.run(scores,scales,initial,products,3)
-    for mode in (4,5,6,7,8,9):
+    for mode in (4,5,6,7,8,9,10):
         actual=probe.run(scores,scales,initial,products,mode)
         for a,b in zip(actual,baseline): torch.testing.assert_close(a,b,rtol=0,atol=0)
     stats=baseline[1]
@@ -152,7 +185,7 @@ def test_bit_encoder_half_integer_boundaries_and_random_affine():
         torch.testing.assert_close(codes[:,1],torch.round(u.clamp(0,255)).int(),rtol=0,atol=0)
 
 
-@pytest.mark.parametrize("mode",[6,9])
+@pytest.mark.parametrize("mode",[6,9,10])
 @pytest.mark.parametrize("scale",[0.,2.**-126,2.**-120,2.**-119,2.**-118,1e-6,1e-3])
 def test_encoding_scale_guard_and_extreme_int_scores(scale,mode):
     torch.manual_seed(2425)

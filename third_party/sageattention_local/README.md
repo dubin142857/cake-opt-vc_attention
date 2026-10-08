@@ -7,11 +7,11 @@
 `sageattn_vc` 实验入口：Sage INT8 QK + VC 的 V 聚类/分块平滑、ExpCast，
 不能称为完整 VC 论文复现。使用与对照见仓库根目录 [SAGE_VC.md](../../SAGE_VC.md)。
 当前 H200 主路线为 `sageattn_vc` 的 INT8 QK + FP8 PV，见 [H200_INT8.md](../../H200_INT8.md)。
-当前 `2.2.0+vc28`（native kernel version 26）增加 INT8 ExpCast 小组转换候选，
+当前 `2.2.0+vc29`（native kernel version 27）增加 INT8 ExpCast 两行交错编码候选，
 需从仓库根目录运行 `bash scripts/validate_int8_h200.sh` 重新编译和验证。
-该流程自动加入 FlashAttention-4 对照；本轮 H200 性能尚未实测。
+该流程自动加入 vc22/vc28 与 FlashAttention-4 对照；vc29 的 H200 性能尚未实测。
 `sageattn_vc_fp8` 保留为 [vc27 历史实验](../../SAGE_VC27.md)，不进入上述主测试流程。
-INT8 入口默认仍为支持 V 平滑的 vc15；ExpCast-only 性能候选须显式选 `vc22_both`。
+INT8 入口默认仍为支持 V 平滑的 vc15；已测的 ExpCast-only 候选可显式选 `vc28_stream_i2f`。
 此前 `2.2.0+vc17` 增加 vc16 主体上的概率处理候选，native kernel version 14。
 默认 `"optimized"` 仍等于已测的 `"vc15"`，新候选通过 `kernel_mode="vc16"` 等显式选择。
 vc17 候选还要求 `expcast=True`，测试 fragment 批次、FP32 求和链和直接 FP32 解码。

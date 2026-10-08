@@ -45,7 +45,7 @@ torch::Tensor group_values(torch::Tensor v, int64_t clusters, int64_t iterations
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.attr("sage_vc_api_version") = 1;
-  m.attr("sage_vc_kernel_version") = 26;
+  m.attr("sage_vc_kernel_version") = 27;
   m.def("prepare_global_values", &vc_prepare_global_values, pybind11::arg("packed"));
   m.attr("sage_vc_preprocess_version") = 1;
   m.def("forward", &vc_forward, pybind11::arg("q"), pybind11::arg("k"), pybind11::arg("v"),
