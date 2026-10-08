@@ -3,9 +3,11 @@
   "native_kernel_version": 23,
   "local_device": "NVIDIA GeForce RTX 3060 Laptop GPU",
   "tests": {
-    "passed": 534,
+    "passed": 536,
     "dual_query_helper_cases": 30,
-    "scope": "CPU dispatch/profiler gates and CUDA helper tests on SM86. Dual-query probe models group completion with a subgroup barrier, then exercises the production named-barrier handoff; no TMA/WGMMA execution."
+    "scope": "CPU dispatch/profiler gates and CUDA helper tests on SM86. Dual-query probe models group completion with a subgroup barrier, then exercises the production named-barrier handoff; no TMA/WGMMA execution.",
+    "stream_validation_regressions": 2,
+    "stream_regression_scope": "Real CUDA stream dependencies and real public wrapper guard on SM86. Quantization/attention replaced by stand-ins in the validator integration test; not a Hopper attention execution."
   },
   "sm90a_cross_compile": {
     "cuda_toolkit": "12.4",
@@ -33,8 +35,16 @@
     "unchanged_upstream_kernel_files": 36
   },
   "python_syntax": "passed",
-  "h200_validation": "Not run locally. Remote build script runs 352 new dtype/dim/shape/algorithm/mode cases, 3 repetitions each; 16 uniform-attention answers with nonzero V padding; 32 HND/NHD public API checks on a nondefault stream.",
+  "h200_validation": "Initial user run stopped on a default-stream API guard in the validation script. Fixed: preprocessing, baseline and public API on default stream; candidate forward_prepared on side stream with explicit two-way dependencies and output record_stream. All 352 native comparison cases, 16 known answers and 32 public API checks must be rerun remotely.",
   "h200_performance": "Unmeasured. Compare same-run full API against vc22_both and original Sage; no 22 ms claim.",
   "default_kernel": "vc15 unchanged",
-  "remote_command": "bash scripts/validate_dual_query_h200.sh"
+  "remote_command": "bash scripts/validate_dual_query_h200.sh",
+  "stream_fix": {
+    "native_sources_changed": false,
+    "rebuild_required": false,
+    "remote_command": "bash scripts/validate_dual_query_h200.sh --skip-build",
+    "source": "User error attachment e0b73acb-1c9f-4c75-ae56-f97b3c0b137c",
+    "remote_result": "Pending rerun; no vc26 timing was reached in the supplied log.",
+    "shell_checks": "Passed: skip-build invokes validation then timing; validation failure stops timing; invalid arguments rejected; bash syntax checked."
+  }
 }

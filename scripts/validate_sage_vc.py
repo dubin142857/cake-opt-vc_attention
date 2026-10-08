@@ -212,6 +212,24 @@ def validate_pipeline(vc, device, *, compute=False, history=False, work=False, m
             "scope":("All rows versus vc22_both (ExpCast) / vc16 (control), 3 repeats; no model-quality or speed claim." if maxstate or encoding or mass else "All rows versus vc16, both algorithms separately, 3 repeats; no model-quality or speed claim.")}
 
 
+DUAL_QUERY_SHAPES = ([(n,513) for n in (1,63,64,65,127,128,129,191,192,193,255,256,257)]
+                     + [(129,n) for n in (1,127,128,129,255,256,257,1025,37741)])
+
+
+def dual_query_forward_on_stream(vc, payload, mode, stream):
+    """Run only the prepared native core on a side stream, then join its caller."""
+    caller = torch.cuda.current_stream(payload["q"].device)
+    # prepare() includes upstream kernels launched on the default stream.
+    # The caller prepares there and records this dependency before any reads.
+    stream.wait_stream(caller)
+    with torch.cuda.stream(stream):
+        output = vc.forward_prepared(payload,kernel_mode=mode)
+    caller.wait_stream(stream)
+    # Output was allocated on the side stream but will be consumed by caller.
+    output.record_stream(caller)
+    return output
+
+
 @torch.no_grad()
 def validate_dual_query(vc, device):
     """Real Hopper integration: two groups, Q64 scale strides and shared reuse."""
@@ -221,14 +239,15 @@ def validate_dual_query(vc, device):
     if vc._extension().sage_vc_kernel_version < 23:
         raise RuntimeError("Dual-query validation needs vc26; rebuild sageattention-local")
     rows, known = [], 0
-    shapes = [(n,513) for n in (1,63,64,65,127,128,129,191,192,193,255,256,257)]
-    shapes += [(129,n) for n in (1,127,128,129,255,256,257,1025,37741)]
+    default_stream = torch.cuda.default_stream(device)
     stream = torch.cuda.Stream(device=device)
-    stream.wait_stream(torch.cuda.current_stream(device))
     for dtype in (torch.float16,torch.bfloat16):
         for dim in (64,128):
-            with torch.cuda.stream(stream):
-                for nq,nk in shapes:
+            # Public API and preprocessing retain their default-stream contract.
+            # Only forward_prepared is exercised on the side stream, with an
+            # explicit dependency in both directions for every call.
+            with torch.cuda.stream(default_stream):
+                for nq,nk in DUAL_QUERY_SHAPES:
                     torch.manual_seed(2600+nq+nk)
                     batch,heads = (2,3) if nq in (129,193) and nk==513 else (1,2)
                     q,k,v = (torch.randn(batch,heads,n,dim,device=device,dtype=dtype) for n in (nq,nk,nk))
@@ -247,7 +266,7 @@ def validate_dual_query(vc, device):
                         for mode in vc.DUAL_QUERY_CANDIDATES:
                             repeats=[]
                             for repeat in range(3):
-                                actual=vc.forward_prepared(payload,kernel_mode=mode)
+                                actual=dual_query_forward_on_stream(vc,payload,mode,stream)
                                 delta=metrics(actual,expected)
                                 if not torch.isfinite(actual).all().item() or delta["rel_rmse"]>.001:
                                     raise AssertionError(f"Dual query {mode}, {dtype}, D{dim}, Q{nq}/K{nk}, repeat {repeat}: {delta}")
@@ -279,14 +298,16 @@ def validate_dual_query(vc, device):
                     weight=1. if cast else 448./(2**float(torch.tensor(8.807)))
                     expected=(mean*weight).to(dtype)
                     for mode in vc.DUAL_QUERY_CANDIDATES:
-                        out=vc.forward_prepared({**state,"expcast":cast},kernel_mode=mode)
+                        out=dual_query_forward_on_stream(vc,{**state,"expcast":cast},mode,stream)
                         torch.testing.assert_close(out,expected,rtol=.004,atol=.004)
                         known+=1
             stream.synchronize()
-            print(f"Dual Q64 tails/scales/reuse/current-stream checks passed: {dtype}, D{dim}",flush=True)
-    torch.cuda.current_stream(device).wait_stream(stream)
+            print(f"Dual Q64 checks passed: {dtype}, D{dim}; default-stream preparation/API, side-stream native core",flush=True)
+    torch.cuda.current_stream(device).wait_stream(default_stream)
     return {"status":"passed","cases":rows,"known_answer_cases":known,
-            "implementation_rel_rmse_limit":.001,"stream":"nondefault",
+            "implementation_rel_rmse_limit":.001,
+            "streams":{"preprocessing":"default","public_api":"default","baseline_core":"default",
+                       "candidate_core":"nondefault","dependencies":"caller -> candidate -> caller"},
             "scope":"All output rows vs vc22_both (ExpCast) / vc16 (control), 3 repeats; HND/NHD public parity and independent uniform attention. No model-quality or performance claim."}
 
 

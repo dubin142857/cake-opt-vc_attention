@@ -42,9 +42,11 @@ D128 动态共享内存从 40960 增至 49152 字节，线程数从 128 增至 2
 
 ## 已完成的本地检查
 
-- 534 项测试通过，包括 30 个双组同步/量化索引 GPU 测试。
+- 536 项测试通过，包括 30 个双组同步/量化索引 GPU 测试及 2 个验证流程 stream 回归测试。
   覆盖 Q64/Q128 边界、奇数 Q64 块、不同 batch/head、37741 长度、296 轮复用和非默认 stream。
   同步探针用标量 shared-memory 操作模拟组内完成，再调用生产同步 helper；不验证 TMA/WGMMA 本身。
+  stream 回归测试使用真实 CUDA stream 和公共 API wrapper，但用替身替代量化/attention 数学，
+  验证预处理/公共 API 留在默认 stream，候选原生入口在侧 stream，并显式等待输入和输出。
 - CUDA 12.4 交叉编译 292 个 SM90a 实例，新增 16 个；历史 276 个 SASS 指令文本不变。
   新实例无 stack/spill/local load/store，无 ptxas 或 WGMMA 串行化诊断。
   交错版保留 named-barrier arrive/sync 指令；每组 QK/PV 的矩阵指令数量保持原样。
@@ -59,6 +61,20 @@ D128 动态共享内存从 40960 增至 49152 字节，线程数从 128 增至 2
 git pull --ff-only origin master
 bash scripts/validate_dual_query_h200.sh
 ```
+
+如果已经成功安装 vc26，却遇到 `Sage VC currently requires the default CUDA stream`：
+这是初版验证脚本把公共 API 和预处理放在侧 stream 的错误，不是编译失败。
+修复后只有原生 `forward_prepared` 在侧 stream；预处理、基线和公共 API 均在默认 stream。
+每次跨 stream 调用都有双向等待，并记录输出张量的消费 stream。
+先前报错前的部分结果不足以证明完整 vc26 正确性，需要重新验证。
+CUDA 内核及包版本不变，可复用已安装二进制：
+
+```bash
+git pull --ff-only origin master
+bash scripts/validate_dual_query_h200.sh --skip-build
+```
+
+`--skip-build` 仍执行全部正确性检查，通过后才计时，不会跳过测试。
 
 使用已安装依赖离线编译，Python 命令均为 `python3`，不需要 ncu/nvdisasm。
 先跑完整验证再计时。新候选覆盖 352 个 dtype/维度/shape/算法/模式组合，每个重复三次，

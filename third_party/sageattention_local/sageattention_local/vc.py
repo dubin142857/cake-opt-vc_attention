@@ -1,6 +1,8 @@
 """Sage INT8 QK + optional VC V grouping/smoothing and ExpCast.
 
-Dense noncausal MHA, D=64/128, eager inference on Hopper's current stream.
+Dense noncausal MHA, D=64/128, eager inference on Hopper's default stream.
+The prepared native core uses the current stream; upstream V preprocessing
+requires the default stream. Callers of the private split API manage dependencies.
 Each call recomputes grouping; this entry has no denoising-step layout cache.
 """
 import math
@@ -124,7 +126,7 @@ def validate_inputs(q, k, v, tensor_layout, is_causal, return_lse, expcast, v_sm
 
 @torch.no_grad()
 def prepare(q, k, v, *, expcast=True, v_smooth=True, clusters=8, iterations=2, sm_scale=None, v_scale_mode="channel", grouping_mode="fused"):
-    """Private HND preparation, also returned to the independent diagnostic oracle."""
+    """Private default-stream HND preparation, also used by the diagnostic oracle."""
     if v_scale_mode not in ("channel", "block"):
         raise ValueError("v_scale_mode must be 'channel' or 'block'")
     if grouping_mode not in ("fused", "legacy"):

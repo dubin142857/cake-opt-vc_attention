@@ -482,7 +482,7 @@
     },
     {
       "local_path": "sageattention_local/vc.py",
-      "local_sha256": "d9b9ed0f6cb1ad2157344d6a3257f27c4cf2608ecaf6392676f4e35c1ae0195a",
+      "local_sha256": "e35a59470d26e9c4d1fc58d43aa74c0d7ad281f12bbba8ca6d225a1dc3e5d6ef",
       "license": "Apache-2.0",
       "origin": "New VC integration/diagnostic code in vc-attention"
     },
