@@ -1,11 +1,13 @@
 # MiniMax-H3 / A5 VC-Attention 实验
 
 **当前 H200 主路线（2026-10-09）：`sageattn_vc`，INT8 QK + FP8 PV。**
-继续在 SageAttention2 的 INT8 Q/K 内核上对齐 V-Smooth 与 ExpCast；vc27 FP8 QK 归为历史实验。
-本轮 `2.2.0+vc32` 增加完整 N128 PV、批量均值读取两个平滑候选，**需要重编译**：
-`bash scripts/validate_int8_h200.sh`。实现与包含 Sage / FA4 的 CUPTI 对照命令见 [SAGE_VC32.md](SAGE_VC32.md)。
-最新回传 vc31 双开完整 API 31.8464 ms、CUPTI 28.4951 ms；仅 ExpCast 为 25.0893 / 23.6144 ms。
-vc32 保留原有量化与 FP32 累加，H200 正确性和性能仍待实测。
+当前先关闭 V 聚类/平滑，集中诊断 ExpCast 单开；vc27 FP8 QK 归为历史实验。
+新入口 `bash scripts/diagnose_expcast_h200.sh` 对比 Sage、同内核 control/ExpCast 和 FA4，
+拆分预处理，并通过独立探针观察 QK/概率/PV 区段，见 [ExpCast 专项诊断](SAGE_EXPCAST_FOCUS.md)。
+已有 `2.2.0+vc32` 无需重新安装包；首次用本机 nvcc 编译诊断模块，不要求 ncu/nvdisasm。
+vc32 最新 H200 回传：双开最佳候选完整 API 30.3465 ms、固定输入核心 API 25.7254 ms，
+全部输出与 vc31 双开相等；只开平滑的两个候选退步。该轮没有 CUPTI 内核时间。
+平滑候选及原验证流程仍保留，见 [SAGE_VC32.md](SAGE_VC32.md)。
 导入与测速见 [H200_INT8.md](H200_INT8.md)；随机输入、API 时间与论文纯 kernel 指标分别记录。
 此前“VC 论文 QK 统一使用 FP8”的说法不准确，H200 路线不以此为依据。
 

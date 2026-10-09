@@ -1,0 +1,569 @@
+{
+  "status": "local_checks_passed_hopper_execution_pending",
+  "production_sources_modified": false,
+  "local_gpu": "NVIDIA GeForce RTX 3060 Laptop GPU",
+  "source_sha256": "dfdd39baa24c14cb97b0e17b0fa73d4f4891c73539c8a6d31d9d53d07dec542b",
+  "tests": {
+    "passed": 136,
+    "files": [
+      "tests/test_expcast_focus.py",
+      "tests/test_profile_int8_h200.py",
+      "tests/test_kernel_timing.py",
+      "tests/test_profile_sage_vc.py"
+    ]
+  },
+  "recorder_cuda_cases": [
+    {
+      "grid": [
+        1,
+        1,
+        1
+      ],
+      "keys": 1,
+      "side_stream": false,
+      "slots": 1,
+      "status": "passed"
+    },
+    {
+      "grid": [
+        1,
+        1,
+        1
+      ],
+      "keys": 1,
+      "side_stream": true,
+      "slots": 1,
+      "status": "passed"
+    },
+    {
+      "grid": [
+        1,
+        1,
+        1
+      ],
+      "keys": 128,
+      "side_stream": false,
+      "slots": 1,
+      "status": "passed"
+    },
+    {
+      "grid": [
+        1,
+        1,
+        1
+      ],
+      "keys": 128,
+      "side_stream": true,
+      "slots": 1,
+      "status": "passed"
+    },
+    {
+      "grid": [
+        1,
+        1,
+        1
+      ],
+      "keys": 129,
+      "side_stream": false,
+      "slots": 2,
+      "status": "passed"
+    },
+    {
+      "grid": [
+        1,
+        1,
+        1
+      ],
+      "keys": 129,
+      "side_stream": true,
+      "slots": 2,
+      "status": "passed"
+    },
+    {
+      "grid": [
+        1,
+        1,
+        1
+      ],
+      "keys": 1025,
+      "side_stream": false,
+      "slots": 2,
+      "status": "passed"
+    },
+    {
+      "grid": [
+        1,
+        1,
+        1
+      ],
+      "keys": 1025,
+      "side_stream": true,
+      "slots": 2,
+      "status": "passed"
+    },
+    {
+      "grid": [
+        1,
+        1,
+        1
+      ],
+      "keys": 37741,
+      "side_stream": false,
+      "slots": 38,
+      "status": "passed"
+    },
+    {
+      "grid": [
+        1,
+        1,
+        1
+      ],
+      "keys": 37741,
+      "side_stream": true,
+      "slots": 38,
+      "status": "passed"
+    },
+    {
+      "grid": [
+        65,
+        2,
+        1
+      ],
+      "keys": 1,
+      "side_stream": false,
+      "slots": 1,
+      "status": "passed"
+    },
+    {
+      "grid": [
+        65,
+        2,
+        1
+      ],
+      "keys": 1,
+      "side_stream": true,
+      "slots": 1,
+      "status": "passed"
+    },
+    {
+      "grid": [
+        65,
+        2,
+        1
+      ],
+      "keys": 128,
+      "side_stream": false,
+      "slots": 1,
+      "status": "passed"
+    },
+    {
+      "grid": [
+        65,
+        2,
+        1
+      ],
+      "keys": 128,
+      "side_stream": true,
+      "slots": 1,
+      "status": "passed"
+    },
+    {
+      "grid": [
+        65,
+        2,
+        1
+      ],
+      "keys": 129,
+      "side_stream": false,
+      "slots": 2,
+      "status": "passed"
+    },
+    {
+      "grid": [
+        65,
+        2,
+        1
+      ],
+      "keys": 129,
+      "side_stream": true,
+      "slots": 2,
+      "status": "passed"
+    },
+    {
+      "grid": [
+        65,
+        2,
+        1
+      ],
+      "keys": 1025,
+      "side_stream": false,
+      "slots": 2,
+      "status": "passed"
+    },
+    {
+      "grid": [
+        65,
+        2,
+        1
+      ],
+      "keys": 1025,
+      "side_stream": true,
+      "slots": 2,
+      "status": "passed"
+    },
+    {
+      "grid": [
+        65,
+        2,
+        1
+      ],
+      "keys": 37741,
+      "side_stream": false,
+      "slots": 38,
+      "status": "passed"
+    },
+    {
+      "grid": [
+        65,
+        2,
+        1
+      ],
+      "keys": 37741,
+      "side_stream": true,
+      "slots": 38,
+      "status": "passed"
+    },
+    {
+      "grid": [
+        129,
+        3,
+        2
+      ],
+      "keys": 1,
+      "side_stream": false,
+      "slots": 1,
+      "status": "passed"
+    },
+    {
+      "grid": [
+        129,
+        3,
+        2
+      ],
+      "keys": 1,
+      "side_stream": true,
+      "slots": 1,
+      "status": "passed"
+    },
+    {
+      "grid": [
+        129,
+        3,
+        2
+      ],
+      "keys": 128,
+      "side_stream": false,
+      "slots": 1,
+      "status": "passed"
+    },
+    {
+      "grid": [
+        129,
+        3,
+        2
+      ],
+      "keys": 128,
+      "side_stream": true,
+      "slots": 1,
+      "status": "passed"
+    },
+    {
+      "grid": [
+        129,
+        3,
+        2
+      ],
+      "keys": 129,
+      "side_stream": false,
+      "slots": 2,
+      "status": "passed"
+    },
+    {
+      "grid": [
+        129,
+        3,
+        2
+      ],
+      "keys": 129,
+      "side_stream": true,
+      "slots": 2,
+      "status": "passed"
+    },
+    {
+      "grid": [
+        129,
+        3,
+        2
+      ],
+      "keys": 1025,
+      "side_stream": false,
+      "slots": 2,
+      "status": "passed"
+    },
+    {
+      "grid": [
+        129,
+        3,
+        2
+      ],
+      "keys": 1025,
+      "side_stream": true,
+      "slots": 2,
+      "status": "passed"
+    },
+    {
+      "grid": [
+        129,
+        3,
+        2
+      ],
+      "keys": 37741,
+      "side_stream": false,
+      "slots": 38,
+      "status": "passed"
+    },
+    {
+      "grid": [
+        129,
+        3,
+        2
+      ],
+      "keys": 37741,
+      "side_stream": true,
+      "slots": 38,
+      "status": "passed"
+    }
+  ],
+  "sm90a_cross_compile": {
+    "cuda_toolkit": "12.4",
+    "instances": 16,
+    "linked_imported": true,
+    "all_instances_zero_stack_spills": true,
+    "ptxas_warnings": [],
+    "wgmma_serialization_diagnostics": 0,
+    "plain_sass_exact_instances": 4,
+    "plain_sass_d128_note": "Other four differ only in 2-3 initialization MOV ordering; remaining loop instructions identical.",
+    "resources": [
+      {
+        "instrumented": false,
+        "dim": 128,
+        "expcast": false,
+        "dtype": "bfloat16",
+        "registers": 168,
+        "stack_spill": [
+          0,
+          0,
+          0
+        ],
+        "static_clock_instructions": 0
+      },
+      {
+        "instrumented": true,
+        "dim": 128,
+        "expcast": false,
+        "dtype": "bfloat16",
+        "registers": 168,
+        "stack_spill": [
+          0,
+          0,
+          0
+        ],
+        "static_clock_instructions": 20
+      },
+      {
+        "instrumented": false,
+        "dim": 128,
+        "expcast": true,
+        "dtype": "bfloat16",
+        "registers": 168,
+        "stack_spill": [
+          0,
+          0,
+          0
+        ],
+        "static_clock_instructions": 0
+      },
+      {
+        "instrumented": true,
+        "dim": 128,
+        "expcast": true,
+        "dtype": "bfloat16",
+        "registers": 168,
+        "stack_spill": [
+          0,
+          0,
+          0
+        ],
+        "static_clock_instructions": 20
+      },
+      {
+        "instrumented": false,
+        "dim": 128,
+        "expcast": false,
+        "dtype": "float16",
+        "registers": 168,
+        "stack_spill": [
+          0,
+          0,
+          0
+        ],
+        "static_clock_instructions": 0
+      },
+      {
+        "instrumented": true,
+        "dim": 128,
+        "expcast": false,
+        "dtype": "float16",
+        "registers": 168,
+        "stack_spill": [
+          0,
+          0,
+          0
+        ],
+        "static_clock_instructions": 20
+      },
+      {
+        "instrumented": false,
+        "dim": 128,
+        "expcast": true,
+        "dtype": "float16",
+        "registers": 168,
+        "stack_spill": [
+          0,
+          0,
+          0
+        ],
+        "static_clock_instructions": 0
+      },
+      {
+        "instrumented": true,
+        "dim": 128,
+        "expcast": true,
+        "dtype": "float16",
+        "registers": 168,
+        "stack_spill": [
+          0,
+          0,
+          0
+        ],
+        "static_clock_instructions": 20
+      },
+      {
+        "instrumented": false,
+        "dim": 64,
+        "expcast": false,
+        "dtype": "bfloat16",
+        "registers": 128,
+        "stack_spill": [
+          0,
+          0,
+          0
+        ],
+        "static_clock_instructions": 0
+      },
+      {
+        "instrumented": true,
+        "dim": 64,
+        "expcast": false,
+        "dtype": "bfloat16",
+        "registers": 130,
+        "stack_spill": [
+          0,
+          0,
+          0
+        ],
+        "static_clock_instructions": 20
+      },
+      {
+        "instrumented": false,
+        "dim": 64,
+        "expcast": true,
+        "dtype": "bfloat16",
+        "registers": 128,
+        "stack_spill": [
+          0,
+          0,
+          0
+        ],
+        "static_clock_instructions": 0
+      },
+      {
+        "instrumented": true,
+        "dim": 64,
+        "expcast": true,
+        "dtype": "bfloat16",
+        "registers": 128,
+        "stack_spill": [
+          0,
+          0,
+          0
+        ],
+        "static_clock_instructions": 20
+      },
+      {
+        "instrumented": false,
+        "dim": 64,
+        "expcast": false,
+        "dtype": "float16",
+        "registers": 128,
+        "stack_spill": [
+          0,
+          0,
+          0
+        ],
+        "static_clock_instructions": 0
+      },
+      {
+        "instrumented": true,
+        "dim": 64,
+        "expcast": false,
+        "dtype": "float16",
+        "registers": 130,
+        "stack_spill": [
+          0,
+          0,
+          0
+        ],
+        "static_clock_instructions": 20
+      },
+      {
+        "instrumented": false,
+        "dim": 64,
+        "expcast": true,
+        "dtype": "float16",
+        "registers": 128,
+        "stack_spill": [
+          0,
+          0,
+          0
+        ],
+        "static_clock_instructions": 0
+      },
+      {
+        "instrumented": true,
+        "dim": 64,
+        "expcast": true,
+        "dtype": "float16",
+        "registers": 128,
+        "stack_spill": [
+          0,
+          0,
+          0
+        ],
+        "static_clock_instructions": 20
+      }
+    ]
+  },
+  "full_hopper_attention_executed": false,
+  "scope": "SM86 executes only the exact clock recorder helper, not Hopper attention. Remote script gates full diagnostic outputs against installed vc28 before reporting phase cycles. No H200 timing claims."
+}
