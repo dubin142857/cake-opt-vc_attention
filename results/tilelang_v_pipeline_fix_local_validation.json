@@ -1,0 +1,183 @@
+{
+  "status": "local_checks_passed_h200_retest_pending",
+  "date": "2026-10-09",
+  "reported_failure": {
+    "dtype": "float16",
+    "dim": 64,
+    "queries": 65,
+    "keys": 129,
+    "stages": 1,
+    "relative_rmse": 1.0033401250839233,
+    "max_abs": 0.9432220458984375
+  },
+  "root_cause": "Old generated producer wrote PV V shared storage and was released after QK, before PV consumed V. Packed DMA staging and consumer-owned unpacked V now have disjoint storage.",
+  "source_sha256": "db3389394339cb4693da11c785f5c794fbd3fdb30cfb8c2128aea9cb107bf3ff",
+  "tests": {
+    "total_passed": 190,
+    "codegen_dependency_cases": 4,
+    "native_cuda_helper_cases": 25,
+    "remote_attention_configurations": 24,
+    "new_uniform_key_counts": [
+      128,
+      129,
+      257
+    ]
+  },
+  "cross_compile": [
+    {
+      "shape": [
+        1,
+        1,
+        1,
+        1,
+        64,
+        "float16"
+      ],
+      "stages": 1,
+      "compile_passed": true,
+      "registers": 240,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "ptxas_warnings": []
+    },
+    {
+      "shape": [
+        1,
+        1,
+        1,
+        1,
+        64,
+        "float16"
+      ],
+      "stages": 2,
+      "compile_passed": true,
+      "registers": 240,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "ptxas_warnings": []
+    },
+    {
+      "shape": [
+        1,
+        2,
+        65,
+        129,
+        64,
+        "bfloat16"
+      ],
+      "stages": 1,
+      "compile_passed": true,
+      "registers": 240,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "ptxas_warnings": []
+    },
+    {
+      "shape": [
+        1,
+        2,
+        65,
+        129,
+        64,
+        "bfloat16"
+      ],
+      "stages": 2,
+      "compile_passed": true,
+      "registers": 240,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "ptxas_warnings": []
+    },
+    {
+      "shape": [
+        1,
+        2,
+        193,
+        256,
+        128,
+        "float16"
+      ],
+      "stages": 1,
+      "compile_passed": true,
+      "registers": 240,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "ptxas_warnings": []
+    },
+    {
+      "shape": [
+        1,
+        2,
+        193,
+        256,
+        128,
+        "float16"
+      ],
+      "stages": 2,
+      "compile_passed": true,
+      "registers": 240,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "ptxas_warnings": []
+    },
+    {
+      "shape": [
+        1,
+        28,
+        37741,
+        37741,
+        128,
+        "bfloat16"
+      ],
+      "stages": 1,
+      "compile_passed": true,
+      "registers": 240,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "ptxas_warnings": []
+    },
+    {
+      "shape": [
+        1,
+        28,
+        37741,
+        37741,
+        128,
+        "bfloat16"
+      ],
+      "stages": 2,
+      "compile_passed": true,
+      "registers": 240,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "ptxas_warnings": []
+    }
+  ],
+  "h200_fixed_attention_executed": false,
+  "h200_fixed_performance_measured": false,
+  "thresholds_unchanged": true
+}

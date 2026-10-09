@@ -58,3 +58,15 @@ def test_installer_pins_torch_and_uses_shared_environment():
     script=(native.ROOT/"scripts/run_expcast_tilelang_h200.sh").read_text()
     assert "--system-site-packages" in script and "torch==" in script
     assert "tilelang==0.1.15" in script and "--constraint" in script
+
+
+@pytest.mark.parametrize("keys",[128,129,257])
+def test_uniform_tile_regression_has_distinct_cross_boundary_values(keys):
+    q,k,v=bench.uniform_tile_inputs(torch.float32,64,keys,"cpu")
+    assert not q.any() and not k.any() and v.shape==(1,2,keys,64)
+    tokens=torch.arange(keys)
+    expected=(1+2*(tokens//128)+(tokens%16)/16).mean()
+    torch.testing.assert_close(v[0,0,:,0].mean(),expected)
+    if keys>128:
+        assert v[0,0,128,0]!=v[0,0,0,0]
+        assert abs(v[0,0,128:,0].mean()-expected)>.5

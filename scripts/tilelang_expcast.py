@@ -35,6 +35,7 @@ def make_primfunc(batch, heads, queries, keys, dim, output_dtype="bfloat16", sta
         with T.Kernel(T.ceildiv(queries,bm),heads,batch,threads=128,prelude=prelude) as (bx,h,b):
             q=T.alloc_shared((bm,dim),T.int8)
             k=T.alloc_shared((bn,dim),T.int8)
+            v_packed=T.alloc_shared((dim,bn),T.float8_e4m3fn)
             v=T.alloc_shared((dim,bn),T.float8_e4m3fn)
             dots=T.alloc_fragment((bm,bn),T.int32)
             logits=T.alloc_fragment((bm,bn),T.float32)
@@ -53,11 +54,14 @@ def make_primfunc(batch, heads, queries, keys, dim, output_dtype="bfloat16", sta
             T.clear(denom)
             for tile in T.Pipelined(blocks,num_stages=stages):
                 T.copy(K[b,h,tile*bn:(tile+1)*bn,:],k)
-                # Undo only the physical Sage V layout, directly in the load.
+                T.copy(V[b,h,:,tile*bn:(tile+1)*bn],v_packed)
+                T.gemm(q,k,dots,transpose_B=True,clear_accum=True,policy=T.GemmWarpPolicy.FullRow)
+                # Keep global copies visible to the pipeline dependency analysis.
+                # The consumer owns the unpacked V until PV has finished; a
+                # producer must never overwrite it while QK/probability run.
                 for d,j in T.Parallel(dim,bn):
                     idx=(j//16)*16+((j%16)//8)*2+((j%16)//2%4)*4+j%2
-                    v[d,j]=V[b,h,d,tile*bn+idx]
-                T.gemm(q,k,dots,transpose_B=True,clear_accum=True,policy=T.GemmWarpPolicy.FullRow)
+                    v[d,j]=v_packed[d,idx]
                 for i,j in T.Parallel(bm,bn):
                     row=bx*bm+i
                     dequant=T.call_extern("float32","vc_paper_mul",QS[b,h,(row//16)*8+row%8],KS[b,h,tile*4+(j%8)//2])

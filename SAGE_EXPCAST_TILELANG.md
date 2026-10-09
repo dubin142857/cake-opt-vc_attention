@@ -4,6 +4,26 @@
 新增 CUDA 调度候选，以及 TileLang 编写的完整融合 attention。
 目标是先确认数值契约，再测净收益；这里没有 H200 加速已达成的结论。
 
+### 2026-10-09：修复多块 V 缓冲区竞争
+
+首轮 H200 实测中，单 token 校验通过，但 TileLang 的 `M=65,N=129,D=64`
+相对量化参考误差约 100.33%，因此没有进入性能测试。
+检查旧版生成的 CUDA 发现：生产线程直接把重排后的 V 写入 PV 使用的 shared buffer，
+而自动流水线在 QK 完成后即释放该组缓冲区；下一块 V 可在当前 PV 完成前覆盖它。
+
+现在用明确的 `T.copy` 将原始 V 搬入 `v_packed`，消费者等待后重排至独立的 `v`，
+生产者只复用 `v_packed`。D64/D128、两种 stages 的生成代码检查已覆盖这条边界。
+新增 uniform-attention 定向用例：128、129、257 个 key，各块 V 不同，并用解码 V 的
+均值独立核验 oracle。精度门槛不变；失败前会保存当前 case、variant、误差及生成源码。
+
+本地回归及 SM90a 交叉编译通过；修复后的完整 H200 attention 仍需远端复测。
+无需重新安装依赖或重编译 Sage 包：
+
+```bash
+git pull --ff-only origin master
+bash scripts/run_expcast_tilelang_h200.sh --skip-install
+```
+
 ## 一键运行
 
 远端已有本项目 `sageattention-local==2.2.0+vc32`、Torch、Sage、FA4 和 nvcc：
@@ -85,7 +105,8 @@ CUDA 和 TileLang 使用同一个标量算术头文件；注意公式中的 byte
 | `flash4` | 已安装的 FlashAttention-4，接受原始 BF16/FP16 |
 
 所有新组与 vc28/Sage core 使用同一组量化 Q/K/V 和 scales。
-TileLang 直接读取 Sage 的 V 字节布局，在载入 shared memory 时还原物理排列，无额外 Python 重量化。
+TileLang 直接读取 Sage 的 V 字节布局，以独立的 shared staging 和消费者重排还原物理排列，
+无额外 Python 重量化。
 INT8 QK 和 FP8 PV 均编译为 Hopper WGMMA；每个 128-key 块使用新的 FP32 PV 临时累加，
 再更新 FP32 历史输出。Python 不迭代 attention tiles，不生成 N×N 张量。
 
@@ -106,7 +127,7 @@ CUDA 生成器保留 Sage 源码 Apache-2.0 许可。
 - 比较 `cuda_paper_interleaved / cuda_paper` 看本轮 CUDA 调度效果；比较两者与 TileLang 看实现差异。
 - `vc28_folded` 与直接公式可能有边界舍入差异，另看 FP32/量化参考误差，不能仅看速度。
 
-正式测速前：FP16/BF16 × D64/D128 × 单 token/尾块/对齐多块，共 12 个输入配置，
+正式测速前：FP16/BF16 × D64/D128 × 3 个随机/单 token 配置及 3 个定向跨块配置，共 24 个输入配置，
 每种新实现均检查全部输出、量化 FP32 oracle 和非默认 stream。
 主尺寸再检查完整 API 与固定 core 逐元素一致，并比较所有输出行。
 编码验证覆盖 65,899 个输入，包括全部 120 个 RNE 半整数边界及左右相邻 FP32 值。
@@ -127,4 +148,6 @@ TileLang 生成的标量编码 kernel 也在 SM86 执行，对 65,899 个输入�
 原生完整候选和 TileLang 的代表性 D64/D128、FP16/BF16、长序列配置已做 CUDA 12.4
 SM90a 交叉编译。具体资源、测试数量与限制见
 [本地验证记录](results/paper_expcast_tilelang_local_validation.json)。
+上述为首版记录；V 缓冲区修复的验证另见
+[修复验证记录](results/tilelang_v_pipeline_fix_local_validation.json)。
 **H200 完整输出、Python JIT 调用和性能仍由远端脚本验证，不预设速度改善。**

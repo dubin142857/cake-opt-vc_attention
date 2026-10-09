@@ -56,8 +56,29 @@ def encoding_inputs(device):
         torch.tensor([-float("inf"),-0.,0.],device=device)))
 
 
+def uniform_tile_inputs(dtype,dim,keys,device):
+    """Zero logits and distinct V tiles expose premature shared-buffer reuse."""
+    q=torch.zeros(1,2,65,dim,device=device,dtype=dtype)
+    k=torch.zeros(1,2,keys,dim,device=device,dtype=dtype)
+    token=torch.arange(keys,device=device).view(1,1,keys,1)
+    channel=torch.arange(dim,device=device).view(1,1,1,dim)
+    head=torch.arange(2,device=device).view(1,2,1,1)
+    v=(1+2*(token//128)+(token%16)/16+(channel%8)/8+head/4).to(dtype)
+    return q,k,v
+
+
+def save_tilelang_source(state,stages,directory):
+    b,h,m,d=state["q"].shape
+    dtype="float16" if state["output_type"]==0 else "bfloat16"
+    fn=tl_backend.compile_kernel(b,h,m,state["k"].shape[2],d,dtype,stages)
+    path=directory/f"{dtype}_d{d}_m{m}_n{state['k'].shape[2]}_s{stages}.cu"
+    path.parent.mkdir(parents=True,exist_ok=True)
+    path.write_text(fn.get_kernel_source(),encoding="utf-8")
+    return str(path)
+
+
 @torch.no_grad()
-def validate(ext,vc,reference,device,save_progress):
+def validate(ext,vc,reference,device,save_progress,source_dir):
     import tilelang
     x=encoding_inputs(device)
     expected=(x.double()*11.541560173034668+119.6500015258789).float().round().clamp(0,120).byte()
@@ -71,20 +92,40 @@ def validate(ext,vc,reference,device,save_progress):
     generator=torch.Generator(device=device).manual_seed(3333)
     for dtype in (torch.float16,torch.bfloat16):
         for d in (64,128):
-            for m,n in ((1,1),(65,129),(193,256)):
-                q=torch.randn(1,2,m,d,device=device,dtype=dtype,generator=generator)
-                k=torch.randn(1,2,n,d,device=device,dtype=dtype,generator=generator)
-                v=torch.randn(k.shape,device=device,dtype=dtype,generator=generator)
-                # Exact uniform-attention case; remaining shapes exercise maxima/tails.
-                if n==1:q.zero_();k.zero_()
+            cases=[("random",m,n) for m,n in ((1,1),(65,129),(193,256))]
+            cases += [("uniform_tiles",65,n) for n in (128,129,257)]
+            for pattern,m,n in cases:
+                if pattern=="uniform_tiles":
+                    q,k,v=uniform_tile_inputs(dtype,d,n,device)
+                else:
+                    q=torch.randn(1,2,m,d,device=device,dtype=dtype,generator=generator)
+                    k=torch.randn(1,2,n,d,device=device,dtype=dtype,generator=generator)
+                    v=torch.randn(k.shape,device=device,dtype=dtype,generator=generator)
+                    if n==1:q.zero_();k.zero_()
                 state=vc.prepare(q,k,v,expcast=True,v_smooth=False)
                 oracle=reference.reference(state,chunk=32).to(dtype)
-                row={"dtype":str(dtype),"dim":d,"queries":m,"keys":n,"variants":{}}
+                row={"pattern":pattern,"dtype":str(dtype),"dim":d,"queries":m,"keys":n,"variants":{}}
+                result["cases"].append(row)
+                # Publish the active case before dispatch so a failure is actionable.
+                save_progress(result)
+                if pattern=="uniform_tiles":
+                    decoded=state["v"].float().index_select(-1,reference.value_permutation(state["v"].shape[-1],device))
+                    mean=(decoded[...,:n].mean(-1)*state["vs"]).unsqueeze(2).expand_as(oracle).to(dtype)
+                    torch.testing.assert_close(oracle,mean,rtol=.001,atol=.001)
                 baseline=None
                 for name,call in calls.items():
-                    print("Validate",name,str(dtype),d,m,n,flush=True)
+                    print("Validate",name,pattern,str(dtype),d,m,n,flush=True)
+                    result["active_variant"]=name
+                    row["variants"][name]={"status":"running"}
+                    if name.startswith("tilelang"):
+                        row["variants"][name]["generated_source"]=save_tilelang_source(state,int(name[-1]),source_dir)
+                    save_progress(result)
                     out=call(state)
-                    error={"decoded_reference":metrics(out,oracle,limit=.01)}
+                    error=row["variants"][name]
+                    error["decoded_reference"]=metrics(out,oracle)
+                    save_progress(result)
+                    if error["decoded_reference"]["relative_rmse"]>.01:
+                        raise AssertionError(f"{name}, {pattern}, D{d}, M{m}, N{n}: decoded reference RMSE exceeds 1%: {error}")
                     if baseline is None:baseline=out
                     else:error["cuda_paper_all_rows"]=metrics(out,baseline,limit=.001 if name.startswith("cuda") else .01)
                     if name.startswith("cuda"):
@@ -94,9 +135,9 @@ def validate(ext,vc,reference,device,save_progress):
                     with torch.cuda.stream(stream):side=call(state)
                     stream.synchronize()
                     torch.testing.assert_close(side,out,rtol=0,atol=0)
-                    row["variants"][name]=error
-                result["cases"].append(row)
-                save_progress(result)
+                    error["status"]="passed"
+                    save_progress(result)
+    result.pop("active_variant",None)
     return result
 
 
@@ -118,7 +159,7 @@ def main():
         report["environment"]={"gpu":torch.cuda.get_device_name(device),"torch":torch.__version__,
             "cuda":torch.version.cuda,"tilelang":tilelang.__version__,"native_version":vc._extension().sage_vc_kernel_version}
         ext,report["native_build"]=native.load_native();save()
-        report["validation"]=validate(ext,vc,vc_reference,device,lambda r:update("validation",r))
+        report["validation"]=validate(ext,vc,vc_reference,device,lambda r:update("validation",r),a.trace_dir/"validation_sources")
         if a.validate_only:
             report["status"]="validation_passed";save();print("Validation passed:",a.output);return
         qkv,report["inputs"]=load_inputs(a,device)
