@@ -106,3 +106,23 @@ out = sageattn_vc(q, k, v, tensor_layout="NHD", kernel_mode="vc31_unified",
 
 详见 [编译记录](results/sage_vc31_codegen_local.json) 与
 [本地验证记录](results/sage_vc31_local_validation.json)。
+
+## 2026-10-09：修正常量通道验证
+
+原验证脚本错误地要求四组开关都保持常量 V 原值。普通 Sage 路径关闭 ExpCast
+和 V-Smooth 时，PV 分子使用 FP8(P)，分母使用未量化 P；即使 V 为常量，
+输出仍可能偏移。它应与解码量化参考比较，不能直接要求等于稠密 softmax 的答案。
+新脚本保留常量通道的逐元素参考检查；开启 ExpCast 或 V-Smooth 的路径还继续
+检查原值保持。原有 0.1% 旧实现门槛、1% 解码参考门槛及无平滑的逐位对照均不变。
+
+此次只修改验证脚本，没有修改 CUDA 内核或包版本，**不用重新编译**。
+32 项 CPU 回归检查覆盖独立两种 logit 的解析答案、FP16/BF16、整块/尾块、
+四组功能开关，以及错误分母/错误输出仍会被拒绝；不替代 H200 整体验证。
+每个用例现在先打印 shape 和功能开关，失败时可直接定位。
+
+```bash
+git pull --ff-only origin master
+python3 scripts/validate_sage_vc31.py
+```
+
+通过后再执行上面的 `profile_int8_h200.py --paper-kernels ...` 命令。

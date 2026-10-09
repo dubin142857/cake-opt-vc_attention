@@ -7,6 +7,29 @@ import torch
 from profile_int8_h200 import metrics
 
 
+def check_constant_channels(out, decoded, values, *, expcast, v_smooth):
+    """Check the actual probability/normalizer contract, not dense softmax's.
+
+    Ordinary Sage uses FP8(P) in PV but unrounded P in the denominator.
+    With constant V=c, its answer is c_q * sum(FP8(P)) / sum(P), not c.
+    ExpCast sums the decoded P in both places. With V smoothing, these
+    constant channels have zero residual and are restored by the mean term.
+    """
+    actual = out[..., :2]
+    target = values[:, :, :1, :2].expand_as(actual)
+    torch.testing.assert_close(actual, decoded[..., :2], rtol=.004, atol=.003,
+                               msg="Constant channels differ from decoded quantized reference")
+    preserves_constant = expcast or v_smooth
+    if preserves_constant:
+        torch.testing.assert_close(actual, target, rtol=.004, atol=.003,
+                                   msg="ExpCast/mean restoration failed to preserve constant channels")
+    return {
+        "contract": "constant_preservation" if preserves_constant else "rounded_P_over_unrounded_mass",
+        "vs_original_values": metrics(actual, target),
+        "vs_decoded_reference": metrics(actual, decoded[..., :2]),
+    }
+
+
 @torch.no_grad()
 def validate(vc, reference, device):
     if vc._extension().sage_vc_kernel_version < 29:
@@ -27,6 +50,9 @@ def validate(vc, reference, device):
                 for smooth in (False, True):
                     base = vc.prepare(q, k, v, v_smooth=smooth, v_scale_mode="channel")
                     for cast in (False, True):
+                        case = dict(dtype=str(dtype), dim=dim, queries=nq, keys=nk,
+                                    expcast=cast, v_smooth=smooth)
+                        print("Checking vc31:", json.dumps(case), flush=True)
                         state = {**base, "expcast": cast}
                         old_mode = "vc15" if smooth else "vc28_stream_i2f"
                         expected = vc.forward_prepared(state, kernel_mode=old_mode)
@@ -36,8 +62,8 @@ def validate(vc, reference, device):
                             torch.testing.assert_close(out, expected, rtol=0, atol=0)
                         decoded = reference.reference(state, chunk=32).to(dtype)
                         decoded_error = metrics(out, decoded, limit=.01)
-                        # Mean-only channels should survive the complete quantized recurrence.
-                        torch.testing.assert_close(out[..., :2], v[:, :, :1, :2].expand_as(out[..., :2]), rtol=.004, atol=.003)
+                        constant_check = check_constant_channels(
+                            out, decoded, v, expcast=cast, v_smooth=smooth)
                         # Prepared API supports a caller stream; preprocessing is on the default stream.
                         caller = torch.cuda.current_stream(device)
                         worker = torch.cuda.Stream(device=device)
@@ -47,8 +73,8 @@ def validate(vc, reference, device):
                         caller.wait_stream(worker)
                         again.record_stream(caller)
                         torch.testing.assert_close(again, out, rtol=0, atol=0)
-                        row = dict(dtype=str(dtype), dim=dim, queries=nq, keys=nk, expcast=cast,
-                                   v_smooth=smooth, previous=old_error, decoded_reference=decoded_error)
+                        row = dict(**case, previous=old_error, decoded_reference=decoded_error,
+                                   constant_channels=constant_check)
                         results.append(row)
                         print(json.dumps(row), flush=True)
     return {"status": "passed", "cases": results,
