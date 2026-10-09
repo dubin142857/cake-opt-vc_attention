@@ -12,16 +12,27 @@ ROOT = Path(__file__).resolve().parents[1]
 V_LAYOUT = "channel_major_natural"
 
 
-def make_primfunc(batch, heads, queries, keys, dim, output_dtype="bfloat16", stages=1):
+def make_primfunc(batch, heads, queries, keys, dim, output_dtype="bfloat16", stages=1, schedule="baseline"):
     import tilelang.language as T
     if dim not in (64,128) or stages not in (1,2):
         raise ValueError("Supported: D64/128, one or two pipeline stages")
     if min(batch,heads,queries,keys)<1 or output_dtype not in ("float16","bfloat16"):
         raise ValueError("Expected nonempty FP16/BF16 MHA")
+    if schedule not in ("baseline","overlap"):
+        raise ValueError("Unknown TileLang schedule")
     bm,bn=64,128
     blocks=(keys+127)//128
     qs_len=(queries+63)//64*32
     prelude=(ROOT/"experiments/expcast/paper_math.cuh").read_text(encoding="utf-8")
+    if schedule=="overlap":
+        # The pinned automatic scheduler otherwise releases V at async issue,
+        # because wait_wgmma does not carry buffer read regions. This zero-work
+        # compiler fence makes both shared operands live through the wait.
+        prelude += """
+__device__ __forceinline__ void vc_paper_keep_shared_live(const void* v, const void* p) {
+  asm volatile("" : : "l"(v), "l"(p) : "memory");
+}
+"""
     # Keep caller's actual scale, not a compile-time approximation of 1/sqrt(D).
     @T.prim_func
     def kernel(Q:T.Tensor((batch,heads,queries,dim),T.int8),
@@ -75,32 +86,45 @@ def make_primfunc(batch, heads, queries, keys, dim, output_dtype="bfloat16", sta
                     code=T.call_extern("uint8","vc_paper_code",logits[i,j],maximum[i])
                     prob[i,j]=T.reinterpret(T.float8_e4m3fn,code)
                     logits[i,j]=T.cast(prob[i,j],T.float32)
-                T.reduce_sum(logits,mass,dim=1)
-                # INT8-QK accumulators and FP8-PV register operands have different
-                # lane layouts. Shared P makes the conversion explicit and safe.
-                T.copy(prob,p_shared)
-                # A fresh FP32 PV partial per 128-key tile, then FP32 history.
-                T.gemm(p_shared,v,pv,transpose_B=True,clear_accum=True,policy=T.GemmWarpPolicy.FullRow)
-                for i in T.Parallel(bm):
-                    denom[i]=T.call_extern("float32","vc_paper_add",T.call_extern("float32","vc_paper_mul",denom[i],alpha[i]),mass[i])
-                for i,d in T.Parallel(bm,dim):
-                    accum[i,d]=T.call_extern("float32","vc_paper_add",T.call_extern("float32","vc_paper_mul",accum[i,d],alpha[i]),pv[i,d])
+                if schedule=="overlap":
+                    T.copy(prob,p_shared)
+                    # A fresh PV partial, while independent SIMT work computes
+                    # decoded-P mass and scales history. Keep V/P live to wait.
+                    T.wgmma_gemm(p_shared,v,pv,transpose_B=True,clear_accum=True,policy=T.GemmWarpPolicy.FullRow)
+                    T.reduce_sum(logits,mass,dim=1)
+                    for i in T.Parallel(bm):
+                        denom[i]=T.call_extern("float32","vc_paper_add",T.call_extern("float32","vc_paper_mul",denom[i],alpha[i]),mass[i])
+                    for i,d in T.Parallel(bm,dim):
+                        accum[i,d]=T.call_extern("float32","vc_paper_mul",accum[i,d],alpha[i])
+                    T.wait_wgmma(0)
+                    T.evaluate(T.call_extern("handle","vc_paper_keep_shared_live",T.access_ptr(v,"r"),T.access_ptr(p_shared,"r")))
+                    for i,d in T.Parallel(bm,dim):
+                        accum[i,d]=T.call_extern("float32","vc_paper_add",accum[i,d],pv[i,d])
+                else:
+                    T.reduce_sum(logits,mass,dim=1)
+                    # INT8 QK and FP8 PV have different register layouts.
+                    T.copy(prob,p_shared)
+                    T.gemm(p_shared,v,pv,transpose_B=True,clear_accum=True,policy=T.GemmWarpPolicy.FullRow)
+                    for i in T.Parallel(bm):
+                        denom[i]=T.call_extern("float32","vc_paper_add",T.call_extern("float32","vc_paper_mul",denom[i],alpha[i]),mass[i])
+                    for i,d in T.Parallel(bm,dim):
+                        accum[i,d]=T.call_extern("float32","vc_paper_add",T.call_extern("float32","vc_paper_mul",accum[i,d],alpha[i]),pv[i,d])
             for i,d in T.Parallel(bm,dim):
                 O[b,h,bx*bm+i,d]=T.call_extern("float32","vc_paper_mul",accum[i,d]/denom[i],VS[b,h,d])
     return kernel
 
 
 @lru_cache(maxsize=64)
-def compile_kernel(batch,heads,queries,keys,dim,dtype,stages):
+def compile_kernel(batch,heads,queries,keys,dim,dtype,stages,schedule="baseline"):
     import tilelang
     if tilelang.__version__.split("+")[0]!="0.1.15":
         raise RuntimeError("This experiment pins TileLang 0.1.15; run scripts/run_expcast_tilelang_h200.sh")
-    return tilelang.compile(make_primfunc(batch,heads,queries,keys,dim,dtype,stages),
+    return tilelang.compile(make_primfunc(batch,heads,queries,keys,dim,dtype,stages,schedule),
         out_idx=[6],target={"kind":"cuda","arch":"sm_90a"},
         pass_configs={tilelang.PassConfigKey.TL_ENABLE_FAST_MATH:True})
 
 
-def forward_prepared(state,stages=1):
+def forward_prepared(state,stages=1,schedule="baseline"):
     import torch
     from profile_int8_h200 import require_int8_state
     require_int8_state(state)
@@ -116,7 +140,7 @@ def forward_prepared(state,stages=1):
     b,h,m,d=q.shape
     dtype="float16" if state["output_type"]==0 else "bfloat16"
     with torch.cuda.device(q.device):
-        fn=compile_kernel(b,h,m,k.shape[2],d,dtype,stages)
+        fn=compile_kernel(b,h,m,k.shape[2],d,dtype,stages,schedule)
         return fn(*(state[n] for n in ("q","k","v","qs","ks","vs")),state["scale"])
 
 

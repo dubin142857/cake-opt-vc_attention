@@ -112,3 +112,10 @@ def test_logical_payload_check_rejects_changed_value_byte():
     natural["v"].view(torch.uint8)[...,3]+=1
     with pytest.raises(AssertionError,match="Natural V bytes"):
         bench.check_logical_payloads(sage,natural,ref)
+
+
+def test_tilelang_rows_select_their_own_stage_and_schedule(monkeypatch):
+    monkeypatch.setattr(tl,"forward_prepared",lambda state,stages,schedule:(state,stages,schedule))
+    calls=bench.implementations(None)
+    for name,(stages,schedule) in bench.TILELANG_VARIANTS.items():
+        assert calls[name]("shared_payload")==("shared_payload",stages,schedule)

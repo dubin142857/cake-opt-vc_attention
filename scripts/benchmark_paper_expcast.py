@@ -13,6 +13,13 @@ from kernel_timing import profile_kernels,run_window
 import paper_expcast_native as native
 import tilelang_expcast as tl_backend
 
+TILELANG_VARIANTS={
+    "tilelang_paper_s1":(1,"baseline"),
+    "tilelang_paper_s2":(2,"baseline"),
+    "tilelang_overlap_s1":(1,"overlap"),
+    "tilelang_overlap_s2":(2,"overlap"),
+}
+
 
 def parse_args(argv=None):
     p=argparse.ArgumentParser(description=__doc__)
@@ -29,8 +36,8 @@ def parse_args(argv=None):
     p.add_argument("--validate-only",action="store_true")
     p.add_argument("--kernel-warmup-seconds",type=float,default=2.)
     p.add_argument("--kernel-seconds",type=float,default=1.)
-    p.add_argument("--trace-dir",type=Path,default=Path("results/paper_expcast_natural_v_traces"))
-    p.add_argument("--output",type=Path,default=Path("results/h200_paper_expcast_tilelang_natural_v.json"))
+    p.add_argument("--trace-dir",type=Path,default=Path("results/paper_expcast_overlap_traces"))
+    p.add_argument("--output",type=Path,default=Path("results/h200_paper_expcast_tilelang_overlap.json"))
     a=p.parse_args(argv)
     if any(getattr(a,n)<1 for n in ("batch","heads","queries","tokens","trials","repeats","kernel_trials")) or a.dim not in (64,128):
         p.error("Positive dimensions/counts and D64/128 required")
@@ -43,8 +50,8 @@ def implementations(ext):
     return {
         "cuda_paper":lambda s:native.forward(ext,s,False),
         "cuda_paper_interleaved":lambda s:native.forward(ext,s,True),
-        "tilelang_paper_s1":lambda s:tl_backend.forward_prepared(s,1),
-        "tilelang_paper_s2":lambda s:tl_backend.forward_prepared(s,2),
+        **{name:lambda s,stages=stages,schedule=schedule:tl_backend.forward_prepared(s,stages,schedule)
+           for name,(stages,schedule) in TILELANG_VARIANTS.items()},
     }
 
 
@@ -93,11 +100,11 @@ def uniform_tile_inputs(dtype,dim,keys,device):
     return q,k,v
 
 
-def save_tilelang_source(state,stages,directory):
+def save_tilelang_source(state,stages,directory,schedule="baseline"):
     b,h,m,d=state["q"].shape
     dtype="float16" if state["output_type"]==0 else "bfloat16"
-    fn=tl_backend.compile_kernel(b,h,m,state["k"].shape[2],d,dtype,stages)
-    path=directory/f"{dtype}_d{d}_m{m}_n{state['k'].shape[2]}_s{stages}.cu"
+    fn=tl_backend.compile_kernel(b,h,m,state["k"].shape[2],d,dtype,stages,schedule)
+    path=directory/f"{dtype}_d{d}_m{m}_n{state['k'].shape[2]}_{schedule}_s{stages}.cu"
     path.parent.mkdir(parents=True,exist_ok=True)
     path.write_text(fn.get_kernel_source(),encoding="utf-8")
     return str(path)
@@ -141,13 +148,15 @@ def validate(ext,vc,reference,device,save_progress,source_dir):
                     mean=(decoded[...,:n].mean(-1)*state["vs"]).unsqueeze(2).expand_as(oracle).to(dtype)
                     torch.testing.assert_close(oracle,mean,rtol=.001,atol=.001)
                 baseline=None
+                tilelang_baselines={}
                 for name,call in calls.items():
                     print("Validate",name,pattern,str(dtype),d,m,n,flush=True)
                     result["active_variant"]=name
                     row["variants"][name]={"status":"running"}
                     payload=natural if name.startswith("tilelang") else state
                     if name.startswith("tilelang"):
-                        row["variants"][name]["generated_source"]=save_tilelang_source(payload,int(name[-1]),source_dir)
+                        stages,schedule=TILELANG_VARIANTS[name]
+                        row["variants"][name]["generated_source"]=save_tilelang_source(payload,stages,source_dir,schedule)
                     save_progress(result)
                     out=call(payload)
                     error=row["variants"][name]
@@ -159,6 +168,11 @@ def validate(ext,vc,reference,device,save_progress,source_dir):
                     else:error["cuda_paper_all_rows"]=metrics(out,baseline,limit=.001 if name.startswith("cuda") else .01)
                     if name.startswith("cuda"):
                         error["exact_vs_cuda_paper"]=torch.equal(out,baseline)
+                    if name.startswith("tilelang"):
+                        if schedule=="baseline":tilelang_baselines[stages]=out
+                        else:
+                            error["tilelang_baseline_all_rows"]=metrics(out,tilelang_baselines[stages],limit=.001)
+                            error["exact_vs_tilelang_baseline"]=torch.equal(out,tilelang_baselines[stages])
                     stream=torch.cuda.Stream(device=device)
                     stream.wait_stream(torch.cuda.current_stream(device))
                     with torch.cuda.stream(stream):side=call(payload)
@@ -177,6 +191,8 @@ def main():
     a.trace_dir.mkdir(parents=True,exist_ok=True)
     report={"status":"starting","contract":"INT8 QK; Eq7 direct FP32 mul/sub/FMA/RNE; FP8 PV; decoded-P denominator; V smooth OFF",
             "tilelang_v_layout":tl_backend.V_LAYOUT,
+            "tilelang_schedules":TILELANG_VARIANTS,
+            "schedule_contract":"Overlap decoded-P sum and separate FP32 history multiply with asynchronous fresh PV; wait before FP32 add and before releasing V/P. Same formula and payloads.",
             "tilelang_preprocessing":"Direct natural-order channel quantization; no Sage permutation or inverse permutation. Padding/transpose/quantization included in full API."}
     def save():a.output.write_text(json.dumps(report,indent=2)+"\n",encoding="utf-8")
     def update(key,value):report[key]=value;save()
@@ -213,7 +229,7 @@ def main():
         golden=fp32_reference(*qkv,ids,32)
         oracle=vc_reference.reference(state,query_indices=ids,chunk=32).to(qkv[0].dtype)
         report["accuracy_scope"]={"queries":len(ids),"all_keys":a.tokens,
-            "gates":"1% decoded-reference and TileLang/native; 0.1% CUDA schedule regression. Implementation only, not model quality."}
+            "gates":"1% decoded-reference and TileLang/native; 0.1% CUDA or TileLang same-algorithm schedule regression. Implementation only, not model quality."}
         report["accuracy"]={}
         baseline=core["cuda_paper"]()
         for name,call in full.items():
@@ -225,16 +241,21 @@ def main():
                 row["paper_reference"]=metrics(out.index_select(2,index),oracle,limit=.01)
                 row["cuda_paper_all_rows"]=metrics(out,baseline,limit=.001 if name.startswith("cuda") else .01)
                 row["exact_vs_cuda_paper"]=torch.equal(out,baseline)
+                if name in TILELANG_VARIANTS and TILELANG_VARIANTS[name][1]=="overlap":
+                    stages,_=TILELANG_VARIANTS[name]
+                    old=core[f"tilelang_paper_s{stages}"]()
+                    row["tilelang_baseline_all_rows"]=metrics(out,old,limit=.001)
+                    row["exact_vs_tilelang_baseline"]=torch.equal(out,old)
             report["accuracy"][name]=row;save()
         resources=ext.resources(a.dim,0 if a.dtype=="float16" else 1)
         report["native_resources"]={"cuda_paper":resources["expcast_plain"],
                                     "cuda_paper_interleaved":resources["expcast_probe"]}
         report["tilelang_sources"]={}
-        for stages in (1,2):
-            fn=tl_backend.compile_kernel(a.batch,a.heads,a.queries,a.tokens,a.dim,a.dtype,stages)
-            path=a.trace_dir/f"tilelang_paper_s{stages}.cu"
+        for name,(stages,schedule) in TILELANG_VARIANTS.items():
+            fn=tl_backend.compile_kernel(a.batch,a.heads,a.queries,a.tokens,a.dim,a.dtype,stages,schedule)
+            path=a.trace_dir/f"{name}.cu"
             path.write_text(fn.get_kernel_source(),encoding="utf-8")
-            report["tilelang_sources"][str(stages)]=str(path)
+            report["tilelang_sources"][name]=str(path)
         for call in full.values():run_window(call,a.kernel_warmup_seconds,device)
         samples={"full":{n:[] for n in full},"core":{n:[] for n in core}}
         rng=random.Random(a.seed+3330)
@@ -263,6 +284,17 @@ def main():
             row=report["accuracy"][name]
             print(name,"vs CUDA paper RMSE %",100*row["cuda_paper_all_rows"]["relative_rmse"],
                   "max abs",row["cuda_paper_all_rows"]["max_abs"],"exact",row["exact_vs_cuda_paper"])
+        report["schedule_comparison"]={}
+        print("TileLang baseline / overlap; identical natural-V payloads and direct ExpCast formula:")
+        for stages in (1,2):
+            old,new=f"tilelang_paper_s{stages}",f"tilelang_overlap_s{stages}"
+            row={scope+"_old_over_new":report["api"][scope][old]["median_ms"]/report["api"][scope][new]["median_ms"]
+                 for scope in ("full","core")}
+            row.update(report["accuracy"][new]["tilelang_baseline_all_rows"])
+            row["exact_match"]=report["accuracy"][new]["exact_vs_tilelang_baseline"]
+            report["schedule_comparison"][str(stages)]=row
+            print(f"  s{stages}: full {row['full_old_over_new']:.3f}x, core {row['core_old_over_new']:.3f}x, "
+                  f"ALL-row RMSE {100*row['relative_rmse']:.6f}%, max abs {row['max_abs']:.8f}, exact={row['exact_match']}")
         if not a.skip_cupti:
             capture={**core,**({"flash4":full["flash4"]} if "flash4" in full else {})}
             report["kernel_windows"]=profile_kernels(capture,a,device,

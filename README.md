@@ -4,6 +4,7 @@
 新增论文直接公式 CUDA/TileLang 对照：`bash scripts/run_expcast_tilelang_h200.sh`，
 自动准备 TileLang、验证后对比 Sage/FA4；见 [运行说明](SAGE_EXPCAST_TILELANG.md)。
 TileLang 当前使用自然顺序 FP8 V，去掉逐块 V 字节重排，只开 ExpCast；完整 API 包含各自预处理。
+保留自然 V 基线，并新增异步 PV 与分母归约/历史缩放重叠的候选，脚本同时验证和测速。
 当前先关闭 V 聚类/平滑，集中诊断 ExpCast 单开；vc27 FP8 QK 归为历史实验。
 新入口 `bash scripts/diagnose_expcast_h200.sh` 对比 Sage、同内核 control/ExpCast 和 FA4，
 拆分预处理，并通过独立探针观察 QK/概率/PV 区段，见 [ExpCast 专项诊断](SAGE_EXPCAST_FOCUS.md)。

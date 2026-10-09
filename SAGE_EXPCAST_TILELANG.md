@@ -4,7 +4,26 @@
 新增 CUDA 调度候选，以及 TileLang 编写的完整融合 attention。
 目标是先确认数值契约，再测净收益；这里没有 H200 加速已达成的结论。
 
-### 当前路线：TileLang 只开 ExpCast，去掉 V 字节重排
+### 当前候选：PV 与分母、历史缩放重叠
+
+去掉 V 字节重排后，用户 H200 实测的 TileLang s1/s2 内核时间为 **56.9473/57.0462 ms**，
+上一轮带重排版本为 118.9744/118.6298 ms。不同轮次的结果说明方向有效；
+本轮保留自然 V 基线，在同一次测试中与新候选对比。
+同轮 Sage 为 24.4318 ms、vc28 为 23.6245 ms，TileLang 仍明显较慢。
+
+新候选 `tilelang_overlap_s1/s2` 改变循环中的调度：先存储 FP8 P 并发起异步 PV，
+再计算 decoded-P 的 FP32 分母、缩放历史输出，等 PV 完成后相加。
+原 `tilelang_paper_s1/s2` 先归约分母，再同步计算 PV、更新历史输出，保留作基线。
+两组的 ExpCast 公式、量化字节、每块独立 PV 部分和 FP32 乘后加顺序相同。
+本轮仍关闭 V 聚类、平滑和字节重排。
+
+异步计算需额外约束 shared buffer 的生命周期：显式等待后保留 V/P 的读取依赖，
+防止自动流水线在发起 PV 后就把 V buffer 交给下一块覆盖。
+生成 CUDA 的检查覆盖“PV 发起 → 分母归约/历史乘法 → 等待 → V 释放”的顺序。
+本地 198 项检查通过，8 个候选配置通过 CUDA 12.4 SM90a 交叉编译，无寄存器溢出。
+**新增 overlap 候选尚未在 H200 实测，不预设加速幅度。**
+
+### 已验证基线：TileLang 只开 ExpCast，去掉 V 字节重排
 
 TileLang 从原始 FP16/BF16 V 直接生成按 token 顺序存储的 `[B,H,D,Npad]` FP8 V。
 预处理复用 Sage 的 per-channel 量化内核，但绕过 `transpose_pad_permute_cuda`，
@@ -18,7 +37,7 @@ full API 从原始 Q/K/V 每次重新处理，包含上述 padding/转置/量化
 两种 prepared state 有显式布局标记，不能直接交换给另一个内核。
 
 本地生成代码已确认原 D128 V 重排循环中的 64 次同步消失，V buffer 在 PV 完成后才释放。
-新版本的 H200 精度和性能待实测；运行命令沿用下面的一键脚本。
+该基线已由用户在 H200 跑完验证和测速；新增 overlap 候选沿用下面的一键脚本验证。
 
 ### 历史：修复多块 V 缓冲区竞争
 
@@ -33,7 +52,7 @@ full API 从原始 Q/K/V 每次重新处理，包含上述 padding/转置/量化
 均值独立核验 oracle。精度门槛不变；失败前会保存当前 case、variant、误差及生成源码。
 
 该版已由用户在 H200 跑完验证和测速：CUPTI 中 TileLang s1/s2 为 118.9744/118.6298 ms，
-同轮 vc28 为 23.6273 ms、Sage 为 24.4361 ms；这些是内核时间。当前 natural-V 改动尚无测速结果。
+同轮 vc28 为 23.6273 ms、Sage 为 24.4361 ms；这些是内核时间。后续 natural-V 结果见本页开头。
 无需重新安装依赖或重编译 Sage 包：
 
 ```bash
@@ -66,8 +85,8 @@ bash scripts/run_expcast_tilelang_h200.sh --skip-install
 不需要重编译原 Sage 包，不依赖 ncu/nvdisasm。
 
 默认输入为 BF16、非因果 MHA，NHD 等价 `[1,37741,28,128]`。
-输出：`results/h200_paper_expcast_tilelang_natural_v.json`；trace/生成的 TileLang CUDA 源码：
-`results/paper_expcast_natural_v_traces/`。失败保留已完成数据，校验失败不会继续测速。
+输出：`results/h200_paper_expcast_tilelang_overlap.json`；trace/生成的 TileLang CUDA 源码：
+`results/paper_expcast_overlap_traces/`。失败保留已完成数据，校验失败不会继续测速。
 
 参数示例：
 
@@ -117,6 +136,8 @@ CUDA 和 TileLang 使用同一个标量算术头文件；注意公式中的 byte
 | `cuda_paper_interleaved` | 每组字节生成后立即解码和求和，缩短中间值存活时间；同一 FP32 累加顺序 |
 | `tilelang_paper_s1` | 自然顺序 FP8 V、无 V 重排的 TileLang 融合循环，一阶段流水线 |
 | `tilelang_paper_s2` | 相同算法和自然 V，两阶段流水线 |
+| `tilelang_overlap_s1` | 自然 V，一阶段流水线；异步 PV 与 decoded-P 归约、历史缩放重叠 |
+| `tilelang_overlap_s2` | 相同异步调度，两阶段流水线 |
 | `vc28_folded` | 已测过的 vc28 折叠公式路线 |
 | `sage_cpp` | 本地 Sage 原版完整 API / 原版 native core |
 | `flash4` | 已安装的 FlashAttention-4，接受原始 BF16/FP16 |
@@ -129,7 +150,7 @@ INT8 QK 和 FP8 PV 均编译为 Hopper WGMMA；每个 128-key 块使用新的 FP
 
 TileLang 的 INT8 QK 输出与 FP8 PV 寄存器输入布局不同，本版通过 shared P 转换布局。
 编译器负责流水线和 warp specialization，因此生成的调度与手写 CUDA 不相同。
-两种 stages 是候选配置，是否更快要实测；不能仅凭 Python 代码行数或使用 DSL 推断性能。
+两种 stages 和两种 PV 调度同时测试，是否更快要实测；不能仅凭 Python 代码行数或使用 DSL 推断性能。
 参考 API 来自 [TileLang 官网](https://tilelang.com/) 和
 [v0.1.15 attention 示例](https://github.com/tile-ai/tilelang/blob/v0.1.15/examples/flash_attention/example_mha_fwd_bhsd.py)。
 TileLang 示例的 MIT 许可随附于 `experiments/expcast/TILELANG_LICENSE`；
@@ -142,6 +163,7 @@ CUDA 生成器保留 Sage 源码 Apache-2.0 许可。
 - **Sage/API、FA4/API**：相应基线完整 API 除以本行完整 API；大于 1 表示更快。
 - **CUPTI**：单独测固定输入 GPU kernel 时长，不与 API 时间混用。
 - 比较 `cuda_paper_interleaved / cuda_paper` 看本轮 CUDA 调度效果；比较两者与 TileLang 看实现差异。
+- `TileLang baseline / overlap` 单独汇总相同 stages 的新旧 full/core 比值，大于 1 表示 overlap 更快；同时显示全部输出行的误差和是否逐位一致。
 - `vc28_folded` 与直接公式可能有边界舍入差异，另看 FP32/量化参考误差，不能仅看速度。
 
 正式测速前：FP16/BF16 × D64/D128 × 3 个随机/单 token 配置及 3 个定向跨块配置，共 24 个输入配置，
@@ -149,7 +171,8 @@ CUDA 生成器保留 Sage 源码 Apache-2.0 许可。
 主尺寸再检查完整 API 与固定 core 逐元素一致，并比较所有输出行。
 编码验证覆盖 65,899 个输入，包括全部 120 个 RNE 半整数边界及左右相邻 FP32 值。
 
-CUDA 两种调度使用 0.1% 全输出相对 RMSE 门槛；TileLang/native 和量化 oracle 使用 1%。
+CUDA 两种调度及 TileLang 相同 stages 的 baseline/overlap 使用 0.1% 全输出相对 RMSE 门槛；
+TileLang/native 和量化 oracle 使用 1%。
 后者允许不同硬件累加/FP32 归约顺序；这些是**实现检查**，不是模型质量标准。
 默认 dense FP32 误差检查抽 128 个 query、全部 keys；`--check-queries 0` 可检查全部 query。
 
@@ -168,4 +191,5 @@ SM90a 交叉编译。具体资源、测试数量与限制见
 上述为首版记录；V 缓冲区修复的验证另见
 [修复验证记录](results/tilelang_v_pipeline_fix_local_validation.json)。
 去掉 V 重排的本地验证见 [natural-V 验证记录](results/tilelang_natural_v_local_validation.json)。
-**H200 完整输出、Python JIT 调用和性能仍由远端脚本验证，不预设速度改善。**
+异步 PV 候选见 [overlap 验证记录](results/tilelang_pv_overlap_local_validation.json)。
+**新增候选的 H200 完整输出、Python JIT 调用和性能仍由远端脚本验证，不预设速度改善。**

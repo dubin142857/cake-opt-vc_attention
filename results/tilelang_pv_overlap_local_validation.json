@@ -1,0 +1,211 @@
+{
+  "status": "local_checks_passed_h200_overlap_pending",
+  "date": "2026-10-09",
+  "route": "INT8 QK + direct paper ExpCast + FP8 PV; natural-order V; grouping and smoothing OFF",
+  "change": "Asynchronous fresh PV overlaps decoded-P FP32 reduction and separate FP32 history multiply; wait precedes history add and shared operand release.",
+  "source_sha256": "68981fcdf47047bac149d8ad05c98f14aa83e60db10ce92edd185f26149559fb",
+  "tests": {
+    "passed": 198,
+    "hopper_codegen_cases": 8,
+    "native_cuda_helper_cases": 25
+  },
+  "test_files": [
+    "tests/test_paper_expcast.py",
+    "tests/test_paper_expcast_cuda.py",
+    "tests/test_tilelang_expcast_codegen.py",
+    "tests/test_expcast_focus.py",
+    "tests/test_kernel_timing.py",
+    "tests/test_profile_int8_h200.py",
+    "tests/test_profile_sage_vc.py"
+  ],
+  "cross_compile_toolkit": "CUDA 12.4; sm_90a; TileLang 0.1.15",
+  "cross_compile": [
+    {
+      "shape": [
+        1,
+        1,
+        1,
+        1,
+        64,
+        "float16"
+      ],
+      "stages": 1,
+      "compile_passed": true,
+      "registers": 240,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "ptxas_warnings": []
+    },
+    {
+      "shape": [
+        1,
+        1,
+        1,
+        1,
+        64,
+        "float16"
+      ],
+      "stages": 2,
+      "compile_passed": true,
+      "registers": 240,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "ptxas_warnings": []
+    },
+    {
+      "shape": [
+        1,
+        2,
+        65,
+        129,
+        64,
+        "bfloat16"
+      ],
+      "stages": 1,
+      "compile_passed": true,
+      "registers": 240,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "ptxas_warnings": []
+    },
+    {
+      "shape": [
+        1,
+        2,
+        65,
+        129,
+        64,
+        "bfloat16"
+      ],
+      "stages": 2,
+      "compile_passed": true,
+      "registers": 240,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "ptxas_warnings": []
+    },
+    {
+      "shape": [
+        1,
+        2,
+        193,
+        256,
+        128,
+        "float16"
+      ],
+      "stages": 1,
+      "compile_passed": true,
+      "registers": 240,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "ptxas_warnings": []
+    },
+    {
+      "shape": [
+        1,
+        2,
+        193,
+        256,
+        128,
+        "float16"
+      ],
+      "stages": 2,
+      "compile_passed": true,
+      "registers": 240,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "ptxas_warnings": []
+    },
+    {
+      "shape": [
+        1,
+        28,
+        37741,
+        37741,
+        128,
+        "bfloat16"
+      ],
+      "stages": 1,
+      "compile_passed": true,
+      "registers": 240,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "ptxas_warnings": []
+    },
+    {
+      "shape": [
+        1,
+        28,
+        37741,
+        37741,
+        128,
+        "bfloat16"
+      ],
+      "stages": 2,
+      "compile_passed": true,
+      "registers": 240,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "ptxas_warnings": []
+    }
+  ],
+  "baseline_generated_code_check": [
+    {
+      "stages": 1,
+      "same_as_previous_generated_cuda": true
+    },
+    {
+      "stages": 2,
+      "same_as_previous_generated_cuda": true
+    }
+  ],
+  "generated_code_checks": [
+    "Both schedules have no V byte-reordering loop",
+    "Overlap emits FP8 PV before decoded-P mass reduction and FP32 history scaling",
+    "Explicit WGMMA wait precedes shared operand liveness dependency and V producer release",
+    "Fresh PV result is added only after WGMMA wait",
+    "No thread barriers inside per-element loops"
+  ],
+  "h200_natural_v_baseline_user_reported_kernel_ms": {
+    "tilelang_paper_s1": 56.9473,
+    "tilelang_paper_s2": 57.0462,
+    "cuda_paper": 27.9806,
+    "cuda_paper_interleaved": 27.8892,
+    "vc28_folded": 23.6245,
+    "sage_cpp": 24.4318,
+    "flash4": 30.672
+  },
+  "remote_required_checks": [
+    "24 small attention cases: FP16/BF16, D64/D128, random and uniform multi-tile values; default and nondefault stream",
+    "1% decoded-oracle gate and 0.1% matching-stage baseline/overlap ALL-row gate",
+    "Main-shape full API equals prepared core; same-algorithm ALL-row comparisons",
+    "Randomized full API and fixed core timing; separate CUPTI GPU timing"
+  ],
+  "h200_overlap_executed": false,
+  "h200_overlap_performance_measured": false,
+  "limitation": "Local device is SM86. Cross-compilation/codegen checks do not prove runtime correctness or speed on Hopper. Remote validation runs before timing; gates are implementation checks, not model quality."
+}
