@@ -1,0 +1,201 @@
+{
+  "status": "local_checks_passed_h200_pending",
+  "date": "2026-10-09",
+  "tests_passed": 147,
+  "new_gpu_helper_tests_passed": 34,
+  "historical_split_mass_gpu_tests_passed": 31,
+  "contract": "vc28 folded ExpCast, INT8 QK, FP8 PV; V smoothing/grouping OFF; only local integer max tree changes",
+  "candidate_source_sha256": "dbcc8889f82eef4f05d56c9f1ad02875d248a0ce4d4564f1f297bccd4eb6ae7a",
+  "validation": [
+    "All 32 max positions in each row, ties, negative-only, INT32 min/max and random integers",
+    "1/7/296 consecutive tiles, varying lane scales, stable/fallback/tiny/transition patterns",
+    "Default and nondefault streams",
+    "Bitwise max, alpha, FP8 bytes and local FP32 mass agreement with vc28",
+    "Independent integer amax and FP64 decoded-P sum oracles"
+  ],
+  "cross_compile": "CUDA 12.4 SM90a; baseline/candidate x D64/D128 x FP16/BF16",
+  "compiled_resources": [
+    {
+      "dim": 128,
+      "dtype": "bfloat16",
+      "candidate": false,
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128
+    },
+    {
+      "dim": 128,
+      "dtype": "bfloat16",
+      "candidate": true,
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128
+    },
+    {
+      "dim": 128,
+      "dtype": "float16",
+      "candidate": false,
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128
+    },
+    {
+      "dim": 128,
+      "dtype": "float16",
+      "candidate": true,
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128
+    },
+    {
+      "dim": 64,
+      "dtype": "bfloat16",
+      "candidate": false,
+      "registers": 128,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128
+    },
+    {
+      "dim": 64,
+      "dtype": "bfloat16",
+      "candidate": true,
+      "registers": 128,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128
+    },
+    {
+      "dim": 64,
+      "dtype": "float16",
+      "candidate": false,
+      "registers": 128,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128
+    },
+    {
+      "dim": 64,
+      "dtype": "float16",
+      "candidate": true,
+      "registers": 128,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128
+    }
+  ],
+  "sass": [
+    {
+      "dim": 128,
+      "dtype": "bfloat16",
+      "candidate": false,
+      "max_dependency_levels": [
+        6,
+        6
+      ],
+      "max_instructions": 32,
+      "static_instructions": 2811
+    },
+    {
+      "dim": 128,
+      "dtype": "bfloat16",
+      "candidate": true,
+      "max_dependency_levels": [
+        4,
+        4
+      ],
+      "max_instructions": 32,
+      "static_instructions": 2811
+    },
+    {
+      "dim": 128,
+      "dtype": "float16",
+      "candidate": false,
+      "max_dependency_levels": [
+        6,
+        6
+      ],
+      "max_instructions": 32,
+      "static_instructions": 2811
+    },
+    {
+      "dim": 128,
+      "dtype": "float16",
+      "candidate": true,
+      "max_dependency_levels": [
+        4,
+        4
+      ],
+      "max_instructions": 32,
+      "static_instructions": 2811
+    },
+    {
+      "dim": 64,
+      "dtype": "bfloat16",
+      "candidate": false,
+      "max_dependency_levels": [
+        6,
+        6
+      ],
+      "max_instructions": 32,
+      "static_instructions": 2504
+    },
+    {
+      "dim": 64,
+      "dtype": "bfloat16",
+      "candidate": true,
+      "max_dependency_levels": [
+        4,
+        4
+      ],
+      "max_instructions": 32,
+      "static_instructions": 2504
+    },
+    {
+      "dim": 64,
+      "dtype": "float16",
+      "candidate": false,
+      "max_dependency_levels": [
+        6,
+        6
+      ],
+      "max_instructions": 32,
+      "static_instructions": 2504
+    },
+    {
+      "dim": 64,
+      "dtype": "float16",
+      "candidate": true,
+      "max_dependency_levels": [
+        4,
+        4
+      ],
+      "max_instructions": 32,
+      "static_instructions": 2504
+    }
+  ],
+  "sass_scope": "First main-tile INT32 row-max region in each full attention kernel. Max-register def/use chain depth until conversion to FP32: baseline [6,6], candidate [4,4]. These are static dependency levels, not cycles, occupancy or measured speedup. Complete kernel static instruction count is unchanged.",
+  "previous_user_reported_cupti_ms": {
+    "vc28_jit": 23.6389,
+    "vc28_split_mass": 23.8129,
+    "vc28_installed": 23.526,
+    "sage_cpp": 24.8834,
+    "flash4": 30.9834
+  },
+  "previous_result_interpretation": "Split mass is 0.736% slower than JIT baseline in this excerpt. No full API/raw trials supplied; no model quality or confidence interval inferred.",
+  "h200_candidate_executed": false,
+  "h200_candidate_performance_measured": false,
+  "remote_required": "28 attention configurations and main-shape all-row gates before timing; randomized full/core APIs, installed vc28, Sage, FA4, separate CUPTI"
+}

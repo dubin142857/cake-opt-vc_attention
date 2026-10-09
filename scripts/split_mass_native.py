@@ -38,10 +38,14 @@ def generate_source():
 
 
 def load_native():
+    return load_source(generate_source(),"_vc_split_mass_")
+
+
+def load_source(source,prefix):
     from torch.utils.cpp_extension import load,_get_build_directory
-    source=generate_source();digest=hashlib.sha256(source.encode())
+    digest=hashlib.sha256(source.encode())
     for path in sorted(VC.parent.rglob("*.cuh")):digest.update(path.read_bytes())
-    name="_vc_split_mass_"+digest.hexdigest()[:16]
+    name=prefix+digest.hexdigest()[:16]
     path=Path(_get_build_directory(name,verbose=False))/"kernel.cu"
     path.write_text(source,encoding="utf-8")
     os.environ.setdefault("MAX_JOBS","2")

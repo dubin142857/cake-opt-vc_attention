@@ -1,4 +1,4 @@
-"""H200 vc28 vs split FP32 mass chains; INT8 QK, FP8 PV, V smooth OFF."""
+"""H200 vc28 CUDA candidates; INT8 QK, FP8 PV, V smooth OFF."""
 import argparse
 import json
 from pathlib import Path
@@ -12,12 +12,20 @@ from profile_int8_h200 import load_inputs,metrics,make_flash4
 from profile_sage_vc import load_sage_core_ops,sage_core_calls,stats
 from kernel_timing import profile_kernels,run_window
 import split_mass_native as native
+import balanced_max_native
 
 VARIANTS={"vc28_jit":False,"vc28_split_mass":True}
+EXPERIMENTS={
+    "balanced_max":(balanced_max_native,"vc28_balanced_max",
+        "Only full-tile INT32 local row-max tree: six -> four max dependency levels; same 15 max3 + one max2 per row. Encoding, mass, warp max, fallback, tail and PV/history unchanged."),
+    "split_mass":(native,"vc28_split_mass",
+        "Only full-tile FP32 decoded-P sum dependencies: two pair chains -> four component chains. Same FP8 bytes, max/alpha, fallback, tail and PV/history accumulation."),
+}
 
 
 def parse_args(argv=None):
     p=argparse.ArgumentParser(description=__doc__)
+    p.add_argument("--experiment",choices=tuple(EXPERIMENTS),default="balanced_max")
     for name,default in (("batch",1),("heads",28),("queries",37741),("tokens",37741),
                          ("dim",128),("trials",7),("repeats",10),("seed",0),
                          ("check-queries",128),("kernel-trials",3)):
@@ -31,27 +39,30 @@ def parse_args(argv=None):
     p.add_argument("--skip-cupti",action="store_true")
     p.add_argument("--kernel-warmup-seconds",type=float,default=2.)
     p.add_argument("--kernel-seconds",type=float,default=1.)
-    p.add_argument("--trace-dir",type=Path,default=Path("results/cuda_expcast_split_mass_traces"))
-    p.add_argument("--output",type=Path,default=Path("results/h200_cuda_expcast_split_mass.json"))
+    p.add_argument("--trace-dir",type=Path)
+    p.add_argument("--output",type=Path)
     a=p.parse_args(argv)
     if any(getattr(a,n)<1 for n in ("batch","heads","queries","tokens","trials","repeats","kernel_trials")) or a.dim not in (64,128):
         p.error("Positive dimensions/counts and D64/128 required")
     if a.check_queries<0 or not all(0<x<float("inf") for x in (a.kernel_seconds,a.kernel_warmup_seconds)):
         p.error("Invalid reference count or timing window")
+    if a.trace_dir is None:a.trace_dir=Path(f"results/cuda_expcast_{a.experiment}_traces")
+    if a.output is None:a.output=Path(f"results/h200_cuda_expcast_{a.experiment}.json")
     return a
 
 
-def make_calls(ext,vc,qkv,state):
-    core={name:lambda split=split:native.forward(ext,state,split) for name,split in VARIANTS.items()}
-    full={name:lambda split=split:native.forward(ext,vc.prepare(*qkv,expcast=True,v_smooth=False),split)
-          for name,split in VARIANTS.items()}
+def make_calls(ext,vc,qkv,state,backend=native,candidate="vc28_split_mass"):
+    variants={"vc28_jit":False,candidate:True}
+    core={name:lambda split=split:backend.forward(ext,state,split) for name,split in variants.items()}
+    full={name:lambda split=split:backend.forward(ext,vc.prepare(*qkv,expcast=True,v_smooth=False),split)
+          for name,split in variants.items()}
     core["vc28_installed"]=lambda:vc.forward_prepared(state,kernel_mode="vc28_stream_i2f")
     full["vc28_installed"]=lambda:vc.sageattn_vc(*qkv,tensor_layout="HND",expcast=True,v_smooth=False,kernel_mode="vc28_stream_i2f")
     return core,full
 
 
 @torch.no_grad()
-def validate(ext,vc,reference,device,progress):
+def validate(ext,vc,reference,device,progress,backend=native,candidate="vc28_split_mass"):
     rows=[]
     gen=torch.Generator(device=device).manual_seed(3400)
     for dtype in (torch.float16,torch.bfloat16):
@@ -67,10 +78,10 @@ def validate(ext,vc,reference,device,progress):
                 row=dict(dtype=str(dtype),dim=d,queries=m,keys=n,pattern=pattern,variants={})
                 rows.append(row);progress(rows)
                 outputs={}
-                for name,split in VARIANTS.items():
+                for name,split in {"vc28_jit":False,candidate:True}.items():
                     print("Validate",name,str(dtype),d,m,n,pattern,flush=True)
                     row["variants"][name]={"status":"running"};progress(rows)
-                    out=native.forward(ext,state,split)
+                    out=backend.forward(ext,state,split)
                     result={"vs_installed":metrics(out,old,limit=.001),
                             "vs_decoded_reference":metrics(out,oracle,limit=.01)}
                     if split:
@@ -82,7 +93,7 @@ def validate(ext,vc,reference,device,progress):
                         mean=(values.mean(-1)*state["vs"]).unsqueeze(2).expand_as(out).to(dtype)
                         torch.testing.assert_close(oracle,mean,rtol=.001,atol=.001)
                     stream=torch.cuda.Stream(device=device);stream.wait_stream(torch.cuda.current_stream(device))
-                    with torch.cuda.stream(stream):side=native.forward(ext,state,split)
+                    with torch.cuda.stream(stream):side=backend.forward(ext,state,split)
                     stream.synchronize();torch.testing.assert_close(side,out,rtol=0,atol=0)
                     outputs[name]=out;result["status"]="passed"
                     row["variants"][name]=result;progress(rows)
@@ -92,8 +103,9 @@ def validate(ext,vc,reference,device,progress):
 @torch.no_grad()
 def main():
     a=parse_args();a.output.parent.mkdir(parents=True,exist_ok=True);a.trace_dir.mkdir(parents=True,exist_ok=True)
+    backend,candidate,change=EXPERIMENTS[a.experiment]
     report={"status":"starting","contract":"vc28 folded ExpCast; INT8 QK; FP8 PV; V smooth OFF",
-            "change":"Only full-tile FP32 decoded-P sum dependencies: two pair chains -> four component chains. Same FP8 bytes, max/alpha, fallback, tail and PV/history accumulation.",
+            "experiment":a.experiment,"change":change,
             "gates":"1% decoded reference; 0.1% ALL-row same-algorithm regression. Implementation, not model quality."}
     def save():a.output.write_text(json.dumps(report,indent=2)+"\n",encoding="utf-8")
     def update(k,v):report[k]=v;save()
@@ -104,14 +116,14 @@ def main():
         from sageattention_local import vc,vc_reference,sageattn
         report["environment"]={"torch":torch.__version__,"cuda":torch.version.cuda,"gpu":torch.cuda.get_device_name(device),
                                "native_version":vc._extension().sage_vc_kernel_version}
-        ext,report["build"]=native.load_native();save()
-        report["validation"]=validate(ext,vc,vc_reference,device,lambda r:update("validation",r))
+        ext,report["build"]=backend.load_native();save()
+        report["validation"]=validate(ext,vc,vc_reference,device,lambda r:update("validation",r),backend,candidate)
         if a.validate_only:
             report["status"]="validation_passed";save();print("Validation passed:",a.output);return
         qkv,report["inputs"]=load_inputs(a,device)
         report["args"]={k:str(v) if isinstance(v,Path) else v for k,v in vars(a).items()}
         state=vc.prepare(*qkv,expcast=True,v_smooth=False)
-        core,full=make_calls(ext,vc,qkv,state)
+        core,full=make_calls(ext,vc,qkv,state,backend,candidate)
         sage_native,_=load_sage_core_ops()
         core["sage_cpp"]=sage_core_calls(SimpleNamespace(vc=vc),state,sage_native,sage_native)["sage_cpp"]
         full["sage_cpp"]=lambda:sageattn(*qkv,tensor_layout="HND",is_causal=False)
@@ -133,7 +145,7 @@ def main():
                            decoded_reference=metrics(out.index_select(2,index),oracle,limit=.01))
             report["accuracy"][name]=row;save()
         raw=ext.resources(a.dim,0 if a.dtype=="float16" else 1)
-        report["compiled_resources"]={"vc28_jit":raw["expcast_plain"],"vc28_split_mass":raw["expcast_probe"]}
+        report["compiled_resources"]={"vc28_jit":raw["expcast_plain"],candidate:raw["expcast_probe"]}
         samples={"full":{n:[] for n in full},"core":{n:[] for n in core}}
         for call in full.values():run_window(call,a.kernel_warmup_seconds,device)
         rng=random.Random(a.seed+3400);report["trial_order"]=[]
@@ -154,11 +166,11 @@ def main():
             fa=f"{report['api']['full']['flash4']['median_ms']/ms:.3f}x" if "flash4" in full else "--"
             print(f"{name:<24} {ms:>11.4f} {c:>11} {sage:>9.3f}x {fa:>10} {100*report['accuracy'][name]['dense_fp32']['relative_rmse']:>13.6f}")
         print("Ratios use FULL API only; fixed core includes allocation/dispatch and excludes preprocessing.")
-        comparison={scope+"_old_over_new":report["api"][scope]["vc28_jit"]["median_ms"]/report["api"][scope]["vc28_split_mass"]["median_ms"] for scope in ("full","core")}
-        comparison.update(report["accuracy"]["vc28_split_mass"]["vs_jit_baseline"])
-        comparison["exact_match"]=report["accuracy"]["vc28_split_mass"]["exact_vs_jit_baseline"]
+        comparison={scope+"_old_over_new":report["api"][scope]["vc28_jit"]["median_ms"]/report["api"][scope][candidate]["median_ms"] for scope in ("full","core")}
+        comparison.update(report["accuracy"][candidate]["vs_jit_baseline"])
+        comparison["exact_match"]=report["accuracy"][candidate]["exact_vs_jit_baseline"]
         update("comparison",comparison)
-        print("Same-payload vc28 JIT baseline / split mass (>1 faster); ALL output rows:",json.dumps(comparison))
+        print(f"Same-payload vc28 JIT baseline / {candidate} (>1 faster); ALL output rows:",json.dumps(comparison))
         print("Compiled resources:",json.dumps(report["compiled_resources"]))
         if not a.skip_cupti:
             report["kernel_windows"]=profile_kernels({**core,**({"flash4":full["flash4"]} if "flash4" in full else {})},a,device,on_result=lambda r:update("kernel_windows",r))

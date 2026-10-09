@@ -1,7 +1,7 @@
 # MiniMax-H3 / A5 VC-Attention 实验
 
 **当前 H200 主路线（2026-10-09）：`sageattn_vc`，INT8 QK + FP8 PV。**
-当前 H200 优化主线：`bash scripts/run_cuda_expcast_h200.sh`，以 vc28 为基线对比 FP32 分母求和候选、Sage、FA4；见 [CUDA 实验说明](SAGE_CUDA_EXPCAST.md)。
+当前 H200 优化主线：`bash scripts/run_cuda_expcast_h200.sh`，以 vc28 为基线对比 INT32 最大值归约候选、Sage、FA4；见 [CUDA 实验说明](SAGE_CUDA_EXPCAST.md)。
 保留论文直接公式 CUDA/TileLang 对照：`bash scripts/run_expcast_tilelang_h200.sh`，
 自动准备 TileLang、验证后对比 Sage/FA4；见 [运行说明](SAGE_EXPCAST_TILELANG.md)。
 TileLang 当前使用自然顺序 FP8 V，去掉逐块 V 字节重排，只开 ExpCast；完整 API 包含各自预处理。
