@@ -1,0 +1,214 @@
+{
+  "status": "local_validation_passed_h200_pending",
+  "date": "2026-10-09",
+  "tests_passed": 108,
+  "cuda_helper_tests_passed": 31,
+  "scope": "vc28 folded ExpCast; INT8 QK, FP8 PV, no V smoothing; split local FP32 component sums only",
+  "source_sha256": "0a83ebeee3dc1533dcbf38d311b36e354e21c87b2930b990bc15c72c0bde3b52",
+  "helper_validation": [
+    "121 x 121 positive E4M3 code pairs",
+    "1/7/296 consecutive tiles; random/stable/fallback/tiny/transition scales",
+    "Bitwise bytes, row max, alpha and mass equality against vc28; independent decoded FP64 sum oracle",
+    "Default and nondefault streams"
+  ],
+  "cross_compile": "CUDA 12.4 SM90a; D64/D128; FP16/BF16; baseline/candidate",
+  "compiled_resources": [
+    {
+      "dim": 128,
+      "dtype": "bfloat16",
+      "split": false,
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128
+    },
+    {
+      "dim": 128,
+      "dtype": "bfloat16",
+      "split": true,
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128
+    },
+    {
+      "dim": 128,
+      "dtype": "float16",
+      "split": false,
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128
+    },
+    {
+      "dim": 128,
+      "dtype": "float16",
+      "split": true,
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128
+    },
+    {
+      "dim": 64,
+      "dtype": "bfloat16",
+      "split": false,
+      "registers": 128,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128
+    },
+    {
+      "dim": 64,
+      "dtype": "bfloat16",
+      "split": true,
+      "registers": 128,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128
+    },
+    {
+      "dim": 64,
+      "dtype": "float16",
+      "split": false,
+      "registers": 128,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128
+    },
+    {
+      "dim": 64,
+      "dtype": "float16",
+      "split": true,
+      "registers": 128,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128
+    }
+  ],
+  "sass_static_summary": [
+    {
+      "dim": 128,
+      "dtype": "bfloat16",
+      "split": false,
+      "static_instructions": 2811,
+      "FADD": 536,
+      "F2FP": 160,
+      "HADD2": 256,
+      "FFMA": 260,
+      "F2IP": 128,
+      "LDL": 0,
+      "STL": 0
+    },
+    {
+      "dim": 128,
+      "dtype": "bfloat16",
+      "split": true,
+      "static_instructions": 2815,
+      "FADD": 540,
+      "F2FP": 160,
+      "HADD2": 256,
+      "FFMA": 260,
+      "F2IP": 128,
+      "LDL": 0,
+      "STL": 0
+    },
+    {
+      "dim": 128,
+      "dtype": "float16",
+      "split": false,
+      "static_instructions": 2811,
+      "FADD": 536,
+      "F2FP": 160,
+      "HADD2": 256,
+      "FFMA": 260,
+      "F2IP": 128,
+      "LDL": 0,
+      "STL": 0
+    },
+    {
+      "dim": 128,
+      "dtype": "float16",
+      "split": true,
+      "static_instructions": 2815,
+      "FADD": 540,
+      "F2FP": 160,
+      "HADD2": 256,
+      "FFMA": 260,
+      "F2IP": 128,
+      "LDL": 0,
+      "STL": 0
+    },
+    {
+      "dim": 64,
+      "dtype": "bfloat16",
+      "split": false,
+      "static_instructions": 2504,
+      "FADD": 472,
+      "F2FP": 144,
+      "HADD2": 256,
+      "FFMA": 260,
+      "F2IP": 128,
+      "LDL": 0,
+      "STL": 0
+    },
+    {
+      "dim": 64,
+      "dtype": "bfloat16",
+      "split": true,
+      "static_instructions": 2508,
+      "FADD": 476,
+      "F2FP": 144,
+      "HADD2": 256,
+      "FFMA": 260,
+      "F2IP": 128,
+      "LDL": 0,
+      "STL": 0
+    },
+    {
+      "dim": 64,
+      "dtype": "float16",
+      "split": false,
+      "static_instructions": 2504,
+      "FADD": 472,
+      "F2FP": 144,
+      "HADD2": 256,
+      "FFMA": 260,
+      "F2IP": 128,
+      "LDL": 0,
+      "STL": 0
+    },
+    {
+      "dim": 64,
+      "dtype": "float16",
+      "split": true,
+      "static_instructions": 2508,
+      "FADD": 476,
+      "F2FP": 144,
+      "HADD2": 256,
+      "FFMA": 260,
+      "F2IP": 128,
+      "LDL": 0,
+      "STL": 0
+    }
+  ],
+  "sass_note": "Whole compiled kernels, including tail/fallback. These static counts are not dynamic latency or measured stalls. Split adds 4 final FADD instructions; decode counts unchanged. Target is dependence length, not total instruction reduction.",
+  "remote_checks": "28 attention inputs, ALL-row candidate/baseline/installed checks, sampled dense reference, full/core API and independent CUPTI",
+  "h200_candidate_executed": false,
+  "h200_candidate_performance_measured": false,
+  "latest_user_reported_cupti_ms": {
+    "vc28_folded": 23.4288,
+    "sage_cpp": 24.84,
+    "flash4": 30.1747,
+    "tilelang_paper_s1": 56.9391,
+    "tilelang_overlap_s1": 61.6408
+  }
+}
