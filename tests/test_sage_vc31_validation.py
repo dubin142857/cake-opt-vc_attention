@@ -1,13 +1,16 @@
 """Regression: constant V need not survive Sage's rounded/unrounded P ratio."""
 import importlib.util
+import json
 from pathlib import Path
 import sys
+from types import SimpleNamespace
 
 import pytest
 import torch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
+import validate_sage_vc31 as validation
 from validate_sage_vc31 import check_constant_channels
 
 spec = importlib.util.spec_from_file_location(
@@ -91,3 +94,93 @@ def test_constant_preservation_remains_an_independent_gate(expcast, v_smooth):
     # A matching but erroneous reference must not disable the known-answer gate.
     with pytest.raises(AssertionError, match="preserve constant"):
         check_constant_channels(bad, bad, values, expcast=expcast, v_smooth=v_smooth)
+
+
+def test_random_bf16_pointwise_difference_is_logged_with_unchanged_global_gates():
+    values = torch.full((1, 1, 128, 64), -2., dtype=torch.bfloat16)
+    decoded = torch.full((1, 1, 65, 64), -2., dtype=torch.bfloat16)
+    previous = decoded.clone()
+    # Adjacent BF16 outputs can fail the old local .004/.003 check even
+    # when vc31 equals vc28 and the original whole-output oracle gate passes.
+    decoded[0, 0, 3, 1] = -2.015625
+    previous[0, 0, 3, 1] = -2.03125
+    actual = previous.clone()
+    validation.check_random_output(actual, previous, decoded, v_smooth=False)
+    diagnostic = validation.constant_channel_diagnostics(actual, decoded, values, previous)
+    assert diagnostic["previous_exact_match"]
+    assert not diagnostic["pointwise_reference_within_legacy_tolerance"]
+    assert diagnostic["worst_reference_element"] == {
+        "index": [0, 0, 3, 1], "actual": -2.03125, "decoded": -2.015625,
+        "previous": -2.03125, "abs_error": .015625,
+    }
+    assert diagnostic["vs_decoded_reference"] == diagnostic["previous_vs_decoded_reference"]
+
+
+@pytest.mark.parametrize("failure", ["previous", "decoded", "bitwise", "nan"])
+def test_random_regression_and_reference_gates_still_fail(failure):
+    actual = torch.ones(1, 1, 65, 64)
+    previous, decoded = actual.clone(), actual.clone()
+    if failure == "previous":
+        previous.mul_(1.002)  # Exceeds the original 0.1% regression gate.
+    elif failure == "decoded":
+        decoded.mul_(1.02)  # Exceeds the original 1% oracle gate.
+    elif failure == "bitwise":
+        previous[0, 0, 3, 1] += 1e-5  # Tiny errors still fail the unsmoothed branch.
+    else:
+        actual[0, 0, 3, 1] = float("nan")
+    with pytest.raises((AssertionError, ValueError)):
+        validation.check_random_output(actual, previous, decoded, v_smooth=failure == "previous")
+
+
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("dim", [64, 128])
+@pytest.mark.parametrize("keys", [1, 128, 129, 513])
+@pytest.mark.parametrize("expcast,v_smooth", [(False, False), (True, False), (False, True), (True, True)])
+def test_hopper_known_answer_fixtures_have_independent_analytic_answers(dtype, dim, keys, expcast, v_smooth):
+    state, values, answer = validation.known_answer_payload(dtype, dim, keys, expcast, v_smooth)
+    # Verify the same fixtures that the remote script passes directly to native.
+    assert state["qs"].shape[-1] == ((state["q"].shape[2] + 63) // 64) * 32
+    assert state["output_type"] == (0 if dtype == torch.float16 else 1)
+    assert (state["means"].numel() > 0) == v_smooth
+    decoded = oracle.reference(state, chunk=32)
+    torch.testing.assert_close(decoded, answer, rtol=2e-6, atol=2e-6)
+    check_constant_channels(answer.to(dtype), decoded.to(dtype), values,
+                            expcast=expcast, v_smooth=v_smooth)
+    unpacked = state["v"].float().index_select(-1, oracle.value_permutation(state["v"].shape[-1], "cpu"))
+    assert torch.all(unpacked[..., keys:] == 64.)  # Masked padding cannot masquerade as valid V.
+
+
+def test_constant_failure_includes_pytorch_numeric_details():
+    state, values = constant_payload(torch.bfloat16, False, False, 128)
+    decoded = oracle.reference(state).bfloat16()
+    with pytest.raises(AssertionError) as error:
+        check_constant_channels(decoded + .5, decoded, values, expcast=False, v_smooth=False)
+    assert "Greatest absolute difference" in str(error.value)
+
+
+@pytest.mark.parametrize("fail", [False, True])
+def test_main_saves_results_including_partial_failed_case(tmp_path, monkeypatch, fail):
+    output = tmp_path / "nested" / "validation.json"
+    monkeypatch.setattr(sys, "argv", ["validate_sage_vc31.py", "--output", str(output)])
+    monkeypatch.setitem(sys.modules, "sageattention_local", SimpleNamespace(vc=object(), vc_reference=object()))
+    monkeypatch.setattr(torch.cuda, "get_device_capability", lambda: (9, 0))
+
+    def fake_validate(vc, reference, device, report):
+        report.update(cases=[{"status": "completed"}], active_case={"dtype": "torch.bfloat16", "max_abs": .015625})
+        if fail:
+            raise AssertionError("native diagnostic detail")
+        report.pop("active_case")
+        report["status"] = "passed"
+
+    monkeypatch.setattr(validation, "validate", fake_validate)
+    if fail:
+        with pytest.raises(AssertionError, match="native diagnostic detail"):
+            validation.main()
+    else:
+        validation.main()
+    report = json.loads(output.read_text(encoding="utf-8"))
+    assert report["status"] == ("failed" if fail else "passed")
+    assert report["cases"] == [{"status": "completed"}]
+    if fail:
+        assert report["active_case"]["max_abs"] == .015625
+        assert "native diagnostic detail" in report["error"]
