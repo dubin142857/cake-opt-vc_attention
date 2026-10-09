@@ -4,6 +4,7 @@
 当前先关闭 V 聚类/平滑，集中诊断 ExpCast 单开；vc27 FP8 QK 归为历史实验。
 新入口 `bash scripts/diagnose_expcast_h200.sh` 对比 Sage、同内核 control/ExpCast 和 FA4，
 拆分预处理，并通过独立探针观察 QK/概率/PV 区段，见 [ExpCast 专项诊断](SAGE_EXPCAST_FOCUS.md)。
+加 `--probability-detail` 可继续细分 ExpCast 的 max、编码打包、FP8 解码和 FP32 分母求和，并同场测量插桩开销。
 已有 `2.2.0+vc32` 无需重新安装包；首次用本机 nvcc 编译诊断模块，不要求 ncu/nvdisasm。
 vc32 最新 H200 回传：双开最佳候选完整 API 30.3465 ms、固定输入核心 API 25.7254 ms，
 全部输出与 vc31 双开相等；只开平滑的两个候选退步。该轮没有 CUPTI 内核时间。

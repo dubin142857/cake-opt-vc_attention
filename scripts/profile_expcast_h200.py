@@ -20,7 +20,8 @@ from profile_int8_h200 import load_inputs, require_int8_state, metrics, make_fla
 from profile_sage_vc import (load_ops, load_sage_core_ops, sage_core_calls, staged_prepare,
                             assert_payload_equal, DirectStages, EventStages, stats)
 from kernel_timing import profile_kernels, run_window
-from attention_phase_probe import load_probe, summarize_clocks, PHASES
+from attention_phase_probe import (load_probe, summarize_clocks, summarize_probability_clocks,
+                                   PHASES, DETAIL_PHASES, DETAIL_WIDTH)
 
 MODE = "vc28_stream_i2f"
 STAGES = ("k_mean", "qk_int8", "v_pad", "v_quantize", "attention")
@@ -44,9 +45,13 @@ def parse_args(argv=None):
     p.add_argument("--skip-flash4", action="store_true")
     p.add_argument("--skip-cupti", action="store_true", help="Explicitly omit CUPTI; never substitute event timing")
     p.add_argument("--kernel-phases", action="store_true", help="Compile/validate clock64 probe of the actual vc28 loop")
+    p.add_argument("--probability-detail", action="store_true",
+                   help="Also split ExpCast max/encode/decode/sum; implies --kernel-phases")
     p.add_argument("--trace-dir", type=Path, default=Path("results/h200_expcast_focus_traces"))
     p.add_argument("--output", type=Path, default=Path("results/h200_expcast_focus.json"))
     a = p.parse_args(argv)
+    if a.probability_detail:
+        a.kernel_phases = True
     for name in ("batch", "heads", "queries", "tokens", "trials", "repeats", "kernel_trials",
                  "phase_trials", "phase_cta_stride", "phase_tile_stride"):
         if getattr(a, name) < 1:
@@ -143,6 +148,12 @@ def probe_call(ext, state, trace):
                                                    "output_type", "scale", "expcast")), trace)
 
 
+def summarize_probe(clocks, keys, tile_stride, cast):
+    if clocks.shape[-1] == DETAIL_WIDTH:
+        return summarize_probability_clocks(clocks, keys, tile_stride, cast)
+    return summarize_clocks(clocks, keys, tile_stride)
+
+
 @torch.no_grad()
 def validate_probe(ext, vc, device):
     """Full-output parity at both dtypes/dimensions and masked/aligned lengths."""
@@ -164,7 +175,10 @@ def validate_probe(ext, vc, device):
                         row["probe" if trace else "plain"] = metrics(out, expected, limit=.001)
                         if trace:
                             # Validate every timestamp, including final masked tiles.
-                            summarize_clocks(clocks.cpu(), n, ext.phase_tile_stride)
+                            summary = summarize_probe(clocks.cpu(), n, ext.phase_tile_stride, cast)
+                            if "probability_detail" in summary:
+                                row["detail_routes"] = {k:v for k,v in summary["probability_detail"].items()
+                                                        if k.endswith("samples")}
                     rows.append(row)
     return rows
 
@@ -179,6 +193,14 @@ def phase_diagnosis(states, core, vc, args, device, save):
     result["resources"] = ext.resources(states["control"]["q"].shape[-1], states["control"]["output_type"])
     calls = {name+suffix: probe_call(ext, state, trace) for name, state in states.items()
              for suffix, trace in (("_plain", False), ("_probe", True))}
+    if args.probability_detail:
+        detail_ext, detail_build = load_probe(args.phase_cta_stride, args.phase_tile_stride, True)
+        detail_ext.phase_tile_stride = args.phase_tile_stride
+        result["detail_build"] = detail_build
+        save(result)
+        result["detail_validation"] = validate_probe(detail_ext, vc, device)
+        result["detail_resources"] = detail_ext.resources(states["control"]["q"].shape[-1], states["control"]["output_type"])
+        calls["expcast_detail"] = probe_call(detail_ext, states["expcast"], True)
     # Whole-workload parity and current-stream behavior before using any clocks.
     result["accuracy"] = {}
     for name, state in states.items():
@@ -194,7 +216,21 @@ def phase_diagnosis(states, core, vc, args, device, save):
         stream.synchronize()
         metrics(side_out, expected, limit=.001)
         summarize_clocks(side_clocks.cpu(), state["k"].shape[2], args.phase_tile_stride)
-    result.update(status="measuring", samples={name: [] for name in calls}, clocks={name: [] for name in states})
+    if args.probability_detail:
+        expected = core["expcast"]()
+        out, clocks = calls["expcast_detail"]()
+        result["accuracy"]["expcast_detail"] = {**metrics(out, expected, limit=.001), "exact": torch.equal(out, expected)}
+        summarize_probe(clocks.cpu(), states["expcast"]["k"].shape[2], args.phase_tile_stride, True)
+        stream = torch.cuda.Stream(device=device)
+        stream.wait_stream(torch.cuda.current_stream(device))
+        with torch.cuda.stream(stream):
+            side_out, side_clocks = calls["expcast_detail"]()
+        stream.synchronize()
+        metrics(side_out, expected, limit=.001)
+        summarize_probe(side_clocks.cpu(), states["expcast"]["k"].shape[2], args.phase_tile_stride, True)
+    clock_names = list(states) + (["expcast_detail"] if args.probability_detail else [])
+    result.update(status="measuring", samples={name: [] for name in calls},
+                  clocks={name: [] for name in clock_names})
     save(result)
     for call in calls.values():
         run_window(call, args.kernel_warmup_seconds, device)
@@ -204,9 +240,10 @@ def phase_diagnosis(states, core, vc, args, device, save):
         for name in order:
             (out, clocks), elapsed = measure_trial(calls[name], args.repeats, device)
             result["samples"][name].append(elapsed)
-            if name.endswith("_probe"):
+            if name.endswith("_probe") or name == "expcast_detail":
                 base = name.removesuffix("_probe")
-                summary = summarize_clocks(clocks.cpu(), states[base]["k"].shape[2], args.phase_tile_stride)
+                state = states["expcast" if name == "expcast_detail" else base]
+                summary = summarize_probe(clocks.cpu(), state["k"].shape[2], args.phase_tile_stride, state["expcast"])
                 raw_path = args.trace_dir / f"{base}.clocks.{trial}.pt"
                 torch.save(clocks.cpu(), raw_path)
                 summary["raw_timestamps"] = str(raw_path)
@@ -239,6 +276,26 @@ def phase_diagnosis(states, core, vc, args, device, save):
         print(f"{phase:<26} {values[0]:>16} {values[1]:>16}")
     print("PV issue -> history during PV -> remaining wait overlap hardware execution. "
           "Do not equate wait with total PV cost or convert these cycles into attention ms.")
+    if args.probability_detail:
+        coarse = result["timings"]["expcast_probe"]["median_ms"]
+        detailed = result["timings"]["expcast_detail"]["median_ms"]
+        plain = result["timings"]["expcast_plain"]["median_ms"]
+        result["detail_perturbation"] = {"detail_over_coarse": detailed/coarse,
+                                         "detail_over_plain": detailed/plain,
+                                         "warning": abs(detailed/plain-1) > .10}
+        print(f"ExpCast detail perturbation: plain {plain:.4f}, coarse {coarse:.4f}, "
+              f"detailed {detailed:.4f} ms; detail/plain={detailed/plain:.3f}x")
+        if result["detail_perturbation"]["warning"]:
+            print("  WARNING: >10% detailed-probe perturbation. Treat component ranking as exploratory.")
+        print("ExpCast probability detail: median sampled thread cycles per MAIN tile; four interleaved groups summed per sample:")
+        details = [r["probability_detail"] for r in result["clocks"]["expcast_detail"]]
+        for phase in DETAIL_PHASES:
+            values = [r["phases"][phase]["median_cycles"] for r in details if r["regular_samples"]]
+            value = f"{statistics.median(values):.1f}" if values else "-- (no regular-path samples)"
+            print(f"  {phase:<24} {value}")
+        print("Sampled route counts per trial:", [{k:r[k] for k in ("regular_samples","fallback_samples","masked_tail_samples")} for r in details])
+        print("max_and_alpha includes the two online-history exponentials. fp8_decode includes half2 decoding; "
+              "fp32_mass_sum includes half2->FP32 conversion and addition. Tail/fallback are excluded from regular-path attribution.")
     result["status"] = "passed"
     save(result)
     return result

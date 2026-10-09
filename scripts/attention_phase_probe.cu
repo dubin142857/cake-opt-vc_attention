@@ -64,7 +64,7 @@ std::vector<torch::Tensor> forward(torch::Tensor q, torch::Tensor k, torch::Tens
   auto slots=(blocks-1+PHASE_TILE_STRIDE-1)/PHASE_TILE_STRIDE+1;
   // Sentinel initialization makes missing stores detectable even with allocator reuse.
   // This diagnostic allocation/memset is included in the reported probe API overhead.
-  auto clocks=torch::zeros({trace ? count : 0, slots, int64_t(10)},q.options().dtype(torch::kInt64));
+  auto clocks=torch::zeros({trace ? count : 0, slots, int64_t(PHASE_RECORD_WIDTH)},q.options().dtype(torch::kInt64));
   if (D==64 && output_type==0) dispatch_phase<64,half>(q,k,v,qs,ks,vs,out,clocks,scale,cast,trace);
   else if (D==64) dispatch_phase<64,nv_bfloat16>(q,k,v,qs,ks,vs,out,clocks,scale,cast,trace);
   else if (output_type==0) dispatch_phase<128,half>(q,k,v,qs,ks,vs,out,clocks,scale,cast,trace);

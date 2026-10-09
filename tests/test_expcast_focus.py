@@ -45,6 +45,7 @@ def test_default_shape_and_no_smooth_option():
     a = focus.parse_args([])
     assert (a.batch,a.queries,a.tokens,a.heads,a.dim)==(1,37741,37741,28,128)
     assert not hasattr(a,"v_smooth")
+    assert focus.parse_args(["--probability-detail"]).kernel_phases
 
 
 def test_net_savings_preserves_trial_pairing_and_negative_results():
@@ -140,3 +141,67 @@ def test_sm86_fails_explicitly_and_preserves_diagnostic(tmp_path,monkeypatch):
     monkeypatch.setattr(torch.cuda,"get_device_capability",lambda _:(8,6))
     with pytest.raises(RuntimeError,match="Hopper required"):focus.main()
     assert '"status": "failed"' in a.output.read_text()
+
+
+def detail_records():
+    clocks=torch.zeros(2,2,phase.DETAIL_WIDTH,dtype=torch.int64)
+    clocks[...,:10]=torch.tensor([100,200,300,1000,3000,4000,5000,6000,7000,8000])
+    clocks[:,0,10:27]=torch.arange(1100,2800,100)
+    clocks[:,0,27]=1
+    clocks[:,1,27]=4
+    return clocks
+
+
+def test_detail_groups_are_summed_before_statistics():
+    clocks=detail_records()
+    out=phase.summarize_probability_clocks(clocks,129,8,True)["probability_detail"]
+    assert out["regular_samples"]==2 and out["masked_tail_samples"]==2
+    assert out["helper_median_cycles"]==1600
+    rows=out["phases"]
+    assert {k:r["median_cycles"] for k,r in rows.items()}==dict(zip(phase.DETAIL_PHASES,[100,100,100,400,400,500]))
+    assert sum(r["sampled_helper_share_percent"] for r in rows.values())==pytest.approx(100)
+
+
+def test_fallback_is_counted_but_not_misreported_as_regular_work():
+    clocks=detail_records()
+    clocks[1,0,13:26]=0
+    clocks[1,0,27]=2
+    out=phase.summarize_probability_clocks(clocks,129,8,True)["probability_detail"]
+    assert out["regular_samples"]==1 and out["fallback_samples"]==1
+    clocks[0,0]=clocks[1,0].clone()
+    out=phase.summarize_probability_clocks(clocks,129,8,True)["probability_detail"]
+    assert out["regular_samples"]==0 and out["phases"]=={}
+
+
+@pytest.mark.parametrize("bad",["missing_route","unknown_route","tail_work","missing_clock","wrong_order","outside_parent","fallback_work"])
+def test_detail_missing_or_stale_records_are_rejected(bad):
+    clocks=detail_records()
+    if bad=="missing_route":clocks[0,0,27]=0
+    if bad=="unknown_route":clocks[0,0,27]=7
+    if bad=="tail_work":clocks[0,1,12]=100
+    if bad=="missing_clock":clocks[0,0,15]=0
+    if bad=="wrong_order":clocks[0,0,12]=1000
+    if bad=="outside_parent":clocks[0,0,26]=3500
+    if bad=="fallback_work":clocks[0,0,27]=2
+    with pytest.raises(RuntimeError):phase.summarize_probability_clocks(clocks,129,8,True)
+
+
+def test_control_and_single_masked_tile_have_no_detail_work():
+    clocks=detail_records();clocks[...,10:27]=0;clocks[...,27]=3
+    assert phase.summarize_probability_clocks(clocks,129,8,False)["probability_detail"]["status"]=="not_applicable_control"
+    clocks=detail_records()[:,1:]
+    result=phase.summarize_probability_clocks(clocks,1,8,True)["probability_detail"]
+    assert result["regular_samples"]==0 and result["masked_tail_samples"]==2
+
+
+def test_detail_codegen_preserves_four_interleaved_groups_and_tail_path():
+    generated=phase.generate_source(probability_detail=True)
+    assert "#define PHASE_RECORD_WIDTH 28" in generated
+    body=phase.instrument_probability_helpers()
+    assert body.index("vc_int_affine_quad(") < body.index("probe.mark(14+")
+    assert body.index("probe.mark(14+") < body.index("__nv_cvt_fp8x2_to_halfraw2") < body.index("probe.mark(15+")
+    assert body.index("probe.mark(15+") < body.index("float2 values=") < body.index("probe.mark(16+")
+    assert "for (int base=0;base<NK;base+=2)" in body
+    assert "probe.value(27,2)" in body
+    assert "if constexpr (PhaseTrace && WorkReduction==9)" in generated
+    assert generated.count("probe.value(27, ExpCast ? 4 : 3)")==1

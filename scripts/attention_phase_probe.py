@@ -17,6 +17,9 @@ PHASES = (
     "probability", "v_wait", "pv_issue", "history_during_pv",
     "pv_wait_remaining", "accumulate_next_v",
 )
+DETAIL_PHASES = ("max_and_alpha", "gain_range_check", "bias_setup",
+                 "encode_pack", "fp8_decode", "fp32_mass_sum")
+DETAIL_WIDTH = 28  # 0..9 coarse clocks, 10..26 detail clocks, 27 route tag.
 
 
 def replace_exact(text, old, new, count=1):
@@ -25,7 +28,7 @@ def replace_exact(text, old, new, count=1):
     return text.replace(old, new)
 
 
-def instrument_loop(source):
+def instrument_loop(source, probability_detail=False):
     source = source.replace("\r\n", "\n")
     source = replace_exact(source, "bool PreloadMeans=false>", "bool PreloadMeans=false, bool PhaseTrace=false>")
     source = replace_exact(source, "  static_assert(NUM_THREADS == 128);",
@@ -61,7 +64,62 @@ def instrument_loop(source):
         "      load_async_4D(sV, &tensorMapV, &barrier_V, iter * CTA_K, 0, kv_head_id, batch_id);\n    }\n    probe.mark(9);\n  }")
     source = replace_exact(source, "    if constexpr (carry_mass) vc_probability_drain_mass(RS_f8,probability_alpha,d);",
         "    if constexpr (carry_mass) vc_probability_drain_mass(RS_f8,probability_alpha,d);\n    probe.mark(9);")
+    if probability_detail:
+        for tile, tag in (("iter - 1", "0"), ("num_iterations - 1", "4")):
+            source = replace_exact(source, f"    probe.start({tile});",
+                f"    probe.start({tile});\n    probe.value(27, ExpCast ? {tag} : 3);")
+        old = ("        vc_probability_prepare_integer<(WorkReduction==6),carry_mass,(WorkReduction>=9),(WorkReduction==10)>"
+               "(RS,m,sm_scale,RS_f8,probability_alpha,tile_mass);")
+        source = replace_exact(source, old,
+            "        {\n          if constexpr (PhaseTrace && WorkReduction==9)\n"
+            "            vc_probability_prepare_integer_detail<false,false,true,false>"
+            "(RS,m,sm_scale,RS_f8,probability_alpha,tile_mass,probe);\n"
+            "          else\n" + old + "\n        }")
     return source.replace("#pragma once", "")
+
+
+def instrument_probability_helpers():
+    """Copy exact helpers, retaining encode/decode/sum interleaving per 2-fragment group."""
+    tile = (VC / "streamed_probability.cuh").read_text(encoding="utf-8")
+    tile = tile[tile.index("template<bool InterleaveRows=false, uint32_t NK>"):]
+    tile = replace_exact(tile, "template<bool InterleaveRows=false, uint32_t NK>",
+                         "template<bool InterleaveRows=false, uint32_t NK, typename Probe>")
+    tile = tile.replace("vc_probability_int_affine_tile(", "vc_probability_int_affine_tile_detail(")
+    tile = replace_exact(tile, "float (&mass)[2]) {", "float (&mass)[2], Probe& probe) {")
+    tile = replace_exact(tile, "  float sums[2][2]={};", "  float sums[2][2]={};\n  probe.mark(13);")
+    anchor = "    #pragma unroll\n    for (int k=0;k<2;++k)\n"
+    if tile.count(anchor) != 2:
+        raise RuntimeError("Probability decode/sum anchors changed")
+    tile = tile.replace(anchor, "    probe.mark(14+(base/2)*3);\n"+anchor, 1)
+    # The second k loop consumes decoded half2 values and updates FP32 sums.
+    pos = tile.rindex(anchor)
+    tile = tile[:pos] + "    probe.mark(15+(base/2)*3);\n" + tile[pos:]
+    tile = replace_exact(tile, "  }\n  mass[0]=", "    probe.mark(16+(base/2)*3);\n  }\n  mass[0]=")
+    tile = replace_exact(tile, "  mass[1]=__fadd_rn(sums[1][0],sums[1][1]);",
+                         "  mass[1]=__fadd_rn(sums[1][0],sums[1][1]);\n  probe.mark(26);")
+
+    work = (VC / "work_reduction.cuh").read_text(encoding="utf-8")
+    start = work.index("template<bool BitEncode=false")
+    work = work[start:work.index("template<bool SkipIdentity", start)]
+    work = replace_exact(work, "uint32_t NQ, uint32_t NK>", "uint32_t NQ, uint32_t NK, typename Probe>")
+    work = work.replace("vc_probability_prepare_integer(", "vc_probability_prepare_integer_detail(")
+    work = replace_exact(work, "float (&mass)[NQ][2]) {",
+        "float (&mass)[NQ][2], Probe& probe) {\n"
+        "  static_assert(NQ==1 && NK==8 && StreamConvert && !InterleaveRows);\n  probe.mark(10);")
+    work = replace_exact(work, "    if constexpr (StreamConvert) {", "    probe.mark(11);\n    if constexpr (StreamConvert) {")
+    work = replace_exact(work, "      if (__all_sync(0xffffffff,safe)) {",
+        "      bool regular=__all_sync(0xffffffff,safe);\n      probe.mark(12);\n"
+        "      if (regular) {\n        probe.value(27,1);")
+    work = replace_exact(work,
+        "        vc_probability_int_affine_tile<InterleaveRows>(scores[q],maximum[q],gain,packed[q],mass[q]);",
+        "        vc_probability_int_affine_tile_detail<InterleaveRows>(scores[q],maximum[q],gain,packed[q],mass[q],probe);")
+    work = replace_exact(work, "      } else {\n        float converted",
+        "      } else {\n        probe.value(27,2);\n        float converted")
+    work = replace_exact(work,
+        "        vc_probability_variant_tile<2,2,false,false>(converted,maximum[q],scale,packed[q],mass[q]);\n      }",
+        "        vc_probability_variant_tile<2,2,false,false>(converted,maximum[q],scale,packed[q],mass[q]);\n"
+        "        probe.mark(26);\n      }")
+    return tile + "\n" + work
 
 
 RECORDER = r'''
@@ -76,13 +134,13 @@ template<bool Enabled> struct PhaseRecorder {
       const uint32_t slots=(last+PHASE_TILE_STRIDE-1)/PHASE_TILE_STRIDE+1;
       const uint32_t cta=(blockIdx.z*gridDim.y+blockIdx.y)*gridDim.x+blockIdx.x;
       base=(threadIdx.x==0 && cta%PHASE_CTA_STRIDE==0) ?
-        static_cast<uint64_t*>(ptr)+(cta/PHASE_CTA_STRIDE)*slots*10 : nullptr;
+        static_cast<uint64_t*>(ptr)+(cta/PHASE_CTA_STRIDE)*slots*PHASE_RECORD_WIDTH : nullptr;
     }
   }
   __device__ __forceinline__ void start(uint32_t k) {
     if constexpr (Enabled) {
       tile=(base && (k%PHASE_TILE_STRIDE==0 || k==last)) ?
-        base+((k+PHASE_TILE_STRIDE-1)/PHASE_TILE_STRIDE)*10 : nullptr;
+        base+((k+PHASE_TILE_STRIDE-1)/PHASE_TILE_STRIDE)*PHASE_RECORD_WIDTH : nullptr;
       mark(0);
     }
   }
@@ -96,26 +154,33 @@ template<bool Enabled> struct PhaseRecorder {
       }
     }
   }
+  __device__ __forceinline__ void value(int index, uint64_t v) {
+    if constexpr (Enabled) {
+      if (tile) reinterpret_cast<volatile uint64_t*>(tile)[index]=v;
+    }
+  }
 };
 '''
 
 
-def generate_source(cta_stride=64, tile_stride=8):
+def generate_source(cta_stride=64, tile_stride=8, probability_detail=False):
     if min(cta_stride, tile_stride) < 1:
         raise ValueError("Sampling strides must be positive")
     native = (VC / "vc_sm90.cu").read_text(encoding="utf-8")
     anchor = "template<uint32_t CTA_Q, uint32_t CTA_K, uint32_t NUM_THREADS"
     prefix = native[:native.index(anchor)]  # Original headers, namespace and TMA helpers.
-    kernel = instrument_loop((VC / "sage_layout.cuh").read_text(encoding="utf-8"))
+    kernel = instrument_loop((VC / "sage_layout.cuh").read_text(encoding="utf-8"), probability_detail)
     wrapper = Path(__file__).with_name("attention_phase_probe.cu").read_text(encoding="utf-8")
     return (f"#define PHASE_CTA_STRIDE {cta_stride}\n#define PHASE_TILE_STRIDE {tile_stride}\n" +
-            prefix + '#include "fp8_qk_mma.cuh"\n' + RECORDER + kernel +
+            f"#define PHASE_RECORD_WIDTH {DETAIL_WIDTH if probability_detail else 10}\n" +
+            prefix + '#include "fp8_qk_mma.cuh"\n' + RECORDER +
+            (instrument_probability_helpers() if probability_detail else "") + kernel +
             "\n} // namespace sage_vc\n" + wrapper)
 
 
-def load_probe(cta_stride=64, tile_stride=8):
+def load_probe(cta_stride=64, tile_stride=8, probability_detail=False):
     from torch.utils.cpp_extension import load, _get_build_directory
-    source = generate_source(cta_stride, tile_stride)
+    source = generate_source(cta_stride, tile_stride, probability_detail)
     # Hash transitive local headers too; torch's JIT cache need not notice them.
     digest = hashlib.sha256(source.encode())
     for path in sorted((VC.parent).rglob("*.cuh")):
@@ -131,7 +196,59 @@ def load_probe(cta_stride=64, tile_stride=8):
                                   "-gencode=arch=compute_90a,code=sm_90a", "-Xptxas=-v"],
                extra_ldflags=["cuda.lib"] if os.name == "nt" else ["-lcuda"], verbose=True)
     return ext, {"source_hash": key, "generated_source": str(path),
-                 "cta_stride": cta_stride, "tile_stride": tile_stride}
+                 "cta_stride": cta_stride, "tile_stride": tile_stride,
+                 "probability_detail": probability_detail}
+
+
+def summarize_probability_clocks(clocks, keys, tile_stride, expcast):
+    """Sum interleaved groups PER SAMPLE before any median; tag fallback and tail."""
+    if clocks.ndim != 3 or clocks.shape[2] != DETAIL_WIDTH:
+        raise ValueError("Expected 28-field probability probe records")
+    coarse = summarize_clocks(clocks[..., :10], keys, tile_stride)
+    tags = clocks[..., 27]
+    if not expcast:
+        if not (tags==3).all() or (clocks[..., 10:27]!=0).any():
+            raise RuntimeError("Control unexpectedly entered detailed ExpCast helper")
+        coarse["probability_detail"] = {"status": "not_applicable_control"}
+        return coarse
+    if not (tags[:, -1]==4).all() or (clocks[:, -1, 10:27]!=0).any():
+        raise RuntimeError("Final masked tile must stay on its original probability path")
+    main_tags = tags[:, :-1]
+    if not ((main_tags==1) | (main_tags==2)).all():
+        raise RuntimeError("Missing/unknown detailed probability route tag")
+    main = clocks[:, :-1]
+    regular, fallback = main[main_tags==1], main[main_tags==2]
+    # Fallback has max/range/end clocks only; never silently count it as regular.
+    if fallback.numel():
+        f = fallback[:, [3,10,11,12,26,4]]
+        if ((f[:, 1:]-f[:, :-1])<=0).any() or (fallback[:,13:26]!=0).any():
+            raise RuntimeError("Incomplete fallback timing record")
+    detail = {"regular_samples": len(regular), "fallback_samples": len(fallback),
+              "masked_tail_samples": len(tags), "phases": {},
+              "scope": "Sampled thread-0 main tiles only. Encode/decode/sum stay interleaved in four groups. "
+                       "Intervals include clock/store/scheduling overhead; percentages are within this "
+                       "instrumented helper, never shares of production kernel ms. Max includes alpha exp. "
+                       "Masked tail and guarded fallback are not attributed to regular encoding."}
+    if len(regular):
+        ticks = regular[:, 10:27]
+        diffs = ticks[:, 1:]-ticks[:, :-1]
+        if (diffs<=0).any() or (ticks[:,0]<=regular[:,3]).any() or (ticks[:,-1]>=regular[:,4]).any():
+            raise RuntimeError("Missing/nonmonotonic probability detail timestamps")
+        values = torch.stack((diffs[:,0], diffs[:,1], diffs[:,2],
+                              diffs[:,[3,6,9,12]].sum(1), diffs[:,[4,7,10,13]].sum(1),
+                              diffs[:,[5,8,11,14,15]].sum(1)), dim=1).double()
+        total = (ticks[:,-1]-ticks[:,0]).double()
+        if not torch.equal(values.sum(1),total):
+            raise AssertionError("Probability interval accounting mismatch")
+        detail["phases"] = {name: {
+            "median_cycles": values[:,i].quantile(.5).item(),
+            "p10_cycles": values[:,i].quantile(.1).item(),
+            "p90_cycles": values[:,i].quantile(.9).item(),
+            "sampled_helper_share_percent": (100*values[:,i].sum()/total.sum()).item()}
+            for i,name in enumerate(DETAIL_PHASES)}
+        detail["helper_median_cycles"] = total.quantile(.5).item()
+    coarse["probability_detail"] = detail
+    return coarse
 
 
 def summarize_clocks(clocks, keys, tile_stride):

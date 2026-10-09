@@ -25,6 +25,17 @@ CUPTI trace 和原始采样时间戳在 `results/h200_expcast_focus_traces/`。
 建议发回 JSON 或以下四张表：API、stage CUPTI、完整 kernel CUPTI、内部 phase。
 失败时保留已经完成的结果及错误，不拿其他时钟代替缺失数据。
 
+已有粗粒度结果后，用新增的概率细分入口：
+
+```bash
+git pull --ff-only origin master
+bash scripts/diagnose_expcast_h200.sh --probability-detail --output results/h200_expcast_detail.json --trace-dir results/h200_expcast_detail_traces
+```
+
+保留正式 API、CUPTI 和粗粒度探针，再编译一个概率细分模块。
+生产包不变，不需要 `pip install`。请发回 `ExpCast probability detail`、
+`ExpCast detail perturbation`、正式 API/CUPTI 表，或整个 JSON。
+
 只测正式 API 和 CUPTI、不编译内部探针：
 
 ```bash
@@ -112,7 +123,26 @@ API、event、CUPTI 不能相加。
 
 普通 softmax 分支的历史缩放在 `probability` 内；ExpCast 将部分历史更新放在 PV 期间。
 因此既要看 probability，也要看后续重叠区段和整个未插桩 kernel 的净收益。
-目前没有把 max、编码、FP8 解码/求和再逐条插桩；先定位大区段，再决定是否值得细分。
+`--probability-detail` 在另一个诊断副本中继续拆分 ExpCast，粗粒度表仍来自原探针。
+
+| 细分区段 | 包含什么 |
+|---|---|
+| `max_and_alpha` | INT32 max 归约、缩放、warp 交换，以及在线历史缩放的两个 exp |
+| `gain_range_check` | 仿射系数与安全范围检查、warp 投票 |
+| `bias_setup` | 编码偏置计算与求和状态初始化 |
+| `encode_pack` | INT32 分数转换、仿射近似、舍入、饱和及 FP8 字节打包 |
+| `fp8_decode` | FP8 字节解码为 half2 |
+| `fp32_mass_sum` | half2 转 FP32、分母累加和最后两条累加链合并 |
+
+原 helper 分四组交错进行编码、解码、求和；探针保留这一顺序，
+先把每个样本的同类区段相加，再统计中位数。不能直接相加各段中位数当作整体中位数。
+上述 sum 是当前线程的局部概率质量；后续分母更新/跨线程归约不属于这个 helper。
+普通路径、极端数值回退和最终 masked tile 分别计数；后两者不混入普通路径细分表。
+最终 tile 即使长度对齐也走原 masked 实现，缺少细分数据会明确显示，而不是报零耗时。
+
+同场比较无插桩、粗粒度、细分三个诊断 API 的时间，并保存编译资源。
+细分记录更密集，可能改变寄存器使用和指令调度；每段还含 clock/store 开销。
+其作用是选择待验证的改动，不能单凭细分表宣称某个硬件单元占比或预测加速。
 
 **内部表是抽样线程经历的周期，包含调度、记录开销以及编译器调度影响，
 不是 Tensor Core/SFU 利用率，也不是生产 kernel 各硬件单元的耗时百分比。**
@@ -133,7 +163,7 @@ bash scripts/diagnose_expcast_h200.sh --phase-cta-stride 256 --phase-tile-stride
 
 1. 先看 Q/K 量化等预处理的 GPU 实耗：若很小，就不把主要精力投入仅节省几十微秒的改动。
 2. 看同 payload control/ExpCast 的正式内核差值，确认 ExpCast 的整体收益。
-3. 看 probability 的内部诊断及其后续调度：若这里仍占很多采样周期，再拆 max、编码和分母归约。
+3. 看 probability 的细分及其后续调度：区分 max/历史缩放、编码、解码和局部分母求和，再选择一个环节改动。
 4. 若 QK/PV 或搬运等待更突出，改矩阵乘与搬运的流水线；不会因为 ExpCast 少算 exp 就假定它一定更快。
 5. 每次改动仍用相同输入检查正确性，再看未插桩完整 API/CUPTI 是否确有改善。
 
@@ -146,4 +176,11 @@ CUDA 12.4 SM90a 交叉编译了 16 个诊断实例（两种 dtype、两种 D、c
 未插桩 D64 的指令文本与生产构建一致；D128 只有少量初始化顺序不同，主要循环一致。
 136 项相关 Python 测试通过；同一采样记录 helper 在 SM86 上跑过 30 组 grid/长度/stream 检查。
 本地记录见 [验证摘要](results/expcast_focus_local_validation.json)。
+新增细分探针通过 147 项相关 Python 检查，以及 SM86 上 24 组概率 helper 测试：
+随机/固定分数、大数值回退、极小 scale、1/7/296 个 tile、默认及非默认 stream。
+插桩前后的 FP8 字节与 FP32 max/alpha/mass 逐位一致，分母另对照解码后的 P 求和。
+细分模块的 16 个 SM90a 实例编译、链接和导入通过，全部无 stack/spill；D128 均为 168 寄存器。
+D64 的细分 ExpCast 为 168 寄存器，未插桩为 128，说明探针会影响编译资源。
+新记录见 [概率细分本地验证](results/expcast_probability_detail_local_validation.json)。
+需要单独复现概率 helper 测试时，可执行 `python3 tests/cuda/run_expcast_detail_probe.py`（需 pytest）。
 这些是构建/诊断检查，**不是 H200 正确性通过或加速结论**；远端脚本会执行上述验证门槛。

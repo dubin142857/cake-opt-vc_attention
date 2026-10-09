@@ -1,0 +1,383 @@
+{
+  "status": "local_checks_passed_hopper_execution_pending",
+  "production_sources_modified": false,
+  "local_gpu": "NVIDIA GeForce RTX 3060 Laptop GPU",
+  "cuda_toolkit": "12.4",
+  "full_hopper_attention_executed": false,
+  "source_sha256": "628493751486c00e781ab77346cf3e3605c98869d6b68738c751230f08350e9e",
+  "tests": {
+    "total_passed": 171,
+    "python_regression_passed": 147,
+    "cuda_helper_passed": 24,
+    "files": [
+      "tests/test_expcast_focus.py",
+      "tests/test_kernel_timing.py",
+      "tests/test_profile_int8_h200.py",
+      "tests/test_profile_sage_vc.py",
+      "tests/test_expcast_detail_cuda.py"
+    ]
+  },
+  "cuda_helper": {
+    "steps": [
+      1,
+      7,
+      296
+    ],
+    "patterns": [
+      "random",
+      "stable",
+      "fallback",
+      "tiny"
+    ],
+    "streams": [
+      "default",
+      "non-default"
+    ],
+    "exact_fp8_bytes": true,
+    "exact_fp32_max_alpha_mass": true,
+    "independent_decoded_probability_mass_check": true,
+    "route_tags_and_timestamp_order_checked": true,
+    "generated_helpers_match_compiled_source": true,
+    "reproduction": "python3 tests/cuda/run_expcast_detail_probe.py",
+    "local_build": "nvcc SM86 object compiled and linked via PyTorch CUDAExtension; opt-in JIT runner provides the same source helpers"
+  },
+  "sm90a_cross_compile": {
+    "coarse": {
+      "instances": 16,
+      "linked_imported": true,
+      "all_instances_zero_stack_spills": true,
+      "ptxas_warnings": [],
+      "resources": [
+        {
+          "dim": 128,
+          "expcast": false,
+          "instrumented": false,
+          "dtype": "bfloat16",
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "registers": 168
+        },
+        {
+          "dim": 128,
+          "expcast": false,
+          "instrumented": true,
+          "dtype": "bfloat16",
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "registers": 168
+        },
+        {
+          "dim": 128,
+          "expcast": true,
+          "instrumented": false,
+          "dtype": "bfloat16",
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "registers": 168
+        },
+        {
+          "dim": 128,
+          "expcast": true,
+          "instrumented": true,
+          "dtype": "bfloat16",
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "registers": 168
+        },
+        {
+          "dim": 128,
+          "expcast": false,
+          "instrumented": false,
+          "dtype": "float16",
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "registers": 168
+        },
+        {
+          "dim": 128,
+          "expcast": false,
+          "instrumented": true,
+          "dtype": "float16",
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "registers": 168
+        },
+        {
+          "dim": 128,
+          "expcast": true,
+          "instrumented": false,
+          "dtype": "float16",
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "registers": 168
+        },
+        {
+          "dim": 128,
+          "expcast": true,
+          "instrumented": true,
+          "dtype": "float16",
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "registers": 168
+        },
+        {
+          "dim": 64,
+          "expcast": false,
+          "instrumented": false,
+          "dtype": "bfloat16",
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "registers": 128
+        },
+        {
+          "dim": 64,
+          "expcast": false,
+          "instrumented": true,
+          "dtype": "bfloat16",
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "registers": 130
+        },
+        {
+          "dim": 64,
+          "expcast": true,
+          "instrumented": false,
+          "dtype": "bfloat16",
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "registers": 128
+        },
+        {
+          "dim": 64,
+          "expcast": true,
+          "instrumented": true,
+          "dtype": "bfloat16",
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "registers": 128
+        },
+        {
+          "dim": 64,
+          "expcast": false,
+          "instrumented": false,
+          "dtype": "float16",
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "registers": 128
+        },
+        {
+          "dim": 64,
+          "expcast": false,
+          "instrumented": true,
+          "dtype": "float16",
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "registers": 130
+        },
+        {
+          "dim": 64,
+          "expcast": true,
+          "instrumented": false,
+          "dtype": "float16",
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "registers": 128
+        },
+        {
+          "dim": 64,
+          "expcast": true,
+          "instrumented": true,
+          "dtype": "float16",
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "registers": 128
+        }
+      ]
+    },
+    "probability_detail": {
+      "instances": 16,
+      "linked_imported": true,
+      "all_instances_zero_stack_spills": true,
+      "ptxas_warnings": [],
+      "resources": [
+        {
+          "dim": 128,
+          "expcast": false,
+          "instrumented": false,
+          "dtype": "bfloat16",
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "registers": 168
+        },
+        {
+          "dim": 128,
+          "expcast": false,
+          "instrumented": true,
+          "dtype": "bfloat16",
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "registers": 168
+        },
+        {
+          "dim": 128,
+          "expcast": true,
+          "instrumented": false,
+          "dtype": "bfloat16",
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "registers": 168
+        },
+        {
+          "dim": 128,
+          "expcast": true,
+          "instrumented": true,
+          "dtype": "bfloat16",
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "registers": 168
+        },
+        {
+          "dim": 128,
+          "expcast": false,
+          "instrumented": false,
+          "dtype": "float16",
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "registers": 168
+        },
+        {
+          "dim": 128,
+          "expcast": false,
+          "instrumented": true,
+          "dtype": "float16",
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "registers": 168
+        },
+        {
+          "dim": 128,
+          "expcast": true,
+          "instrumented": false,
+          "dtype": "float16",
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "registers": 168
+        },
+        {
+          "dim": 128,
+          "expcast": true,
+          "instrumented": true,
+          "dtype": "float16",
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "registers": 168
+        },
+        {
+          "dim": 64,
+          "expcast": false,
+          "instrumented": false,
+          "dtype": "bfloat16",
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "registers": 128
+        },
+        {
+          "dim": 64,
+          "expcast": false,
+          "instrumented": true,
+          "dtype": "bfloat16",
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "registers": 130
+        },
+        {
+          "dim": 64,
+          "expcast": true,
+          "instrumented": false,
+          "dtype": "bfloat16",
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "registers": 128
+        },
+        {
+          "dim": 64,
+          "expcast": true,
+          "instrumented": true,
+          "dtype": "bfloat16",
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "registers": 168
+        },
+        {
+          "dim": 64,
+          "expcast": false,
+          "instrumented": false,
+          "dtype": "float16",
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "registers": 128
+        },
+        {
+          "dim": 64,
+          "expcast": false,
+          "instrumented": true,
+          "dtype": "float16",
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "registers": 130
+        },
+        {
+          "dim": 64,
+          "expcast": true,
+          "instrumented": false,
+          "dtype": "float16",
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "registers": 128
+        },
+        {
+          "dim": 64,
+          "expcast": true,
+          "instrumented": true,
+          "dtype": "float16",
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "registers": 168
+        }
+      ]
+    }
+  },
+  "scope": "Diagnostic instrumentation only. SM86 numerical helper tests and SM90a build checks do not establish H200 attention correctness or speedup. The remote entry validates full outputs and measures plain/coarse/detail perturbation before interpreting clocks."
+}
