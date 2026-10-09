@@ -13,9 +13,12 @@ from profile_sage_vc import load_sage_core_ops,sage_core_calls,stats
 from kernel_timing import profile_kernels,run_window
 import split_mass_native as native
 import balanced_max_native
+import fused_quad_native
 
 VARIANTS={"vc28_jit":False,"vc28_split_mass":True}
 EXPERIMENTS={
+    "fused_quad":(fused_quad_native,"vc28_fused_quad",
+        "Balanced max in BOTH arms. Fuse four-byte encoding, FP8 decode and FP32 pair sums; seed chains with the first pair instead of adding zero. Same P rounding, sum order, fallback, tail and PV/history."),
     "balanced_max":(balanced_max_native,"vc28_balanced_max",
         "Only full-tile INT32 local row-max tree: six -> four max dependency levels; same 15 max3 + one max2 per row. Encoding, mass, warp max, fallback, tail and PV/history unchanged."),
     "split_mass":(native,"vc28_split_mass",
@@ -51,8 +54,8 @@ def parse_args(argv=None):
     return a
 
 
-def make_calls(ext,vc,qkv,state,backend=native,candidate="vc28_split_mass"):
-    variants={"vc28_jit":False,candidate:True}
+def make_calls(ext,vc,qkv,state,backend=native,candidate="vc28_split_mass",baseline="vc28_jit"):
+    variants={baseline:False,candidate:True}
     core={name:lambda split=split:backend.forward(ext,state,split) for name,split in variants.items()}
     full={name:lambda split=split:backend.forward(ext,vc.prepare(*qkv,expcast=True,v_smooth=False),split)
           for name,split in variants.items()}
@@ -62,7 +65,7 @@ def make_calls(ext,vc,qkv,state,backend=native,candidate="vc28_split_mass"):
 
 
 @torch.no_grad()
-def validate(ext,vc,reference,device,progress,backend=native,candidate="vc28_split_mass"):
+def validate(ext,vc,reference,device,progress,backend=native,candidate="vc28_split_mass",baseline="vc28_jit"):
     rows=[]
     gen=torch.Generator(device=device).manual_seed(3400)
     for dtype in (torch.float16,torch.bfloat16):
@@ -78,15 +81,15 @@ def validate(ext,vc,reference,device,progress,backend=native,candidate="vc28_spl
                 row=dict(dtype=str(dtype),dim=d,queries=m,keys=n,pattern=pattern,variants={})
                 rows.append(row);progress(rows)
                 outputs={}
-                for name,split in {"vc28_jit":False,candidate:True}.items():
+                for name,split in {baseline:False,candidate:True}.items():
                     print("Validate",name,str(dtype),d,m,n,pattern,flush=True)
                     row["variants"][name]={"status":"running"};progress(rows)
                     out=backend.forward(ext,state,split)
                     result={"vs_installed":metrics(out,old,limit=.001),
                             "vs_decoded_reference":metrics(out,oracle,limit=.01)}
                     if split:
-                        result["vs_jit_baseline"]=metrics(out,outputs["vc28_jit"],limit=.001)
-                        result["exact_vs_jit_baseline"]=torch.equal(out,outputs["vc28_jit"])
+                        result["vs_jit_baseline"]=metrics(out,outputs[baseline],limit=.001)
+                        result["exact_vs_jit_baseline"]=torch.equal(out,outputs[baseline])
                     if pattern=="uniform":
                         perm=reference.value_permutation(state["v"].shape[-1],device)
                         values=state["v"].float().index_select(-1,perm)[...,:n]
@@ -104,8 +107,9 @@ def validate(ext,vc,reference,device,progress,backend=native,candidate="vc28_spl
 def main():
     a=parse_args();a.output.parent.mkdir(parents=True,exist_ok=True);a.trace_dir.mkdir(parents=True,exist_ok=True)
     backend,candidate,change=EXPERIMENTS[a.experiment]
+    baseline_name="vc28_balanced_max" if a.experiment=="fused_quad" else "vc28_jit"
     report={"status":"starting","contract":"vc28 folded ExpCast; INT8 QK; FP8 PV; V smooth OFF",
-            "experiment":a.experiment,"change":change,
+            "experiment":a.experiment,"change":change,"baseline":baseline_name,
             "gates":"1% decoded reference; 0.1% ALL-row same-algorithm regression. Implementation, not model quality."}
     def save():a.output.write_text(json.dumps(report,indent=2)+"\n",encoding="utf-8")
     def update(k,v):report[k]=v;save()
@@ -117,13 +121,16 @@ def main():
         report["environment"]={"torch":torch.__version__,"cuda":torch.version.cuda,"gpu":torch.cuda.get_device_name(device),
                                "native_version":vc._extension().sage_vc_kernel_version}
         ext,report["build"]=backend.load_native();save()
-        report["validation"]=validate(ext,vc,vc_reference,device,lambda r:update("validation",r),backend,candidate)
+        if a.experiment=="fused_quad":
+            from validate_fused_quad_math import validate as validate_math
+            report["probability_validation"]=validate_math(ext,device,lambda r:update("probability_validation",r))
+        report["validation"]=validate(ext,vc,vc_reference,device,lambda r:update("validation",r),backend,candidate,baseline_name)
         if a.validate_only:
             report["status"]="validation_passed";save();print("Validation passed:",a.output);return
         qkv,report["inputs"]=load_inputs(a,device)
         report["args"]={k:str(v) if isinstance(v,Path) else v for k,v in vars(a).items()}
         state=vc.prepare(*qkv,expcast=True,v_smooth=False)
-        core,full=make_calls(ext,vc,qkv,state,backend,candidate)
+        core,full=make_calls(ext,vc,qkv,state,backend,candidate,baseline_name)
         sage_native,_=load_sage_core_ops()
         core["sage_cpp"]=sage_core_calls(SimpleNamespace(vc=vc),state,sage_native,sage_native)["sage_cpp"]
         full["sage_cpp"]=lambda:sageattn(*qkv,tensor_layout="HND",is_causal=False)
@@ -132,7 +139,7 @@ def main():
         ids=query_indices(a.queries,a.check_queries);index=torch.tensor(ids,device=device)
         golden=fp32_reference(*qkv,ids,32)
         oracle=vc_reference.reference(state,query_indices=ids,chunk=32).to(qkv[0].dtype)
-        baseline=core["vc28_jit"]();installed=core["vc28_installed"]()
+        baseline=core[baseline_name]();installed=core["vc28_installed"]()
         report["accuracy"]={};report["checked_queries"]=len(ids)
         for name,call in full.items():
             print("Check main shape",name,flush=True)
@@ -145,7 +152,7 @@ def main():
                            decoded_reference=metrics(out.index_select(2,index),oracle,limit=.01))
             report["accuracy"][name]=row;save()
         raw=ext.resources(a.dim,0 if a.dtype=="float16" else 1)
-        report["compiled_resources"]={"vc28_jit":raw["expcast_plain"],candidate:raw["expcast_probe"]}
+        report["compiled_resources"]={baseline_name:raw["expcast_plain"],candidate:raw["expcast_probe"]}
         samples={"full":{n:[] for n in full},"core":{n:[] for n in core}}
         for call in full.values():run_window(call,a.kernel_warmup_seconds,device)
         rng=random.Random(a.seed+3400);report["trial_order"]=[]
@@ -166,11 +173,11 @@ def main():
             fa=f"{report['api']['full']['flash4']['median_ms']/ms:.3f}x" if "flash4" in full else "--"
             print(f"{name:<24} {ms:>11.4f} {c:>11} {sage:>9.3f}x {fa:>10} {100*report['accuracy'][name]['dense_fp32']['relative_rmse']:>13.6f}")
         print("Ratios use FULL API only; fixed core includes allocation/dispatch and excludes preprocessing.")
-        comparison={scope+"_old_over_new":report["api"][scope]["vc28_jit"]["median_ms"]/report["api"][scope][candidate]["median_ms"] for scope in ("full","core")}
+        comparison={scope+"_old_over_new":report["api"][scope][baseline_name]["median_ms"]/report["api"][scope][candidate]["median_ms"] for scope in ("full","core")}
         comparison.update(report["accuracy"][candidate]["vs_jit_baseline"])
         comparison["exact_match"]=report["accuracy"][candidate]["exact_vs_jit_baseline"]
         update("comparison",comparison)
-        print(f"Same-payload vc28 JIT baseline / {candidate} (>1 faster); ALL output rows:",json.dumps(comparison))
+        print(f"Same-payload {baseline_name} / {candidate} (>1 faster); ALL output rows:",json.dumps(comparison))
         print("Compiled resources:",json.dumps(report["compiled_resources"]))
         if not a.skip_cupti:
             report["kernel_windows"]=profile_kernels({**core,**({"flash4":full["flash4"]} if "flash4" in full else {})},a,device,on_result=lambda r:update("kernel_windows",r))

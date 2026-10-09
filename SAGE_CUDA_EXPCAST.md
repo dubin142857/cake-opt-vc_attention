@@ -1,9 +1,59 @@
-# H200 CUDA 主线：vc28 最大值归约候选
+# H200 CUDA 主线：ExpCast 调度候选
 
 2026-10-09。当前主线是 **INT8 QK + ExpCast + FP8 PV，V 聚类和平滑关闭**。
 保留 vc28 已测实现，新候选不修改已安装包和默认 dispatch。
 
-## 当前候选：balanced max
+## 当前候选：fused quad（以 balanced-max 为基线）
+
+最新 H200 分段诊断中，balanced-max 的采样概率区段为 949 cycles，control 为 1362；
+细探针编码 366、解码 153、FP32 求和 385 cycles。细探针相对实际 core 增加约 9.6% API
+耗时，因此这些数据只用于选择方向，不能相加或折算成预期加速毫秒数。
+
+本轮把 **四个概率的 INT32→FP32→ExpCast 编码、FP8→half2 解码、FP32 数对求和**
+放在一个内联 PTX 小组中，先开始解码高两字节，再编码低两字节。
+小组只返回 PV 所需的四字节 word 和两个 FP32 数对和，缩短中间值在源码中的存活范围。
+仍按原来的两个累加链和原 K 顺序更新分母。第一对直接初始化累加链，去掉四次 `0 + pair_sum`。
+该值域内 pair_sum 非负、有限，包含正零；这些中性加法的删除不改变位模式。
+
+最大值树、FMA/RNE 编码、P 字节、FP32 数对相加和链更新顺序均保持。
+half2 只承载精确解码值，**不做 FP16 求和或分母累加**。
+范围判断、fallback、尾块、QK/PV 和历史累加保留原实现。
+两条 JIT 路径都使用 balanced-max，避免把上轮归约树收益混到这次实验中。
+
+```bash
+git pull --ff-only origin master
+bash scripts/run_fused_expcast_h200.sh
+```
+
+沿用已有 Torch、Sage local、FA4 和 nvcc，不安装依赖、不重编译包。
+BF16、NHD `[1,37741,28,128]`、只开 ExpCast、7 轮 API 与 3 轮独立 CUPTI。
+输出 `results/h200_cuda_expcast_fused_quad.json`，trace 在 `results/cuda_expcast_fused_quad_traces/`。
+只验证可以追加 `--validate-only`；真实 QKV 可追加 `--qkv-file ... --qkv-layout NHD`。
+
+| 行名 | 含义 |
+|---|---|
+| vc28_balanced_max | 同次编译的已测 balanced-max 基线 |
+| vc28_fused_quad | 当前编码/解码/数对求和候选 |
+| vc28_installed | 已安装 vc28，检查 JIT/封装差异 |
+| sage_cpp | Sage 原 native core 与完整 API |
+| flash4 | FA4 完整 API，无 prepared core |
+
+测速前新增 **38 个概率状态逐位检查**：全部 121 个有效 E4M3 概率码、RNE 边界、
+全零/全最大概率、随机/重复输入、极端/微小/交替尺度、1/7/296 连续 tile、非默认 stream。
+P、最大值、alpha、局部分母必须逐位一致，分母另对照独立 FP64 解码求和；任一失败即停止。
+然后继续原来的 28 个小 attention 配置、主尺寸全部输出及量化 reference 检查。
+
+本地 CUDA 12.4 的 D128 两个路径均为 168 寄存器、无 stack/spill。
+同次编译的候选完整 kernel 静态计数少 **4 FADD + 4 NOP**，FP8 解码数量相同。
+这说明少量工作已被删除，不等于 H200 已获得某个百分比收益；调度变化仍可能退化。
+235 项本地测试通过，其中新 38 项在 SM86 执行软件 FP8 解码路径。
+原生 FP8 PTX 和完整 SM90a attention 已交叉编译，实际执行由上述 H200 脚本完成。
+证据见 [本地验证](results/cuda_expcast_fused_quad_local_validation.json)。
+
+`run_cuda_expcast_h200.sh` 默认仍保留 balanced-max 对 vc28 的旧实验，
+也可显式 `--experiment fused_quad` 运行本候选。没有自动更改已安装包的默认内核。
+
+## 已测候选：balanced max
 
 上一轮 split-mass 用户实测 CUPTI 为 **23.8129 ms**，同次编译的 vc28 为 **23.6389 ms**，
 已安装 vc28 为 **23.5260 ms**，Sage 为 24.8834 ms、FA4 为 30.9834 ms。
