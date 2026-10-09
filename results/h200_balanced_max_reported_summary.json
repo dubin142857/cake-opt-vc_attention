@@ -1,0 +1,47 @@
+{
+  "date_recorded": "2026-10-09",
+  "source": "User-pasted API/resources and CUPTI tables; not locally measured; raw trials not supplied",
+  "candidate_commit": "4559c2f",
+  "workload_context": "H200, BF16 NHD [1,37741,28,128], noncausal, INT8 QK, FP8 PV, ExpCast only",
+  "full_api_ms": {
+    "vc28_jit": 25.4198,
+    "vc28_balanced_max": 25.3386,
+    "vc28_installed": 25.4918,
+    "sage_cpp": 26.7730,
+    "flash4": 31.2107
+  },
+  "fixed_core_ms": {
+    "vc28_jit": 23.9726,
+    "vc28_balanced_max": 23.8280,
+    "vc28_installed": 23.9132,
+    "sage_cpp": 25.2289
+  },
+  "cupti_kernel_ms": {
+    "vc28_jit": 23.6985,
+    "vc28_balanced_max": 23.5850,
+    "vc28_installed": 23.6553,
+    "sage_cpp": 25.0843,
+    "flash4": 30.7975
+  },
+  "same_payload_jit_over_balanced": {
+    "full_old_over_new": 1.0032050642252412,
+    "core_old_over_new": 1.0060696733171286,
+    "relative_rmse": 0.0,
+    "max_abs": 0.0,
+    "exact_match": true
+  },
+  "resources_each_jit_arm": {
+    "dynamic_shared_bytes": 40960,
+    "local_bytes": 0,
+    "registers_per_thread": 168,
+    "static_shared_bytes": 128
+  },
+  "dense_fp32_rmse_percent": {
+    "vc28_jit": 4.197492,
+    "vc28_balanced_max": 4.197492,
+    "vc28_installed": 4.197492,
+    "sage_cpp": 3.863257,
+    "flash4": 0.231735
+  },
+  "interpretation": "Consistent small timing reductions, under 1%; no statistical confidence or model-quality conclusion. Retain as experimental baseline and diagnose remaining phases. API/core/CUPTI clocks are separate."
+}

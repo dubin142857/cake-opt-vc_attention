@@ -78,7 +78,7 @@ def instrument_loop(source, probability_detail=False):
     return source.replace("#pragma once", "")
 
 
-def instrument_probability_helpers():
+def instrument_probability_helpers(row_max="vc28"):
     """Copy exact helpers, retaining encode/decode/sum interleaving per 2-fragment group."""
     tile = (VC / "streamed_probability.cuh").read_text(encoding="utf-8")
     tile = tile[tile.index("template<bool InterleaveRows=false, uint32_t NK>"):]
@@ -119,6 +119,11 @@ def instrument_probability_helpers():
         "        vc_probability_variant_tile<2,2,false,false>(converted,maximum[q],scale,packed[q],mass[q]);\n      }",
         "        vc_probability_variant_tile<2,2,false,false>(converted,maximum[q],scale,packed[q],mass[q]);\n"
         "        probe.mark(26);\n      }")
+    if row_max == "balanced_max":
+        work = replace_exact(work, "vc_integer_row_max(scores[q],r)",
+                             "vc_integer_row_max_balanced(scores[q],r)")
+    elif row_max != "vc28":
+        raise ValueError("Unknown probability row-max backend: " + row_max)
     return tile + "\n" + work
 
 
@@ -163,24 +168,35 @@ template<bool Enabled> struct PhaseRecorder {
 '''
 
 
-def generate_source(cta_stride=64, tile_stride=8, probability_detail=False):
+def generate_source(cta_stride=64, tile_stride=8, probability_detail=False, row_max="vc28"):
     if min(cta_stride, tile_stride) < 1:
         raise ValueError("Sampling strides must be positive")
     native = (VC / "vc_sm90.cu").read_text(encoding="utf-8")
     anchor = "template<uint32_t CTA_Q, uint32_t CTA_K, uint32_t NUM_THREADS"
     prefix = native[:native.index(anchor)]  # Original headers, namespace and TMA helpers.
     kernel = instrument_loop((VC / "sage_layout.cuh").read_text(encoding="utf-8"), probability_detail)
+    helpers = ""
+    if row_max == "balanced_max":
+        from balanced_max_native import helper_source
+        helpers = helper_source()
+        # Both the uninstrumented copy and coarse probe must use the selected
+        # tree. The detailed helper below is patched separately, including its
+        # fallback's max/alpha preparation; the masked tail stays unchanged.
+        kernel = replace_exact(kernel, "vc_probability_prepare_integer<",
+                               "vc_probability_prepare_balanced_max<")
+    elif row_max != "vc28":
+        raise ValueError("Unknown probability row-max backend: " + row_max)
     wrapper = Path(__file__).with_name("attention_phase_probe.cu").read_text(encoding="utf-8")
     return (f"#define PHASE_CTA_STRIDE {cta_stride}\n#define PHASE_TILE_STRIDE {tile_stride}\n" +
             f"#define PHASE_RECORD_WIDTH {DETAIL_WIDTH if probability_detail else 10}\n" +
-            prefix + '#include "fp8_qk_mma.cuh"\n' + RECORDER +
-            (instrument_probability_helpers() if probability_detail else "") + kernel +
+            prefix + '#include "fp8_qk_mma.cuh"\n' + RECORDER + helpers +
+            (instrument_probability_helpers(row_max) if probability_detail else "") + kernel +
             "\n} // namespace sage_vc\n" + wrapper)
 
 
-def load_probe(cta_stride=64, tile_stride=8, probability_detail=False):
+def load_probe(cta_stride=64, tile_stride=8, probability_detail=False, row_max="vc28"):
     from torch.utils.cpp_extension import load, _get_build_directory
-    source = generate_source(cta_stride, tile_stride, probability_detail)
+    source = generate_source(cta_stride, tile_stride, probability_detail, row_max)
     # Hash transitive local headers too; torch's JIT cache need not notice them.
     digest = hashlib.sha256(source.encode())
     for path in sorted((VC.parent).rglob("*.cuh")):
@@ -197,7 +213,7 @@ def load_probe(cta_stride=64, tile_stride=8, probability_detail=False):
                extra_ldflags=["cuda.lib"] if os.name == "nt" else ["-lcuda"], verbose=True)
     return ext, {"source_hash": key, "generated_source": str(path),
                  "cta_stride": cta_stride, "tile_stride": tile_stride,
-                 "probability_detail": probability_detail}
+                 "probability_detail": probability_detail, "row_max": row_max}
 
 
 def summarize_probability_clocks(clocks, keys, tile_stride, expcast):

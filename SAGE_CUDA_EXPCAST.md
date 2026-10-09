@@ -23,7 +23,61 @@ max 指令数量、完整 kernel 的静态指令数量相同；D128 仍为 168 �
 147 项本地检查通过，其中 34 项直接执行新 GPU helper：覆盖全部 32 个最大值位置、
 INT32 极值、并列值、负值、1/7/296 块概率状态、正常/极端尺度和非默认 stream。
 最大值、alpha、P 字节、局部分母均与 vc28 逐位一致。
-完整 H200 attention 与性能仍需远端验证。
+用户随后回传的 H200 数据如下，全部输出与同编译 vc28 逐位一致：
+
+| 实现 | full API ms | fixed core ms | CUPTI kernel ms |
+|---|---:|---:|---:|
+| vc28_jit | 25.4198 | 23.9726 | 23.6985 |
+| vc28_balanced_max | 25.3386 | 23.8280 | 23.5850 |
+| vc28_installed | 25.4918 | 23.9132 | 23.6553 |
+| sage_cpp | 26.7730 | 25.2289 | 25.0843 |
+| flash4 | 31.2107 | — | 30.7975 |
+
+balanced-max 的 full/core/kernel 时间分别下降约 0.32% / 0.60% / 0.48%。
+寄存器和共享内存没有变化。三种时钟方向一致，但收益小于 1%，
+当前仅有用户粘贴的汇总，无原始 trial，不能宣布稳定显著收益。
+摘录见 [H200 回传记录](results/h200_balanced_max_reported_summary.json)。
+
+## 下一步：对当前 balanced-max 分段定位
+
+```bash
+git pull --ff-only origin master
+bash scripts/diagnose_balanced_expcast_h200.sh
+```
+
+默认仍为 BF16、NHD `[1,37741,28,128]`、INT8 QK、仅开 ExpCast。
+沿用已有环境，无需 pip 安装、ncu、nvdisasm 或 TileLang。
+首次编译同源 vc28/balanced-max，以及当前 balanced-max 的粗/细两套探针。
+7 轮正式 API、3 轮 CUPTI、5 轮 phase 校准，保留全部原始数据。
+
+结果 `results/h200_expcast_balanced_profile.json`，trace 与原始 clocks 在同名前缀的
+`results/h200_expcast_balanced_profile_traces/`；不覆盖上轮测速或旧 vc28 诊断报告。
+也可以附加 `--qkv-file captures/qkv.pt --qkv-layout NHD`。
+
+这里 `expcast` 明确表示 **balanced-max**；`vc28_jit`、`vc28_installed`、
+`control`、Sage 和 FA4 保留作对照。分段预处理和 attention 探针使用同一个选定实现，
+不会拿旧 vc28 的内部采样冒充当前候选。先验证小输入，再验证主尺寸全部输出，失败即停止。
+
+诊断重点：
+
+- 预处理：K 去均值、Q/K INT8 量化、V 补齐与 FP8 量化的 CUPTI 时长。
+- 主循环：QK 发射/等待、概率计算、PV 发射、PV 期间历史更新和剩余等待。
+- 概率内部：max/alpha、范围判断、bias、编码打包、FP8 解码、FP32 分母求和。
+- 测量校准：同轮随机顺序测正式 core、未插桩诊断副本、粗探针、细探针及其未插桩副本。
+  报告编译副本漂移和插桩影响，避免把两者误认作真实算子瓶颈。
+
+phase 是采样线程的 elapsed cycles，含调度与插桩开销；各 phase 中位数不可相加，
+也不能乘以正式 kernel 毫秒数来估计“省掉某段就能提速多少”。
+PV 与历史更新有重叠，`pv_wait_remaining` 不是整个 PV 的计算量。
+最终是否优化成功仍由无插桩完整 API 与独立 CUPTI 验证。
+
+本轮增加诊断能力，未再更改 ExpCast 数值或已安装包的默认 dispatch。
+可选 helper 对拍：`python3 tests/cuda/run_expcast_detail_probe.py --row-max balanced_max`。
+本地 185 项测试通过，含 24 项新增 balanced 细探针 GPU 对拍；粗/细探针共 32 个完整
+SM90a 实例交叉编译通过、无 stack/spill。D128 的未插桩和插桩副本均用 168 寄存器。
+D64 插桩会增加寄存器，因此仍需看各自的校准结果，不能把编译成功当作零测量扰动。
+证据见 [探针本地验证](results/balanced_expcast_profile_local_validation.json)。
+本地 SM86 只执行概率 helper，完整 H200 attention 验证由远端脚本执行。
 
 ## 为什么回到 CUDA
 

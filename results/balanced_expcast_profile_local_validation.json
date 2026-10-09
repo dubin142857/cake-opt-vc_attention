@@ -1,0 +1,374 @@
+{
+  "date": "2026-10-09",
+  "status": "local_checks_passed_h200_profile_pending",
+  "tests_passed": 185,
+  "balanced_detail_gpu_tests_passed": 24,
+  "local_gpu": "RTX 3060 Laptop, SM86",
+  "gpu_helper_coverage": "1/7/296 tiles; random/stable/fallback/tiny scales; default/nondefault streams; exact P/max/alpha/mass vs original vc28 and decoded-P sum check",
+  "cross_compile": "CUDA 12.4, SM90a; coarse/detail x control/ExpCast x plain/probe x D64/D128 x FP16/BF16",
+  "compiled_resources": {
+    "coarse": {
+      "source_sha256": "1b31a64df0c76c6975fea18798abf2b8cb165b3d12e38161e852a29f10738e5e",
+      "kernels": [
+        {
+          "dim": 128,
+          "dtype": "bfloat16",
+          "expcast": false,
+          "trace": false,
+          "registers": 168,
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "static_shared_bytes": 128
+        },
+        {
+          "dim": 128,
+          "dtype": "bfloat16",
+          "expcast": false,
+          "trace": true,
+          "registers": 168,
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "static_shared_bytes": 128
+        },
+        {
+          "dim": 128,
+          "dtype": "bfloat16",
+          "expcast": true,
+          "trace": false,
+          "registers": 168,
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "static_shared_bytes": 128
+        },
+        {
+          "dim": 128,
+          "dtype": "bfloat16",
+          "expcast": true,
+          "trace": true,
+          "registers": 168,
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "static_shared_bytes": 128
+        },
+        {
+          "dim": 128,
+          "dtype": "float16",
+          "expcast": false,
+          "trace": false,
+          "registers": 168,
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "static_shared_bytes": 128
+        },
+        {
+          "dim": 128,
+          "dtype": "float16",
+          "expcast": false,
+          "trace": true,
+          "registers": 168,
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "static_shared_bytes": 128
+        },
+        {
+          "dim": 128,
+          "dtype": "float16",
+          "expcast": true,
+          "trace": false,
+          "registers": 168,
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "static_shared_bytes": 128
+        },
+        {
+          "dim": 128,
+          "dtype": "float16",
+          "expcast": true,
+          "trace": true,
+          "registers": 168,
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "static_shared_bytes": 128
+        },
+        {
+          "dim": 64,
+          "dtype": "bfloat16",
+          "expcast": false,
+          "trace": false,
+          "registers": 128,
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "static_shared_bytes": 128
+        },
+        {
+          "dim": 64,
+          "dtype": "bfloat16",
+          "expcast": false,
+          "trace": true,
+          "registers": 130,
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "static_shared_bytes": 128
+        },
+        {
+          "dim": 64,
+          "dtype": "bfloat16",
+          "expcast": true,
+          "trace": false,
+          "registers": 128,
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "static_shared_bytes": 128
+        },
+        {
+          "dim": 64,
+          "dtype": "bfloat16",
+          "expcast": true,
+          "trace": true,
+          "registers": 168,
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "static_shared_bytes": 128
+        },
+        {
+          "dim": 64,
+          "dtype": "float16",
+          "expcast": false,
+          "trace": false,
+          "registers": 128,
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "static_shared_bytes": 128
+        },
+        {
+          "dim": 64,
+          "dtype": "float16",
+          "expcast": false,
+          "trace": true,
+          "registers": 130,
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "static_shared_bytes": 128
+        },
+        {
+          "dim": 64,
+          "dtype": "float16",
+          "expcast": true,
+          "trace": false,
+          "registers": 128,
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "static_shared_bytes": 128
+        },
+        {
+          "dim": 64,
+          "dtype": "float16",
+          "expcast": true,
+          "trace": true,
+          "registers": 168,
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "static_shared_bytes": 128
+        }
+      ]
+    },
+    "detail": {
+      "source_sha256": "042eec338f74e9307dc8b60f00e79f77ae64a20a2915720417c86daf2b5c6966",
+      "kernels": [
+        {
+          "dim": 128,
+          "dtype": "bfloat16",
+          "expcast": false,
+          "trace": false,
+          "registers": 168,
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "static_shared_bytes": 128
+        },
+        {
+          "dim": 128,
+          "dtype": "bfloat16",
+          "expcast": false,
+          "trace": true,
+          "registers": 168,
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "static_shared_bytes": 128
+        },
+        {
+          "dim": 128,
+          "dtype": "bfloat16",
+          "expcast": true,
+          "trace": false,
+          "registers": 168,
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "static_shared_bytes": 128
+        },
+        {
+          "dim": 128,
+          "dtype": "bfloat16",
+          "expcast": true,
+          "trace": true,
+          "registers": 168,
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "static_shared_bytes": 128
+        },
+        {
+          "dim": 128,
+          "dtype": "float16",
+          "expcast": false,
+          "trace": false,
+          "registers": 168,
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "static_shared_bytes": 128
+        },
+        {
+          "dim": 128,
+          "dtype": "float16",
+          "expcast": false,
+          "trace": true,
+          "registers": 168,
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "static_shared_bytes": 128
+        },
+        {
+          "dim": 128,
+          "dtype": "float16",
+          "expcast": true,
+          "trace": false,
+          "registers": 168,
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "static_shared_bytes": 128
+        },
+        {
+          "dim": 128,
+          "dtype": "float16",
+          "expcast": true,
+          "trace": true,
+          "registers": 168,
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "static_shared_bytes": 128
+        },
+        {
+          "dim": 64,
+          "dtype": "bfloat16",
+          "expcast": false,
+          "trace": false,
+          "registers": 128,
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "static_shared_bytes": 128
+        },
+        {
+          "dim": 64,
+          "dtype": "bfloat16",
+          "expcast": false,
+          "trace": true,
+          "registers": 130,
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "static_shared_bytes": 128
+        },
+        {
+          "dim": 64,
+          "dtype": "bfloat16",
+          "expcast": true,
+          "trace": false,
+          "registers": 128,
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "static_shared_bytes": 128
+        },
+        {
+          "dim": 64,
+          "dtype": "bfloat16",
+          "expcast": true,
+          "trace": true,
+          "registers": 168,
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "static_shared_bytes": 128
+        },
+        {
+          "dim": 64,
+          "dtype": "float16",
+          "expcast": false,
+          "trace": false,
+          "registers": 128,
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "static_shared_bytes": 128
+        },
+        {
+          "dim": 64,
+          "dtype": "float16",
+          "expcast": false,
+          "trace": true,
+          "registers": 130,
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "static_shared_bytes": 128
+        },
+        {
+          "dim": 64,
+          "dtype": "float16",
+          "expcast": true,
+          "trace": false,
+          "registers": 128,
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "static_shared_bytes": 128
+        },
+        {
+          "dim": 64,
+          "dtype": "float16",
+          "expcast": true,
+          "trace": true,
+          "registers": 168,
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "static_shared_bytes": 128
+        }
+      ]
+    }
+  },
+  "scope": "Helper math executed on SM86, complete probes cross-compiled only. H200 attention correctness, phase measurements and performance remain remote checks. No new speedup claimed."
+}

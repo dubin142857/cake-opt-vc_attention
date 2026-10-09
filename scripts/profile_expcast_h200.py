@@ -1,6 +1,7 @@
 """Focused H200 diagnosis: INT8 QK + FP8 PV; V smoothing/grouping always OFF.
 
-Compare original Sage, matched vc28 control/ExpCast, and optional FA4. Keep
+Compare original Sage, matched vc28 control/ExpCast, and optional FA4. The
+balanced_max backend also keeps same-build and installed vc28 ExpCast baselines. Keep
 uninstrumented API timings, CUPTI stage/kernel durations and sampled clock64
 intervals separate. No ncu, nvdisasm, download, or package rebuild is required.
 --kernel-phases builds a small diagnostic extension with the installed nvcc.
@@ -44,14 +45,21 @@ def parse_args(argv=None):
     p.add_argument("--kernel-seconds", type=float, default=1.)
     p.add_argument("--skip-flash4", action="store_true")
     p.add_argument("--skip-cupti", action="store_true", help="Explicitly omit CUPTI; never substitute event timing")
-    p.add_argument("--kernel-phases", action="store_true", help="Compile/validate clock64 probe of the actual vc28 loop")
+    p.add_argument("--expcast-backend", choices=("installed", "balanced_max"), default="installed",
+                   help="Profile installed vc28 or JIT balanced-max; the latter retains both vc28 baselines")
+    p.add_argument("--kernel-phases", action="store_true", help="Compile/validate clock64 probe of the selected loop")
     p.add_argument("--probability-detail", action="store_true",
                    help="Also split ExpCast max/encode/decode/sum; implies --kernel-phases")
-    p.add_argument("--trace-dir", type=Path, default=Path("results/h200_expcast_focus_traces"))
-    p.add_argument("--output", type=Path, default=Path("results/h200_expcast_focus.json"))
+    p.add_argument("--trace-dir", type=Path)
+    p.add_argument("--output", type=Path)
     a = p.parse_args(argv)
     if a.probability_detail:
         a.kernel_phases = True
+    stem = "h200_expcast_balanced_profile" if a.expcast_backend == "balanced_max" else "h200_expcast_focus"
+    if a.output is None:
+        a.output = Path("results") / (stem + ".json")
+    if a.trace_dir is None:
+        a.trace_dir = Path("results") / (stem + "_traces")
     for name in ("batch", "heads", "queries", "tokens", "trials", "repeats", "kernel_trials",
                  "phase_trials", "phase_cta_stride", "phase_tile_stride"):
         if getattr(a, name) < 1:
@@ -64,7 +72,7 @@ def parse_args(argv=None):
     return a
 
 
-def make_calls(vc, sage_api, native, qkv, base):
+def make_calls(vc, sage_api, native, qkv, base, expcast_forward=None, baseline_forward=None):
     require_int8_state(base)
     if base["block_values"] or base["means"].numel() or base["permutation"] is not None:
         raise ValueError("Focused diagnosis forbids V smoothing/grouping")
@@ -75,12 +83,20 @@ def make_calls(vc, sage_api, native, qkv, base):
         for name, s in states.items()}
     core["sage_cpp"] = sage_core_calls(SimpleNamespace(vc=vc), base, native, native)["sage_cpp"]
     full["sage_cpp"] = lambda: sage_api(*qkv, tensor_layout="HND", is_causal=False)
+    if expcast_forward is not None:
+        if baseline_forward is None:
+            raise ValueError("A JIT experiment requires its same-build baseline")
+        core["vc28_installed"], full["vc28_installed"] = core["expcast"], full["expcast"]
+        for name, forward in (("expcast", expcast_forward), ("vc28_jit", baseline_forward)):
+            core[name] = lambda forward=forward: forward(states["expcast"])
+            full[name] = lambda forward=forward: forward(vc.prepare(*qkv, expcast=True, v_smooth=False))
     return states, core, full
 
 
-def staged_call(qkv, ops, recorder, cast):
+def staged_call(qkv, ops, recorder, cast, expcast_forward=None):
     state = staged_prepare(*qkv, ops, recorder, expcast=cast, smooth=False)
-    return recorder.call("attention", lambda: ops.vc.forward_prepared(state, kernel_mode=MODE))
+    return recorder.call("attention", lambda: expcast_forward(state) if cast and expcast_forward is not None
+                         else ops.vc.forward_prepared(state, kernel_mode=MODE))
 
 
 class CuptiStages:
@@ -122,21 +138,49 @@ def summarize_stage_trace(events, expected):
     return result
 
 
-def expcast_savings(samples):
-    """Paired trial deltas; positive means ExpCast saved time. No phase attribution."""
-    control, cast = samples["control"], samples["expcast"]
+def expcast_savings(samples, baseline="control", candidate="expcast"):
+    """Paired trial deltas; positive means candidate saved time. No phase attribution."""
+    control, cast = samples[baseline], samples[candidate]
     if len(control) != len(cast) or not control:
-        raise ValueError("Expected paired nonempty control/ExpCast trials")
+        raise ValueError("Expected paired nonempty baseline/candidate trials")
     deltas = [a-b for a,b in zip(control,cast)]
-    return {"paired_trial_saved_ms": deltas, "median_saved_ms": statistics.median(deltas),
+    if any(not math.isfinite(x) or x <= 0 for x in (*control, *cast)):
+        raise ValueError("Timing samples must be finite and positive")
+    return {"baseline": baseline, "candidate": candidate,
+            "paired_trial_saved_ms": deltas, "median_saved_ms": statistics.median(deltas),
             "min_saved_ms": min(deltas), "max_saved_ms": max(deltas),
+            "faster_trials": sum(x > 0 for x in deltas), "trials": len(deltas),
             "ratio_of_medians": statistics.median(control)/statistics.median(cast)}
 
 
-def capture_stages(qkv, ops, cast, args, device, expected, trial):
+def probe_calibration(samples, detail=False):
+    """Compare matched trials; no mixing earlier API runs with phase sessions."""
+    pairs = [(name+"_production", name+suffix) for name in ("control", "expcast")
+             for suffix in ("_plain", "_probe")]
+    pairs += [(name+"_plain", name+"_probe") for name in ("control", "expcast")]
+    if detail:
+        pairs += [("expcast_production", "expcast_detail_plain"),
+                  ("expcast_detail_plain", "expcast_detail"),
+                  ("expcast_production", "expcast_detail")]
+    result = {}
+    for baseline, measured in pairs:
+        row = expcast_savings(samples, baseline, measured)
+        ratio = 1. / row["ratio_of_medians"]
+        result[baseline+" -> "+measured] = {
+            "baseline_median_ms": statistics.median(samples[baseline]),
+            "measured_median_ms": statistics.median(samples[measured]),
+            "ratio_of_medians": ratio,
+            "paired_trial_added_ms": [-x for x in row["paired_trial_saved_ms"]],
+            "median_added_ms": -row["median_saved_ms"], "warning": abs(ratio-1) > .10,
+            "scope": "Same phase-trial synchronized API wall times; includes dispatch/allocation. "
+                     "A probe also initializes/stores trace data. Not pure GPU instrumentation cost."}
+    return result
+
+
+def capture_stages(qkv, ops, cast, args, device, expected, trial, expcast_forward=None):
     with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU,
                                             torch.profiler.ProfilerActivity.CUDA]) as prof:
-        out = staged_call(qkv, ops, CuptiStages(device), cast)
+        out = staged_call(qkv, ops, CuptiStages(device), cast, expcast_forward)
     path = args.trace_dir / f"stages_{'expcast' if cast else 'control'}.{trial}.json"
     prof.export_chrome_trace(str(path))
     summary = summarize_stage_trace(json.loads(path.read_text(encoding="utf-8"))["traceEvents"], expected)
@@ -155,7 +199,7 @@ def summarize_probe(clocks, keys, tile_stride, cast):
 
 
 @torch.no_grad()
-def validate_probe(ext, vc, device):
+def validate_probe(ext, vc, device, expcast_forward=None):
     """Full-output parity at both dtypes/dimensions and masked/aligned lengths."""
     rows = []
     generator = torch.Generator(device=device).manual_seed(3300)
@@ -168,7 +212,8 @@ def validate_probe(ext, vc, device):
                 base = vc.prepare(q, k, v, v_smooth=False)
                 for cast in (False, True):
                     state = {**base, "expcast": cast}
-                    expected = vc.forward_prepared(state, kernel_mode=MODE)
+                    expected = (expcast_forward(state) if cast and expcast_forward is not None
+                                else vc.forward_prepared(state, kernel_mode=MODE))
                     row = {"dtype": str(dtype), "dim": dim, "queries": m, "keys": n, "expcast": cast}
                     for trace in (False, True):
                         out, clocks = probe_call(ext, state, trace)()
@@ -184,23 +229,28 @@ def validate_probe(ext, vc, device):
 
 
 @torch.no_grad()
-def phase_diagnosis(states, core, vc, args, device, save):
-    ext, build = load_probe(args.phase_cta_stride, args.phase_tile_stride)
+def phase_diagnosis(states, core, vc, args, device, save, expcast_forward=None):
+    row_max = "balanced_max" if args.expcast_backend == "balanced_max" else "vc28"
+    ext, build = load_probe(args.phase_cta_stride, args.phase_tile_stride, row_max=row_max)
     ext.phase_tile_stride = args.phase_tile_stride
     result = {"build": build, "status": "validating"}
     save(result)
-    result["validation"] = validate_probe(ext, vc, device)
+    result["validation"] = validate_probe(ext, vc, device, expcast_forward)
     result["resources"] = ext.resources(states["control"]["q"].shape[-1], states["control"]["output_type"])
     calls = {name+suffix: probe_call(ext, state, trace) for name, state in states.items()
              for suffix, trace in (("_plain", False), ("_probe", True))}
+    # The actual backend is repeated in the SAME randomized phase trials. This
+    # detects drift in the diagnostic plain copy, independently of probe cost.
+    calls.update({name+"_production": (lambda fn=core[name]: (fn(), None)) for name in states})
     if args.probability_detail:
-        detail_ext, detail_build = load_probe(args.phase_cta_stride, args.phase_tile_stride, True)
+        detail_ext, detail_build = load_probe(args.phase_cta_stride, args.phase_tile_stride, True, row_max)
         detail_ext.phase_tile_stride = args.phase_tile_stride
         result["detail_build"] = detail_build
         save(result)
-        result["detail_validation"] = validate_probe(detail_ext, vc, device)
+        result["detail_validation"] = validate_probe(detail_ext, vc, device, expcast_forward)
         result["detail_resources"] = detail_ext.resources(states["control"]["q"].shape[-1], states["control"]["output_type"])
         calls["expcast_detail"] = probe_call(detail_ext, states["expcast"], True)
+        calls["expcast_detail_plain"] = probe_call(detail_ext, states["expcast"], False)
     # Whole-workload parity and current-stream behavior before using any clocks.
     result["accuracy"] = {}
     for name, state in states.items():
@@ -218,6 +268,9 @@ def phase_diagnosis(states, core, vc, args, device, save):
         summarize_clocks(side_clocks.cpu(), state["k"].shape[2], args.phase_tile_stride)
     if args.probability_detail:
         expected = core["expcast"]()
+        plain_out, _ = calls["expcast_detail_plain"]()
+        result["accuracy"]["expcast_detail_plain"] = {**metrics(plain_out, expected, limit=.001),
+                                                       "exact": torch.equal(plain_out, expected)}
         out, clocks = calls["expcast_detail"]()
         result["accuracy"]["expcast_detail"] = {**metrics(out, expected, limit=.001), "exact": torch.equal(out, expected)}
         summarize_probe(clocks.cpu(), states["expcast"]["k"].shape[2], args.phase_tile_stride, True)
@@ -235,8 +288,10 @@ def phase_diagnosis(states, core, vc, args, device, save):
     for call in calls.values():
         run_window(call, args.kernel_warmup_seconds, device)
     rng = random.Random(args.seed+3300)
+    result["trial_order"] = []
     for trial in range(args.phase_trials):
         order = list(calls); rng.shuffle(order)
+        result["trial_order"].append(order)
         for name in order:
             (out, clocks), elapsed = measure_trial(calls[name], args.repeats, device)
             result["samples"][name].append(elapsed)
@@ -251,6 +306,13 @@ def phase_diagnosis(states, core, vc, args, device, save):
         save(result)
         print(f"Kernel phase trial {trial+1}/{args.phase_trials} complete", flush=True)
     result["timings"] = {name: stats(values) for name, values in result["samples"].items()}
+    result["calibration"] = probe_calibration(result["samples"], args.probability_detail)
+    print("Probe calibration, paired native API trials (ms; not phase GPU cycles):")
+    for pair, row in result["calibration"].items():
+        print(f"  {pair}: baseline {row['baseline_median_ms']:.4f}, measured {row['measured_median_ms']:.4f}; "
+              f"ratio {row['ratio_of_medians']:.3f}x; paired added {row['median_added_ms']:+.4f} ms")
+        if row["warning"]:
+            print("    WARNING: >10% timing change; do not use the probe alone to select an optimization.")
     result["perturbation"] = {}
     for name in states:
         plain = result["timings"][name+"_plain"]["median_ms"]
@@ -263,7 +325,7 @@ def phase_diagnosis(states, core, vc, args, device, save):
             print("  WARNING: >10% probe timing perturbation; phase values are exploratory, "
                   "repeat with sparser CTA/tile sampling before choosing an optimization.")
     result["perturbation_scope"] = ("Diagnostic native API includes output/trace allocation; probe also "
-                                    "initializes timestamps. JIT plain may differ from installed binary. "
+                                    "initializes timestamps. JIT plain may differ from the selected production binary. "
                                     "The resource table and whole-output parity are independent checks.")
     print("Sampled instrumented MAIN-tile thread elapsed cycles; NOT production kernel percentages:")
     print(f"{'phase':<26} {'control cycles':>16} {'ExpCast cycles':>16}")
@@ -328,14 +390,39 @@ def main():
         report["environment"] = {"torch": torch.__version__, "cuda": torch.version.cuda,
                                  "gpu": torch.cuda.get_device_name(device),
                                  "native_version": vc._extension().sage_vc_kernel_version}
+        expcast_forward = baseline_forward = None
+        report["expcast_backend"] = args.expcast_backend
+        report["variant_sources"] = {"control": "installed vc28, ExpCast OFF",
+            "expcast": ("balanced-max JIT, ExpCast ON" if args.expcast_backend == "balanced_max"
+                        else "installed vc28, ExpCast ON"),
+            "sage_cpp": "original Sage native core / Sage full API",
+            "flash4": "installed FA4 full API, no quantized-payload core"}
+        if args.expcast_backend == "balanced_max":
+            import balanced_max_native as balanced
+            from benchmark_cuda_expcast import validate
+            extension, report["native_build"] = balanced.load_native()
+            expcast_forward = lambda state: balanced.forward(extension, state, True)
+            baseline_forward = lambda state: balanced.forward(extension, state, False)
+            report["variant_sources"].update(vc28_jit="vc28 from same JIT build as balanced-max",
+                                               vc28_installed="installed vc28, ExpCast ON")
+            def save_validation(rows):
+                report["small_validation"] = rows; save()
+            validate(extension, vc, vc_reference, device, save_validation,
+                     backend=balanced, candidate="vc28_balanced_max")
         qkv, report["inputs"] = load_inputs(args, device)
         report["args"] = {k: str(v) if isinstance(v, Path) else v for k,v in vars(args).items()}
         q = qkv[0]
         print(f"ExpCast focus: NHD {(args.batch,args.queries,args.heads,args.dim)}, keys={args.tokens}, "
-              f"{args.dtype}; V smoothing/grouping OFF; K centering retained", flush=True)
+              f"{args.dtype}; backend={args.expcast_backend}; V smoothing/grouping OFF; K centering retained", flush=True)
         base = vc.prepare(*qkv, v_smooth=False)
         native, _ = load_sage_core_ops()
-        states, core, full = make_calls(vc, sageattn, native, qkv, base)
+        states, core, full = make_calls(vc, sageattn, native, qkv, base, expcast_forward, baseline_forward)
+        if expcast_forward is not None:
+            resources = extension.resources(args.dim, base["output_type"])
+            report["production_resources"] = {"vc28_jit": resources["expcast_plain"],
+                                                "expcast": resources["expcast_probe"]}
+            # This extension uses the final bool for the candidate, not clocks.
+            print("Production resources:", json.dumps(report["production_resources"]), flush=True)
         flash4 = None if args.skip_flash4 else make_flash4(qkv)
         if flash4:
             full["flash4"] = flash4.call
@@ -360,7 +447,14 @@ def main():
             if name in states:
                 oracle = vc_reference.reference(states[name], query_indices=ids, chunk=32).to(q.dtype)
                 error["decoded_reference"] = metrics(out.index_select(2,index), oracle.to(device), limit=.01)
-                torch.testing.assert_close(out, staged_call(qkv,ops,DirectStages(),states[name]["expcast"]),rtol=0,atol=0)
+                torch.testing.assert_close(out, staged_call(qkv,ops,DirectStages(),states[name]["expcast"],
+                                                           expcast_forward),rtol=0,atol=0)
+            if name == "expcast" and expcast_forward is not None:
+                error["same_algorithm_all_rows"] = {}
+                for baseline in ("vc28_jit", "vc28_installed"):
+                    old = core[baseline]()
+                    error["same_algorithm_all_rows"][baseline] = {
+                        **metrics(out, old, limit=.001), "exact_match": torch.equal(out, old)}
             if name=="control":
                 control_out = out
             if name=="sage_cpp":
@@ -394,12 +488,20 @@ def main():
             print(f"ExpCast {scope}: paired median saving {row['median_saved_ms']:+.4f} ms; "
                   f"trial range [{row['min_saved_ms']:+.4f}, {row['max_saved_ms']:+.4f}] ms; "
                   f"control/ExpCast {row['ratio_of_medians']:.4f}x")
+        if expcast_forward is not None:
+            report["balanced_max_savings"] = {scope: expcast_savings(group, "vc28_jit", "expcast")
+                                               for scope, group in samples.items()}
+            for scope, row in report["balanced_max_savings"].items():
+                print(f"Balanced max {scope} vs same-build vc28: {row['ratio_of_medians']:.4f}x; "
+                      f"paired saving {row['median_saved_ms']:+.4f} ms "
+                      f"[{row['min_saved_ms']:+.4f}, {row['max_saved_ms']:+.4f}]; "
+                      f"faster in {row['faster_trials']}/{row['trials']} trials (not a significance test)")
         report["stage_events"] = {n: [] for n in states}
         for trial in range(args.trials):
             order = list(states); rng.shuffle(order)
             for n in order:
                 recorder = EventStages(device)
-                out = staged_call(qkv, ops, recorder, states[n]["expcast"])
+                out = staged_call(qkv, ops, recorder, states[n]["expcast"], expcast_forward)
                 report["stage_events"][n].append(recorder.finish())
         print("Stage event intervals ms (include stream gaps; not pure kernel work):")
         for n, trials in report["stage_events"].items():
@@ -412,7 +514,7 @@ def main():
                 order = list(states); rng.shuffle(order)
                 for n in order:
                     row = capture_stages(qkv, ops, states[n]["expcast"], args, device,
-                                         report["stage_events"][n][0], trial)
+                                         report["stage_events"][n][0], trial, expcast_forward)
                     report["stage_cupti"][n].append(row)
                     save()
             print("CUPTI stage kernel sums ms (diagnostic stage synchronization; NOT API wall time):")
@@ -432,7 +534,7 @@ def main():
         if args.kernel_phases:
             def save_phases(value):
                 report["kernel_phases"] = value; save()
-            phase_diagnosis(states, core, vc, args, device, save_phases)
+            phase_diagnosis(states, core, vc, args, device, save_phases, expcast_forward)
         report["status"] = "passed"
         report["scope"] = ("ExpCast only; K mean retained, V grouping/smoothing absent. "
             "qk_int8 includes input-dtype K subtraction plus separate Q/K quantizers. "

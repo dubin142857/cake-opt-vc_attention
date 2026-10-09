@@ -5,6 +5,16 @@
 `vc28_stream_i2f` 是当前多轮验证过的 ExpCast 单开路线，
 也是 vc31/vc32 在关闭 V 平滑时转用的内核。本轮增加诊断入口，不修改生产内核或其默认参数。
 
+2026-10-09 新增 balanced-max 路线：`bash scripts/diagnose_balanced_expcast_h200.sh`。
+它显式选择 `--expcast-backend balanced_max --probability-detail`，保留同编译与已安装 vc28、
+Sage/FA4 对照，并让正式 API、stage 与内部 probe 使用选定的算法。
+默认输出 `results/h200_expcast_balanced_profile.json`，详情见 [CUDA 主线](SAGE_CUDA_EXPCAST.md)。
+下文的旧入口默认继续测 installed vc28。
+
+两条路线均新增同轮 `Probe calibration`：实际 core 与未插桩诊断副本比较编译漂移，
+再比较 coarse/detail 插桩开销。概率 detail 自己的未插桩副本也单独检查和计时。
+校准值为含 dispatch/分配的 native API 时间，不能当纯 GPU 插桩成本。
+
 ## 运行
 
 已有 `sageattention-local==2.2.0+vc32` 的 H200 环境直接执行：
