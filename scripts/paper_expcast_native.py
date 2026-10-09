@@ -52,6 +52,8 @@ def load_native():
 def forward(ext,state,interleaved=False):
     from profile_int8_h200 import require_int8_state
     require_int8_state(state)
+    if state.get("v_layout","sage_permuted")!="sage_permuted":
+        raise ValueError("Native Sage-layout CUDA requires Sage-permuted V")
     if state["block_values"] or state["means"].numel() or state["permutation"] is not None:
         raise ValueError("Paper experiment requires V smoothing OFF")
     return ext.forward(*(state[k] for k in ("q","k","v","qs","ks","vs","output_type","scale")),True,interleaved)

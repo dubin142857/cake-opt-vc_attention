@@ -4,19 +4,36 @@
 新增 CUDA 调度候选，以及 TileLang 编写的完整融合 attention。
 目标是先确认数值契约，再测净收益；这里没有 H200 加速已达成的结论。
 
-### 2026-10-09：修复多块 V 缓冲区竞争
+### 当前路线：TileLang 只开 ExpCast，去掉 V 字节重排
+
+TileLang 从原始 FP16/BF16 V 直接生成按 token 顺序存储的 `[B,H,D,Npad]` FP8 V。
+预处理复用 Sage 的 per-channel 量化内核，但绕过 `transpose_pad_permute_cuda`，
+仅做 padding、普通维度转置和量化。没有聚类、V 平滑、Sage 的 16-token 字节排列或反排列。
+attention 内核直接 `T.copy(V, v_shared)` 后计算 PV，删除 `v_packed` 和逐块重排循环。
+K 去均值、INT8 QK、ExpCast 直接公式、FP8 PV 和两级 FP32 累加保持不变。
+
+full API 从原始 Q/K/V 每次重新处理，包含上述 padding/转置/量化；fixed core 不做布局转换。
+正式验证和主尺寸测速前，在计时外将两份独立预处理结果按**逻辑 token 顺序**比较，
+要求 Q/K、scales 和所有 V 字节逐位相同。用于核对的 inverse permutation 只出现在校验中。
+两种 prepared state 有显式布局标记，不能直接交换给另一个内核。
+
+本地生成代码已确认原 D128 V 重排循环中的 64 次同步消失，V buffer 在 PV 完成后才释放。
+新版本的 H200 精度和性能待实测；运行命令沿用下面的一键脚本。
+
+### 历史：修复多块 V 缓冲区竞争
 
 首轮 H200 实测中，单 token 校验通过，但 TileLang 的 `M=65,N=129,D=64`
 相对量化参考误差约 100.33%，因此没有进入性能测试。
 检查旧版生成的 CUDA 发现：生产线程直接把重排后的 V 写入 PV 使用的 shared buffer，
 而自动流水线在 QK 完成后即释放该组缓冲区；下一块 V 可在当前 PV 完成前覆盖它。
 
-现在用明确的 `T.copy` 将原始 V 搬入 `v_packed`，消费者等待后重排至独立的 `v`，
+`9a967ba` 用明确的 `T.copy` 将原始 V 搬入 `v_packed`，消费者等待后重排至独立的 `v`，
 生产者只复用 `v_packed`。D64/D128、两种 stages 的生成代码检查已覆盖这条边界。
 新增 uniform-attention 定向用例：128、129、257 个 key，各块 V 不同，并用解码 V 的
 均值独立核验 oracle。精度门槛不变；失败前会保存当前 case、variant、误差及生成源码。
 
-本地回归及 SM90a 交叉编译通过；修复后的完整 H200 attention 仍需远端复测。
+该版已由用户在 H200 跑完验证和测速：CUPTI 中 TileLang s1/s2 为 118.9744/118.6298 ms，
+同轮 vc28 为 23.6273 ms、Sage 为 24.4361 ms；这些是内核时间。当前 natural-V 改动尚无测速结果。
 无需重新安装依赖或重编译 Sage 包：
 
 ```bash
@@ -49,8 +66,8 @@ bash scripts/run_expcast_tilelang_h200.sh --skip-install
 不需要重编译原 Sage 包，不依赖 ncu/nvdisasm。
 
 默认输入为 BF16、非因果 MHA，NHD 等价 `[1,37741,28,128]`。
-输出：`results/h200_paper_expcast_tilelang.json`；trace/生成的 TileLang CUDA 源码：
-`results/paper_expcast_traces/`。失败保留已完成数据，校验失败不会继续测速。
+输出：`results/h200_paper_expcast_tilelang_natural_v.json`；trace/生成的 TileLang CUDA 源码：
+`results/paper_expcast_natural_v_traces/`。失败保留已完成数据，校验失败不会继续测速。
 
 参数示例：
 
@@ -98,15 +115,15 @@ CUDA 和 TileLang 使用同一个标量算术头文件；注意公式中的 byte
 |---|---|
 | `cuda_paper` | Sage/VC 主循环，直接公式；每两个 K fragment 分组编码、解码、FP32 求和 |
 | `cuda_paper_interleaved` | 每组字节生成后立即解码和求和，缩短中间值存活时间；同一 FP32 累加顺序 |
-| `tilelang_paper_s1` | TileLang 融合循环，一阶段流水线配置 |
-| `tilelang_paper_s2` | 相同算法，两阶段流水线配置 |
+| `tilelang_paper_s1` | 自然顺序 FP8 V、无 V 重排的 TileLang 融合循环，一阶段流水线 |
+| `tilelang_paper_s2` | 相同算法和自然 V，两阶段流水线 |
 | `vc28_folded` | 已测过的 vc28 折叠公式路线 |
 | `sage_cpp` | 本地 Sage 原版完整 API / 原版 native core |
 | `flash4` | 已安装的 FlashAttention-4，接受原始 BF16/FP16 |
 
-所有新组与 vc28/Sage core 使用同一组量化 Q/K/V 和 scales。
-TileLang 直接读取 Sage 的 V 字节布局，以独立的 shared staging 和消费者重排还原物理排列，
-无额外 Python 重量化。
+CUDA/vc28/Sage core 共用 Sage 物理布局，TileLang core 使用自然 token 顺序布局。
+两条预处理路线的量化数值和 scales 逐位核对，物理 V 存储顺序不同。
+TileLang 不再把 Sage 布局转换为自然布局，而是直接生成自然布局。
 INT8 QK 和 FP8 PV 均编译为 Hopper WGMMA；每个 128-key 块使用新的 FP32 PV 临时累加，
 再更新 FP32 历史输出。Python 不迭代 attention tiles，不生成 N×N 张量。
 
@@ -120,7 +137,7 @@ CUDA 生成器保留 Sage 源码 Apache-2.0 许可。
 
 ## 如何读结果
 
-- **full API**：从原始 Q/K/V 重新预处理，每次分配输出；新 CUDA 与 TileLang 共用预处理。
+- **full API**：从原始 Q/K/V 重新预处理，每次分配输出；分别包含 CUDA/Sage 和 TileLang 各自的布局生成、量化开销。
 - **fixed core**：复用量化输入，含输出分配/dispatch；FA4 此列为空。
 - **Sage/API、FA4/API**：相应基线完整 API 除以本行完整 API；大于 1 表示更快。
 - **CUPTI**：单独测固定输入 GPU kernel 时长，不与 API 时间混用。
@@ -150,4 +167,5 @@ SM90a 交叉编译。具体资源、测试数量与限制见
 [本地验证记录](results/paper_expcast_tilelang_local_validation.json)。
 上述为首版记录；V 缓冲区修复的验证另见
 [修复验证记录](results/tilelang_v_pipeline_fix_local_validation.json)。
+去掉 V 重排的本地验证见 [natural-V 验证记录](results/tilelang_natural_v_local_validation.json)。
 **H200 完整输出、Python JIT 调用和性能仍由远端脚本验证，不预设速度改善。**

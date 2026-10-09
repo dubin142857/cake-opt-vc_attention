@@ -70,3 +70,45 @@ def test_uniform_tile_regression_has_distinct_cross_boundary_values(keys):
     if keys>128:
         assert v[0,0,128,0]!=v[0,0,0,0]
         assert abs(v[0,0,128:,0].mean()-expected)>.5
+
+
+def test_prepared_layouts_cannot_be_silently_interchanged():
+    from types import SimpleNamespace
+    s=dict(q=torch.zeros(1,1,1,64,dtype=torch.int8),k=torch.zeros(1,1,1,64,dtype=torch.int8),
+           v=torch.zeros(1,1,64,128).to(torch.float8_e4m3fn),qs=torch.ones(1),ks=torch.ones(1),
+           vs=torch.ones(1),means=torch.empty(0),block_values=False,permutation=None)
+    with pytest.raises(ValueError,match="natural V"):tl.forward_prepared(s)
+    with pytest.raises(ValueError,match="Sage-permuted V"):
+        native.forward(SimpleNamespace(),{**s,"v_layout":tl.V_LAYOUT})
+
+
+def test_full_recomputes_backend_preprocessing_core_reuses_payload(monkeypatch):
+    from types import SimpleNamespace
+    calls=[]
+    sage,natural=object(),object()
+    def prep(label,result):
+        def inner(*args,**kwargs):calls.append(label);return result
+        return inner
+    monkeypatch.setattr(bench,"implementations",lambda ext:{"cuda_paper":lambda s:s,"tilelang_paper_s1":lambda s:s})
+    monkeypatch.setattr(tl,"prepare",prep("natural",natural))
+    core,full=bench.make_paper_calls(None,SimpleNamespace(prepare=prep("sage",sage)),(1,2,3),sage,natural)
+    assert core["cuda_paper"]() is sage and core["tilelang_paper_s1"]() is natural and calls==[]
+    for _ in range(2):
+        assert full["cuda_paper"]() is sage
+        assert full["tilelang_paper_s1"]() is natural
+    assert calls==["sage","natural","sage","natural"]
+
+
+def test_logical_payload_check_rejects_changed_value_byte():
+    from types import SimpleNamespace
+    order=torch.tensor([0,1,4,5,8,9,12,13,2,3,6,7,10,11,14,15])
+    ref=SimpleNamespace(value_permutation=lambda n,device:order.to(device))
+    natural_bytes=torch.arange(64,80,dtype=torch.uint8).reshape(1,1,1,16)
+    packed=torch.empty_like(natural_bytes);packed[...,order]=natural_bytes
+    base={k:torch.ones(1) for k in ("q","k","qs","ks","vs")}
+    sage={**base,"v":packed.view(torch.float8_e4m3fn)}
+    natural={**base,"v":natural_bytes.clone().view(torch.float8_e4m3fn)}
+    assert bench.check_logical_payloads(sage,natural,ref)["logical_v_bytes_exact"]
+    natural["v"].view(torch.uint8)[...,3]+=1
+    with pytest.raises(AssertionError,match="Natural V bytes"):
+        bench.check_logical_payloads(sage,natural,ref)

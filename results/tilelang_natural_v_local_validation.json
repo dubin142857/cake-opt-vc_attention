@@ -1,0 +1,186 @@
+{
+  "status": "local_checks_passed_h200_natural_v_pending",
+  "date": "2026-10-09",
+  "route": "INT8 QK + paper ExpCast + FP8 PV; natural-order channel-major V; smoothing/grouping OFF",
+  "source_sha256": "921fa21c03b1a705e66f7cd23b5278797ad2b4e778c3d23b290f5ea34f7c074d",
+  "tests": {
+    "passed": 193,
+    "hopper_codegen_cases": 4,
+    "native_cuda_helper_cases": 25
+  },
+  "cross_compile": [
+    {
+      "shape": [
+        1,
+        1,
+        1,
+        1,
+        64,
+        "float16"
+      ],
+      "stages": 1,
+      "compile_passed": true,
+      "registers": 240,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "ptxas_warnings": []
+    },
+    {
+      "shape": [
+        1,
+        1,
+        1,
+        1,
+        64,
+        "float16"
+      ],
+      "stages": 2,
+      "compile_passed": true,
+      "registers": 240,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "ptxas_warnings": []
+    },
+    {
+      "shape": [
+        1,
+        2,
+        65,
+        129,
+        64,
+        "bfloat16"
+      ],
+      "stages": 1,
+      "compile_passed": true,
+      "registers": 240,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "ptxas_warnings": []
+    },
+    {
+      "shape": [
+        1,
+        2,
+        65,
+        129,
+        64,
+        "bfloat16"
+      ],
+      "stages": 2,
+      "compile_passed": true,
+      "registers": 240,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "ptxas_warnings": []
+    },
+    {
+      "shape": [
+        1,
+        2,
+        193,
+        256,
+        128,
+        "float16"
+      ],
+      "stages": 1,
+      "compile_passed": true,
+      "registers": 240,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "ptxas_warnings": []
+    },
+    {
+      "shape": [
+        1,
+        2,
+        193,
+        256,
+        128,
+        "float16"
+      ],
+      "stages": 2,
+      "compile_passed": true,
+      "registers": 240,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "ptxas_warnings": []
+    },
+    {
+      "shape": [
+        1,
+        28,
+        37741,
+        37741,
+        128,
+        "bfloat16"
+      ],
+      "stages": 1,
+      "compile_passed": true,
+      "registers": 240,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "ptxas_warnings": []
+    },
+    {
+      "shape": [
+        1,
+        28,
+        37741,
+        37741,
+        128,
+        "bfloat16"
+      ],
+      "stages": 2,
+      "compile_passed": true,
+      "registers": 240,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "ptxas_warnings": []
+    }
+  ],
+  "generated_code_checks": [
+    "No v_packed buffer or V unpack loop",
+    "V loads use TMA directly into PV shared input",
+    "V producer buffer released after PV WGMMA completion",
+    "No thread barriers inside per-element loops"
+  ],
+  "timing_contract": "Full API includes fresh backend-specific QK quantization and V padding/transpose/quantization; prepared core performs no layout conversion",
+  "remote_required_checks": [
+    "Exact Q/K and scales across independent preprocessing",
+    "Exact FP8 V bytes after accounting for storage order, outside timing",
+    "24 FP16/BF16 D64/D128 attention cases and all-row main-shape comparisons",
+    "Default and nondefault prepared-core CUDA streams"
+  ],
+  "previous_h200_kernel_ms_user_reported": {
+    "tilelang_paper_s1_with_unpack": 118.9744,
+    "tilelang_paper_s2_with_unpack": 118.6298,
+    "vc28_folded": 23.6273,
+    "sage_cpp": 24.4361
+  },
+  "h200_natural_v_executed": false,
+  "h200_natural_v_performance_measured": false
+}

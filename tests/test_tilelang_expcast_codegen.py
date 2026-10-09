@@ -1,4 +1,4 @@
-"""Optional TileLang lowering checks for the V producer/consumer race.
+"""Optional TileLang lowering checks for direct natural-V DMA and lifetime.
 
 These inspect generated Hopper code, not GPU runtime correctness. TileLang is
 optional for the existing test suite; remote attention tests remain mandatory.
@@ -26,7 +26,7 @@ def branch_body(source,start):
 
 @pytest.mark.parametrize("dim",[64,128])
 @pytest.mark.parametrize("stages",[1,2])
-def test_v_is_copied_by_producer_and_unpacked_only_by_consumer(dim,stages):
+def test_natural_v_has_no_unpack_and_releases_only_after_pv(dim,stages):
     target=Target({"kind":"cuda","arch":"sm_90a"})
     with target,tilelang.transform.PassContext(config={tilelang.PassConfigKey.TL_ENABLE_FAST_MATH:True}):
         source=tilelang.lower(make_primfunc(1,2,65,129,dim,"float16",stages),target=target).kernel_source
@@ -35,12 +35,15 @@ def test_v_is_copied_by_producer_and_unpacked_only_by_consumer(dim,stages):
     producer,end=branch_body(source,match.start())
     consumer,_=branch_body(source,source.index("else",end))
     assert "tma_load(V_desc" in producer
-    assert "fp8_e4_t*)v)" not in producer,"Producer overwrites the live PV operand"
-    assert "fp8_e4_t*)v_packed)" in producer
-    assert "fp8_e4_t*)v)" in consumer and "fp8_e4_t*)v_packed)" in consumer
-    assert consumer.index("fp8_e4_t*)v)") < consumer.index("kFloat8_e4m3, tl::DataType::kFloat8_e4m3")
-    # Packed DMA staging and consumer PV input must have disjoint storage.
-    offsets={name:int(re.search(r"void\* "+name+r" = .*buf_dyn_shmem \+ (\d+)",source)[1])
-             for name in ("v","v_packed")}
-    assert abs(offsets["v"]-offsets["v_packed"])>=dim*128
-    assert "warpgroup_wait<0>()" in consumer
+    assert "fp8_e4_t*)v)" in producer
+    assert "v_packed" not in source
+    # No scalar/shared reordering stores into V on the consumer side.
+    assert "= *(fp8_e4_2_t*)(((fp8_e4_t*)v)" not in consumer
+    pv=consumer.index("kFloat8_e4m3, tl::DataType::kFloat8_e4m3")
+    wait=consumer.index("warpgroup_wait<0>()",pv)
+    release=list(re.finditer(r"mbarrier\[.+?\]\.arrive\(\);",consumer))
+    assert len(release)==2 and release[0].start()<pv and release[1].start()>wait
+    # The old unpack loop had 32/64 thread barriers. None may be loop-local.
+    for loop in re.finditer(r"for \(int i_\d+ = 0;",consumer):
+        body,_=branch_body(consumer,loop.start())
+        assert "sync_thread_partial" not in body

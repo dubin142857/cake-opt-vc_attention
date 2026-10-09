@@ -1,6 +1,6 @@
 """TileLang 0.1.15 fused INT8 QK / paper ExpCast / FP8 PV on Hopper.
 
-Consumes the existing Sage quantized payload, including its V byte permutation.
+Consumes naturally ordered, channel-major FP8 V without Sage's byte permutation.
 No Python tile loop, no NxN tensor, no dequantized QK/PV fallback.
 Developed using Tile-AI's MIT-licensed attention/GEMM examples; see
 experiments/expcast/TILELANG_LICENSE and SAGE_EXPCAST_TILELANG.md.
@@ -9,6 +9,7 @@ from functools import lru_cache
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+V_LAYOUT = "channel_major_natural"
 
 
 def make_primfunc(batch, heads, queries, keys, dim, output_dtype="bfloat16", stages=1):
@@ -35,7 +36,6 @@ def make_primfunc(batch, heads, queries, keys, dim, output_dtype="bfloat16", sta
         with T.Kernel(T.ceildiv(queries,bm),heads,batch,threads=128,prelude=prelude) as (bx,h,b):
             q=T.alloc_shared((bm,dim),T.int8)
             k=T.alloc_shared((bn,dim),T.int8)
-            v_packed=T.alloc_shared((dim,bn),T.float8_e4m3fn)
             v=T.alloc_shared((dim,bn),T.float8_e4m3fn)
             dots=T.alloc_fragment((bm,bn),T.int32)
             logits=T.alloc_fragment((bm,bn),T.float32)
@@ -54,14 +54,8 @@ def make_primfunc(batch, heads, queries, keys, dim, output_dtype="bfloat16", sta
             T.clear(denom)
             for tile in T.Pipelined(blocks,num_stages=stages):
                 T.copy(K[b,h,tile*bn:(tile+1)*bn,:],k)
-                T.copy(V[b,h,:,tile*bn:(tile+1)*bn],v_packed)
+                T.copy(V[b,h,:,tile*bn:(tile+1)*bn],v)
                 T.gemm(q,k,dots,transpose_B=True,clear_accum=True,policy=T.GemmWarpPolicy.FullRow)
-                # Keep global copies visible to the pipeline dependency analysis.
-                # The consumer owns the unpacked V until PV has finished; a
-                # producer must never overwrite it while QK/probability run.
-                for d,j in T.Parallel(dim,bn):
-                    idx=(j//16)*16+((j%16)//8)*2+((j%16)//2%4)*4+j%2
-                    v[d,j]=v_packed[d,idx]
                 for i,j in T.Parallel(bm,bn):
                     row=bx*bm+i
                     dequant=T.call_extern("float32","vc_paper_mul",QS[b,h,(row//16)*8+row%8],KS[b,h,tile*4+(j%8)//2])
@@ -110,6 +104,8 @@ def forward_prepared(state,stages=1):
     import torch
     from profile_int8_h200 import require_int8_state
     require_int8_state(state)
+    if state.get("v_layout")!=V_LAYOUT:
+        raise ValueError("TileLang requires natural V from tilelang_expcast.prepare; Sage-permuted V is incompatible")
     q,k=state["q"],state["k"]
     if not q.is_cuda or torch.cuda.get_device_capability(q.device)!=(9,0):
         raise ValueError("Hopper required; no CPU/FP16-matmul fallback")
@@ -122,6 +118,55 @@ def forward_prepared(state,stages=1):
     with torch.cuda.device(q.device):
         fn=compile_kernel(b,h,m,k.shape[2],d,dtype,stages)
         return fn(*(state[n] for n in ("q","k","v","qs","ks","vs")),state["scale"])
+
+
+def prepare_values(v):
+    """Quantize directly in token order; no Sage permutation or inverse gather.
+
+    The existing channel quantizer is position-independent. Feed it a padded
+    [B,H,D,N] tensor directly, bypassing transpose_pad_permute_cuda. This retains
+    its exact scale/FP8 rounding contract. The upstream helper uses stream 0.
+    """
+    import torch
+    from sageattention_local import _fused
+    if v.ndim!=4 or not v.is_cuda or v.dtype not in (torch.float16,torch.bfloat16):
+        raise ValueError("Expected CUDA FP16/BF16 V in HND layout")
+    with torch.no_grad(),torch.cuda.device(v.device):
+        if torch.cuda.current_stream(v.device)!=torch.cuda.default_stream(v.device):
+            raise ValueError("V preprocessing requires the default CUDA stream")
+        b,h,n,d=v.shape
+        if min(b,h,n,d)<1 or d not in (64,128):
+            raise ValueError("Expected nonempty D64/128 V")
+        pad=(-n)%128
+        if pad:
+            v=torch.cat((v,torch.zeros(b,h,pad,d,device=v.device,dtype=v.dtype)),dim=2)
+        # Ordinary matrix transpose only; token j remains token j.
+        transposed=v.transpose(2,3).contiguous()
+        v8=torch.empty(transposed.shape,device=v.device,dtype=torch.float8_e4m3fn)
+        scale=torch.empty((b,h,d),device=v.device,dtype=torch.float32)
+        _fused.scale_fuse_quant_cuda(transposed,v8,scale,n+pad,448.0,1)
+        return v8,scale
+
+
+def prepare(q,k,v):
+    """ExpCast only, INT8 QK and natural FP8 V; all preprocessing is fresh."""
+    import torch
+    from sageattention_local import vc
+    from sageattention_local.triton.quant_per_thread import per_thread_int8
+    vc.validate_inputs(q,k,v,"HND",False,False,True,False,8,2)
+    if not q.is_cuda or torch.cuda.get_device_capability(q.device)!=(9,0):
+        raise ValueError("Hopper required")
+    with torch.no_grad(),torch.cuda.device(q.device):
+        if torch.cuda.current_stream(q.device)!=torch.cuda.default_stream(q.device):
+            raise ValueError("Preprocessing requires the default CUDA stream")
+        q,k,v=(x.contiguous() for x in (q,k,v))
+        km=k.mean(dim=2,keepdim=True)
+        q8,qs,k8,ks=per_thread_int8(q,k,km,BLKQ=64,WARPQ=16,BLKK=128,WARPK=128,tensor_layout="HND")
+        v8,vs=prepare_values(v)
+        return {"q":q8,"k":k8,"v":v8,"qs":qs,"ks":ks,"vs":vs,
+                "means":torch.empty(0,device=q.device,dtype=torch.float16),
+                "expcast":True,"block_values":False,"permutation":None,"v_layout":V_LAYOUT,
+                "output_type":0 if q.dtype==torch.float16 else 1,"scale":q.shape[-1]**-.5}
 
 
 def make_encoder(n):

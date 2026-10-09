@@ -1,4 +1,4 @@
-"""Same-payload paper ExpCast: native CUDA schedules and TileLang on H200."""
+"""Paper ExpCast: identical logical payloads, natural V for TileLang on H200."""
 import argparse
 import json
 from pathlib import Path
@@ -29,8 +29,8 @@ def parse_args(argv=None):
     p.add_argument("--validate-only",action="store_true")
     p.add_argument("--kernel-warmup-seconds",type=float,default=2.)
     p.add_argument("--kernel-seconds",type=float,default=1.)
-    p.add_argument("--trace-dir",type=Path,default=Path("results/paper_expcast_traces"))
-    p.add_argument("--output",type=Path,default=Path("results/h200_paper_expcast_tilelang.json"))
+    p.add_argument("--trace-dir",type=Path,default=Path("results/paper_expcast_natural_v_traces"))
+    p.add_argument("--output",type=Path,default=Path("results/h200_paper_expcast_tilelang_natural_v.json"))
     a=p.parse_args(argv)
     if any(getattr(a,n)<1 for n in ("batch","heads","queries","tokens","trials","repeats","kernel_trials")) or a.dim not in (64,128):
         p.error("Positive dimensions/counts and D64/128 required")
@@ -46,6 +46,32 @@ def implementations(ext):
         "tilelang_paper_s1":lambda s:tl_backend.forward_prepared(s,1),
         "tilelang_paper_s2":lambda s:tl_backend.forward_prepared(s,2),
     }
+
+
+def check_logical_payloads(sage_state,natural_state,reference):
+    """Untimed check only: equal quantization, different V storage order."""
+    for key in ("q","k","qs","ks","vs"):
+        torch.testing.assert_close(sage_state[key],natural_state[key],rtol=0,atol=0,
+                                   msg=f"Independent preprocessing differs: {key}")
+    v=sage_state["v"]
+    expected=v.view(torch.uint8).index_select(-1,reference.value_permutation(v.shape[-1],v.device))
+    torch.testing.assert_close(natural_state["v"].view(torch.uint8),expected,rtol=0,atol=0,
+                               msg="Natural V bytes differ from Sage after accounting for storage order")
+    return {"qk_and_scales_exact":True,"logical_v_bytes_exact":True,
+            "tilelang_v_layout":tl_backend.V_LAYOUT,"check_outside_timing":True}
+
+
+def make_paper_calls(ext,vc,qkv,sage_state,natural_state):
+    """Core has no layout conversion; full calls their own fresh preprocessing."""
+    core,full={},{}
+    for name,fn in implementations(ext).items():
+        if name.startswith("tilelang"):
+            core[name]=lambda fn=fn:fn(natural_state)
+            full[name]=lambda fn=fn:fn(tl_backend.prepare(*qkv))
+        else:
+            core[name]=lambda fn=fn:fn(sage_state)
+            full[name]=lambda fn=fn:fn(vc.prepare(*qkv,expcast=True,v_smooth=False))
+    return core,full
 
 
 def encoding_inputs(device):
@@ -103,8 +129,10 @@ def validate(ext,vc,reference,device,save_progress,source_dir):
                     v=torch.randn(k.shape,device=device,dtype=dtype,generator=generator)
                     if n==1:q.zero_();k.zero_()
                 state=vc.prepare(q,k,v,expcast=True,v_smooth=False)
+                natural=tl_backend.prepare(q,k,v)
                 oracle=reference.reference(state,chunk=32).to(dtype)
                 row={"pattern":pattern,"dtype":str(dtype),"dim":d,"queries":m,"keys":n,"variants":{}}
+                row["payload_check"]=check_logical_payloads(state,natural,reference)
                 result["cases"].append(row)
                 # Publish the active case before dispatch so a failure is actionable.
                 save_progress(result)
@@ -117,10 +145,11 @@ def validate(ext,vc,reference,device,save_progress,source_dir):
                     print("Validate",name,pattern,str(dtype),d,m,n,flush=True)
                     result["active_variant"]=name
                     row["variants"][name]={"status":"running"}
+                    payload=natural if name.startswith("tilelang") else state
                     if name.startswith("tilelang"):
-                        row["variants"][name]["generated_source"]=save_tilelang_source(state,int(name[-1]),source_dir)
+                        row["variants"][name]["generated_source"]=save_tilelang_source(payload,int(name[-1]),source_dir)
                     save_progress(result)
-                    out=call(state)
+                    out=call(payload)
                     error=row["variants"][name]
                     error["decoded_reference"]=metrics(out,oracle)
                     save_progress(result)
@@ -132,7 +161,7 @@ def validate(ext,vc,reference,device,save_progress,source_dir):
                         error["exact_vs_cuda_paper"]=torch.equal(out,baseline)
                     stream=torch.cuda.Stream(device=device)
                     stream.wait_stream(torch.cuda.current_stream(device))
-                    with torch.cuda.stream(stream):side=call(state)
+                    with torch.cuda.stream(stream):side=call(payload)
                     stream.synchronize()
                     torch.testing.assert_close(side,out,rtol=0,atol=0)
                     error["status"]="passed"
@@ -146,7 +175,9 @@ def main():
     a=parse_args()
     a.output.parent.mkdir(parents=True,exist_ok=True)
     a.trace_dir.mkdir(parents=True,exist_ok=True)
-    report={"status":"starting","contract":"INT8 QK; Eq7 direct FP32 mul/sub/FMA/RNE; FP8 PV; decoded-P denominator; V smooth OFF"}
+    report={"status":"starting","contract":"INT8 QK; Eq7 direct FP32 mul/sub/FMA/RNE; FP8 PV; decoded-P denominator; V smooth OFF",
+            "tilelang_v_layout":tl_backend.V_LAYOUT,
+            "tilelang_preprocessing":"Direct natural-order channel quantization; no Sage permutation or inverse permutation. Padding/transpose/quantization included in full API."}
     def save():a.output.write_text(json.dumps(report,indent=2)+"\n",encoding="utf-8")
     def update(key,value):report[key]=value;save()
     try:
@@ -165,9 +196,10 @@ def main():
         qkv,report["inputs"]=load_inputs(a,device)
         report["args"]={k:str(v) if isinstance(v,Path) else v for k,v in vars(a).items()}
         state=vc.prepare(*qkv,expcast=True,v_smooth=False)
+        natural=tl_backend.prepare(*qkv)
+        report["payload_check"]=check_logical_payloads(state,natural,vc_reference)
         calls=implementations(ext)
-        core={name:lambda fn=fn:fn(state) for name,fn in calls.items()}
-        full={name:lambda fn=fn:fn(vc.prepare(*qkv,expcast=True,v_smooth=False)) for name,fn in calls.items()}
+        core,full=make_paper_calls(ext,vc,qkv,state,natural)
         core["vc28_folded"]=lambda:vc.forward_prepared(state,kernel_mode="vc28_stream_i2f")
         full["vc28_folded"]=lambda:vc.sageattn_vc(*qkv,tensor_layout="HND",expcast=True,v_smooth=False,kernel_mode="vc28_stream_i2f")
         sage_native,_=load_sage_core_ops()
@@ -215,7 +247,7 @@ def main():
                 samples[scope][name].append(ms)
             update("api",{scope:{n:stats(v) for n,v in group.items()} for scope,group in samples.items()})
             print(f"Trial {trial+1}/{a.trials} complete",flush=True)
-        print("Uninstrumented synchronized API ms; full includes fresh shared preprocessing:")
+        print("Uninstrumented synchronized API ms; full includes each backend's fresh preprocessing:")
         print(f"{'variant':<26} {'full API':>11} {'fixed core':>11} {'Sage/API':>10} {'FA4/API':>10} {'FP32 RMSE %':>13}")
         for name in full:
             ms=report["api"]["full"][name]["median_ms"]
@@ -224,6 +256,7 @@ def main():
             fa=f"{report['api']['full']['flash4']['median_ms']/ms:.3f}x" if "flash4" in full else "--"
             print(f"{name:<26} {ms:>11.4f} {c:>11} {sage:>9.3f}x {fa:>10} {100*report['accuracy'][name]['dense_fp32']['relative_rmse']:>13.6f}")
         print("Sage/API and FA4/API use FULL API times; >1 means faster. Fixed core excludes preprocessing, includes allocation/dispatch.")
+        print("TileLang uses natural-order FP8 V with no per-tile reorder. Padding/transpose/quantization are included in FULL API. Logical Q/K/V bytes and scales checked exactly.")
         print("vc28_folded uses folded affine rounding; paper variants use direct Eq7 evaluation. Sampled FP32 errors are not model-quality gates.")
         print("Paper implementation agreement, ALL main-shape output rows:")
         for name in calls:
