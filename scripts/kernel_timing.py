@@ -74,7 +74,7 @@ def run_window(call, seconds, device, *, annotate=False):
 
 
 @torch.no_grad()
-def profile_kernels(calls, args, device, on_result=None):
+def profile_kernels(calls, args, device, on_result=None, kernel_markers=None):
     if not calls:
         raise ValueError("No kernel backends selected")
     directory = Path(args.trace_dir or args.output.with_suffix("")) / "kernel_windows"
@@ -101,6 +101,8 @@ def profile_kernels(calls, args, device, on_result=None):
             markers = (("qk_int8_sv_f8_attn_kernel",) if name == "sage_cpp" else
                        ("flash", "fmha", "attention") if name == "flash4" else
                        ("sage_vc_attention_kernel",))
+            if kernel_markers and name in kernel_markers:
+                markers = kernel_markers[name]
             row = summarize_trace(json.loads(path.read_text(encoding="utf-8"))["traceEvents"], count, markers)
             if name != "flash4" and any(c["kernel_launches"] != 1 for c in row["calls"]):
                 raise RuntimeError(f"{name} prepared API launched unexpected auxiliary kernels")

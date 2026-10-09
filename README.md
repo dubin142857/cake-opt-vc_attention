@@ -1,6 +1,8 @@
 # MiniMax-H3 / A5 VC-Attention 实验
 
 **当前 H200 主路线（2026-10-09）：`sageattn_vc`，INT8 QK + FP8 PV。**
+新增论文直接公式 CUDA/TileLang 对照：`bash scripts/run_expcast_tilelang_h200.sh`，
+自动准备 TileLang、验证后对比 Sage/FA4；见 [运行说明](SAGE_EXPCAST_TILELANG.md)。
 当前先关闭 V 聚类/平滑，集中诊断 ExpCast 单开；vc27 FP8 QK 归为历史实验。
 新入口 `bash scripts/diagnose_expcast_h200.sh` 对比 Sage、同内核 control/ExpCast 和 FA4，
 拆分预处理，并通过独立探针观察 QK/概率/PV 区段，见 [ExpCast 专项诊断](SAGE_EXPCAST_FOCUS.md)。

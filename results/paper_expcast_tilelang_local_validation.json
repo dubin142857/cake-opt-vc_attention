@@ -1,0 +1,416 @@
+{
+  "status": "local_checks_passed_hopper_execution_pending",
+  "local_gpu": "NVIDIA GeForce RTX 3060 Laptop GPU",
+  "tests": {
+    "total_passed": 183,
+    "native_cuda_helper_cases": 25,
+    "native_encoding_values": 65899,
+    "probability_steps": [
+      1,
+      7,
+      296
+    ],
+    "patterns": [
+      "random",
+      "stable",
+      "large",
+      "tiny"
+    ],
+    "streams": [
+      "default",
+      "non-default"
+    ],
+    "files": [
+      "tests/test_paper_expcast.py",
+      "tests/test_paper_expcast_cuda.py",
+      "tests/test_expcast_focus.py",
+      "tests/test_kernel_timing.py",
+      "tests/test_profile_int8_h200.py",
+      "tests/test_profile_sage_vc.py"
+    ]
+  },
+  "native": {
+    "cuda_toolkit": "12.4",
+    "source_sha256": "8ec673aa3612bef5c8edbc15f22c1901d2f0030bb2912f173d0ede45ce884a68",
+    "linked_imported": true,
+    "instances": [
+      {
+        "dim": 128,
+        "expcast": false,
+        "interleaved": false,
+        "dtype": "bfloat16",
+        "stack_spill": [
+          0,
+          0,
+          0
+        ],
+        "registers": 168
+      },
+      {
+        "dim": 128,
+        "expcast": false,
+        "interleaved": true,
+        "dtype": "bfloat16",
+        "stack_spill": [
+          0,
+          0,
+          0
+        ],
+        "registers": 168
+      },
+      {
+        "dim": 128,
+        "expcast": true,
+        "interleaved": false,
+        "dtype": "bfloat16",
+        "stack_spill": [
+          0,
+          0,
+          0
+        ],
+        "registers": 168
+      },
+      {
+        "dim": 128,
+        "expcast": true,
+        "interleaved": true,
+        "dtype": "bfloat16",
+        "stack_spill": [
+          0,
+          0,
+          0
+        ],
+        "registers": 168
+      },
+      {
+        "dim": 128,
+        "expcast": false,
+        "interleaved": false,
+        "dtype": "float16",
+        "stack_spill": [
+          0,
+          0,
+          0
+        ],
+        "registers": 168
+      },
+      {
+        "dim": 128,
+        "expcast": false,
+        "interleaved": true,
+        "dtype": "float16",
+        "stack_spill": [
+          0,
+          0,
+          0
+        ],
+        "registers": 168
+      },
+      {
+        "dim": 128,
+        "expcast": true,
+        "interleaved": false,
+        "dtype": "float16",
+        "stack_spill": [
+          0,
+          0,
+          0
+        ],
+        "registers": 168
+      },
+      {
+        "dim": 128,
+        "expcast": true,
+        "interleaved": true,
+        "dtype": "float16",
+        "stack_spill": [
+          0,
+          0,
+          0
+        ],
+        "registers": 168
+      },
+      {
+        "dim": 64,
+        "expcast": false,
+        "interleaved": false,
+        "dtype": "bfloat16",
+        "stack_spill": [
+          0,
+          0,
+          0
+        ],
+        "registers": 128
+      },
+      {
+        "dim": 64,
+        "expcast": false,
+        "interleaved": true,
+        "dtype": "bfloat16",
+        "stack_spill": [
+          0,
+          0,
+          0
+        ],
+        "registers": 128
+      },
+      {
+        "dim": 64,
+        "expcast": true,
+        "interleaved": false,
+        "dtype": "bfloat16",
+        "stack_spill": [
+          0,
+          0,
+          0
+        ],
+        "registers": 168
+      },
+      {
+        "dim": 64,
+        "expcast": true,
+        "interleaved": true,
+        "dtype": "bfloat16",
+        "stack_spill": [
+          0,
+          0,
+          0
+        ],
+        "registers": 168
+      },
+      {
+        "dim": 64,
+        "expcast": false,
+        "interleaved": false,
+        "dtype": "float16",
+        "stack_spill": [
+          0,
+          0,
+          0
+        ],
+        "registers": 128
+      },
+      {
+        "dim": 64,
+        "expcast": false,
+        "interleaved": true,
+        "dtype": "float16",
+        "stack_spill": [
+          0,
+          0,
+          0
+        ],
+        "registers": 128
+      },
+      {
+        "dim": 64,
+        "expcast": true,
+        "interleaved": false,
+        "dtype": "float16",
+        "stack_spill": [
+          0,
+          0,
+          0
+        ],
+        "registers": 168
+      },
+      {
+        "dim": 64,
+        "expcast": true,
+        "interleaved": true,
+        "dtype": "float16",
+        "stack_spill": [
+          0,
+          0,
+          0
+        ],
+        "registers": 168
+      }
+    ],
+    "ptxas_warnings": []
+  },
+  "tilelang": {
+    "version": "0.1.15",
+    "cuda_toolkit": "12.4",
+    "cross_compile": [
+      {
+        "shape": [
+          1,
+          1,
+          1,
+          1,
+          64,
+          "float16"
+        ],
+        "stages": 1,
+        "compile_passed": true,
+        "registers": 90,
+        "stack_spill": [
+          0,
+          0,
+          0
+        ],
+        "ptxas_warnings": []
+      },
+      {
+        "shape": [
+          1,
+          1,
+          1,
+          1,
+          64,
+          "float16"
+        ],
+        "stages": 2,
+        "compile_passed": true,
+        "registers": 90,
+        "stack_spill": [
+          0,
+          0,
+          0
+        ],
+        "ptxas_warnings": []
+      },
+      {
+        "shape": [
+          1,
+          2,
+          65,
+          129,
+          64,
+          "bfloat16"
+        ],
+        "stages": 1,
+        "compile_passed": true,
+        "registers": 145,
+        "stack_spill": [
+          0,
+          0,
+          0
+        ],
+        "ptxas_warnings": []
+      },
+      {
+        "shape": [
+          1,
+          2,
+          65,
+          129,
+          64,
+          "bfloat16"
+        ],
+        "stages": 2,
+        "compile_passed": true,
+        "registers": 135,
+        "stack_spill": [
+          0,
+          0,
+          0
+        ],
+        "ptxas_warnings": []
+      },
+      {
+        "shape": [
+          1,
+          2,
+          193,
+          256,
+          128,
+          "float16"
+        ],
+        "stages": 1,
+        "compile_passed": true,
+        "registers": 235,
+        "stack_spill": [
+          0,
+          0,
+          0
+        ],
+        "ptxas_warnings": []
+      },
+      {
+        "shape": [
+          1,
+          2,
+          193,
+          256,
+          128,
+          "float16"
+        ],
+        "stages": 2,
+        "compile_passed": true,
+        "registers": 241,
+        "stack_spill": [
+          0,
+          0,
+          0
+        ],
+        "ptxas_warnings": []
+      },
+      {
+        "shape": [
+          1,
+          28,
+          37741,
+          37741,
+          128,
+          "bfloat16"
+        ],
+        "stages": 1,
+        "compile_passed": true,
+        "registers": 234,
+        "stack_spill": [
+          0,
+          0,
+          0
+        ],
+        "ptxas_warnings": []
+      },
+      {
+        "shape": [
+          1,
+          28,
+          37741,
+          37741,
+          128,
+          "bfloat16"
+        ],
+        "stages": 2,
+        "compile_passed": true,
+        "registers": 239,
+        "stack_spill": [
+          0,
+          0,
+          0
+        ],
+        "ptxas_warnings": []
+      }
+    ],
+    "encoder_gpu": {
+      "passed": true,
+      "values": 65899,
+      "exact": true,
+      "backend": "TileLang 0.1.15 generated CUDA, CUDA 12.4 SM86 cubin, CUDA-driver launch",
+      "python_jit_adapter_executed": false
+    },
+    "generated_code_checks": [
+      "INT8 x INT8 -> INT32 WGMMA",
+      "E4M3 x E4M3 -> FP32 WGMMA",
+      "byte reinterpretation, not numeric FP8 cast",
+      "decoded-P reduction",
+      "separate PV per KV tile",
+      "masked stores and last-key mask"
+    ],
+    "python_jit_adapter_local": "Not executed successfully: Windows nvcc diagnostic decoding failed (UTF-8 vs local codepage). Generated CUDA was compiled with relative paths and encoder cubin executed through CUDA driver."
+  },
+  "sources": {
+    "paper": "https://arxiv.org/html/2609.15810v1#S3.SS3",
+    "tilelang": "https://tilelang.com/",
+    "tilelang_ref": "v0.1.15",
+    "attention_example": "https://github.com/tile-ai/tilelang/blob/v0.1.15/examples/flash_attention/example_mha_fwd_bhsd.py",
+    "fp8_2xacc_example": "https://github.com/tile-ai/tilelang/blob/v0.1.15/examples/gemm_fp8/example_tilelang_gemm_fp8_2xAcc.py"
+  },
+  "full_hopper_attention_executed": false,
+  "h200_performance_measured": false,
+  "scope": "Paper formula reconstruction on the Sage INT8-QK host contract, no V smoothing. Exact native scheduling parity on SM86 helper tests; full attention and TileLang JIT adapter require remote H200 validation."
+}
