@@ -2,6 +2,7 @@
 
 Four vc15 variants isolate ExpCast and V smoothing. vc22/vc28/vc29/vc30 are
 separate ExpCast-only performance candidates. vc31 has four matched feature arms.
+vc32 compares full D128 PV and batched packed means on vc31's smoothed payloads.
 FA4 has a full-API row and optional CUPTI kernel timing, not a prepared-core row.
 Full APIs preprocess fresh original inputs;
 fixed-core APIs reuse quantized payloads and still allocate their outputs.
@@ -33,10 +34,15 @@ VARIANTS = (
     ("vc31_expcast", True, False, "vc31_unified"),
     ("vc31_smooth", False, True, "vc31_unified"),
     ("vc31_both", True, True, "vc31_unified"),
+    ("vc32_full_smooth", False, True, "vc32_full_pv"),
+    ("vc32_full_both", True, True, "vc32_full_pv"),
+    ("vc32_packed_smooth", False, True, "vc32_packed_mean"),
+    ("vc32_packed_both", True, True, "vc32_packed_mean"),
 )
 
-KERNEL_BACKENDS = ("sage_cpp", "int8_expcast_vc28", "vc31_control", "vc31_expcast",
+DEFAULT_KERNEL_BACKENDS = ("sage_cpp", "int8_expcast_vc28", "vc31_control", "vc31_expcast",
                    "vc31_smooth", "vc31_both", "flash4")
+KERNEL_BACKENDS = (*DEFAULT_KERNEL_BACKENDS, *(name for name, _, _, _ in VARIANTS if name.startswith("vc32_")))
 
 
 def load_inputs(args, device):
@@ -142,7 +148,7 @@ def parse_args(argv=None):
     p.add_argument("--device", default="cuda:0")
     p.add_argument("--trace-dir", type=Path)
     p.add_argument("--paper-kernels", action="store_true", help="Additional CUPTI windows; no ncu/nvdisasm needed")
-    p.add_argument("--kernel-backends", nargs="+", choices=KERNEL_BACKENDS, default=list(KERNEL_BACKENDS))
+    p.add_argument("--kernel-backends", nargs="+", choices=KERNEL_BACKENDS, default=list(DEFAULT_KERNEL_BACKENDS))
     p.add_argument("--kernel-warmup-seconds", type=float, default=20.)
     p.add_argument("--kernel-seconds", type=float, default=10.)
     p.add_argument("--qkv-file", type=Path, help="Optional local torch.save dict(q=q,k=k,v=v), captured after RoPE")
@@ -166,8 +172,8 @@ def parse_args(argv=None):
 def main():
     args = parse_args()
     from sageattention_local import vc, vc_reference, sageattn
-    if vc._extension().sage_vc_kernel_version < 29:
-        raise RuntimeError("vc31 requires rebuilding: bash scripts/validate_int8_h200.sh (without --skip-build)")
+    if vc._extension().sage_vc_kernel_version < 30:
+        raise RuntimeError("vc32 requires rebuilding: bash scripts/validate_int8_h200.sh (without --skip-build)")
     device = torch.device(args.device)
     torch.cuda.set_device(device)
     if torch.cuda.get_device_capability(device) != (9, 0):
@@ -232,6 +238,13 @@ def main():
             entry["exact_previous_all_rows"] = torch.equal(out, baselines[baseline])
             if name == "vc31_expcast" and not entry["exact_previous_all_rows"]:
                 raise AssertionError("Unsmoothed vc31 must use the identical vc28 native kernel")
+            if name in ("vc31_smooth", "vc31_both"):
+                baselines[name] = out
+        if name.startswith("vc32_"):
+            baseline = "vc31_both" if name.endswith("_both") else "vc31_smooth"
+            entry["vs_previous_all_rows"] = metrics(out, baselines[baseline], limit=.001)
+            entry["previous_variant"] = baseline
+            entry["exact_previous_all_rows"] = torch.equal(out, baselines[baseline])
         if name == "sage_cpp":
             entry["control_vs_sage_all_rows"] = metrics(baselines.pop("int8_control"), out, limit=.001)
         accuracy[name] = entry
@@ -266,12 +279,20 @@ def main():
               f"{sage_ms/latency:>9.3f}x {fa4_text:>10} {100*accuracy[name]['vs_dense_fp32']['relative_rmse']:>14.6f}")
     print("Sage/API and FA4/API >1 mean faster than that baseline's FULL API.")
     print("Four vc15 and four vc31 arms isolate feature switches separately; vc22/vc28/vc29/vc30 are ExpCast-only. FA4 has no prepared-core row.")
+    print("vc32_full / vc32_packed use N128 PV for D128 V smoothing; packed batches FP16 mean loads before decoding. Same prepared payloads as vc31.")
     print("Full API includes fresh preprocessing/grouping; fixed core includes allocation/dispatch.")
     print("1% decoded-reference / 0.1% same-algorithm gates check implementation, NOT model quality.")
     for before, after in (("vc22", "vc28"), ("vc28", "vc29"), ("vc28", "vc30")):
         old, new = rows["int8_expcast_"+before], rows["int8_expcast_"+after]
         error = accuracy["int8_expcast_"+after][f"vs_{before}_all_rows"]["relative_rmse"]
         print(f"{before}/{after}: full API {old['full_api']['median_ms']/new['full_api']['median_ms']:.4f}x; "
+              f"fixed core {old['core']['median_ms']/new['core']['median_ms']:.4f}x; "
+              f"ALL-row same-payload RMSE {100*error:.6f}%")
+    for name in (name for name in rows if name.startswith("vc32_")):
+        baseline = accuracy[name]["previous_variant"]
+        old, new = rows[baseline], rows[name]
+        error = accuracy[name]["vs_previous_all_rows"]["relative_rmse"]
+        print(f"{baseline}/{name}: full API {old['full_api']['median_ms']/new['full_api']['median_ms']:.4f}x; "
               f"fixed core {old['core']['median_ms']/new['core']['median_ms']:.4f}x; "
               f"ALL-row same-payload RMSE {100*error:.6f}%")
     report = {
@@ -289,7 +310,7 @@ def main():
                      for name, cast, smooth, mode in VARIANTS},
         "external_backends": {"flash4": flash4.info} if flash4 else {},
         "compiled_resources_d128": {key: value for key, value in vc.kernel_resources(0 if dtype==torch.float16 else 1).items()
-                                   if key in ("expcast_sage_layout_27", "expcast_sage_layout_35", "expcast_sage_layout_36", "expcast_sage_layout_37", "vc31_smooth", "vc31_both")},
+                                   if key in ("expcast_sage_layout_27", "expcast_sage_layout_35", "expcast_sage_layout_36", "expcast_sage_layout_37", "vc31_smooth", "vc31_both") or key.startswith("vc32_")},
         "rows": rows, "accuracy": accuracy, "trial_order": orders,
         "scope": "See inputs for random/captured origin; native contiguous layouts (Sage/VC HND, FA4 NHD); layout copies and first-use JIT excluded. "
                  "VC uses INT8 QK/FP8 PV; FA4 receives original input dtype, no external quantization. "

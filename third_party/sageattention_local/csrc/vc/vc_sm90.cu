@@ -853,13 +853,14 @@ constexpr int sage_register_limit() {
 
 template<int Dim, typename Out, bool Cast, int Schedule, bool BlockValues=false>
 auto select_sage_layout() {
-  static_assert(Schedule>=1 && Schedule<=38);
-  static_assert(!BlockValues || Schedule==38);
+  static_assert(Schedule>=1 && Schedule<=40);
+  static_assert(!BlockValues || Schedule>=38);
   static_assert(!Cast || (Schedule!=3 && Schedule!=4));
-  if constexpr (Schedule==38) {
+  if constexpr (Schedule>=38) {
     return sage_vc::sage_vc_attention_kernel_sage_layout<64,128,128,Dim,
         QuantGranularity::kPerThread,QuantGranularity::kPerThread,Out,
-        MaskMode::kNone,false,true,Cast,BlockValues,false,Cast,0,168,(BlockValues && Dim==128),(Cast ? 9 : 0),false,BlockValues>;
+        MaskMode::kNone,false,true,Cast,BlockValues,false,Cast,0,((Schedule>=39 && Dim==128 && !Cast) ? 192 : 168),
+        (BlockValues && Dim==128 && Schedule==38),(Cast ? 9 : 0),false,BlockValues,(BlockValues && Schedule==40)>;
   } else if constexpr (Schedule>=35) {
     return sage_vc::sage_vc_attention_kernel_sage_layout<64,128,128,Dim,
         QuantGranularity::kPerThread,QuantGranularity::kPerThread,Out,
@@ -942,13 +943,26 @@ void dispatch_sage_output(torch::Tensor q, torch::Tensor k, torch::Tensor v,
   }
 }
 
-template<int Dim, typename Out>
+template<int Dim, typename Out, int Schedule=38>
 void dispatch_unified(torch::Tensor q, torch::Tensor k, torch::Tensor v,
     torch::Tensor qs, torch::Tensor ks, torch::Tensor vs, torch::Tensor means,
     torch::Tensor out, float scale, bool cast, bool smooth) {
   if (!smooth) dispatch_sage_layout<Dim,Out,35>(q,k,v,qs,ks,vs,out,scale,cast);
-  else if (cast) launch_sage_layout<Dim,Out,true,38,true>(q,k,v,qs,ks,vs,out,scale,means);
-  else launch_sage_layout<Dim,Out,false,38,true>(q,k,v,qs,ks,vs,out,scale,means);
+  else if (cast) launch_sage_layout<Dim,Out,true,Schedule,true>(q,k,v,qs,ks,vs,out,scale,means);
+  else launch_sage_layout<Dim,Out,false,Schedule,true>(q,k,v,qs,ks,vs,out,scale,means);
+}
+
+template<int Schedule>
+void dispatch_unified_output(torch::Tensor q, torch::Tensor k, torch::Tensor v,
+    torch::Tensor qs, torch::Tensor ks, torch::Tensor vs, torch::Tensor means,
+    torch::Tensor out, float scale, int output_type, bool cast, bool smooth) {
+  if (q.size(3)==64) {
+    if (output_type==0) dispatch_unified<64,half,Schedule>(q,k,v,qs,ks,vs,means,out,scale,cast,smooth);
+    else dispatch_unified<64,nv_bfloat16,Schedule>(q,k,v,qs,ks,vs,means,out,scale,cast,smooth);
+  } else {
+    if (output_type==0) dispatch_unified<128,half,Schedule>(q,k,v,qs,ks,vs,means,out,scale,cast,smooth);
+    else dispatch_unified<128,nv_bfloat16,Schedule>(q,k,v,qs,ks,vs,means,out,scale,cast,smooth);
+  }
 }
 
 template<typename Out, bool Cast, int Schedule, bool BlockValues=false>
@@ -964,7 +978,8 @@ std::map<std::string,int64_t> sage_layout_resources() {
   return {{"registers_per_thread",attr.numRegs},{"local_bytes_per_thread",int64_t(attr.localSizeBytes)},
           {"static_shared_bytes",int64_t(attr.sharedSizeBytes)},{"dynamic_shared_bytes",bytes},
           {"threads_per_block",threads},{"predicted_active_blocks_per_sm",active},
-          {"requested_register_limit",sage_register_limit<Schedule>()},{"pv_fragment_channels",BlockValues || (Schedule>=13 && Schedule<=15) || (Schedule>=23 && Schedule<=24) ? 64 : 128},
+          {"requested_register_limit",(Schedule>=39 && !Cast) ? 192 : sage_register_limit<Schedule>()},{"pv_fragment_channels",(BlockValues && Schedule==38) || (Schedule>=13 && Schedule<=15) || (Schedule>=23 && Schedule<=24) ? 64 : 128},
+          {"packed_mean_loads",BlockValues && Schedule==40 ? 1 : 0},
           {"k_buffers",Schedule==16 || (Schedule>=18 && Schedule<=19) ? 2 : 1},
           {"v_buffers",Schedule>=17 && Schedule<=19 ? 2 : 1},
           {"early_tma_prefetch",BlockValues || (Schedule>=16 && Schedule<=18) ? 1 : 0},
@@ -1041,27 +1056,21 @@ torch::Tensor vc_forward(torch::Tensor q, torch::Tensor k, torch::Tensor v,
   TORCH_CHECK(probability_schedule == 0 || (optimized && packed_probability && compact_values && pipeline_probability && interleaved_probability && affine_probability), "Scratch schedules require the affine pipeline");
   TORCH_CHECK(!fused_probability || paired_probability,"Fused packing requires paired conversion");
   TORCH_CHECK(!paired_probability || (probability_schedule == 0 && optimized && packed_probability && compact_values && pipeline_probability && interleaved_probability && affine_probability), "Paired conversion requires the affine pipeline without scratch");
-  TORCH_CHECK(sage_schedule>=0 && sage_schedule<=38,"Sage layout schedule must be 0..38");
+  TORCH_CHECK(sage_schedule>=0 && sage_schedule<=40,"Sage layout schedule must be 0..40");
   TORCH_CHECK(sage_schedule<23 || sage_schedule>24 || q.size(3)==128,"Shared-history candidates require D128");
-  TORCH_CHECK(sage_schedule==0 || sage_schedule==38 || !block_values,"Sage layout candidates require v_smooth=False except vc31");
+  TORCH_CHECK(sage_schedule==0 || sage_schedule>=38 || !block_values,"Sage layout candidates require v_smooth=False except vc31/vc32");
   TORCH_CHECK(sage_schedule<6 || sage_schedule>9 || expcast,"Probability candidates require expcast=True");
   TORCH_CHECK(!expcast || (sage_schedule!=3 && sage_schedule!=4),"Pack-first candidates are control-only");
-  TORCH_CHECK(sage_schedule!=38 || vs.dim()==3,"vc31 requires per-channel V scale");
+  TORCH_CHECK(sage_schedule<38 || vs.dim()==3,"vc31/vc32 require per-channel V scale");
   const c10::cuda::CUDAGuard guard(q.device());
   int major, minor;
   C10_CUDA_CHECK(cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, q.get_device()));
   C10_CUDA_CHECK(cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, q.get_device()));
   TORCH_CHECK(major == 9 && minor == 0, "Sage VC native attention requires Hopper; no fallback");
   auto out = torch::empty(q.sizes(), q.options().dtype(output_type == 0 ? at::kHalf : at::kBFloat16));
-  if (sage_schedule==38) {
-    if (q.size(3)==64) {
-      if (output_type==0) dispatch_unified<64,half>(q,k,v,qs,ks,vs,means,out,scale,expcast,block_values);
-      else dispatch_unified<64,nv_bfloat16>(q,k,v,qs,ks,vs,means,out,scale,expcast,block_values);
-    } else {
-      if (output_type==0) dispatch_unified<128,half>(q,k,v,qs,ks,vs,means,out,scale,expcast,block_values);
-      else dispatch_unified<128,nv_bfloat16>(q,k,v,qs,ks,vs,means,out,scale,expcast,block_values);
-    }
-  }
+  if (sage_schedule==38) dispatch_unified_output<38>(q,k,v,qs,ks,vs,means,out,scale,output_type,expcast,block_values);
+  else if (sage_schedule==39) dispatch_unified_output<39>(q,k,v,qs,ks,vs,means,out,scale,output_type,expcast,block_values);
+  else if (sage_schedule==40) dispatch_unified_output<40>(q,k,v,qs,ks,vs,means,out,scale,output_type,expcast,block_values);
   else if (sage_schedule==1) dispatch_sage_output<1>(q,k,v,qs,ks,vs,out,scale,output_type,expcast);
   else if (sage_schedule==2) dispatch_sage_output<2>(q,k,v,qs,ks,vs,out,scale,output_type,expcast);
   else if (sage_schedule==3) dispatch_sage_output<3>(q,k,v,qs,ks,vs,out,scale,output_type,expcast);
@@ -1198,6 +1207,10 @@ std::map<std::string, std::map<std::string, int64_t>> vc_kernel_resources(int64_
   result["expcast_sage_layout_29"] = output_type==0 ? sage_layout_resources<half,true,29>() : sage_layout_resources<nv_bfloat16,true,29>();
   result["vc31_smooth"] = output_type==0 ? sage_layout_resources<half,false,38,true>() : sage_layout_resources<nv_bfloat16,false,38,true>();
   result["vc31_both"] = output_type==0 ? sage_layout_resources<half,true,38,true>() : sage_layout_resources<nv_bfloat16,true,38,true>();
+  result["vc32_full_smooth"] = output_type==0 ? sage_layout_resources<half,false,39,true>() : sage_layout_resources<nv_bfloat16,false,39,true>();
+  result["vc32_full_both"] = output_type==0 ? sage_layout_resources<half,true,39,true>() : sage_layout_resources<nv_bfloat16,true,39,true>();
+  result["vc32_packed_smooth"] = output_type==0 ? sage_layout_resources<half,false,40,true>() : sage_layout_resources<nv_bfloat16,false,40,true>();
+  result["vc32_packed_both"] = output_type==0 ? sage_layout_resources<half,true,40,true>() : sage_layout_resources<nv_bfloat16,true,40,true>();
   return result;
 }
 #include "fp8_dispatch.cuh"

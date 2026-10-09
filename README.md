@@ -1,10 +1,11 @@
 # MiniMax-H3 / A5 VC-Attention 实验
 
-**当前 H200 主路线（2026-10-08）：`sageattn_vc`，INT8 QK + FP8 PV。**
+**当前 H200 主路线（2026-10-09）：`sageattn_vc`，INT8 QK + FP8 PV。**
 继续在 SageAttention2 的 INT8 Q/K 内核上对齐 V-Smooth 与 ExpCast；vc27 FP8 QK 归为历史实验。
-本轮 `2.2.0+vc31` 接通 vc28 概率路径与 V-Smooth，并补齐 Sage / VC / FA4 的 CUPTI 测量，**需要重编译**：
-`bash scripts/validate_int8_h200.sh`。独立纯 kernel 测量命令见 [SAGE_VC31.md](SAGE_VC31.md)。
-最新回传 vc28 完整 API 24.7105 ms；vc29/vc30 未超过它。vc31 尚待 H200 数值与性能验证。
+本轮 `2.2.0+vc32` 增加完整 N128 PV、批量均值读取两个平滑候选，**需要重编译**：
+`bash scripts/validate_int8_h200.sh`。实现与包含 Sage / FA4 的 CUPTI 对照命令见 [SAGE_VC32.md](SAGE_VC32.md)。
+最新回传 vc31 双开完整 API 31.8464 ms、CUPTI 28.4951 ms；仅 ExpCast 为 25.0893 / 23.6144 ms。
+vc32 保留原有量化与 FP32 累加，H200 正确性和性能仍待实测。
 导入与测速见 [H200_INT8.md](H200_INT8.md)；随机输入、API 时间与论文纯 kernel 指标分别记录。
 此前“VC 论文 QK 统一使用 FP8”的说法不准确，H200 路线不以此为依据。
 

@@ -159,13 +159,15 @@ def test_constant_failure_includes_pytorch_numeric_details():
 
 
 @pytest.mark.parametrize("fail", [False, True])
-def test_main_saves_results_including_partial_failed_case(tmp_path, monkeypatch, fail):
+@pytest.mark.parametrize("mode", ["vc31_unified", "vc32_full_pv", "vc32_packed_mean"])
+def test_main_saves_results_including_partial_failed_case(tmp_path, monkeypatch, fail, mode):
     output = tmp_path / "nested" / "validation.json"
-    monkeypatch.setattr(sys, "argv", ["validate_sage_vc31.py", "--output", str(output)])
+    monkeypatch.setattr(sys, "argv", ["validate_sage_vc31.py", "--output", str(output), "--kernel-mode", mode])
     monkeypatch.setitem(sys.modules, "sageattention_local", SimpleNamespace(vc=object(), vc_reference=object()))
     monkeypatch.setattr(torch.cuda, "get_device_capability", lambda: (9, 0))
 
-    def fake_validate(vc, reference, device, report):
+    def fake_validate(vc, reference, device, report, kernel_mode="vc31_unified"):
+        assert kernel_mode == mode
         report.update(cases=[{"status": "completed"}], active_case={"dtype": "torch.bfloat16", "max_abs": .015625})
         if fail:
             raise AssertionError("native diagnostic detail")

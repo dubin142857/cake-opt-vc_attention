@@ -144,9 +144,9 @@ def test_sage_layout_candidates_keep_payload_and_reject_incompatible_paths(monke
         assert kwargs["sage_schedule"]==schedule and kwargs["fused_probability"]
         assert args[0] is state["q"] and args[1] is state["k"] and args[2] is state["v"]
         assert args[7] is cast
-    if schedule==38:
+    if mode in api.UNIFIED_MODES:
         api.forward_prepared({**state,"block_values":True},kernel_mode=mode)
-        assert calls.pop()[1]["sage_schedule"]==38
+        assert calls.pop()[1]["sage_schedule"]==schedule
         with pytest.raises(ValueError,match="per-channel"):
             api.forward_prepared({**state,"vs":torch.ones(1,1,2,dim)},kernel_mode=mode)
         return

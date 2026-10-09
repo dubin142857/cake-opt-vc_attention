@@ -1,0 +1,796 @@
+{
+  "instances": 332,
+  "historical_instances": 320,
+  "historical_instruction_text_identical": 320,
+  "historical_missing": [],
+  "historical_changed": [],
+  "candidates": [
+    {
+      "mode": "vc32_packed_mean",
+      "dim": 128,
+      "dtype": "bfloat16",
+      "expcast": false,
+      "register_cap": 192,
+      "registers": 192,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "static_instructions": 2224,
+      "pv_matrix_instructions": [
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R88, gdesc[UR8], RZ, !UPT",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R92, gdesc[UR8], R24",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R96, gdesc[UR8], R24",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R100, gdesc[UR8], R24, gsb0",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R88, gdesc[UR4], RZ, !UPT",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R92, gdesc[UR4], R24",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R96, gdesc[UR4], R24",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R100, gdesc[UR8], R24, gsb0"
+      ],
+      "warpgroup_wait_instructions": 4,
+      "pv_load_schedule": [
+        {
+          "nonconstant_global_loads_before_wait": 0,
+          "nonconstant_global_loads_after_wait": 16
+        },
+        {
+          "nonconstant_global_loads_before_wait": 4,
+          "nonconstant_global_loads_after_wait": 12
+        }
+      ],
+      "symbol": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb0ELb1ELb0ELb0ELi0ELi192ELb0ELi0ELb0ELb1ELb1EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf"
+    },
+    {
+      "mode": "vc32_packed_mean",
+      "dim": 128,
+      "dtype": "bfloat16",
+      "expcast": true,
+      "register_cap": 168,
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "static_instructions": 3136,
+      "pv_matrix_instructions": [
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R100, gdesc[UR8], RZ, !UPT",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R96, gdesc[UR8], R24",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R92, gdesc[UR8], R24",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R88, gdesc[UR8], R24, gsb0",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R100, gdesc[UR8], RZ, !UPT",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R96, gdesc[UR4], R24",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R92, gdesc[UR4], R24",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R88, gdesc[UR4], R24, gsb0"
+      ],
+      "warpgroup_wait_instructions": 4,
+      "pv_load_schedule": [
+        {
+          "nonconstant_global_loads_before_wait": 0,
+          "nonconstant_global_loads_after_wait": 16
+        },
+        {
+          "nonconstant_global_loads_before_wait": 0,
+          "nonconstant_global_loads_after_wait": 16
+        }
+      ],
+      "symbol": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb1ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb1ELb1EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf"
+    },
+    {
+      "mode": "vc32_packed_mean",
+      "dim": 128,
+      "dtype": "float16",
+      "expcast": false,
+      "register_cap": 192,
+      "registers": 192,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "static_instructions": 2224,
+      "pv_matrix_instructions": [
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R88, gdesc[UR8], RZ, !UPT",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R92, gdesc[UR8], R24",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R96, gdesc[UR8], R24",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R100, gdesc[UR8], R24, gsb0",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R88, gdesc[UR4], RZ, !UPT",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R92, gdesc[UR4], R24",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R96, gdesc[UR4], R24",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R100, gdesc[UR8], R24, gsb0"
+      ],
+      "warpgroup_wait_instructions": 4,
+      "pv_load_schedule": [
+        {
+          "nonconstant_global_loads_before_wait": 0,
+          "nonconstant_global_loads_after_wait": 16
+        },
+        {
+          "nonconstant_global_loads_before_wait": 4,
+          "nonconstant_global_loads_after_wait": 12
+        }
+      ],
+      "symbol": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb0ELb1ELb0ELb0ELi0ELi192ELb0ELi0ELb0ELb1ELb1EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf"
+    },
+    {
+      "mode": "vc32_packed_mean",
+      "dim": 128,
+      "dtype": "float16",
+      "expcast": true,
+      "register_cap": 168,
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "static_instructions": 3136,
+      "pv_matrix_instructions": [
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R100, gdesc[UR8], RZ, !UPT",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R96, gdesc[UR8], R24",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R92, gdesc[UR8], R24",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R88, gdesc[UR8], R24, gsb0",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R100, gdesc[UR8], RZ, !UPT",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R96, gdesc[UR4], R24",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R92, gdesc[UR4], R24",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R88, gdesc[UR4], R24, gsb0"
+      ],
+      "warpgroup_wait_instructions": 4,
+      "pv_load_schedule": [
+        {
+          "nonconstant_global_loads_before_wait": 0,
+          "nonconstant_global_loads_after_wait": 16
+        },
+        {
+          "nonconstant_global_loads_before_wait": 0,
+          "nonconstant_global_loads_after_wait": 16
+        }
+      ],
+      "symbol": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb1ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb1ELb1EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf"
+    },
+    {
+      "mode": "vc32_packed_mean",
+      "dim": 64,
+      "dtype": "bfloat16",
+      "expcast": false,
+      "register_cap": 168,
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "static_instructions": 1808,
+      "pv_matrix_instructions": [
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R56, gdesc[UR8], RZ, !UPT",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R60, gdesc[UR8], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R64, gdesc[UR8], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R68, gdesc[UR8], R24, gsb0",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R56, gdesc[UR8], RZ, !UPT",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R60, gdesc[UR8], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R64, gdesc[UR8], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R68, gdesc[UR4], R24, gsb0"
+      ],
+      "warpgroup_wait_instructions": 4,
+      "pv_load_schedule": [
+        {
+          "nonconstant_global_loads_before_wait": 8,
+          "nonconstant_global_loads_after_wait": 0
+        },
+        {
+          "nonconstant_global_loads_before_wait": 8,
+          "nonconstant_global_loads_after_wait": 0
+        }
+      ],
+      "symbol": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb0ELb1ELb0ELb0ELi0ELi168ELb0ELi0ELb0ELb1ELb1EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf"
+    },
+    {
+      "mode": "vc32_packed_mean",
+      "dim": 64,
+      "dtype": "bfloat16",
+      "expcast": true,
+      "register_cap": 168,
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "static_instructions": 2720,
+      "pv_matrix_instructions": [
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R68, gdesc[UR8], RZ, !UPT",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R64, gdesc[UR8], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R60, gdesc[UR8], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R56, gdesc[UR8], R24, gsb0",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R68, gdesc[UR8], RZ, !UPT",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R64, gdesc[UR4], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R60, gdesc[UR4], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R56, gdesc[UR4], R24, gsb0"
+      ],
+      "warpgroup_wait_instructions": 4,
+      "pv_load_schedule": [
+        {
+          "nonconstant_global_loads_before_wait": 0,
+          "nonconstant_global_loads_after_wait": 8
+        },
+        {
+          "nonconstant_global_loads_before_wait": 8,
+          "nonconstant_global_loads_after_wait": 0
+        }
+      ],
+      "symbol": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb1ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb1ELb1EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf"
+    },
+    {
+      "mode": "vc32_packed_mean",
+      "dim": 64,
+      "dtype": "float16",
+      "expcast": false,
+      "register_cap": 168,
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "static_instructions": 1808,
+      "pv_matrix_instructions": [
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R56, gdesc[UR8], RZ, !UPT",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R60, gdesc[UR8], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R64, gdesc[UR8], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R68, gdesc[UR8], R24, gsb0",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R56, gdesc[UR8], RZ, !UPT",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R60, gdesc[UR8], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R64, gdesc[UR8], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R68, gdesc[UR4], R24, gsb0"
+      ],
+      "warpgroup_wait_instructions": 4,
+      "pv_load_schedule": [
+        {
+          "nonconstant_global_loads_before_wait": 8,
+          "nonconstant_global_loads_after_wait": 0
+        },
+        {
+          "nonconstant_global_loads_before_wait": 8,
+          "nonconstant_global_loads_after_wait": 0
+        }
+      ],
+      "symbol": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb0ELb1ELb0ELb0ELi0ELi168ELb0ELi0ELb0ELb1ELb1EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf"
+    },
+    {
+      "mode": "vc32_packed_mean",
+      "dim": 64,
+      "dtype": "float16",
+      "expcast": true,
+      "register_cap": 168,
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "static_instructions": 2720,
+      "pv_matrix_instructions": [
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R68, gdesc[UR8], RZ, !UPT",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R64, gdesc[UR8], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R60, gdesc[UR8], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R56, gdesc[UR8], R24, gsb0",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R68, gdesc[UR8], RZ, !UPT",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R64, gdesc[UR4], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R60, gdesc[UR4], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R56, gdesc[UR4], R24, gsb0"
+      ],
+      "warpgroup_wait_instructions": 4,
+      "pv_load_schedule": [
+        {
+          "nonconstant_global_loads_before_wait": 0,
+          "nonconstant_global_loads_after_wait": 8
+        },
+        {
+          "nonconstant_global_loads_before_wait": 8,
+          "nonconstant_global_loads_after_wait": 0
+        }
+      ],
+      "symbol": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb1ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb1ELb1EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf"
+    },
+    {
+      "mode": "vc32_full_pv",
+      "dim": 128,
+      "dtype": "bfloat16",
+      "expcast": false,
+      "register_cap": 192,
+      "registers": 192,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "static_instructions": 2312,
+      "pv_matrix_instructions": [
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R88, gdesc[UR8], RZ, !UPT",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R92, gdesc[UR8], R24",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R96, gdesc[UR8], R24",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R100, gdesc[UR8], R24, gsb0",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R88, gdesc[UR4], RZ, !UPT",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R92, gdesc[UR4], R24",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R96, gdesc[UR4], R24",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R100, gdesc[UR8], R24, gsb0"
+      ],
+      "warpgroup_wait_instructions": 4,
+      "pv_load_schedule": [
+        {
+          "nonconstant_global_loads_before_wait": 0,
+          "nonconstant_global_loads_after_wait": 16
+        },
+        {
+          "nonconstant_global_loads_before_wait": 8,
+          "nonconstant_global_loads_after_wait": 8
+        }
+      ],
+      "symbol": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb0ELb1ELb0ELb0ELi0ELi192ELb0ELi0ELb0ELb1ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf"
+    },
+    {
+      "mode": "vc32_full_pv",
+      "dim": 128,
+      "dtype": "bfloat16",
+      "expcast": true,
+      "register_cap": 168,
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "static_instructions": 3232,
+      "pv_matrix_instructions": [
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R100, gdesc[UR8], RZ, !UPT",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R96, gdesc[UR8], R24",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R92, gdesc[UR8], R24",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R88, gdesc[UR8], R24, gsb0",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R100, gdesc[UR8], RZ, !UPT",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R96, gdesc[UR4], R24",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R92, gdesc[UR4], R24",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R88, gdesc[UR4], R24, gsb0"
+      ],
+      "warpgroup_wait_instructions": 4,
+      "pv_load_schedule": [
+        {
+          "nonconstant_global_loads_before_wait": 0,
+          "nonconstant_global_loads_after_wait": 16
+        },
+        {
+          "nonconstant_global_loads_before_wait": 0,
+          "nonconstant_global_loads_after_wait": 16
+        }
+      ],
+      "symbol": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb1ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb1ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf"
+    },
+    {
+      "mode": "vc32_full_pv",
+      "dim": 128,
+      "dtype": "float16",
+      "expcast": false,
+      "register_cap": 192,
+      "registers": 192,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "static_instructions": 2312,
+      "pv_matrix_instructions": [
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R88, gdesc[UR8], RZ, !UPT",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R92, gdesc[UR8], R24",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R96, gdesc[UR8], R24",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R100, gdesc[UR8], R24, gsb0",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R88, gdesc[UR4], RZ, !UPT",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R92, gdesc[UR4], R24",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R96, gdesc[UR4], R24",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R100, gdesc[UR8], R24, gsb0"
+      ],
+      "warpgroup_wait_instructions": 4,
+      "pv_load_schedule": [
+        {
+          "nonconstant_global_loads_before_wait": 0,
+          "nonconstant_global_loads_after_wait": 16
+        },
+        {
+          "nonconstant_global_loads_before_wait": 8,
+          "nonconstant_global_loads_after_wait": 8
+        }
+      ],
+      "symbol": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb0ELb1ELb0ELb0ELi0ELi192ELb0ELi0ELb0ELb1ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf"
+    },
+    {
+      "mode": "vc32_full_pv",
+      "dim": 128,
+      "dtype": "float16",
+      "expcast": true,
+      "register_cap": 168,
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "static_instructions": 3232,
+      "pv_matrix_instructions": [
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R100, gdesc[UR8], RZ, !UPT",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R96, gdesc[UR8], R24",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R92, gdesc[UR8], R24",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R88, gdesc[UR8], R24, gsb0",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R100, gdesc[UR8], RZ, !UPT",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R96, gdesc[UR4], R24",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R92, gdesc[UR4], R24",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R88, gdesc[UR4], R24, gsb0"
+      ],
+      "warpgroup_wait_instructions": 4,
+      "pv_load_schedule": [
+        {
+          "nonconstant_global_loads_before_wait": 0,
+          "nonconstant_global_loads_after_wait": 16
+        },
+        {
+          "nonconstant_global_loads_before_wait": 0,
+          "nonconstant_global_loads_after_wait": 16
+        }
+      ],
+      "symbol": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb1ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb1ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf"
+    },
+    {
+      "mode": "vc31_unified",
+      "dim": 128,
+      "dtype": "bfloat16",
+      "expcast": false,
+      "register_cap": 168,
+      "registers": 168,
+      "stack_spill": [
+        8,
+        4,
+        4
+      ],
+      "static_instructions": 2376,
+      "pv_matrix_instructions": [
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R56, gdesc[UR8], RZ, !UPT",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R60, gdesc[UR8], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R64, gdesc[UR8], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R68, gdesc[UR8], R24, gsb0",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R56, gdesc[UR8], RZ, !UPT",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R60, gdesc[UR8], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R64, gdesc[UR8], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R68, gdesc[UR8], R24, gsb0",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R56, gdesc[UR4], RZ, !UPT",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R60, gdesc[UR4], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R64, gdesc[UR4], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R68, gdesc[UR4], R24, gsb0",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R56, gdesc[UR4], RZ, !UPT",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R60, gdesc[UR4], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R64, gdesc[UR4], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R68, gdesc[UR8], R24, gsb0"
+      ],
+      "warpgroup_wait_instructions": 6,
+      "pv_load_schedule": [
+        {
+          "nonconstant_global_loads_before_wait": 8,
+          "nonconstant_global_loads_after_wait": 0
+        },
+        {
+          "nonconstant_global_loads_before_wait": 0,
+          "nonconstant_global_loads_after_wait": 8
+        },
+        {
+          "nonconstant_global_loads_before_wait": 10,
+          "nonconstant_global_loads_after_wait": 1
+        },
+        {
+          "nonconstant_global_loads_before_wait": 1,
+          "nonconstant_global_loads_after_wait": 5
+        }
+      ],
+      "symbol": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb0ELb1ELb0ELb0ELi0ELi168ELb1ELi0ELb0ELb1ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf"
+    },
+    {
+      "mode": "vc31_unified",
+      "dim": 128,
+      "dtype": "bfloat16",
+      "expcast": true,
+      "register_cap": 168,
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "static_instructions": 3296,
+      "pv_matrix_instructions": [
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R56, gdesc[UR8], RZ, !UPT",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R60, gdesc[UR8], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R64, gdesc[UR8], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R68, gdesc[UR8], R24, gsb0",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R56, gdesc[UR8], RZ, !UPT",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R60, gdesc[UR8], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R64, gdesc[UR8], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R68, gdesc[UR8], R24, gsb0",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R56, gdesc[UR8], RZ, !UPT",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R60, gdesc[UR4], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R64, gdesc[UR4], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R68, gdesc[UR4], R24, gsb0",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R56, gdesc[UR4], RZ, !UPT",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R60, gdesc[UR4], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R64, gdesc[UR4], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R68, gdesc[UR4], R24, gsb0"
+      ],
+      "warpgroup_wait_instructions": 6,
+      "pv_load_schedule": [
+        {
+          "nonconstant_global_loads_before_wait": 8,
+          "nonconstant_global_loads_after_wait": 0
+        },
+        {
+          "nonconstant_global_loads_before_wait": 0,
+          "nonconstant_global_loads_after_wait": 8
+        },
+        {
+          "nonconstant_global_loads_before_wait": 8,
+          "nonconstant_global_loads_after_wait": 8
+        },
+        {
+          "nonconstant_global_loads_before_wait": 8,
+          "nonconstant_global_loads_after_wait": 0
+        }
+      ],
+      "symbol": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb1ELb0ELb1ELi0ELi168ELb1ELi9ELb0ELb1ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf"
+    },
+    {
+      "mode": "vc31_unified",
+      "dim": 128,
+      "dtype": "float16",
+      "expcast": false,
+      "register_cap": 168,
+      "registers": 168,
+      "stack_spill": [
+        8,
+        4,
+        4
+      ],
+      "static_instructions": 2376,
+      "pv_matrix_instructions": [
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R56, gdesc[UR8], RZ, !UPT",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R60, gdesc[UR8], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R64, gdesc[UR8], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R68, gdesc[UR8], R24, gsb0",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R56, gdesc[UR8], RZ, !UPT",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R60, gdesc[UR8], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R64, gdesc[UR8], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R68, gdesc[UR8], R24, gsb0",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R56, gdesc[UR4], RZ, !UPT",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R60, gdesc[UR4], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R64, gdesc[UR4], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R68, gdesc[UR4], R24, gsb0",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R56, gdesc[UR4], RZ, !UPT",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R60, gdesc[UR4], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R64, gdesc[UR4], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R68, gdesc[UR8], R24, gsb0"
+      ],
+      "warpgroup_wait_instructions": 6,
+      "pv_load_schedule": [
+        {
+          "nonconstant_global_loads_before_wait": 8,
+          "nonconstant_global_loads_after_wait": 0
+        },
+        {
+          "nonconstant_global_loads_before_wait": 0,
+          "nonconstant_global_loads_after_wait": 8
+        },
+        {
+          "nonconstant_global_loads_before_wait": 10,
+          "nonconstant_global_loads_after_wait": 1
+        },
+        {
+          "nonconstant_global_loads_before_wait": 1,
+          "nonconstant_global_loads_after_wait": 5
+        }
+      ],
+      "symbol": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb0ELb1ELb0ELb0ELi0ELi168ELb1ELi0ELb0ELb1ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf"
+    },
+    {
+      "mode": "vc31_unified",
+      "dim": 128,
+      "dtype": "float16",
+      "expcast": true,
+      "register_cap": 168,
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "static_instructions": 3296,
+      "pv_matrix_instructions": [
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R56, gdesc[UR8], RZ, !UPT",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R60, gdesc[UR8], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R64, gdesc[UR8], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R68, gdesc[UR8], R24, gsb0",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R56, gdesc[UR8], RZ, !UPT",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R60, gdesc[UR8], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R64, gdesc[UR8], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R68, gdesc[UR8], R24, gsb0",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R56, gdesc[UR8], RZ, !UPT",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R60, gdesc[UR4], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R64, gdesc[UR4], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R68, gdesc[UR4], R24, gsb0",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R56, gdesc[UR4], RZ, !UPT",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R60, gdesc[UR4], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R64, gdesc[UR4], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R68, gdesc[UR4], R24, gsb0"
+      ],
+      "warpgroup_wait_instructions": 6,
+      "pv_load_schedule": [
+        {
+          "nonconstant_global_loads_before_wait": 8,
+          "nonconstant_global_loads_after_wait": 0
+        },
+        {
+          "nonconstant_global_loads_before_wait": 0,
+          "nonconstant_global_loads_after_wait": 8
+        },
+        {
+          "nonconstant_global_loads_before_wait": 8,
+          "nonconstant_global_loads_after_wait": 8
+        },
+        {
+          "nonconstant_global_loads_before_wait": 8,
+          "nonconstant_global_loads_after_wait": 0
+        }
+      ],
+      "symbol": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb1ELb0ELb1ELi0ELi168ELb1ELi9ELb0ELb1ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf"
+    },
+    {
+      "mode": "vc31_unified / vc32_full_pv",
+      "dim": 64,
+      "dtype": "bfloat16",
+      "expcast": false,
+      "register_cap": 168,
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "static_instructions": 1848,
+      "pv_matrix_instructions": [
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R56, gdesc[UR8], RZ, !UPT",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R60, gdesc[UR8], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R64, gdesc[UR16], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R68, gdesc[UR8], R24, gsb0",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R56, gdesc[UR8], RZ, !UPT",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R60, gdesc[UR8], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R64, gdesc[UR8], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R68, gdesc[UR4], R24, gsb0"
+      ],
+      "warpgroup_wait_instructions": 4,
+      "pv_load_schedule": [
+        {
+          "nonconstant_global_loads_before_wait": 0,
+          "nonconstant_global_loads_after_wait": 8
+        },
+        {
+          "nonconstant_global_loads_before_wait": 8,
+          "nonconstant_global_loads_after_wait": 0
+        }
+      ],
+      "symbol": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb0ELb1ELb0ELb0ELi0ELi168ELb0ELi0ELb0ELb1ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf"
+    },
+    {
+      "mode": "vc31_unified / vc32_full_pv",
+      "dim": 64,
+      "dtype": "bfloat16",
+      "expcast": true,
+      "register_cap": 168,
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "static_instructions": 2760,
+      "pv_matrix_instructions": [
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R68, gdesc[UR8], RZ, !UPT",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R64, gdesc[UR8], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R60, gdesc[UR8], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R56, gdesc[UR8], R24, gsb0",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R68, gdesc[UR8], RZ, !UPT",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R64, gdesc[UR4], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R60, gdesc[UR4], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R56, gdesc[UR4], R24, gsb0"
+      ],
+      "warpgroup_wait_instructions": 4,
+      "pv_load_schedule": [
+        {
+          "nonconstant_global_loads_before_wait": 0,
+          "nonconstant_global_loads_after_wait": 8
+        },
+        {
+          "nonconstant_global_loads_before_wait": 8,
+          "nonconstant_global_loads_after_wait": 0
+        }
+      ],
+      "symbol": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb1ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb1ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf"
+    },
+    {
+      "mode": "vc31_unified / vc32_full_pv",
+      "dim": 64,
+      "dtype": "float16",
+      "expcast": false,
+      "register_cap": 168,
+      "registers": 168,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "static_instructions": 1848,
+      "pv_matrix_instructions": [
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R56, gdesc[UR8], RZ, !UPT",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R60, gdesc[UR8], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R64, gdesc[UR16], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R68, gdesc[UR8], R24, gsb0",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R56, gdesc[UR8], RZ, !UPT",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R60, gdesc[UR8], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R64, gdesc[UR8], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R68, gdesc[UR4], R24, gsb0"
+      ],
+      "warpgroup_wait_instructions": 4,
+      "pv_load_schedule": [
+        {
+          "nonconstant_global_loads_before_wait": 0,
+          "nonconstant_global_loads_after_wait": 8
+        },
+        {
+          "nonconstant_global_loads_before_wait": 8,
+          "nonconstant_global_loads_after_wait": 0
+        }
+      ],
+      "symbol": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb0ELb1ELb0ELb0ELi0ELi168ELb0ELi0ELb0ELb1ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf"
+    },
+    {
+      "mode": "vc31_unified / vc32_full_pv",
+      "dim": 64,
+      "dtype": "float16",
+      "expcast": true,
+      "register_cap": 168,
+      "registers": 128,
+      "stack_spill": [
+        0,
+        0,
+        0
+      ],
+      "static_instructions": 2760,
+      "pv_matrix_instructions": [
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R68, gdesc[UR8], RZ, !UPT",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R64, gdesc[UR8], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R60, gdesc[UR8], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R56, gdesc[UR8], R24, gsb0",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R68, gdesc[UR8], RZ, !UPT",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R64, gdesc[UR4], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R60, gdesc[UR4], R24",
+        "QGMMA.64x64x32.F32.E4M3.E4M3 R24, R56, gdesc[UR4], R24, gsb0"
+      ],
+      "warpgroup_wait_instructions": 4,
+      "pv_load_schedule": [
+        {
+          "nonconstant_global_loads_before_wait": 0,
+          "nonconstant_global_loads_after_wait": 8
+        },
+        {
+          "nonconstant_global_loads_before_wait": 8,
+          "nonconstant_global_loads_after_wait": 0
+        }
+      ],
+      "symbol": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb1ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb1ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf"
+    }
+  ],
+  "ptxas_warnings": [],
+  "wgmma_serialization_diagnostics": 0,
+  "scope": "CUDA 12.4 SM90a cross-compile; normalize added false PreloadMeans template argument against vc31. Static instruction counts are not runtime timings. Not Hopper execution or speed evidence."
+}

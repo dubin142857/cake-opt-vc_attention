@@ -71,6 +71,11 @@ def test_feature_pairs_share_payloads_but_full_calls_preprocess_fresh_inputs():
     assert profile.VARIANTS[5][1:] == (True, False, "vc28_stream_i2f")
     assert profile.VARIANTS[6][1:] == (True, False, "vc29_interleave_rows")
     assert profile.VARIANTS[7][1:] == (True, False, "vc30_desc")
+    for name in ("vc32_full_smooth", "vc32_full_both", "vc32_packed_smooth", "vc32_packed_both"):
+        baseline = states["vc31_both" if name.endswith("both") else "vc31_smooth"]
+        for key in ("q", "k", "v", "qs", "ks", "vs"):
+            assert states[name][key] is baseline[key]
+        assert states[name]["expcast"] is baseline["expcast"]
     assert "sage_cpp" in core and "sage_cpp" in apis
 
 
@@ -100,6 +105,8 @@ def test_cli_workload_and_measurement_validation():
     assert not args.skip_flash4
     assert profile.parse_args(["--skip-flash4"]).skip_flash4
     assert profile.parse_args(["--check-queries", "0"]).check_queries == 0
+    assert profile.parse_args(["--kernel-backends", "vc32_full_both", "vc32_packed_both"]).kernel_backends == [
+        "vc32_full_both", "vc32_packed_both"]
     for argv in (["--trials", "0"], ["--tokens", "0"], ["--check-queries", "-1"]):
         with pytest.raises(SystemExit):
             profile.parse_args(argv)
@@ -170,6 +177,8 @@ def test_shell_never_runs_fp8_qk_workflow(args):
     assert result.returncode == 0, result.stderr
     assert "profile_int8_h200.py" in result.stdout
     assert "fp8_qk" not in result.stdout
+    for mode in ("vc32_full_pv", "vc32_packed_mean"):
+        assert result.stdout.index("--kernel-mode " + mode) < result.stdout.index("profile_int8_h200.py")
     if args:
         assert "build scripts/" not in result.stdout
         assert result.stdout.index("validate_sage_vc.py") < result.stdout.index("profile_int8_h200.py")
@@ -177,8 +186,9 @@ def test_shell_never_runs_fp8_qk_workflow(args):
         assert "build scripts/build_sage_local.sh" in result.stdout
 
 
-def test_shell_stops_before_timing_on_validation_failure():
-    result = run_shell(("--skip-build",), "scripts/validate_sage_vc.py")
+@pytest.mark.parametrize("script", ["scripts/validate_sage_vc.py", "scripts/validate_sage_vc31.py"])
+def test_shell_stops_before_timing_on_validation_failure(script):
+    result = run_shell(("--skip-build",), script)
     assert result.returncode == 9
     assert "profile_int8_h200.py" not in result.stdout
     result = run_shell(("--unknown",))

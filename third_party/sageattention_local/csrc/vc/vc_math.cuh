@@ -496,3 +496,60 @@ __device__ __forceinline__ void vc_restore_block_means(
   vc_accumulate<true,true,true,true>(out,product,partial_mass,nullptr,means,
       head,tile,tiles,dim,lane,offset);
 }
+
+// vc32: batch packed FP16 mean loads and expand each pair only at its four
+// output updates. The source requests these loads before the WGMMA wait, but
+// CUDA 12.4 puts them after it for D128+ExpCast. Inspect each compiled schedule;
+// source placement alone is NOT evidence of PV/load overlap.
+template<uint32_t NQ, uint32_t NV>
+__device__ __forceinline__ void vc_preload_block_means(
+    uint32_t (&packed)[NV][2], float (&partial_mass)[NQ][2], const half* means,
+    int head, int tile, int tiles, int dim, int lane) {
+  #pragma unroll
+  for (int v=0;v<NV;++v)
+    #pragma unroll
+    for (int pair=0;pair<2;++pair) {
+      int64_t meta=(int64_t(head)*tiles+tile)*dim+v*16+(lane%4)*2+pair*8;
+      asm volatile("ld.global.b32 %0, [%1];" : "=r"(packed[v][pair]) : "l"(means+meta) : "memory");
+    }
+  // Call only after d consumed the lane-partial mass. Full-row mass is used
+  // exclusively by mean restoration, never written back to the denominator.
+  #pragma unroll
+  for (int q=0;q<NQ;++q)
+    #pragma unroll
+    for (int r=0;r<2;++r) {
+      float value=partial_mass[q][r];
+      value+=__shfl_xor_sync(0xffffffff,value,1);
+      value+=__shfl_xor_sync(0xffffffff,value,2);
+      partial_mass[q][r]=value;
+    }
+}
+
+template<uint32_t NQ, uint32_t NV>
+__device__ __forceinline__ void vc_restore_preloaded_means(
+    float (&out)[NQ][NV][8], const float (&product)[NQ][NV][8],
+    const float (&mass)[NQ][2], const uint32_t (&packed)[NV][2]) {
+  #pragma unroll
+  for (int v=0;v<NV;++v)
+    #pragma unroll
+    for (int pair=0;pair<2;++pair)
+      #pragma unroll
+      for (int q=0;q<NQ;++q) {
+        int j=pair*4;
+        // Same FMA into product, then separate FP32 history add as vc31.
+        // This instruction group contains no global-memory load.
+        asm volatile(
+            "{\n"
+            " .reg .b16 lo, hi; .reg .f32 a, b, x0, x1, x2, x3;\n"
+            " mov.b32 {lo, hi}, %10;\n"
+            " cvt.f32.f16 a, lo; cvt.f32.f16 b, hi;\n"
+            " fma.rn.f32 x0, %8, a, %4; fma.rn.f32 x1, %8, b, %5;\n"
+            " fma.rn.f32 x2, %9, a, %6; fma.rn.f32 x3, %9, b, %7;\n"
+            " add.rn.f32 %0, %0, x0; add.rn.f32 %1, %1, x1;\n"
+            " add.rn.f32 %2, %2, x2; add.rn.f32 %3, %3, x3;\n"
+            "}\n"
+            : "+f"(out[q][v][j]), "+f"(out[q][v][j+1]), "+f"(out[q][v][j+2]), "+f"(out[q][v][j+3])
+            : "f"(product[q][v][j]), "f"(product[q][v][j+1]), "f"(product[q][v][j+2]), "f"(product[q][v][j+3]),
+              "f"(mass[q][0]), "f"(mass[q][1]), "r"(packed[v][pair]));
+      }
+}

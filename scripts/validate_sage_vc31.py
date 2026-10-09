@@ -1,4 +1,4 @@
-"""Hopper integration gates for the unified vc28 + V-Smooth candidate."""
+"""Hopper integration gates for unified vc31 and vc32 PV/mean candidates."""
 import argparse
 import json
 import math
@@ -111,7 +111,7 @@ def known_answer_payload(dtype, dim, keys, expcast, v_smooth, device="cpu"):
 
 
 @torch.no_grad()
-def validate_known_answers(vc, reference, device, report):
+def validate_known_answers(vc, reference, device, report, kernel_mode="vc31_unified"):
     for dtype in (torch.float16, torch.bfloat16):
         for dim in (64, 128):
             for nk in (1, 128, 129, 513):
@@ -121,11 +121,11 @@ def validate_known_answers(vc, reference, device, report):
                                     queries=65, keys=nk, expcast=cast, v_smooth=smooth)
                         row = dict(case)
                         report["active_case"] = row
-                        print("Checking vc31 known answer:", json.dumps(case), flush=True)
+                        print(f"Checking {kernel_mode} known answer:", json.dumps(case), flush=True)
                         state, values, answer = known_answer_payload(dtype, dim, nk, cast, smooth, device)
                         decoded = reference.reference(state, chunk=32)
                         torch.testing.assert_close(decoded, answer, rtol=2e-6, atol=2e-6)
-                        out = vc.forward_prepared(state, kernel_mode="vc31_unified")
+                        out = vc.forward_prepared(state, kernel_mode=kernel_mode)
                         row["vs_analytic_answer"] = metrics(out, answer.to(dtype))
                         # Check ALL channels, including D128's second PV fragment.
                         torch.testing.assert_close(out, answer.to(dtype), rtol=.004, atol=.003,
@@ -136,12 +136,13 @@ def validate_known_answers(vc, reference, device, report):
 
 
 @torch.no_grad()
-def validate(vc, reference, device, report=None):
+def validate(vc, reference, device, report=None, kernel_mode="vc31_unified"):
     if report is None:
         report = {}
-    report.update(status="running", cases=[], known_answers=[])
-    if vc._extension().sage_vc_kernel_version < 29:
-        raise RuntimeError("Rebuild sageattention-local vc31 first")
+    report.update(status="running", kernel_mode=kernel_mode, cases=[], known_answers=[])
+    required = 29 if kernel_mode == "vc31_unified" else 30
+    if vc._extension().sage_vc_kernel_version < required:
+        raise RuntimeError("Rebuild sageattention-local for " + kernel_mode)
     torch.backends.cuda.matmul.allow_tf32 = False
     results = report["cases"]
     for dtype in (torch.float16, torch.bfloat16):
@@ -162,13 +163,16 @@ def validate(vc, reference, device, report=None):
                     for cast in (False, True):
                         case = dict(dtype=str(dtype), dim=dim, queries=nq, keys=nk,
                                     expcast=cast, v_smooth=smooth)
-                        print("Checking vc31:", json.dumps(case), flush=True)
+                        print(f"Checking {kernel_mode}:", json.dumps(case), flush=True)
                         row = dict(suite="random", **case)
                         report["active_case"] = row
                         state = {**base, "expcast": cast}
                         old_mode = "vc15" if smooth else "vc28_stream_i2f"
+                        if kernel_mode != "vc31_unified":
+                            old_mode = "vc31_unified"
+                        row["previous_mode"] = old_mode
                         expected = vc.forward_prepared(state, kernel_mode=old_mode)
-                        out = vc.forward_prepared(state, kernel_mode="vc31_unified")
+                        out = vc.forward_prepared(state, kernel_mode=kernel_mode)
                         decoded = reference.reference(state, chunk=32).to(dtype)
                         row.update(previous=metrics(out, expected), decoded_reference=metrics(out, decoded),
                                    constant_channels=constant_channel_diagnostics(out, decoded, v, expected))
@@ -180,12 +184,12 @@ def validate(vc, reference, device, report=None):
                         worker = torch.cuda.Stream(device=device)
                         worker.wait_stream(caller)
                         with torch.cuda.stream(worker):
-                            again = vc.forward_prepared(state, kernel_mode="vc31_unified")
+                            again = vc.forward_prepared(state, kernel_mode=kernel_mode)
                         caller.wait_stream(worker)
                         again.record_stream(caller)
                         torch.testing.assert_close(again, out, rtol=0, atol=0)
                         results.append(row)
-    validate_known_answers(vc, reference, device, report)
+    validate_known_answers(vc, reference, device, report, kernel_mode)
     report.pop("active_case", None)
     report.update(status="passed", scope=(
         "Random: all rows, default/side streams, INT8 QK/FP8 PV; 0.1% prior-implementation, "
@@ -201,6 +205,7 @@ def save_report(path, report):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument("--kernel-mode", choices=("vc31_unified", "vc32_full_pv", "vc32_packed_mean"), default="vc31_unified")
     p.add_argument("--output", type=Path, default=Path("results/sage_vc31_validation.json"))
     args = p.parse_args()
     from sageattention_local import vc, vc_reference
@@ -208,14 +213,14 @@ def main():
         raise RuntimeError("Hopper required; no CPU fallback")
     report = {}
     try:
-        validate(vc, vc_reference, torch.device("cuda:0"), report)
+        validate(vc, vc_reference, torch.device("cuda:0"), report, kernel_mode=args.kernel_mode)
     except Exception as error:
         report.update(status="failed", error=f"{type(error).__name__}: {error}")
         save_report(args.output, report)
-        print("vc31 failure diagnostics saved:", args.output, flush=True)
+        print(args.kernel_mode, "failure diagnostics saved:", args.output, flush=True)
         raise
     save_report(args.output, report)
-    print("vc31 validation passed:", args.output)
+    print(args.kernel_mode, "validation passed:", args.output)
 
 
 if __name__ == "__main__":

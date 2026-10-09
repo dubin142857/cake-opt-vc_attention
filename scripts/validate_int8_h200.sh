@@ -12,4 +12,6 @@ else
 fi
 # Check unified attention before any benchmark. No FP8 QK entry is invoked.
 python3 scripts/validate_sage_vc31.py --output results/sage_vc31_validation.json
+python3 scripts/validate_sage_vc31.py --kernel-mode vc32_full_pv --output results/sage_vc32_full_validation.json
+python3 scripts/validate_sage_vc31.py --kernel-mode vc32_packed_mean --output results/sage_vc32_packed_validation.json
 python3 scripts/profile_int8_h200.py --output results/h200_int8_main.json

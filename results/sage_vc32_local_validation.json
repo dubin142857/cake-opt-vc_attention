@@ -1,0 +1,39 @@
+{
+  "local_package": "2.2.0+vc32",
+  "native_kernel_version": 30,
+  "status": "local_checks_passed",
+  "environment": {
+    "torch": "2.3.1+cu121",
+    "gpu": "NVIDIA GeForce RTX 3060 Laptop GPU",
+    "capability": [
+      8,
+      6
+    ]
+  },
+  "pytest": {
+    "passed": 751,
+    "seconds": 12.31,
+    "mean_helper_gpu_cases": 24
+  },
+  "cuda_cross_compile": {
+    "toolkit": "12.4",
+    "architecture": "sm_90a",
+    "instances": 332,
+    "historical_instruction_text_identical": 320,
+    "new_candidate_instances": 12,
+    "link": "passed",
+    "import_native_version": "passed",
+    "new_candidates_stack_spill": "none",
+    "wgmma_serialization_diagnostics": 0
+  },
+  "package_source_integrity": {
+    "manifest_files": 78,
+    "unchanged_upstream_kernel_files": 36,
+    "sdist_hash_verification": "passed"
+  },
+  "execution_scope": "CPU/script and SM86 CUDA helper/preprocessing execution. Full SM90a attention compiled/linked, not executed; H200 speed and numerical integration unverified.",
+  "mean_probe": "Production split/full/packed mean helpers compared to independent FP64 outer product, explicit single-round FP32 FMA and separate history add; two heads, three tiles, D64/128, random/zero PV, default/side streams. All 24 GPU cases passed.",
+  "compiled_schedule": "Target D128+ExpCast packed-mean loads remain after PV wait in CUDA 12.4 SASS; no load/PV overlap claim. Other branches may issue some loads before wait. CUDA 13 scheduling may differ.",
+  "register_caps": "New D128 ExpCast+smooth candidates: 168. D128 smooth-only: 192 to avoid spill at 168; occupancy/performance tradeoff requires H200 measurement.",
+  "performance": "No vc32 H200 timing claim; same-payload vc31 baselines, Sage and FA4 retained."
+}

@@ -21,7 +21,7 @@
 #pragma once
 #include "descriptor_mma.cuh"
 
-template<uint32_t CTA_Q, uint32_t CTA_K, uint32_t NUM_THREADS, uint32_t head_dim, QuantGranularity Q_GRAN, QuantGranularity K_GRAN, typename DTypeOut, MaskMode mask_mode = MaskMode::kNone, bool return_lse = false, bool fuse_v_scale=false, bool ExpCast=false, bool EarlyV=false, bool PackFirst=false, bool OverlapHistory=true, int ProbabilityVariant=0, int RegisterLimit=168, bool CompactPV=false, int WorkReduction=0, bool FP8QK=false, bool BlockValues=false>
+template<uint32_t CTA_Q, uint32_t CTA_K, uint32_t NUM_THREADS, uint32_t head_dim, QuantGranularity Q_GRAN, QuantGranularity K_GRAN, typename DTypeOut, MaskMode mask_mode = MaskMode::kNone, bool return_lse = false, bool fuse_v_scale=false, bool ExpCast=false, bool EarlyV=false, bool PackFirst=false, bool OverlapHistory=true, int ProbabilityVariant=0, int RegisterLimit=168, bool CompactPV=false, int WorkReduction=0, bool FP8QK=false, bool BlockValues=false, bool PreloadMeans=false>
 __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(const __grid_constant__ CUtensorMap tensorMapQ,
                                         const __grid_constant__ CUtensorMap tensorMapK,
                                         const __grid_constant__ CUtensorMap tensorMapV,
@@ -36,6 +36,7 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
   static_assert(NUM_THREADS == 128);
   static_assert(!BlockValues || (!return_lse && !FP8QK &&
       (WorkReduction==0 || WorkReduction==9)), "vc31 uses channel V scales and vc28 scheduling");
+  static_assert(!PreloadMeans || (BlockValues && !CompactPV));
   // Auxiliary metadata is FP16 block means for vc31, otherwise optional FP32 LSE.
   const half* V_mean = static_cast<const half*>(auxiliary);
   static_assert(!FP8QK || (CTA_Q==64 && CTA_K==128 &&
@@ -301,6 +302,7 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
 #pragma unroll
     for (uint32_t part = 0; part < pv_parts; ++part) {
     float RO_temp[num_tiles_q][num_tiles_v / pv_parts][8];
+    uint32_t packed_means[num_tiles_v][2];
     wgmma::warpgroup_arrive();
 #pragma unroll
     for (uint32_t fq = 0; fq < num_tiles_q; fq++)
@@ -326,6 +328,9 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
         else vc_probability_finish_work<(WorkReduction>=2)>(RO,d,probability_alpha,tile_mass);
       }
     }
+    if constexpr (PreloadMeans)
+      vc_preload_block_means(packed_means,tile_mass,V_mean,
+          batch_id*num_qo_heads+head_id,iter-1,div_ceil(kv_len,CTA_K),head_dim,lane_id);
     wgmma::warpgroup_wait<0>();
 
     // load V
@@ -335,7 +340,9 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
       load_async_4D(sV, &tensorMapV, &barrier_V, iter * CTA_K, 0, kv_head_id, batch_id);
     }
 
-    if constexpr (BlockValues) {
+    if constexpr (PreloadMeans) {
+      vc_restore_preloaded_means(RO,RO_temp,tile_mass,packed_means);
+    } else if constexpr (BlockValues) {
       vc_restore_block_means(RO,RO_temp,tile_mass,V_mean,
           batch_id*num_qo_heads+head_id,iter - 1,div_ceil(kv_len,CTA_K),head_dim,lane_id,
           part * (num_tiles_v / pv_parts));
@@ -488,6 +495,7 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
 #pragma unroll
     for (uint32_t part = 0; part < pv_parts; ++part) {
     float RO_temp[num_tiles_q][num_tiles_v / pv_parts][8];
+    uint32_t packed_means[num_tiles_v][2];
     wgmma::warpgroup_arrive();
 #pragma unroll
     for (uint32_t fq = 0; fq < num_tiles_q; fq++)
@@ -510,9 +518,14 @@ __global__ __maxnreg__(RegisterLimit) void sage_vc_attention_kernel_sage_layout(
         else vc_probability_finish_work<(WorkReduction>=2)>(RO,d,probability_alpha,tile_mass);
       }
     }
+    if constexpr (PreloadMeans)
+      vc_preload_block_means(packed_means,tile_mass,V_mean,
+          batch_id*num_qo_heads+head_id,num_iterations-1,div_ceil(kv_len,CTA_K),head_dim,lane_id);
     wgmma::warpgroup_wait<0>();
 
-    if constexpr (BlockValues) {
+    if constexpr (PreloadMeans) {
+      vc_restore_preloaded_means(RO,RO_temp,tile_mass,packed_means);
+    } else if constexpr (BlockValues) {
       vc_restore_block_means(RO,RO_temp,tile_mass,V_mean,
           batch_id*num_qo_heads+head_id,num_iterations - 1,div_ceil(kv_len,CTA_K),head_dim,lane_id,
           part * (num_tiles_v / pv_parts));

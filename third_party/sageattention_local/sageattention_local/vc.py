@@ -12,6 +12,7 @@ import torch
 # vc15 fuses final four-byte assembly into vc14's paired conversion.
 # The vc13 shared-copy schedules remain explicit experiments after regression.
 DEFAULT_EXPCAST_KERNEL = "vc15"
+UNIFIED_MODES = {"vc31_unified": 38, "vc32_full_pv": 39, "vc32_packed_mean": 40}
 DESCRIPTOR_CANDIDATES = {"vc30_desc": 37}
 STREAM_CONVERT_CANDIDATES = {"vc28_stream_i2f": 35, "vc29_interleave_rows": 36}
 REGISTER_CANDIDATES = {"vc18_r128": 128, "vc18_r144": 144, "vc18_r192": 192,
@@ -42,13 +43,13 @@ SAGE_LAYOUT_MODES = {"vc16": 1, "vc16_early_v": 2, "vc16_pack_first": 3,
                      **{mode: i+24 for mode,i in ENCODING_CANDIDATES.items()},
                      **{mode: i+24 for mode,i in MASS_CANDIDATES.items()},
                      **{mode: i+32 for mode,i in DUAL_QUERY_CANDIDATES.items()},
-                     **STREAM_CONVERT_CANDIDATES, **DESCRIPTOR_CANDIDATES, "vc31_unified": 38}
+                     **STREAM_CONVERT_CANDIDATES, **DESCRIPTOR_CANDIDATES, **UNIFIED_MODES}
 
 
 def _extension():
     from . import _vc_sm90
     if (getattr(_vc_sm90, "sage_vc_api_version", None) != 1 or
-            getattr(_vc_sm90, "sage_vc_kernel_version", None) != 29 or
+            getattr(_vc_sm90, "sage_vc_kernel_version", None) != 30 or
             getattr(_vc_sm90, "sage_vc_preprocess_version", None) != 1):
         raise RuntimeError("Rebuild sageattention-local with bash scripts/build_sage_local.sh")
     return _vc_sm90
@@ -64,8 +65,10 @@ def sage_vc_build_info():
                                          "scope": "INT32-to-FP32 conversion inside encoding groups; unchanged probability bytes and FP32 sums; reported H200 full API 1.0156x over vc22"},
             "interleaved_encode_candidate": {"mode": "vc29_interleave_rows", "baseline": "vc28_stream_i2f",
                                              "scope": "interleave two independent row conversion/encoding chains; same P bytes and FP32 sums; reported H200 full/core API about 1.2% slower than vc28"},
+            "full_pv_candidates": {"modes": ["vc32_full_pv", "vc32_packed_mean"], "baseline": "vc31_unified",
+                                   "scope": "channel V, full N128 PV; optional batched packed-mean loads (overlap not assumed); identical quantization and two-level FP32 accumulation; H200 speed unverified"},
             "unified_candidate": {"mode": "vc31_unified", "baseline": "vc28_stream_i2f",
-                                  "scope": "vc28 probability scheduling plus channel V block means; D128 smoothed PV uses N64 fragments; H200 unverified"},
+                                  "scope": "vc28 probability scheduling plus channel V block means; measured vc31 baseline, D128 smoothed PV uses N64 fragments"},
             "descriptor_candidate": {"mode": "vc30_desc", "baseline": "vc28_stream_i2f",
                                      "scope": "reuse aligned Q/K/V WGMMA descriptor anchors; reported H200 full/core slower than vc28; retain vc28 baseline"},
             "clustering": "8 clusters, 2 Lloyd iterations, stable order; fresh every call",
@@ -75,7 +78,7 @@ def sage_vc_build_info():
             "sage_vc_preprocess_version": _extension().sage_vc_preprocess_version,
             "paper_equivalent": False, "sage_vc_api_version": 1,
             "default_kernel_mode": "optimized", "default_expcast_kernel": DEFAULT_EXPCAST_KERNEL, "kernel_modes": ["optimized", "vc15", "vc14", "vc13_overlap", "vc13_serial", "vc12", "vc11", "vc10", "vc9", "vc7", "vc6", "vc4", *SAGE_LAYOUT_MODES],
-            "sage_layout_candidates": {"modes": SAGE_LAYOUT_MODES, "scope": "v_smooth=False only; pack-first modes require expcast=False; vc17 modes require expcast=True; default remains vc15"},
+            "sage_layout_candidates": {"modes": SAGE_LAYOUT_MODES, "scope": "v_smooth=False except unified vc31/vc32 modes; pack-first modes require expcast=False; vc17 modes require expcast=True; default remains vc15"},
             "probability_candidates": "vc17: group 1/4 fragments, four FP32 chains, or exact direct FP32 decode; vc16 body and unchanged encoding/history",
             "mass_candidates": {"modes": MASS_CANDIDATES, "baseline": "vc22_both", "scope": "completed P kept in registers; previous denominator decoded before/during next QK in source; compiler may merge schedules; no scratch or V smoothing; reported H200 full API did not improve"},
             "dual_query_candidates": {"modes": DUAL_QUERY_CANDIDATES, "baseline": "vc22_both (ExpCast) / vc16 (control)", "scope": "two Q64 warpgroups per CTA share K128/V128; optional QK handoff; original Q64 scales, P encoding and FP32 accumulation; no V smoothing; H200 correctness and speed unverified"},
@@ -169,12 +172,12 @@ def prepare(q, k, v, *, expcast=True, v_smooth=True, clusters=8, iterations=2, s
 
 def forward_prepared(state, *, kernel_mode="optimized"):
     sage_schedule = SAGE_LAYOUT_MODES.get(kernel_mode, 0)
-    if sage_schedule==38 and state["vs"].ndim!=3:
-        raise ValueError("vc31 requires per-channel V scale")
+    if kernel_mode in UNIFIED_MODES and state["vs"].ndim!=3:
+        raise ValueError("vc31/vc32 require per-channel V scale")
     if kernel_mode in HISTORY_CANDIDATES and state["q"].shape[-1]!=128:
         raise ValueError("Shared-history candidates require D128")
     if sage_schedule:
-        if state["block_values"] and sage_schedule!=38:
+        if state["block_values"] and kernel_mode not in UNIFIED_MODES:
             raise ValueError("Sage layout candidates require v_smooth=False")
         if 6<=sage_schedule<=9 and not state["expcast"]:
             raise ValueError("Probability candidates require expcast=True")
@@ -199,12 +202,12 @@ def sageattn_vc(q, k, v, tensor_layout="HND", is_causal=False, sm_scale=None, re
                *, expcast=True, v_smooth=True, clusters=8, iterations=2, kernel_mode="optimized", v_scale_mode="channel", grouping_mode="fused"):
     if kernel_mode not in ("optimized", "vc15", "vc14", "vc13_overlap", "vc13_serial", "vc12", "vc11", "vc10", "vc9", "vc7", "vc6", "vc4", *SAGE_LAYOUT_MODES):
         raise ValueError("Unknown kernel_mode; use a documented vc4..vc21 mode or 'optimized'")
-    if kernel_mode=="vc31_unified" and v_scale_mode!="channel":
-        raise ValueError("vc31 requires per-channel V scale")
+    if kernel_mode in UNIFIED_MODES and v_scale_mode!="channel":
+        raise ValueError("vc31/vc32 require per-channel V scale")
     if kernel_mode in HISTORY_CANDIDATES and q.shape[-1]!=128:
         raise ValueError("Shared-history candidates require D128")
     if kernel_mode in SAGE_LAYOUT_MODES:
-        if v_smooth and kernel_mode!="vc31_unified":
+        if v_smooth and kernel_mode not in UNIFIED_MODES:
             raise ValueError("Sage layout candidates require v_smooth=False")
         if 6<=SAGE_LAYOUT_MODES[kernel_mode]<=9 and not expcast:
             raise ValueError("Probability candidates require expcast=True")
