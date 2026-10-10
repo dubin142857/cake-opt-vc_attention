@@ -2,8 +2,27 @@
 
 2026-10-10。新增 `scripts/tilelang_expcast_opt.py` 和独立入口
 `scripts/benchmark_tilelang_opt.py`，针对现有 Hopper INT8 QK / ExpCast / FP8 PV。
-原始 TileLang 实现继续作为对照。H200 首轮在 MMA 候选的跨流一致性检查中失败，
-下述同步修订尚待 H200 回归；目前没有本轮有效的性能结果。
+原始 TileLang 实现继续作为对照。H200 同步修订后的测速摘要已返回：
+`cached_s1` 为当前最快的 TileLang 候选，默认只测试 `cached_s1/s2`。
+MMA 候选保留显式选择，新增 `cached_no_ws_s1` 供下一轮实验。
+
+## 用户提供的 H200 结果
+
+以下为同轮 CUPTI 的全部 kernel 时间，没有混用 API 时间。
+
+| 实现 | 时间（ms） | 相对同 stage baseline |
+| --- | ---: | ---: |
+| `baseline_s1` | 56.9038 | 1.000× |
+| `cached_s1` | 49.4891 | 1.150× 加速，耗时减少 13.03% |
+| `cached_s2` | 50.0617 | 1.139× 加速，耗时减少 12.24% |
+| `mma_qk_s1` | 137.2563 | 耗时为 baseline_s1 的 2.412 倍 |
+| `sage_cpp` | 25.0549 | 外部对照 |
+| `flash4` | 30.7743 | 外部对照 |
+
+`cached_s1` 耗时仍为 Sage 的 1.975 倍、FA4 的 1.608 倍。这是单轮结果，
+不能据此认定 stage 1 比 stage 2 稳定快。完整八行摘要和计算方式保存在
+`results/h200_tilelang_opt_reported.json`。未取得完整运行 JSON，实际输入形状、
+误差指标和每轮波动尚未独立核验；完成测速意味着脚本已走过其校验门槛。
 
 ## 候选
 
@@ -11,11 +30,20 @@
 | --- | --- | --- |
 | `cached_s1/s2` | 每个 query tile 缓存 Q scale，每个 key tile 缓存 K scale，显式广播到 score fragment | 编译器是否已消除原实现的重复读取，以及新调度是否受益 |
 | `mma_qk_s1/s2` | 在缓存 scales 的基础上，K 从 shared 复制到 fragment，使 INT8 QK 使用 `mma.sync`；FP8 PV 继续使用 WGMMA | QK 等待和布局成本的变化能否抵消额外 K 寄存器复制 |
+| `cached_no_ws_s1`（显式选择） | 在 cached 基础上禁用自动 warp specialization，实际 CTA 从 256 线程变为 128；K/V 搬运同时从 TMA 改为 `cp.async`，两个 GEMM 保持 WGMMA | 更少的每 CTA 资源能否抵消搬运方式和同步变化的成本 |
 
-两组保持 BM64/BN128、128-key ExpCast 分块、per-thread INT8 QK、自然顺序
+所有候选保持 BM64/BN128、128-key ExpCast 分块、per-thread INT8 QK、自然顺序
 `[B,H,D,Npad]` FP8 V、decoded-P 分母和逐块独立 FP32 PV 累加。
 V 平滑/分组关闭；直接 ExpCast 的 FP32 运算顺序与原实现一致。
-FP16/BF16、D64/128、stage 1/2 均支持。只用于非因果 MHA 和 Hopper SM90a。
+FP16/BF16、D64/128 均支持；cached/MMA 支持 stage 1/2，no_ws 只支持 stage 1。
+只用于非因果 MHA 和 Hopper SM90a。
+
+no_ws 的 Q65/K257 离线编译中，D64 使用 168 registers、D128 使用 247，
+无 stack/spill；双阶段试验产生了 spill，因此不提供该配置。新候选尚未在 H200
+执行。源码检查要求 `cp.async` 完成后再读 K/V，且 WGMMA 完成和线程同步后
+才覆盖相应 shared buffer；这仍不能代替 GPU 运行一致性检查。
+默认主形状 B1/H28/Q37741/K37741/D128/BF16 也已离线编译：单阶段为
+245 registers、48 KiB 动态 shared、无 stack/spill，长循环的等待顺序同样通过检查。
 
 本地 D128/BF16/s1 的 PTX 确认：原实现 QS/KS 均在 key 循环中加载，
 `cached` 把 QS 移到循环前。但 NVRTC 已把原实现的逐元素重复读取合并，
@@ -33,7 +61,8 @@ FP16/BF16、D64/128、stage 1/2 均支持。只用于非因果 MHA 和 Hopper SM
 K barrier 也不足以确认根因。现采用更保守的 MMA 调度：将 K 的 empty-barrier
 释放延到全部 QK MMA 和显式 128-consumer 同步之后，用指针读取依赖保持 K 的
 生命周期，并设置编译器 memory fence。生产者不参与该同步，避免全 CTA 同步死锁。
-这是待验证的修复候选，不能以代码生成检查替代 H200 回归。
+修订后用户给出了包含两种 MMA stage 的完整测速摘要，说明本次脚本走过了
+运行一致性检查。没有详细校验 JSON，仍不能认定已经确定初次失败的根因。
 
 验证增加同一 prepared payload 在默认 stream、非默认 stream 各三次调用，
 每次都要求与首次输出逐位一致；失败保存具体 head/query/channel 和行差异分布。
@@ -58,7 +87,17 @@ bash scripts/run_tilelang_opt_h200.sh
 ```
 
 脚本复用现有环境，不安装依赖、不构建项目的 C++ 扩展。测试默认同时包含已安装的
-Sage attention 和 FlashAttention-4 对照。只测 TileLang 时：
+Sage attention 和 FlashAttention-4 对照，以及原始 TileLang stage 1/2；
+默认优化候选为 `cached_s1/s2`。下一轮测试 128 线程候选：
+
+```bash
+bash scripts/run_tilelang_opt_h200.sh \
+  --variants cached_s1 cached_s2 cached_no_ws_s1 \
+  --output results/h200_tilelang_no_ws.json \
+  --trace-dir results/tilelang_no_ws_traces
+```
+
+命令先执行完整正确性和跨流重复校验，通过后才测速。只测 TileLang 时：
 
 ```bash
 bash scripts/run_tilelang_opt_h200.sh --skip-sage --skip-flash4
@@ -102,13 +141,15 @@ CUPTI attention / all-kernel / all-GPU-work 时间另报，不与 API 时间混�
 
 本地 GPU 是 RTX 3060 Laptop（SM86），没有执行 SM90a 内核。以下检查已经通过：
 
-- 17 项 CPU 辅助测试：V inverse permutation 的全部 FP8 bit patterns、CLI、候选隔离、
+- 19 项 CPU 辅助测试：V inverse permutation 的全部 FP8 bit patterns、CLI、候选隔离、
   尾块差异定位、严格一致性失败记录和缩短验证时的随机输入复现。
-- 16 项候选代码生成测试：两种 dtype、D64/128、stage 1/2、两个候选；
+- 20 项候选代码生成测试：cached/MMA 的两种 dtype、D64/128、stage 1/2，
+  以及 no_ws 单阶段的四个组合；另检查拒绝 no_ws 双阶段配置。
   检查低精度 GEMM 类型、Q scale 读取位置和 K/V buffer 释放时序。
 - 原始 TileLang 的 8 项代码生成回归测试。
-- 原始 baseline 和两个候选共 24 份源码，经 CUDA 12.4 NVRTC 和 ptxas
-  交叉编译为 SM90a cubin，均为 240 registers，stack/spill 为 0。
+- 原始 baseline 和 cached/MMA 共 24 份源码，外加 no_ws 的 4 份，
+  经 CUDA 12.4 NVRTC 和 ptxas 交叉编译为 SM90a cubin，stack/spill 均为 0。
+  前 24 份为 240 registers；no_ws 的寄存器数见上文。
   Windows NVRTC 检查使用标准整数头和 `cuda::std` 兼容包装；这不替代远端 NVCC 和运行校验。
 
 记录在 `results/tilelang_opt_cross_compile.json`，本地源码/PTX/cubin 放在

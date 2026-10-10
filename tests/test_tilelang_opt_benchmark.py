@@ -78,7 +78,7 @@ def test_cli_defaults_keep_original_controls_and_only_valid_candidates(benchmark
     args = benchmark.parse_args([])
     assert (args.batch, args.heads, args.queries, args.tokens, args.dim, args.dtype) == (
         1, 28, 37741, 37741, 128, "bfloat16")
-    assert args.variants == ["cached_s1", "cached_s2", "mma_qk_s1", "mma_qk_s2"]
+    assert args.variants == ["cached_s1", "cached_s2"]
     assert args.validation_case == "all"
     assert args.output == Path("results/h200_tilelang_opt.json")
     configs = benchmark.configurations(args)
@@ -103,7 +103,8 @@ def test_cli_candidate_subset_is_deduplicated_and_overlap_is_explicit(benchmark)
 
 
 @pytest.mark.parametrize("arguments", [
-    ["--variants", "reduce8_s1"], ["--queries", "0"], ["--dim", "32"],
+    ["--variants", "reduce8_s1"], ["--variants", "cached_no_ws_s2"],
+    ["--queries", "0"], ["--dim", "32"],
     ["--check-queries", "-1"], ["--kernel-seconds", "nan"],
 ])
 def test_cli_rejects_removed_candidate_and_invalid_dimensions(benchmark, arguments):
@@ -123,7 +124,8 @@ def test_dispatch_preserves_backend_stage_and_same_payload_without_late_binding(
 
     monkeypatch.setattr(benchmark.baseline_backend, "forward_prepared", backend("original"))
     monkeypatch.setattr(benchmark.optimized_backend, "forward_prepared", backend("candidate"))
-    configs = benchmark.configurations(benchmark.parse_args(["--include-overlap"]))
+    configs = benchmark.configurations(benchmark.parse_args([
+        "--include-overlap", "--variants", "cached_s1", "cached_s2", "mma_qk_s1", "mma_qk_s2", "cached_no_ws_s1"]))
     calls = benchmark.implementations(configs)
     payload = object()
     for name, call in calls.items():
@@ -132,6 +134,14 @@ def test_dispatch_preserves_backend_stage_and_same_payload_without_late_binding(
         assert call(payload) == (expected, stage, variant)
     assert all(item[1] is payload for item in invoked)
     assert len(invoked) == len(configs)
+
+
+def test_no_warp_specialization_is_explicit_and_maps_to_stage_one(benchmark):
+    assert "cached_no_ws_s1" not in benchmark.parse_args([]).variants
+    args = benchmark.parse_args(["--variants", "cached_no_ws_s1"])
+    configs = benchmark.configurations(args)
+    assert list(configs) == ["baseline_s1", "baseline_s2", "cached_no_ws_s1"]
+    assert configs["cached_no_ws_s1"] == (benchmark.optimized_backend, 1, "cached_no_ws")
 
 
 def test_targeted_validation_selects_both_tail_patterns(benchmark):

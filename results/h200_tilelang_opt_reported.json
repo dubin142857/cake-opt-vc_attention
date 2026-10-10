@@ -1,0 +1,108 @@
+{
+  "source": "User-provided H200 summary; not a local benchmark",
+  "scope": "CUPTI kernel only",
+  "complete_benchmark_json": false,
+  "shape": {
+    "batch": 1,
+    "heads": 28,
+    "queries": 37741,
+    "keys": 37741,
+    "dim": 128,
+    "dtype": "bfloat16",
+    "provenance": "Script defaults; not verified against the complete run JSON"
+  },
+  "validation": "Completion of timing implies the script reached profiling after its validation gates; inferred from the supplied summary, not independently verified. Detailed validation metrics and case counts were not supplied.",
+  "rows": {
+    "baseline_s1": {
+      "kernel_ms": 56.9038,
+      "sage_over_variant": 0.440302757,
+      "flash4_over_variant": 0.54081274
+    },
+    "baseline_s2": {
+      "kernel_ms": 57.0453,
+      "sage_over_variant": 0.439210592,
+      "flash4_over_variant": 0.539471262
+    },
+    "cached_s1": {
+      "kernel_ms": 49.4891,
+      "sage_over_variant": 0.506271078,
+      "flash4_over_variant": 0.621839961
+    },
+    "cached_s2": {
+      "kernel_ms": 50.0617,
+      "sage_over_variant": 0.500480407,
+      "flash4_over_variant": 0.614727426
+    },
+    "mma_qk_s1": {
+      "kernel_ms": 137.2563,
+      "sage_over_variant": 0.182540984,
+      "flash4_over_variant": 0.224210473
+    },
+    "mma_qk_s2": {
+      "kernel_ms": 137.1485,
+      "sage_over_variant": 0.182684462,
+      "flash4_over_variant": 0.224386705
+    },
+    "sage_cpp": {
+      "kernel_ms": 25.0549,
+      "sage_over_variant": 1,
+      "flash4_over_variant": 1.228274709
+    },
+    "flash4": {
+      "kernel_ms": 30.7743,
+      "sage_over_variant": 0.814150119,
+      "flash4_over_variant": 1
+    }
+  },
+  "comparison_formula": {
+    "speedup": "reference kernel_ms / candidate kernel_ms; above 1 means faster",
+    "time_saved_ms": "reference kernel_ms - candidate kernel_ms",
+    "time_saved_percent": "100 * (reference kernel_ms - candidate kernel_ms) / reference kernel_ms; negative means more time"
+  },
+  "stage_matched_comparisons": {
+    "cached_s1": {
+      "reference": "baseline_s1",
+      "candidate": "cached_s1",
+      "speedup": 1.149824911,
+      "time_saved_ms": 7.4147,
+      "time_saved_percent": 13.030236996
+    },
+    "cached_s2": {
+      "reference": "baseline_s2",
+      "candidate": "cached_s2",
+      "speedup": 1.139499857,
+      "time_saved_ms": 6.9836,
+      "time_saved_percent": 12.242200497
+    },
+    "mma_qk_s1": {
+      "reference": "baseline_s1",
+      "candidate": "mma_qk_s1",
+      "speedup": 0.414580606,
+      "time_saved_ms": -80.3525,
+      "time_saved_percent": -141.207617066
+    },
+    "mma_qk_s2": {
+      "reference": "baseline_s2",
+      "candidate": "mma_qk_s2",
+      "speedup": 0.415938198,
+      "time_saved_ms": -80.1032,
+      "time_saved_percent": -140.420332613
+    }
+  },
+  "best_cached_comparisons": {
+    "sage_cpp": {
+      "reference": "sage_cpp",
+      "candidate": "cached_s1",
+      "speedup": 0.506271078,
+      "time_saved_ms": -24.4342,
+      "time_saved_percent": -97.522640282
+    },
+    "flash4": {
+      "reference": "flash4",
+      "candidate": "cached_s1",
+      "speedup": 0.621839961,
+      "time_saved_ms": -18.7148,
+      "time_saved_percent": -60.813081045
+    }
+  }
+}

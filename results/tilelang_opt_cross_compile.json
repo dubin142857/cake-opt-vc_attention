@@ -1,6 +1,6 @@
 {
   "date": "2026-10-10",
-  "status": "cross_compile_passed_hopper_sync_regression_pending",
+  "status": "cross_compile_passed_no_ws_hopper_runtime_pending",
   "target": "sm_90a",
   "compiler": "CUDA 12.4 NVRTC + ptxas",
   "shape": {
@@ -12,12 +12,13 @@
   "local_gpu": "RTX 3060 Laptop SM86",
   "compile_environment": "Windows NVRTC virtual stdint/stdlib headers and cuda::std compatibility imports; unchanged generated kernel bodies; not a Linux NVCC runtime validation",
   "tests": {
-    "cpu_auxiliary": 17,
-    "candidate_codegen": 16,
+    "cpu_auxiliary": 19,
+    "candidate_codegen": 20,
+    "candidate_configuration_rejection": 1,
     "original_codegen": 8,
-    "passed": 41
+    "passed": 48
   },
-  "kernel_count": 24,
+  "kernel_count": 28,
   "kernels": [
     {
       "source": "baseline_bfloat16_d128_s1.cu",
@@ -290,6 +291,86 @@
       "spill_load_bytes": 0,
       "ptxas_log": "ptxas info    : 1823 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 240 registers, 1024 bytes smem\n",
       "mma_lifetime": "K released after all MMA and explicit 128-consumer synchronization"
+    },
+    {
+      "source": "cached_no_ws_bfloat16_d128_s1.cu",
+      "sha256": "b7a69597746ac60446d9152fc018e6d5515b9a5126b787b8986c01583104cf07",
+      "shape": {
+        "batch": 1,
+        "heads": 2,
+        "queries": 65,
+        "keys": 257,
+        "dim": 128
+      },
+      "threads": 128,
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 247,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1330 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 247 registers\n",
+      "copy_pipeline": "K/V cp.async; both GEMMs WGMMA; no producer warpgroup"
+    },
+    {
+      "source": "cached_no_ws_bfloat16_d64_s1.cu",
+      "sha256": "0d75d4cc5650ce71efa7d267b284c9c7a0d94c056eeaaa4bbdcf1a80494d9899",
+      "shape": {
+        "batch": 1,
+        "heads": 2,
+        "queries": 65,
+        "keys": 257,
+        "dim": 64
+      },
+      "threads": 128,
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1338 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 168 registers\n",
+      "copy_pipeline": "K/V cp.async; both GEMMs WGMMA; no producer warpgroup"
+    },
+    {
+      "source": "cached_no_ws_float16_d128_s1.cu",
+      "sha256": "23931bc9e96e10059a56bdc472cb7ef2f8e0e757f16b93919d704b123b924b9d",
+      "shape": {
+        "batch": 1,
+        "heads": 2,
+        "queries": 65,
+        "keys": 257,
+        "dim": 128
+      },
+      "threads": 128,
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 247,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1330 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 247 registers\n",
+      "copy_pipeline": "K/V cp.async; both GEMMs WGMMA; no producer warpgroup"
+    },
+    {
+      "source": "cached_no_ws_float16_d64_s1.cu",
+      "sha256": "a8896c0ecd15ced3cb64ee7223cb604786ed957a4c71de981c44928e7a669bb9",
+      "shape": {
+        "batch": 1,
+        "heads": 2,
+        "queries": 65,
+        "keys": 257,
+        "dim": 64
+      },
+      "threads": 128,
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1338 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 168 registers\n",
+      "copy_pipeline": "K/V cp.async; both GEMMs WGMMA; no producer warpgroup"
     }
   ],
   "ptx_scale_load_observation": {
@@ -321,13 +402,155 @@
       84
     ],
     "synchronization_revision": "Conservative delayed K release after MMA and consumer synchronization; root cause not confirmed",
-    "revised_kernel_runtime": "Pending Hopper regression; local GPU remains SM86"
+    "revised_kernel_runtime": "User supplied completed timing summary including both revised MMA variants; validation success inferred from reaching timing, detailed JSON unavailable"
   },
   "revision_checks": {
     "mma_codegen": 8,
     "mma_cross_compile": 8,
     "checks": "Generated CUDA and PTX must keep K release after MMA and bar.sync 15,128",
-    "integration_tests_passed": 41,
+    "integration_tests_passed": 48,
     "ptx_k_release_order_checked": 8
+  },
+  "shape_scope": "Default shape describes baseline/cached/MMA; no_ws kernels carry per-kernel shapes",
+  "h200_performance_summary": "results/h200_tilelang_opt_reported.json",
+  "no_ws_additional_compile_review": {
+    "gpu_execution": false,
+    "cases": [
+      {
+        "source": "cached_no_ws_review_bfloat16_d128_s2.cu",
+        "shape": [
+          1,
+          2,
+          65,
+          257,
+          128
+        ],
+        "dtype": "bfloat16",
+        "stages": 2,
+        "threads": 128,
+        "registers": 255,
+        "stack_frame_bytes": 120,
+        "spill_store_bytes": 116,
+        "spill_load_bytes": 116,
+        "dynamic_shared_bytes_inferred_from_source": 81920,
+        "nvrtc_passed": true,
+        "ptxas_passed": true,
+        "sha256": "32026f6a0c910fc4d83006047544918428552dc9442f6f135df558b67509d6cb"
+      },
+      {
+        "source": "cached_no_ws_review_bfloat16_d64_s2.cu",
+        "shape": [
+          1,
+          2,
+          65,
+          257,
+          64
+        ],
+        "dtype": "bfloat16",
+        "stages": 2,
+        "threads": 128,
+        "registers": 255,
+        "stack_frame_bytes": 96,
+        "spill_store_bytes": 92,
+        "spill_load_bytes": 92,
+        "dynamic_shared_bytes_inferred_from_source": 45056,
+        "nvrtc_passed": true,
+        "ptxas_passed": true,
+        "sha256": "63cefddb182283eb5e91db7d7f3d30b2313737db8fa19a6ad9da53ac352a5818"
+      },
+      {
+        "source": "cached_no_ws_review_float16_d128_s2.cu",
+        "shape": [
+          1,
+          2,
+          65,
+          257,
+          128
+        ],
+        "dtype": "float16",
+        "stages": 2,
+        "threads": 128,
+        "registers": 255,
+        "stack_frame_bytes": 120,
+        "spill_store_bytes": 116,
+        "spill_load_bytes": 116,
+        "dynamic_shared_bytes_inferred_from_source": 81920,
+        "nvrtc_passed": true,
+        "ptxas_passed": true,
+        "sha256": "13c9a0e684b6cfda8a077f6bd3857d9988d3e1be47c8b0379921b5e132ec5482"
+      },
+      {
+        "source": "cached_no_ws_review_float16_d64_s2.cu",
+        "shape": [
+          1,
+          2,
+          65,
+          257,
+          64
+        ],
+        "dtype": "float16",
+        "stages": 2,
+        "threads": 128,
+        "registers": 255,
+        "stack_frame_bytes": 96,
+        "spill_store_bytes": 92,
+        "spill_load_bytes": 92,
+        "dynamic_shared_bytes_inferred_from_source": 45056,
+        "nvrtc_passed": true,
+        "ptxas_passed": true,
+        "sha256": "2f5aa2770eda89cbb8d348669a9df5ddbbbbec7d1a351bdf1667607d41737c32"
+      },
+      {
+        "source": "cached_no_ws_review_main_bfloat16_d128_s1.cu",
+        "shape": [
+          1,
+          28,
+          37741,
+          37741,
+          128
+        ],
+        "dtype": "bfloat16",
+        "stages": 1,
+        "threads": 128,
+        "registers": 245,
+        "stack_frame_bytes": 0,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0,
+        "dynamic_shared_bytes_inferred_from_source": 49152,
+        "nvrtc_passed": true,
+        "ptxas_passed": true,
+        "sha256": "df9017e26779e0e15a9cef22f14cf537e76ff655c0e2d320f8345efc7ccde82a"
+      },
+      {
+        "source": "cached_no_ws_review_main_bfloat16_d128_s2.cu",
+        "shape": [
+          1,
+          28,
+          37741,
+          37741,
+          128
+        ],
+        "dtype": "bfloat16",
+        "stages": 2,
+        "threads": 128,
+        "registers": 254,
+        "stack_frame_bytes": 0,
+        "spill_store_bytes": 0,
+        "spill_load_bytes": 0,
+        "dynamic_shared_bytes_inferred_from_source": 81920,
+        "nvrtc_passed": true,
+        "ptxas_passed": true,
+        "sha256": "1182725d7b3419fd1c5714c877162bdea97e9b12d11e52b21db98405f2fa3a8b"
+      }
+    ],
+    "decision": "Only stage 1 is exposed; stage 2 spills on the Q65/K257 cases, despite zero spill on the main shape",
+    "lifetime_review": "Long stage-1 main loop waits for copies before GEMMs and waits for WGMMA plus CTA synchronization before K/V reuse; not GPU runtime validation"
+  },
+  "no_ws_revision_checks": {
+    "supported_configs_codegen": 4,
+    "supported_configs_cross_compile": 4,
+    "single_stage_only": true,
+    "checks": "128-thread launch, K/V cp.async and WGMMA completion plus CTA synchronization before buffer reuse",
+    "hopper_runtime": "Pending full correctness and timing on H200"
   }
 }

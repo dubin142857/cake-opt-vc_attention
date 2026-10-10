@@ -9,22 +9,27 @@ tilelang = pytest.importorskip("tilelang")
 from tvm.target import Target
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from tilelang_expcast_opt import make_primfunc
+from tilelang_expcast_opt import compiler_pass_configs, make_primfunc
 
 
 def lower_source(dim, stages, variant, dtype, queries=65, keys=129):
     target = Target({"kind": "cuda", "arch": "sm_90a"})
-    with target, tilelang.transform.PassContext(config={tilelang.PassConfigKey.TL_ENABLE_FAST_MATH: True}):
+    with target, tilelang.transform.PassContext(config=compiler_pass_configs(variant)):
         return tilelang.lower(make_primfunc(1, 2, queries, keys, dim, dtype, stages, variant),
                               target=target).kernel_source
 
 
 @pytest.mark.parametrize("dim", [64, 128])
-@pytest.mark.parametrize("stages", [1, 2])
-@pytest.mark.parametrize("variant", ["cached", "mma_qk"])
+@pytest.mark.parametrize("variant,stages", [
+    ("cached", 1), ("cached", 2), ("mma_qk", 1), ("mma_qk", 2),
+    ("cached_no_ws", 1),
+])
 @pytest.mark.parametrize("dtype", ["float16", "bfloat16"])
 def test_cached_scales_and_native_low_precision_gemms(dim, stages, variant, dtype):
-    source = lower_source(dim, stages, variant, dtype)
+    # Three K tiles exercise a refill, as well as the masked key tail, in the
+    # cp.async pipeline. Existing warp-specialized sources retain their shape.
+    source = lower_source(dim, stages, variant, dtype,
+                          keys=257 if variant == "cached_no_ws" else 129)
     outdir = Path(__file__).resolve().parents[1] / "results" / "tilelang_opt_local_sources"
     outdir.mkdir(parents=True, exist_ok=True)
     (outdir / f"{variant}_{dtype}_d{dim}_s{stages}.cu").write_text(source, encoding="utf-8")
@@ -36,12 +41,33 @@ def test_cached_scales_and_native_low_precision_gemms(dim, stages, variant, dtyp
     assert "query_scale[" in source and "key_scale[" in source
     assert "vc_paper_code(" in source
     assert "kFloat8_e4m3, tl::DataType::kFloat8_e4m3" in source
-    assert "tma_load(V_desc" in source
     if variant == "mma_qk":
         assert "mma_sync" in source
         assert "wgmma_ss<tl::DataType::kInt8" not in source
     else:
         assert "kInt8, tl::DataType::kInt8" in source
+    if variant == "cached_no_ws":
+        assert "__launch_bounds__(128, 1)" in source
+        assert "warpgroup_reg_alloc" not in source
+        assert "warpgroup_reg_dealloc" not in source
+        assert "if (((int)threadIdx.x) < 128)" not in source
+        assert "tma_load(" not in source
+        assert "tl::cp_async_gs<16>" in source
+        assert "tl::cp_async_wait<" in source
+        qk = source.index("kInt8, tl::DataType::kInt8")
+        ready = source.rindex("tl::cp_async_wait<", 0, qk)
+        assert "__syncthreads()" in source[ready:qk]
+        qk_done = source.index("warpgroup_wait<0>()", qk)
+        refill = qk_done + re.search(
+            r"tl::cp_async_gs(?:_conditional)?<16>", source[qk_done:]).start()
+        assert "__syncthreads()" in source[qk_done:refill]
+        pv = source.index("kFloat8_e4m3, tl::DataType::kFloat8_e4m3")
+        pv_done = source.index("warpgroup_wait<0>()", pv)
+        refill = source.index("tl::cp_async_gs<16>", pv_done)
+        assert "__syncthreads()" in source[pv_done:refill]
+        assert "AllReduce<tl::MaxOp" in source
+        assert "AllReduce<tl::SumOp" in source
+        return
     # The compiler adds a producer warpgroup. Explicit lifetimes must prevent
     # either DMA buffer from being overwritten while a GEMM still uses it.
     from test_tilelang_expcast_codegen import branch_body
@@ -70,3 +96,8 @@ def test_cached_scales_and_native_low_precision_gemms(dim, stages, variant, dtyp
         assert 'asm volatile("bar.sync 15, 128;" : : "l"(k) : "memory")' in source
     assert "AllReduce<tl::MaxOp" in consumer
     assert "AllReduce<tl::SumOp" in consumer
+
+
+def test_no_ws_two_stages_rejected():
+    with pytest.raises(ValueError, match="two stages spill registers"):
+        make_primfunc(1, 2, 65, 257, 128, stages=2, variant="cached_no_ws")

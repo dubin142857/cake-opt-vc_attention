@@ -1,14 +1,28 @@
 """Isolated TileLang candidates for the Hopper INT8-QK/FP8-PV experiment.
 
 The original tilelang_expcast backend and all C++ kernels remain the benchmark
-controls. These candidates cache quantization scales and compare INT8 MMA vs
-WGMMA lowering. The direct ExpCast formula and FP32 operation order are retained.
+controls. These candidates cache quantization scales, compare INT8 MMA vs
+WGMMA, and test a single-warpgroup copy pipeline. The direct ExpCast formula
+and FP32 operation order are retained.
 """
 from functools import lru_cache
 
 import tilelang_expcast as baseline
 
-VARIANTS = ("cached", "mma_qk")
+VARIANTS = ("cached", "mma_qk", "cached_no_ws")
+
+
+def compiler_pass_configs(variant):
+    import tilelang
+    if variant not in VARIANTS:
+        raise ValueError(f"Unknown TileLang optimization: {variant}")
+    config = {tilelang.PassConfigKey.TL_ENABLE_FAST_MATH: True}
+    if variant == "cached_no_ws":
+        # Keep the original 128-thread CTA instead of introducing an extra
+        # producer warpgroup. TileLang also replaces K/V TMA with cp.async;
+        # both GEMMs still use WGMMA on Hopper.
+        config[tilelang.PassConfigKey.TL_DISABLE_WARP_SPECIALIZED] = True
+    return config
 
 
 def make_primfunc(batch, heads, queries, keys, dim, output_dtype="bfloat16",
@@ -21,6 +35,8 @@ def make_primfunc(batch, heads, queries, keys, dim, output_dtype="bfloat16",
         raise ValueError("Expected nonempty FP16/BF16 MHA")
     if variant not in VARIANTS:
         raise ValueError(f"Unknown TileLang optimization: {variant}")
+    if variant == "cached_no_ws" and stages != 1:
+        raise ValueError("cached_no_ws supports one stage; two stages spill registers")
     bm, bn = 64, 128
     blocks = (keys + bn - 1) // bn
     qs_len = (queries + bm - 1) // bm * 32
@@ -133,7 +149,7 @@ def compile_kernel(batch, heads, queries, keys, dim, dtype, stages=1, variant="c
     return tilelang.compile(
         make_primfunc(batch, heads, queries, keys, dim, dtype, stages, variant),
         out_idx=[6], target={"kind": "cuda", "arch": "sm_90a"},
-        pass_configs={tilelang.PassConfigKey.TL_ENABLE_FAST_MATH: True})
+        pass_configs=compiler_pass_configs(variant))
 
 
 def forward_prepared(state, stages=1, variant="cached"):
