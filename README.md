@@ -1,7 +1,8 @@
 # MiniMax-H3 / A5 VC-Attention 实验
 
-**当前 H200 主路线（2026-10-09）：`sageattn_vc`，INT8 QK + FP8 PV。**
-新候选：`bash scripts/run_fused_expcast_h200.sh`，以 balanced-max 为基线，融合四值编码/解码/FP32 数对求和；保留 Sage、FA4 对比，先逐位验证再测速，见 [CUDA 实验说明](SAGE_CUDA_EXPCAST.md)。
+**当前 H200 主路线（2026-10-10）：`sageattn_vc`，INT8 QK + FP8 PV。**
+新候选：`bash scripts/run_scale_prefetch_h200.sh`，当前 PV 执行时提前读取下一块 K scale；保留原 vc28、installed、Sage、FA4 对比，逐位验证后测速，并记录 JIT/installed 构建信息和逐轮差值，见 [CUDA 实验说明](SAGE_CUDA_EXPCAST.md)。
+上轮 fused-quad 未体现收益（23.7386 vs balanced-max 23.5873 ms，installed 23.3888 ms），保留为历史实验。
 当前 H200 优化主线：`bash scripts/run_cuda_expcast_h200.sh`，以 vc28 为基线对比 INT32 最大值归约候选、Sage、FA4；见 [CUDA 实验说明](SAGE_CUDA_EXPCAST.md)。
 当前候选分段诊断：`bash scripts/diagnose_balanced_expcast_h200.sh`，测 balanced-max 的 QK、概率编码/解码/求和、PV 与预处理，并校准插桩开销；保留 vc28、Sage、FA4 对照。
 保留论文直接公式 CUDA/TileLang 对照：`bash scripts/run_expcast_tilelang_h200.sh`，

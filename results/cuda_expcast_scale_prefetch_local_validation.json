@@ -1,0 +1,182 @@
+{
+  "date": "2026-10-10",
+  "status": "local_checks_passed_h200_pending",
+  "tests_passed": 50,
+  "source_sha256": "f93f27de593361cd6e7a5c40ed424901a56ca96cd97f41f4cccd09c23efc8bf2",
+  "local_gpu": "RTX3060 Laptop SM86; complete SM90a kernels not executed locally",
+  "full_attention_executed": false,
+  "cross_compile": "CUDA12.4 SM90a, FP16/BF16, D64/D128, original/candidate",
+  "contract": "Only next K scale load lifetime changes. Original probability and FP32 accumulation arithmetic.",
+  "remote_gates": "28 lane/tile-varying scale cases plus 28 standard cases and all-row main shape; bitwise same-JIT gate; 1% decoded reference",
+  "compiled_resources": [
+    {
+      "symbol": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "dim": 128,
+      "dtype": "bfloat16",
+      "candidate": false,
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128
+    },
+    {
+      "symbol": "_ZN7sage_vc39sage_vc_attention_kernel_scale_prefetchILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "dim": 128,
+      "dtype": "bfloat16",
+      "candidate": true,
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128
+    },
+    {
+      "symbol": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "dim": 128,
+      "dtype": "float16",
+      "candidate": false,
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128
+    },
+    {
+      "symbol": "_ZN7sage_vc39sage_vc_attention_kernel_scale_prefetchILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "dim": 128,
+      "dtype": "float16",
+      "candidate": true,
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128
+    },
+    {
+      "symbol": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "dim": 64,
+      "dtype": "bfloat16",
+      "candidate": false,
+      "registers": 128,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128
+    },
+    {
+      "symbol": "_ZN7sage_vc39sage_vc_attention_kernel_scale_prefetchILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "dim": 64,
+      "dtype": "bfloat16",
+      "candidate": true,
+      "registers": 127,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128
+    },
+    {
+      "symbol": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "dim": 64,
+      "dtype": "float16",
+      "candidate": false,
+      "registers": 128,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128
+    },
+    {
+      "symbol": "_ZN7sage_vc39sage_vc_attention_kernel_scale_prefetchILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "dim": 64,
+      "dtype": "float16",
+      "candidate": true,
+      "registers": 127,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128
+    }
+  ],
+  "sass_d128_bfloat16": [
+    {
+      "symbol": "_ZN7sage_vc36sage_vc_attention_kernel_sage_layoutILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "candidate": false,
+      "static_instructions": 2856,
+      "main_qk_scalar_loads": [
+        "LDG.E.CONSTANT R20, desc[UR22][R20.64]"
+      ],
+      "main_pv_scalar_loads": [],
+      "main_pv_excerpt": [
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R100, gdesc[UR8], RZ, !UPT",
+        "UIADD3 UR10, UR15, 0x6020, URZ",
+        "PLOP3.LUT P0, PT, P1, P0, PT, 0x2, 0x0",
+        "UMOV UR11, 0x40000040",
+        "ULOP3.LUT UR10, UR10, 0x3ffe0, URZ, 0xc0, !UPT",
+        "USHF.R.U32.HI UR10, URZ, 0x4, UR10",
+        "ULOP3.LUT UR10, UR10, 0x10000, URZ, 0xfc, !UPT",
+        "VOTE.ALL P0, P0",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R96, gdesc[UR8], R24",
+        "UIADD3 UR10, UR15, 0x6040, URZ",
+        "UMOV UR11, 0x40000040",
+        "UIADD3 UR15, UR15, 0x6060, URZ",
+        "ULOP3.LUT UR10, UR10, 0x3ffe0, URZ, 0xc0, !UPT",
+        "ULOP3.LUT UR15, UR15, 0x3ffe0, URZ, 0xc0, !UPT",
+        "USHF.R.U32.HI UR10, URZ, 0x4, UR10",
+        "USHF.R.U32.HI UR15, URZ, 0x4, UR15",
+        "ULOP3.LUT UR10, UR10, 0x10000, URZ, 0xfc, !UPT",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R92, gdesc[UR8], R24",
+        "ULOP3.LUT UR10, UR15, 0x10000, URZ, 0xfc, !UPT",
+        "UMOV UR11, 0x40000040",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R88, gdesc[UR8], R24, gsb0"
+      ],
+      "interpretation": "Static CUDA12.4 scheduling evidence only, not utilization or speedup"
+    },
+    {
+      "symbol": "_ZN7sage_vc39sage_vc_attention_kernel_scale_prefetchILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "candidate": true,
+      "static_instructions": 2848,
+      "main_qk_scalar_loads": [],
+      "main_pv_scalar_loads": [
+        "LDG.E.CONSTANT R151, desc[UR22][R150.64]"
+      ],
+      "main_pv_excerpt": [
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R100, gdesc[UR8], RZ, !UPT",
+        "UIADD3 UR10, UR14, 0x6020, URZ",
+        "ULOP3.LUT UR10, UR10, 0x3ffe0, URZ, 0xc0, !UPT",
+        "USHF.R.U32.HI UR10, URZ, 0x4, UR10",
+        "IMAD.WIDE.U32 R150, R157, 0x4, R150",
+        "LDG.E.CONSTANT R151, desc[UR22][R150.64]",
+        "ULOP3.LUT UR10, UR10, 0x10000, URZ, 0xfc, !UPT",
+        "FSETP.NEU.FTZ.AND P0, PT, R21, 1, PT",
+        "UMOV UR11, 0x40000040",
+        "FSETP.NEU.FTZ.AND P1, PT, R20, 1, PT",
+        "PLOP3.LUT P0, PT, P1, P0, PT, 0x2, 0x0",
+        "VOTE.ALL P0, P0",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R96, gdesc[UR8], R24",
+        "UIADD3 UR10, UR14, 0x6040, URZ",
+        "UMOV UR11, 0x40000040",
+        "UIADD3 UR14, UR14, 0x6060, URZ",
+        "ULOP3.LUT UR10, UR10, 0x3ffe0, URZ, 0xc0, !UPT",
+        "ULOP3.LUT UR14, UR14, 0x3ffe0, URZ, 0xc0, !UPT",
+        "USHF.R.U32.HI UR10, URZ, 0x4, UR10",
+        "USHF.R.U32.HI UR14, URZ, 0x4, UR14",
+        "ULOP3.LUT UR10, UR10, 0x10000, URZ, 0xfc, !UPT",
+        "ULOP3.LUT UR14, UR14, 0x10000, URZ, 0xfc, !UPT",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R92, gdesc[UR8], R24",
+        "UMOV UR10, UR14",
+        "UMOV UR11, 0x40000040",
+        "QGMMA.64x128x32.F32.E4M3.E4M3 R24, R88, gdesc[UR8], R24, gsb0"
+      ],
+      "interpretation": "Static CUDA12.4 scheduling evidence only, not utilization or speedup"
+    }
+  ],
+  "previous_h200_user_report": {
+    "scope": "CUPTI GPU ms excerpt only; raw trials/accuracy/API times not supplied",
+    "vc28_balanced_max": 23.5873,
+    "vc28_fused_quad": 23.7386,
+    "vc28_installed": 23.3888,
+    "sage_cpp": 25.0717,
+    "flash4": 31.035
+  }
+}

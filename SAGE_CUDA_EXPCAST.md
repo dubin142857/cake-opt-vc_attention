@@ -1,9 +1,59 @@
 # H200 CUDA 主线：ExpCast 调度候选
 
-2026-10-09。当前主线是 **INT8 QK + ExpCast + FP8 PV，V 聚类和平滑关闭**。
+2026-10-10。当前主线是 **INT8 QK + ExpCast + FP8 PV，V 聚类和平滑关闭**。
 保留 vc28 已测实现，新候选不修改已安装包和默认 dispatch。
 
-## 当前候选：fused quad（以 balanced-max 为基线）
+## 当前候选：提前一轮读取 K scale
+
+最新用户回传的 CUPTI 汇总：balanced-max **23.5873 ms**，fused-quad **23.7386 ms**，
+installed vc28 **23.3888 ms**，Sage **25.0717 ms**，FA4 **31.0350 ms**。
+fused-quad 比同编译基线慢约 0.64%，没有正收益证据，不替换已测 vc28。
+这里只记录用户提供的 GPU 时间，不补造未提供的 full/core API、精度或原始 trial。
+
+源码看上去在每轮 QK 前读取 K scale，但本地 SASS 显示编译器已将它放进部分 QK 执行区间。
+因此本轮不重复简单的源码挪动：**当前块 PV 执行时读取下一块的 K scale，跨轮保留一个 FP32 标量**。
+下一轮继续按原顺序计算 `q_scale * k_scale` 和 `original_sm_scale * dequant_scale`。
+第一块单独读取；MAIN 循环只预取存在的下一块，最后一次预取供尾块使用，无越界预取。
+不增加共享缓冲区，QK/PV、概率编码、最大值、分母求和和历史累加均保持 vc28 原方式。
+
+```bash
+git pull --ff-only origin master
+bash scripts/run_scale_prefetch_h200.sh
+```
+
+沿用已有 Torch、Sage local、FA4 和 nvcc，无需安装或重编译包，也不需要 ncu/nvdisasm。
+默认 BF16、NHD `[1,37741,28,128]`，9 轮 API、5 轮 CUPTI，结果保存在
+`results/h200_cuda_expcast_scale_prefetch.json`。追加 `--validate-only` 可以只验证；
+真实输入追加 `--qkv-file ... --qkv-layout NHD`。
+
+| 行名 | 含义 |
+|---|---|
+| vc28_jit | 原生产 kernel 源码和模板签名，不增加实验布尔参数 |
+| vc28_scale_prefetch | 仅提前下一块 scale 的读取 |
+| vc28_installed | 已安装版本，独立检查编译和封装差异 |
+| sage_cpp / flash4 | 保留的外部对照 |
+
+先跑 28 个逐块/逐 lane 变化的 scale 检查，覆盖 1、128、129、256、257、513、37741 个 key，
+FP16/BF16、D64/D128 和非默认 stream；随后跑已有 28 个 attention 配置和主尺寸检查。
+候选与同编译 vc28 的全部输出必须**逐位一致**，量化 reference 仍用原 1% 实现一致性门限，
+任何失败都停止测速。这不代表模型质量通过。
+
+JSON 新增 `build_audit`：记录实际加载的 JIT/installed 动态库路径与 SHA256、JIT 编译参数、
+原 kernel 源码摘要、启动配置以及 D128 的 installed 资源信息。
+两者 launch 均为 Q64/K128、128 threads、D128 动态共享内存 40960 bytes、寄存器上限 168。
+已安装包的版本号不能证明其二进制与当前源码完全对应；该记录不声称已经查明远端 JIT 时间差。
+
+新增 `paired_comparisons`，在 full/core 两种口径分别记录 JIT/候选、installed/JIT、
+installed/候选的逐轮耗时差、中位差和更快轮数；正差值表示后者更快。
+配对使用同一 trial 编号，trial 内顺序随机；这是描述性统计，不是显著性检验。
+
+本地 **50 项测试通过**，完整 SM90a kernel 的 FP16/BF16 × D64/D128 × 两路径共 8 个实例
+已用 CUDA 12.4 交叉编译，无 stack/spill。D128 两路径均为 168 寄存器，
+D64 原版 128、候选 127。SASS 确认下一块 scale 的加载位于 MAIN PV 指令之间，
+移出了下一轮 QK 区间。**H200 正确性与速度仍待上述脚本实测**；本机 SM86 未执行这些完整 kernel。
+本地证据见 [scale-prefetch 编译检查](results/cuda_expcast_scale_prefetch_local_validation.json)。
+
+## 已测候选：fused quad（以 balanced-max 为基线）
 
 最新 H200 分段诊断中，balanced-max 的采样概率区段为 949 cycles，control 为 1362；
 细探针编码 366、解码 153、FP32 求和 385 cycles。细探针相对实际 core 增加约 9.6% API

@@ -3,6 +3,8 @@ import argparse
 import json
 from pathlib import Path
 import random
+import math
+import statistics
 from types import SimpleNamespace
 import torch
 
@@ -14,9 +16,12 @@ from kernel_timing import profile_kernels,run_window
 import split_mass_native as native
 import balanced_max_native
 import fused_quad_native
+import scale_prefetch_native
 
 VARIANTS={"vc28_jit":False,"vc28_split_mass":True}
 EXPERIMENTS={
+    "scale_prefetch":(scale_prefetch_native,"vc28_scale_prefetch",
+        "Original vc28 kernel template as baseline. Load the NEXT K scale during current PV and carry one FP32 scalar. Same QK/PV, probability bytes, FP32 mass/history, per-thread scales and tail masking; no additional shared buffers."),
     "fused_quad":(fused_quad_native,"vc28_fused_quad",
         "Balanced max in BOTH arms. Fuse four-byte encoding, FP8 decode and FP32 pair sums; seed chains with the first pair instead of adding zero. Same P rounding, sum order, fallback, tail and PV/history."),
     "balanced_max":(balanced_max_native,"vc28_balanced_max",
@@ -64,6 +69,18 @@ def make_calls(ext,vc,qkv,state,backend=native,candidate="vc28_split_mass",basel
     return core,full
 
 
+def paired_timings(baseline,candidate):
+    if not baseline or len(baseline)!=len(candidate):
+        raise ValueError("Matched nonempty timing trials required")
+    if not all(math.isfinite(x) and x>0 for x in [*baseline,*candidate]):
+        raise ValueError("Finite positive timing samples required")
+    saved=[old-new for old,new in zip(baseline,candidate)]
+    return {"paired_saved_ms":saved,"median_saved_ms":statistics.median(saved),
+            "min_saved_ms":min(saved),"max_saved_ms":max(saved),
+            "faster_trials":sum(x>0 for x in saved),"trials":len(saved),
+            "note":"Matched trial indices with randomized within-trial order; descriptive, not a significance test."}
+
+
 @torch.no_grad()
 def validate(ext,vc,reference,device,progress,backend=native,candidate="vc28_split_mass",baseline="vc28_jit"):
     rows=[]
@@ -90,6 +107,9 @@ def validate(ext,vc,reference,device,progress,backend=native,candidate="vc28_spl
                     if split:
                         result["vs_jit_baseline"]=metrics(out,outputs[baseline],limit=.001)
                         result["exact_vs_jit_baseline"]=torch.equal(out,outputs[baseline])
+                        if getattr(backend,"EXACT_OUTPUT",False):
+                            from validate_scale_prefetch import assert_exact
+                            result["bitwise_gate"]=assert_exact(out,outputs[baseline])
                     if pattern=="uniform":
                         perm=reference.value_permutation(state["v"].shape[-1],device)
                         values=state["v"].float().index_select(-1,perm)[...,:n]
@@ -121,6 +141,10 @@ def main():
         report["environment"]={"torch":torch.__version__,"cuda":torch.version.cuda,"gpu":torch.cuda.get_device_name(device),
                                "native_version":vc._extension().sage_vc_kernel_version}
         ext,report["build"]=backend.load_native();save()
+        if a.experiment=="scale_prefetch":
+            report["build_audit"]=backend.build_audit(ext,vc,report["build"],a.dim,0 if a.dtype=="float16" else 1);save()
+            from validate_scale_prefetch import validate as validate_scale
+            report["scale_validation"]=validate_scale(ext,backend,vc,vc_reference,device,lambda r:update("scale_validation",r))
         if a.experiment=="fused_quad":
             from validate_fused_quad_math import validate as validate_math
             report["probability_validation"]=validate_math(ext,device,lambda r:update("probability_validation",r))
@@ -150,6 +174,9 @@ def main():
                 row.update(vs_jit_baseline=metrics(out,baseline,limit=.001),exact_vs_jit_baseline=torch.equal(out,baseline),
                            vs_installed=metrics(out,installed,limit=.001),
                            decoded_reference=metrics(out.index_select(2,index),oracle,limit=.01))
+                if name==candidate and getattr(backend,"EXACT_OUTPUT",False):
+                    from validate_scale_prefetch import assert_exact
+                    row["bitwise_gate"]=assert_exact(out,baseline)
             report["accuracy"][name]=row;save()
         raw=ext.resources(a.dim,0 if a.dtype=="float16" else 1)
         report["compiled_resources"]={baseline_name:raw["expcast_plain"],candidate:raw["expcast_probe"]}
@@ -177,7 +204,16 @@ def main():
         comparison.update(report["accuracy"][candidate]["vs_jit_baseline"])
         comparison["exact_match"]=report["accuracy"][candidate]["exact_vs_jit_baseline"]
         update("comparison",comparison)
+        paired={scope:{"jit_vs_candidate":paired_timings(group[baseline_name],group[candidate]),
+                       "installed_vs_jit":paired_timings(group["vc28_installed"],group[baseline_name]),
+                       "installed_vs_candidate":paired_timings(group["vc28_installed"],group[candidate])}
+                for scope,group in samples.items()}
+        update("paired_comparisons",paired)
         print(f"Same-payload {baseline_name} / {candidate} (>1 faster); ALL output rows:",json.dumps(comparison))
+        for scope,group in paired.items():
+            for name,row in group.items():
+                print(f"Paired {scope} {name}: saved {row['median_saved_ms']:+.4f} ms; "
+                      f"faster {row['faster_trials']}/{row['trials']} trials (descriptive only)")
         print("Compiled resources:",json.dumps(report["compiled_resources"]))
         if not a.skip_cupti:
             report["kernel_windows"]=profile_kernels({**core,**({"flash4":full["flash4"]} if "flash4" in full else {})},a,device,on_result=lambda r:update("kernel_windows",r))
