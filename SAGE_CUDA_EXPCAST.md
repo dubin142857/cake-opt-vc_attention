@@ -3,7 +3,59 @@
 2026-10-10。当前主线是 **INT8 QK + ExpCast + FP8 PV，V 聚类和平滑关闭**。
 保留 vc28 已测实现，新候选不修改已安装包和默认 dispatch。
 
-## 当前候选：最后一组概率解码/求和与前三次 PV 重叠
+## 当前候选：保留一次 PV 提交，延后少量 FP32 分母计算
+
+最新 H200 回传：预取基线 **23.4155 ms**，prefix-overlap **23.5372 ms**，
+prefix-serial **23.6871 ms**，installed **23.6530 ms**，Sage **24.8849 ms**，
+FA4 **30.8784 ms**。重叠版比串行版快 0.1499 ms，但仍比预取版慢 0.1217 ms。
+因此保留预取版，不采用上轮 prefix 拆分。原始数值见
+[用户回传记录](results/h200_cuda_expcast_pv_prefix_reported.json)，没有补造 API 或原始 trial 数据。
+
+本地 CUDA 12.4 反汇编显示：prefix 串行/重叠版在 MAIN 区域比基线多出四次高字节右移，
+重叠版还多一次 WGMMA fence，并把一次 PV 提交变成两次。
+这是可确认的结构开销，不能单凭静态计数将 H200 的 0.1217 ms 全部归因于它们。
+
+本轮回到预取基线，先完成所有 P 编码和 FP8 解码，只保留最后四对已解码的 `half2`。
+这些值仅用作精确表示，**所有加法仍是 FP32**。提交四次 PV 后再完成最后几项
+FP32 转换/求和，不访问正在被 WGMMA 使用的 P 或 PV 累加寄存器。
+保持一次 PV 提交，无额外 fence，无共享内存概率副本。
+
+局部分母的加法分组发生变化，但这一变化是精确的：每线程每行 32 个概率值均为
+`2^-9` 的整数倍，最大值 256，任意部分和最多 `2^22` 个整数单位，FP32 可精确表示。
+历史缩放、跨 tile 累加、P 字节和尾块处理保持原实现。fallback 用原算法算完整分母，
+随后补的四对值为零。
+
+```bash
+git pull --ff-only origin master
+bash scripts/run_mass_tail_h200.sh
+```
+
+默认 BF16、NHD `[1,37741,28,128]`，INT8 QK + ExpCast + FP8 PV，V 聚类/平滑关闭。
+使用已有 Torch、Sage local、FA4 和 nvcc；首次运行编译独立 JIT 模块，不重新安装包，
+不要求 ncu/nvdisasm。输出 `results/h200_cuda_expcast_mass_tail.json`，
+9 轮 API、5 轮 CUPTI。可追加 `--validate-only` 或真实 QKV 参数。
+
+| 行名 | 含义 |
+|---|---|
+| vc28_scale_prefetch | 上轮最快预取版，同次编译的基线 |
+| vc28_mass_tail | 延后最后四对解码值的 FP32 转换/求和，PV 保持单批提交 |
+| vc28_installed | 已安装 vc28 |
+| sage_cpp / flash4 | 外部对照 |
+
+仍先跑 38 个概率状态检查、28 个不同 scale 检查、8 个混合 warp fallback 检查和
+28 个小尺寸 attention 配置。候选相对预取基线的完整输出须逐位一致；decoded reference
+保留 1% 实现门限，主尺寸检查所有输出行。任一失败即停止计时。
+full/core API、配对差值和 CUPTI 分别记录，不混算加速比。
+
+本地 **139 项测试通过**，包含新增 39 项 GPU 概率检查；本机 SM86 使用软件 FP8 解码。
+FP16/BF16 × D64/D128 × 两条路径共 8 个完整 SM90a kernel 交叉编译通过，
+D128 为 168 寄存器，D64 为 127，均无 stack/spill。
+预取基线的 D128 BF16 指令文本与上轮相同。新候选的八次 FP32 转换和八次加法
+已被编译器排入 PV 指令之间，保留单次提交，未增加 fence/wait。
+这仅证明静态调度发生变化，**H200 完整正确性和性能待实测**；CUDA 13 的调度可能不同。
+证据见 [mass-tail 本地检查](results/cuda_expcast_mass_tail_local_validation.json)。
+
+## 已测候选：最后一组概率解码/求和与前三次 PV 重叠
 
 上轮 H200 CUPTI：scale-prefetch **23.4629 ms**，同次 JIT vc28 **23.6402 ms**，
 installed vc28 **23.6394 ms**，Sage **24.8479 ms**，FA4 **30.6937 ms**。
@@ -53,7 +105,8 @@ JSON 的 `paired_comparisons` 增加串行版/重叠版的逐轮差值；full/co
 CUDA 12.4 已交叉编译 FP16/BF16 × D64/D128 × 三个版本，共 12 个完整 SM90a kernel；
 D128 全部为 168 个寄存器，D64 为 127/128/128，均无 stack/spill。
 SASS 确认前三次 PV 与第四次 PV 之间有解码、FP32 求和及 fence，没有插入等待前三次 PV 完成的指令。
-**本地未执行完整 Hopper attention，实际正确性和性能仍待 H200 验证。**
+本地未执行完整 Hopper attention；该候选的 H200 GPU 时间已回传，见本页最新结果，
+完整验证详情和 API/trial 原始记录尚未提供。
 证据见 [PV prefix 本地检查](results/cuda_expcast_pv_prefix_local_validation.json)。
 
 ## 已测候选：提前一轮读取 K scale
@@ -103,7 +156,7 @@ installed/候选的逐轮耗时差、中位差和更快轮数；正差值表示�
 本地 **50 项测试通过**，完整 SM90a kernel 的 FP16/BF16 × D64/D128 × 两路径共 8 个实例
 已用 CUDA 12.4 交叉编译，无 stack/spill。D128 两路径均为 168 寄存器，
 D64 原版 128、候选 127。SASS 确认下一块 scale 的加载位于 MAIN PV 指令之间，
-移出了下一轮 QK 区间。**H200 正确性与速度仍待上述脚本实测**；本机 SM86 未执行这些完整 kernel。
+移出了下一轮 QK 区间。H200 GPU 时间已回传并列在本页开头；本机 SM86 未执行这些完整 kernel。
 本地证据见 [scale-prefetch 编译检查](results/cuda_expcast_scale_prefetch_local_validation.json)。
 
 ## 已测候选：fused quad（以 balanced-max 为基线）

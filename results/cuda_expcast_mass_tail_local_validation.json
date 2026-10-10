@@ -1,0 +1,335 @@
+{
+  "date": "2026-10-10",
+  "status": "local_checks_passed_h200_pending",
+  "tests_passed": 139,
+  "new_gpu_helper_cases": 39,
+  "new_gpu_helper_result": "P/max/alpha/mass byte-exact; 38 cases also compare independent FP64 decoded mass; one additional mixed-warp fallback transition case",
+  "local_gpu": "RTX3060 Laptop SM86; software FP8 decoding",
+  "full_hopper_attention_executed": false,
+  "cross_compile": "CUDA12.4 SM90a; FP16/BF16 x D64/D128 x baseline/candidate; two helper kernels",
+  "source_sha256": "6b1c8def66c6bb701d08f75bf3ac57f1b11535ae05dead2e4ffc0d1af4c990d5",
+  "compiled_resources": [
+    {
+      "symbol": "_ZN7sage_vc39sage_vc_attention_kernel_scale_prefetchILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "variant": "vc28_scale_prefetch",
+      "dim": 128,
+      "dtype": "bfloat16",
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128
+    },
+    {
+      "symbol": "_ZN7sage_vc34sage_vc_attention_kernel_mass_tailILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "variant": "vc28_mass_tail",
+      "dim": 128,
+      "dtype": "bfloat16",
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128
+    },
+    {
+      "symbol": "_ZN7sage_vc39sage_vc_attention_kernel_scale_prefetchILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "variant": "vc28_scale_prefetch",
+      "dim": 128,
+      "dtype": "float16",
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128
+    },
+    {
+      "symbol": "_ZN7sage_vc34sage_vc_attention_kernel_mass_tailILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "variant": "vc28_mass_tail",
+      "dim": 128,
+      "dtype": "float16",
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128
+    },
+    {
+      "symbol": "_ZN7sage_vc39sage_vc_attention_kernel_scale_prefetchILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "variant": "vc28_scale_prefetch",
+      "dim": 64,
+      "dtype": "bfloat16",
+      "registers": 127,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128
+    },
+    {
+      "symbol": "_ZN7sage_vc34sage_vc_attention_kernel_mass_tailILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "variant": "vc28_mass_tail",
+      "dim": 64,
+      "dtype": "bfloat16",
+      "registers": 127,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128
+    },
+    {
+      "symbol": "_ZN7sage_vc39sage_vc_attention_kernel_scale_prefetchILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "variant": "vc28_scale_prefetch",
+      "dim": 64,
+      "dtype": "float16",
+      "registers": 127,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128
+    },
+    {
+      "symbol": "_ZN7sage_vc34sage_vc_attention_kernel_mass_tailILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "variant": "vc28_mass_tail",
+      "dim": 64,
+      "dtype": "float16",
+      "registers": 127,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128
+    },
+    {
+      "symbol": "_Z22mass_tail_check_kernelILb0EEvPKiPKfS3_PiPfi",
+      "variant": "probability_helper",
+      "dim": null,
+      "dtype": null,
+      "registers": 80,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 0
+    },
+    {
+      "symbol": "_Z22mass_tail_check_kernelILb1EEvPKiPKfS3_PiPfi",
+      "variant": "probability_helper",
+      "dim": null,
+      "dtype": null,
+      "registers": 80,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 0
+    }
+  ],
+  "sass_d128_bfloat16": [
+    {
+      "variant": "vc28_scale_prefetch",
+      "symbol": "_ZN7sage_vc39sage_vc_attention_kernel_scale_prefetchILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "static_instructions": 2848,
+      "main_pv_commits": 1,
+      "extra_pv_fences": 0,
+      "main_pv_mass_ops": [],
+      "main_region_all_branches": {
+        "IGMMA.64x128x32.S8.S8": 4,
+        "ULOP3.LUT": 25,
+        "PLOP3.LUT": 12,
+        "USHF.R.U32.HI": 12,
+        "UMOV": 19,
+        "UIADD3": 17,
+        "VOTEU.ALL": 3,
+        "ULDC": 1,
+        "USHF.L.U32": 3,
+        "FMUL.FTZ": 71,
+        "UIADD3.X": 2,
+        "WARPGROUP.DEPBAR.LE": 2,
+        "SYNCS.ARRIVE.TRANS64": 2,
+        "ELECT": 2,
+        "UTMALDG.4D": 2,
+        "BRA.U.ANY": 2,
+        "VIMNMX3": 30,
+        "VIMNMX": 2,
+        "I2FP.F32.S32.RZ": 130,
+        "SHFL.BFLY": 4,
+        "FSETP.GE.FTZ.AND": 1,
+        "FMNMX.FTZ": 6,
+        "FSETP.GEU.FTZ.AND": 1,
+        "FSETP.GTU.FTZ.AND": 1,
+        "FADD.FTZ": 262,
+        "MUFU.EX2": 2,
+        "FSETP.LE.FTZ.AND": 1,
+        "MOV": 8,
+        "VOTE.ALL": 2,
+        "BRA": 7,
+        "FFMA.FTZ": 66,
+        "F2IP.U8.F32.NTZ": 64,
+        "F2FP.F16.E4M3.UNPACK_B": 64,
+        "HADD2.F32": 128,
+        "FFMA": 64,
+        "UPRMT": 3,
+        "SYNCS.PHASECHK.TRANS64.TRYWAIT": 2,
+        "LDC.64": 1,
+        "WARPGROUP.ARRIVE": 2,
+        "LEA": 1,
+        "QGMMA.64x128x32.F32.E4M3.E4M3": 4,
+        "IMAD.WIDE.U32": 1,
+        "LDG.E.CONSTANT": 1,
+        "FSETP.NEU.FTZ.AND": 2,
+        "FMUL": 66,
+        "FADD": 4,
+        "UISETP.GE.U32.AND": 1,
+        "S2R": 1
+      },
+      "limitation": "Static CUDA12.4 SM90a scheduling, includes fallback branches. Not measured dynamic cycles, utilization or speedup. CUDA13 may schedule differently."
+    },
+    {
+      "variant": "vc28_mass_tail",
+      "symbol": "_ZN7sage_vc34sage_vc_attention_kernel_mass_tailILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "static_instructions": 2848,
+      "main_pv_commits": 1,
+      "extra_pv_fences": 0,
+      "main_pv_mass_ops": [
+        {
+          "address": "4580",
+          "instruction": "HADD2.F32 R161, -RZ, R160.H0_H0"
+        },
+        {
+          "address": "45c0",
+          "instruction": "HADD2.F32 R160, -RZ, R160.H1_H1"
+        },
+        {
+          "address": "45f0",
+          "instruction": "HADD2.F32 R162, -RZ, R158.H0_H0"
+        },
+        {
+          "address": "4610",
+          "instruction": "FADD.FTZ R161, R161, R160"
+        },
+        {
+          "address": "4630",
+          "instruction": "HADD2.F32 R160, -RZ, R159.H0_H0"
+        },
+        {
+          "address": "4650",
+          "instruction": "HADD2.F32 R159, -RZ, R159.H1_H1"
+        },
+        {
+          "address": "4670",
+          "instruction": "HADD2.F32 R150, -RZ, R157.H0_H0"
+        },
+        {
+          "address": "4680",
+          "instruction": "FADD.FTZ R156, R161, R156"
+        },
+        {
+          "address": "4690",
+          "instruction": "HADD2.F32 R157, -RZ, R157.H1_H1"
+        },
+        {
+          "address": "46b0",
+          "instruction": "HADD2.F32 R163, -RZ, R158.H1_H1"
+        },
+        {
+          "address": "46c0",
+          "instruction": "FADD.FTZ R160, R160, R159"
+        },
+        {
+          "address": "46d0",
+          "instruction": "FADD.FTZ R157, R150, R157"
+        },
+        {
+          "address": "46e0",
+          "instruction": "FADD.FTZ R162, R162, R163"
+        },
+        {
+          "address": "46f0",
+          "instruction": "FADD.FTZ R155, R160, R155"
+        },
+        {
+          "address": "4700",
+          "instruction": "FADD.FTZ R157, R156, R157"
+        },
+        {
+          "address": "4710",
+          "instruction": "FADD.FTZ R162, R155, R162"
+        }
+      ],
+      "main_region_all_branches": {
+        "IGMMA.64x128x32.S8.S8": 4,
+        "ULOP3.LUT": 25,
+        "PLOP3.LUT": 12,
+        "USHF.R.U32.HI": 12,
+        "UMOV": 19,
+        "UIADD3": 17,
+        "VOTEU.ALL": 3,
+        "ULDC": 1,
+        "USHF.L.U32": 3,
+        "FMUL.FTZ": 71,
+        "UIADD3.X": 2,
+        "WARPGROUP.DEPBAR.LE": 2,
+        "SYNCS.ARRIVE.TRANS64": 2,
+        "ELECT": 2,
+        "UTMALDG.4D": 2,
+        "BRA.U.ANY": 2,
+        "VIMNMX3": 30,
+        "VIMNMX": 2,
+        "I2FP.F32.S32.RZ": 130,
+        "SHFL.BFLY": 4,
+        "FSETP.GE.FTZ.AND": 1,
+        "FMNMX.FTZ": 6,
+        "FSETP.GEU.FTZ.AND": 1,
+        "FSETP.GTU.FTZ.AND": 1,
+        "FADD.FTZ": 262,
+        "MUFU.EX2": 2,
+        "FSETP.LE.FTZ.AND": 1,
+        "MOV": 10,
+        "VOTE.ALL": 2,
+        "BRA": 7,
+        "FFMA.FTZ": 66,
+        "F2IP.U8.F32.NTZ": 64,
+        "F2FP.F16.E4M3.UNPACK_B": 64,
+        "HADD2.F32": 128,
+        "CS2R": 1,
+        "FFMA": 64,
+        "UPRMT": 3,
+        "SYNCS.PHASECHK.TRANS64.TRYWAIT": 2,
+        "WARPGROUP.ARRIVE": 2,
+        "LDC.64": 1,
+        "QGMMA.64x128x32.F32.E4M3.E4M3": 4,
+        "FSETP.NEU.FTZ.AND": 2,
+        "LEA": 1,
+        "IMAD.WIDE.U32": 1,
+        "LDG.E.CONSTANT": 1,
+        "FMUL": 66,
+        "FADD": 4,
+        "UISETP.GE.U32.AND": 1,
+        "S2R": 1
+      },
+      "limitation": "Static CUDA12.4 SM90a scheduling, includes fallback branches. Not measured dynamic cycles, utilization or speedup. CUDA13 may schedule differently."
+    }
+  ],
+  "previous_prefix_static_audit": [
+    {
+      "variant": "vc28_scale_prefetch",
+      "static_main_region_instructions": 1111,
+      "high_byte_shifts": 0,
+      "main_qk_plus_pv_fences": 2,
+      "pv_commits": 1
+    },
+    {
+      "variant": "vc28_prefix_serial",
+      "static_main_region_instructions": 1118,
+      "high_byte_shifts": 4,
+      "main_qk_plus_pv_fences": 2,
+      "pv_commits": 1
+    },
+    {
+      "variant": "vc28_prefix_overlap",
+      "static_main_region_instructions": 1118,
+      "high_byte_shifts": 4,
+      "main_qk_plus_pv_fences": 3,
+      "pv_commits": 2
+    }
+  ],
+  "contract": "Four decoded half2 pairs retained; only FP32 promotion/addition delayed. One four-MMA PV batch. Tile-mass addition order regrouped exactly in a bounded domain; original history and two-level PV retained. No pending P/accumulator access.",
+  "remote_gates": "38 helper checks; 28 varying-scale cases; 8 mixed-warp attention cases; 28 standard cases; all-row main-shape bitwise comparison; 1% decoded reference is implementation-only",
+  "current_h200_speedup": null
+}

@@ -1,0 +1,15 @@
+{
+  "source": "User-pasted H200 CUPTI table after run_pv_prefix_h200.sh",
+  "scope": "GPU kernel duration summary only; API tables, raw trials and validation details were not supplied",
+  "reported_json_path": "results/h200_cuda_expcast_pv_prefix.json",
+  "milliseconds": {
+    "vc28_scale_prefetch": 23.4155,
+    "vc28_prefix_overlap": 23.5372,
+    "vc28_prefix_serial": 23.6871,
+    "vc28_installed": 23.6530,
+    "sage_cpp": 24.8849,
+    "flash4": 30.8784
+  },
+  "table_columns": "attention, all kernels and all GPU work are equal for each reported row",
+  "decision": "Retain scale-prefetch baseline; prefix overlap did not beat it. No statistical-significance or model-quality claim."
+}

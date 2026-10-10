@@ -18,9 +18,12 @@ import balanced_max_native
 import fused_quad_native
 import scale_prefetch_native
 import pv_prefix_native
+import mass_tail_native
 
 VARIANTS={"vc28_jit":False,"vc28_split_mass":True}
 EXPERIMENTS={
+    "mass_tail":(mass_tail_native,"vc28_mass_tail",
+        "Scale-prefetch baseline; carry four decoded half2 pairs and complete FP32 local mass during a single four-MMA PV batch. No extra WGMMA fence/commit or shared P copy. Exact tile-sum regrouping; FP32 history and two-level PV unchanged."),
     "pv_prefix":(pv_prefix_native,"vc28_prefix_overlap",
         "Scale-prefetch in every JIT arm. Encode all P, defer only last K32 decode/FP32 sum until first three PV operations are pending; serial-prefix control isolates overlap. Same P bytes, mass addition order and two-level PV accumulation; no shared copy."),
     "scale_prefetch":(scale_prefetch_native,"vc28_scale_prefetch",
@@ -152,14 +155,14 @@ def main():
         report["environment"]={"torch":torch.__version__,"cuda":torch.version.cuda,"gpu":torch.cuda.get_device_name(device),
                                "native_version":vc._extension().sage_vc_kernel_version}
         ext,report["build"]=backend.load_native();save()
-        if a.experiment in ("scale_prefetch","pv_prefix"):
+        if a.experiment in ("scale_prefetch","pv_prefix","mass_tail"):
             report["build_audit"]=backend.build_audit(ext,vc,report["build"],a.dim,0 if a.dtype=="float16" else 1);save()
             from validate_scale_prefetch import validate as validate_scale
             report["scale_validation"]=validate_scale(ext,backend,vc,vc_reference,device,lambda r:update("scale_validation",r))
-        if a.experiment in ("fused_quad","pv_prefix"):
+        if a.experiment in ("fused_quad","pv_prefix","mass_tail"):
             from validate_fused_quad_math import validate as validate_math
             report["probability_validation"]=validate_math(ext,device,lambda r:update("probability_validation",r),label=a.experiment)
-        if a.experiment=="pv_prefix":
+        if a.experiment in ("pv_prefix","mass_tail"):
             report["pipeline_validation"]=backend.validate_pipeline(ext,vc,vc_reference,device,lambda r:update("pipeline_validation",r))
         report["validation"]=validate(ext,vc,vc_reference,device,lambda r:update("validation",r),backend,candidate,baseline_name)
         if a.validate_only:
