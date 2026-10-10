@@ -2,7 +2,10 @@
 import builtins
 import importlib.util
 import json
+import os
 from pathlib import Path
+import shutil
+import subprocess
 
 import pytest
 import torch
@@ -43,6 +46,57 @@ def reference():
     # Load the independent oracle file directly to avoid Sage package imports.
     return load_file("vc_reference_cpu", ROOT / "third_party" / "sageattention_local" /
                      "sageattention_local" / "vc_reference.py")
+
+
+@pytest.fixture
+def launcher_arguments(tmp_path):
+    """Execute the Bash entry, capturing its real argv without GPU work."""
+    git_bash = Path(os.environ.get("ProgramFiles", "C:/Program Files")) / "Git/bin/bash.exe"
+    bash = str(git_bash) if os.name == "nt" and git_bash.is_file() else shutil.which("bash")
+    if not bash:
+        pytest.skip("Bash required for launcher integration checks")
+    fake_python = tmp_path / "prepared python.sh"
+    fake_python.write_text(
+        '#!/usr/bin/env bash\nset -euo pipefail\n'
+        'if [[ "$1" == "-" ]]; then cat >/dev/null; exit 0; fi\n'
+        '[[ -f "$1" ]]\n'
+        'printf "LAUNCH_ARG:%s\\n" "$@"\n', encoding="utf-8", newline="\n")
+    fake_python.chmod(fake_python.stat().st_mode | 0o111)
+    env = dict(os.environ, TILELANG_PYTHON=fake_python.as_posix())
+
+    def launch(*options):
+        result = subprocess.run(
+            [bash, (ROOT / "scripts/run_tilelang_opt_h200.sh").as_posix(), *options],
+            cwd=tmp_path, env=env, capture_output=True, text=True,
+            encoding="utf-8", timeout=30)
+        assert result.returncode == 0, result.stderr
+        assert "command not found" not in result.stderr
+        argv = [line.removeprefix("LAUNCH_ARG:") for line in result.stdout.splitlines()
+                if line.startswith("LAUNCH_ARG:")]
+        assert argv[0] == "scripts/benchmark_tilelang_opt.py"
+        return argv[1:]
+
+    return launch
+
+
+@pytest.mark.parametrize("options", [[], ["--device", "cuda:1", "--skip-cupti"]])
+def test_bash_entry_keeps_current_round_defaults(benchmark, launcher_arguments, options):
+    args = benchmark.parse_args(launcher_arguments(*options))
+    assert args.variants == ["cached_no_ws_s1", "cached_no_ws_vec_decode_s1", "cached_no_ws_reduce4_s1"]
+    assert args.output == Path("results/h200_tilelang_no_ws_round4.json")
+    assert args.trace_dir == Path("results/tilelang_no_ws_round4_traces")
+    if options:
+        assert args.device == "cuda:1" and args.skip_cupti
+
+
+def test_bash_entry_preserves_explicit_overrides_and_spaces(benchmark, launcher_arguments):
+    args = benchmark.parse_args(launcher_arguments(
+        "--variants", "cached_no_ws_s1", "--output", "results/custom run.json",
+        "--trace-dir", "results/custom traces", "--validate-only"))
+    assert args.variants == ["cached_no_ws_s1"]
+    assert args.output == Path("results/custom run.json")
+    assert args.trace_dir == Path("results/custom traces")
+    assert args.validate_only
 
 
 @pytest.mark.parametrize("tokens", [128, 256, 512])

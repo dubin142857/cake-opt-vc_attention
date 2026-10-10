@@ -3,13 +3,22 @@
 2026-10-10。新增 `scripts/tilelang_expcast_opt.py` 和独立入口
 `scripts/benchmark_tilelang_opt.py`，针对现有 Hopper INT8 QK / ExpCast / FP8 PV。
 原始 TileLang 实现继续作为对照。H200 同步修订后的测速摘要已返回：
-`cached_no_ws_s1` 为当前最快的 TileLang 候选。无参数 Bash 入口自动运行本轮
-no_ws、vec_decode、reduce4 三个方案；Python 入口的默认候选仍为
+`cached_no_ws_s1` 为当前最快的 TileLang 候选。Bash 入口自动运行本轮
+no_ws、vec_decode、reduce4 三个方案，附加参数可覆盖指定选项；直接调用 Python
+入口时，默认候选仍为
 `cached_s1/s2` 和 `cached_no_ws_s1`。MMA 候选保留显式选择。
 
 ## 用户提供的 H200 结果
 
-最新第三轮 no_ws 测速中，同轮 CUPTI 的全部 kernel 时间如下，没有混用 API 时间。
+最近一次启动返回的是旧候选表，没有 vec_decode/reduce4 的测量结果。
+该轮 no_ws 为 44.8870 ms，同轮 baseline_s1 为 58.7920 ms，CUPTI kernel
+时间比为 1.310×。七行摘要保存在
+`results/h200_tilelang_launch_failure_reported.json`，用户报告远端保存的是
+`results/h200_tilelang_opt.json`；实际形状和完整 JSON 尚未核验。
+随后参数行出现 Bash `command not found`。远端调用的原始字节尚未核实，
+原因未确认，不能归因于 CRLF。该次输出不代表新两个候选已完成测量。
+
+第三轮 no_ws 历史测速中，同轮 CUPTI 的全部 kernel 时间如下，没有混用 API 时间。
 
 | 实现 | 时间（ms） |
 | --- | ---: |
@@ -151,7 +160,7 @@ bash scripts/run_tilelang_opt_h200.sh --validate-only \
 bash scripts/run_tilelang_opt_h200.sh
 ```
 
-无参数启动会自动选择本轮三个方案：`cached_no_ws_s1`、
+Bash 启动会自动选择本轮三个方案：`cached_no_ws_s1`、
 `cached_no_ws_vec_decode_s1`、`cached_no_ws_reduce4_s1`，并保留同场的
 Sage attention、FlashAttention-4 和原始 TileLang stage 1/2 对照。
 脚本先执行完整精度校验及默认/非默认 stream 各三次一致性检查，通过后测
@@ -162,10 +171,13 @@ Sage attention、FlashAttention-4 和原始 TileLang stage 1/2 对照。
 不构建项目的 C++ 扩展；启动本轮测试无需输入长参数。
 后续迭代更新脚本内部的候选与结果路径，常规启动始终使用上述单行 Bash 命令。
 
-脚本带参数时原样透传，Python 入口的默认候选仍为 `cached_s1/s2` 和
-`cached_no_ws_s1`。vec_decode/reduce4 只支持单阶段，H200 正确性和速度
+脚本始终先设置本轮候选、JSON 和 trace 路径，再附加用户参数。只加
+`--device`、`--validate-only` 或外部库开关时，本轮配置保持不变；显式给出
+`--variants`、`--output`、`--trace-dir` 可分别覆盖对应项。启动时会显示
+实际候选和结果文件，便于确认配置。直接调用 Python 入口的默认候选仍为
+`cached_s1/s2` 和 `cached_no_ws_s1`。vec_decode/reduce4 只支持单阶段，H200 正确性和速度
 待本轮验证；精度门槛、逐次一致性检查和 CUPTI 口径与前轮相同。
-仅运行 Python 入口默认的 TileLang 候选时，可省略外部库对照：
+仅运行本轮 TileLang 候选时，可省略外部库对照：
 
 ```bash
 bash scripts/run_tilelang_opt_h200.sh --skip-sage --skip-flash4
@@ -184,7 +196,8 @@ QKV 文件需为 `torch.save(dict(q=q, k=k, v=v), path)`，FP16/BF16 MHA，
 不提供文件时默认随机输入为 B1/H28/Q37741/K37741/D128/BF16。
 
 Python 入口的默认输出为 `results/h200_tilelang_opt.json`，生成源码和 CUPTI
-traces 放在 `results/tilelang_opt_traces/`；无参数 Bash 入口使用上述 round4 路径。
+traces 放在 `results/tilelang_opt_traces/`；Bash 入口默认使用上述 round4 路径，
+附加参数会保留未覆盖的默认项。
 并发的 C++ 实验应使用不同 GPU 或错开性能测量，
 避免资源竞争使时间失真。可用 `--output`、`--trace-dir` 给每轮设置独立路径。
 
@@ -210,8 +223,11 @@ CUPTI attention / all-kernel / all-GPU-work 时间另报，不与 API 时间混�
 
 本地 GPU 是 RTX 3060 Laptop（SM86），没有执行 SM90a 内核。以下检查已经通过：
 
-- 27 项 CPU 辅助测试：V inverse permutation 的全部 FP8 bit patterns、CLI、候选隔离、
+- 30 项 CPU 辅助测试：V inverse permutation 的全部 FP8 bit patterns、CLI、候选隔离、
   尾块差异定位、严格一致性失败记录和缩短验证时的随机输入复现。
+  其中 3 项通过真实 Bash 启动检查无参数默认、附加参数保留本轮配置、
+  显式覆盖及含空格路径。测试从项目外目录启动，仅用 stub 替代 Python，
+  要求 benchmark 脚本实际存在，不调用 CUDA、无需 GPU。
 - 36 项候选代码生成测试：cached/MMA 的两种 dtype、D64/128、stage 1/2，
   以及五个 no_ws 单阶段候选的四个组合；另有五项拒绝 no_ws 双阶段配置。
   检查低精度 GEMM 类型、Q scale 读取位置和 K/V buffer 释放时序。
@@ -226,7 +242,8 @@ CUPTI attention / all-kernel / all-GPU-work 时间另报，不与 API 时间混�
   两种 dtype 相同；BF16/D128 默认主形状分别为 222/246，原 no_ws 为 245。
   Windows NVRTC 检查使用标准整数头和 `cuda::std` 兼容包装；这不替代远端 NVCC 和运行校验。
 
-CPU 辅助、候选代码生成、配置拒绝和原始回归共 76 项测试通过。
+CPU 辅助、候选代码生成、配置拒绝和原始回归共 79 项测试通过。
+本次只调整启动入口和检查，kernel 源码未改，原有 48 份离线编译记录继续保留。
 主形状 PTX 中，no_ws、vec_decode、reduce4 的 FP8 解码指令计数分别为
 128、64、128；三者 shuffle 计数均为 16。vec_decode 确实减少了静态解码
 指令，reduce4 没有减少 shuffle 数量；这些统计不能直接推导 H200 加速幅度。

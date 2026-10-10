@@ -12,11 +12,11 @@
   "local_gpu": "RTX 3060 Laptop SM86",
   "compile_environment": "Windows NVRTC virtual stdint/stdlib headers and cuda::std compatibility imports; unchanged generated kernel bodies; not a Linux NVCC runtime validation",
   "tests": {
-    "cpu_auxiliary": 27,
+    "cpu_auxiliary": 30,
     "candidate_codegen": 36,
     "candidate_configuration_rejection": 5,
     "original_codegen": 8,
-    "passed": 76
+    "passed": 79
   },
   "kernel_count": 48,
   "kernels": [
@@ -1008,7 +1008,7 @@
     "mma_codegen": 8,
     "mma_cross_compile": 8,
     "checks": "Generated CUDA and PTX must keep K release after MMA and bar.sync 15,128",
-    "integration_tests_passed": 76,
+    "integration_tests_passed": 79,
     "ptx_k_release_order_checked": 8
   },
   "shape_scope": "Default shape describes baseline/cached/MMA; no_ws kernels carry per-kernel shapes",
@@ -1156,7 +1156,8 @@
   "h200_performance_summaries": [
     "results/h200_tilelang_opt_reported.json",
     "results/h200_tilelang_no_ws_reported.json",
-    "results/h200_tilelang_no_ws_next_reported.json"
+    "results/h200_tilelang_no_ws_next_reported.json",
+    "results/h200_tilelang_launch_failure_reported.json"
   ],
   "new_no_ws_revision_checks": {
     "small_codegen": 8,
@@ -1228,6 +1229,22 @@
         }
       ]
     },
-    "hopper_runtime": "Pending full correctness, repeated stream checks and timing for vector decode and reduce4 only."
+    "hopper_runtime": "Pending full correctness, repeated stream checks and timing for vector decode and reduce4 only.",
+    "launcher_revision": {
+      "default_argument_transport": "Bash array; no line continuation. Current round defaults precede explicit user overrides.",
+      "real_bash_argv_regressions_passed": 3,
+      "checks": [
+        "No arguments select vector decode and reduce4 plus no_ws control.",
+        "Adding device/profiler options retains current round variants and result paths.",
+        "Explicit variant and file path overrides, including spaces, remain intact."
+      ],
+      "cpu_only": true,
+      "gpu_execution": false,
+      "startup_output": "Actual configured TileLang variants and result file are printed by the Python entry.",
+      "reported_failure": "results/h200_tilelang_launch_failure_reported.json",
+      "remote_invocation_bytes_inspected": false,
+      "compiled_kernel_changes": false,
+      "compiled_source_hashes_unchanged": 48
+    }
   }
 }

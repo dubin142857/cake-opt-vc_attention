@@ -1,13 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-# Keep the current comparison runnable with one command.
-if [[ $# -eq 0 ]]; then
-  set -- \
-    --variants cached_no_ws_s1 cached_no_ws_vec_decode_s1 cached_no_ws_reduce4_s1 \
-    --output results/h200_tilelang_no_ws_round4.json \
-    --trace-dir results/tilelang_no_ws_round4_traces
-fi
+# Keep round defaults even when adding options such as --device or --trials.
+# Each array entry is one argument; no shell line continuations are needed.
+# Explicit user options follow these defaults and override the same option.
+tl_args=(
+  --variants
+  cached_no_ws_s1
+  cached_no_ws_vec_decode_s1
+  cached_no_ws_reduce4_s1
+  --output
+  results/h200_tilelang_no_ws_round4.json
+  --trace-dir
+  results/tilelang_no_ws_round4_traces
+)
 # Reuse the dedicated environment; do not install packages or rebuild C++.
 tl_python="${TILELANG_PYTHON:-$PWD/.venv-tilelang-h200/bin/python3}"
 if [[ ! -x "$tl_python" ]]; then
@@ -22,4 +28,4 @@ assert torch.cuda.is_available(), 'CUDA required'
 print('Torch:', torch.__version__, 'TileLang:', tilelang.__version__,
       'CUDA:', torch.version.cuda)
 PY
-exec "$tl_python" scripts/benchmark_tilelang_opt.py "$@"
+exec "$tl_python" scripts/benchmark_tilelang_opt.py "${tl_args[@]}" "$@"

@@ -305,6 +305,8 @@ def main(argv=None):
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.trace_dir.mkdir(parents=True, exist_ok=True)
     configs = configurations(args)
+    print("TileLang variants:", ", ".join(configs), flush=True)
+    print("Result file:", args.output, flush=True)
     report = {"status": "starting", "args": {k: str(v) if isinstance(v, Path) else v for k, v in vars(args).items()},
         "contract": "INT8 QK; direct paper ExpCast FP32 math/RNE; FP8 PV; decoded-P denominator; V smoothing OFF",
         "tilelang_v_layout": baseline_backend.V_LAYOUT,
