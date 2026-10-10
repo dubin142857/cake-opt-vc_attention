@@ -3,6 +3,57 @@
 2026-10-10。当前主线是 **INT8 QK + ExpCast + FP8 PV，V 聚类和平滑关闭**。
 保留 vc28 已测实现，新候选不修改已安装包和默认 dispatch。
 
+## 当前候选：K128 内提前准备下一块 ExpCast 标量
+
+以已测 `scale_prefetch` 为基线，保持 Q64/K128 分块。上一版仅在 PV 期间加载
+下一块 K scale；本轮把其后的标量计算也提前：
+
+1. `dequant = Q_scale * next_K_scale`。
+2. `score_scale = attention_scale * dequant`。
+3. `gain = score_scale * 11.541560173034668`，及 scale 正常范围/gain 有限性检查。
+
+三个乘法仍按原顺序分别取 FP32 结果，不合并常量或改变乘法结合顺序。
+下一块依然在算完当前 QK 后执行行 max、历史 alpha、max 范围检查和 warp 一致性判断。
+P 编码、解码后的 FP32 分母、历史更新、PV 累加、尾块 mask 保留原实现。
+只携带几个标量，不额外保存 QK 分数块；没有额外共享内存或 WGMMA fence/commit。
+
+```bash
+git pull --ff-only origin master
+bash scripts/run_scalar_prefetch_h200.sh
+```
+
+默认 **BF16、NHD `[1,37741,28,128]`、INT8 QK + ExpCast + FP8 PV，V 聚类/平滑关闭**。
+使用现有 Torch、Sage local、FA4 和 nvcc，无新依赖；首次编译独立 JIT，不重装包。
+输出 `results/h200_cuda_expcast_scalar_prefetch.json`，9 轮 API、5 轮 CUPTI 分开统计。
+支持追加 `--validate-only` 或 `--qkv-file ... --qkv-layout NHD`。
+
+| 行名 | 含义 |
+|---|---|
+| vc28_scale_prefetch | 同次 JIT 编译的 K scale 预取基线 |
+| vc28_scalar_prefetch | 在 PV 区间进一步准备下一块的缩放系数和 scale 检查结果 |
+| vc28_installed | 已安装的 vc28 |
+| sage_cpp / flash4 | 外部对照 |
+
+远端首先检查 FP16/BF16 × D64/D128 的编译资源：候选寄存器不得超过 168、
+`local_bytes` 必须为 0，动态共享内存必须为 `320*D`，静态共享内存不能超过基线。
+然后运行 28 个不同 scale/非默认 stream 检查、38 个概率状态检查、
+16 个极小/普通 K scale 交替及混合 warp 场景、28 个标准 attention 配置。
+候选相对预取基线须逐位一致，decoded reference 保留 1% 实现检查门限；
+主尺寸检查全部输出行。任一失败立即停止，成功后才测速。
+
+本地 **87 项检查通过**：47 项 Python/生成代码/资源门限检查，40 项真实 GPU
+概率检查。后者覆盖舍入边界、scale 正常/次正常边界、不同 warp 与跨 tile fallback 切换；
+P/max/alpha/mass 逐位一致，公共 38 项还独立核对 FP64 解码求和结果。
+本地 SM86 使用软件 FP8 解码，完整异步 attention 需要远端 Hopper 验证。
+
+CUDA12.4 SM90a 交叉编译的 8 个 attention 实例均无 stack/spill：
+D128 两条路径都是 **168 寄存器、40,960 B 动态共享内存**；
+D64 基线为 127 寄存器、候选 128，共享内存均 20,480 B；静态共享内存均 128 B。
+预取基线的指令文本与前一轮一致。D128 候选的三次乘法和两个 scale 比较位于
+PV 提交后、等待前；D64 的部分标量工作排在 PV 指令之间。
+这些是静态编译证据，**H200 正确性及加速效果待实测**，CUDA13 调度可能不同。
+详见 [本地验证记录](results/cuda_expcast_scalar_prefetch_local_validation.json)。
+
 ## 最新结论：paired QK 未获得收益，保留 K128 预取基线
 
 本轮 H200 CUPTI 回传：

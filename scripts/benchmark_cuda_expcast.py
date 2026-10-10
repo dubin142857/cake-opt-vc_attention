@@ -20,9 +20,12 @@ import scale_prefetch_native
 import pv_prefix_native
 import mass_tail_native
 import paired_qk_native
+import scalar_prefetch_native
 
 VARIANTS={"vc28_jit":False,"vc28_split_mass":True}
 EXPERIMENTS={
+    "scalar_prefetch":(scalar_prefetch_native,"vc28_scalar_prefetch",
+        "K128 scale-prefetch baseline; prepare next-tile dequant/score scale, affine gain and scale-valid predicate during current PV. Current-score max/range checks and warp vote remain in place. Same FP32 multiplication order, P bytes, FP32 mass/history and tail/PV math."),
     "paired_qk":(paired_qk_native,"vc28_paired_qk",
         "Scale-prefetch baseline; one N256 INT8 QK batch for two MAIN K128 tiles. Sequential original K128 ExpCast/PV, scales and FP32 recurrence retained; final 1--2 tiles use N128 QK. Larger K shared buffer and register footprint; experimental, no claimed speedup."),
     "mass_tail":(mass_tail_native,"vc28_mass_tail",
@@ -158,18 +161,21 @@ def main():
         report["environment"]={"torch":torch.__version__,"cuda":torch.version.cuda,"gpu":torch.cuda.get_device_name(device),
                                "native_version":vc._extension().sage_vc_kernel_version}
         ext,report["build"]=backend.load_native();save()
+        if a.experiment=="scalar_prefetch":
+            report["resource_validation"]=backend.check_resources(ext);save()
+            print("Scalar-prefetch resource gate:",json.dumps(report["resource_validation"]),flush=True)
         if a.experiment=="paired_qk":
             report["build_audit"]=backend.build_audit(ext,vc,report["build"],a.dim,0 if a.dtype=="float16" else 1);save()
             report["qk_validation"]=backend.validate_qk(ext,device,lambda r:update("qk_validation",r))
             report["pipeline_validation"]=backend.validate_pipeline(ext,vc,vc_reference,device,lambda r:update("pipeline_validation",r))
-        if a.experiment in ("scale_prefetch","pv_prefix","mass_tail"):
+        if a.experiment in ("scale_prefetch","pv_prefix","mass_tail","scalar_prefetch"):
             report["build_audit"]=backend.build_audit(ext,vc,report["build"],a.dim,0 if a.dtype=="float16" else 1);save()
             from validate_scale_prefetch import validate as validate_scale
             report["scale_validation"]=validate_scale(ext,backend,vc,vc_reference,device,lambda r:update("scale_validation",r))
-        if a.experiment in ("fused_quad","pv_prefix","mass_tail"):
+        if a.experiment in ("fused_quad","pv_prefix","mass_tail","scalar_prefetch"):
             from validate_fused_quad_math import validate as validate_math
             report["probability_validation"]=validate_math(ext,device,lambda r:update("probability_validation",r),label=a.experiment)
-        if a.experiment in ("pv_prefix","mass_tail"):
+        if a.experiment in ("pv_prefix","mass_tail","scalar_prefetch"):
             report["pipeline_validation"]=backend.validate_pipeline(ext,vc,vc_reference,device,lambda r:update("pipeline_validation",r))
         report["validation"]=validate(ext,vc,vc_reference,device,lambda r:update("validation",r),backend,candidate,baseline_name)
         if a.validate_only:

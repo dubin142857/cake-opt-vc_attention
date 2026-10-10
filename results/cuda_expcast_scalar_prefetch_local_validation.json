@@ -1,0 +1,280 @@
+{
+  "date": "2026-10-10",
+  "status": "local_checks_passed_h200_pending",
+  "tests_passed": 87,
+  "python_and_codegen_tests": 47,
+  "gpu_probability_cases": 40,
+  "gpu_result": "P/max/alpha/mass byte-exact; 38 shared cases also check independent FP64 decoded mass; two extra mixed-lane/warp and normal-threshold transition checks",
+  "full_hopper_attention_executed": false,
+  "local_gpu": "RTX3060 Laptop SM86; software FP8 decoding",
+  "cross_compile": "CUDA12.4 SM90a; FP16/BF16 x D64/D128 x baseline/candidate + two probability helpers",
+  "source_sha256": "bed6c99a5c102068244b478c0cbc1a511b0c2beb02fcb5428b87b1e193737c61",
+  "compiled_resources": [
+    {
+      "symbol": "_ZN7sage_vc39sage_vc_attention_kernel_scale_prefetchILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "variant": "vc28_scale_prefetch",
+      "dim": 128,
+      "dtype": "bfloat16",
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128,
+      "dynamic_shared_bytes": 40960
+    },
+    {
+      "symbol": "_ZN7sage_vc40sage_vc_attention_kernel_scalar_prefetchILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "variant": "vc28_scalar_prefetch",
+      "dim": 128,
+      "dtype": "bfloat16",
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128,
+      "dynamic_shared_bytes": 40960
+    },
+    {
+      "symbol": "_ZN7sage_vc39sage_vc_attention_kernel_scale_prefetchILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "variant": "vc28_scale_prefetch",
+      "dim": 128,
+      "dtype": "float16",
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128,
+      "dynamic_shared_bytes": 40960
+    },
+    {
+      "symbol": "_ZN7sage_vc40sage_vc_attention_kernel_scalar_prefetchILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "variant": "vc28_scalar_prefetch",
+      "dim": 128,
+      "dtype": "float16",
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128,
+      "dynamic_shared_bytes": 40960
+    },
+    {
+      "symbol": "_ZN7sage_vc39sage_vc_attention_kernel_scale_prefetchILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "variant": "vc28_scale_prefetch",
+      "dim": 64,
+      "dtype": "bfloat16",
+      "registers": 127,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128,
+      "dynamic_shared_bytes": 20480
+    },
+    {
+      "symbol": "_ZN7sage_vc40sage_vc_attention_kernel_scalar_prefetchILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "variant": "vc28_scalar_prefetch",
+      "dim": 64,
+      "dtype": "bfloat16",
+      "registers": 128,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128,
+      "dynamic_shared_bytes": 20480
+    },
+    {
+      "symbol": "_ZN7sage_vc39sage_vc_attention_kernel_scale_prefetchILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "variant": "vc28_scale_prefetch",
+      "dim": 64,
+      "dtype": "float16",
+      "registers": 127,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128,
+      "dynamic_shared_bytes": 20480
+    },
+    {
+      "symbol": "_ZN7sage_vc40sage_vc_attention_kernel_scalar_prefetchILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "variant": "vc28_scalar_prefetch",
+      "dim": 64,
+      "dtype": "float16",
+      "registers": 128,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128,
+      "dynamic_shared_bytes": 20480
+    },
+    {
+      "symbol": "_Z28scalar_prefetch_check_kernelILb0EEvPKiPKfS3_PiPfi",
+      "variant": "probability_helper",
+      "dim": null,
+      "dtype": null,
+      "registers": 80,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 0,
+      "dynamic_shared_bytes": 0
+    },
+    {
+      "symbol": "_Z28scalar_prefetch_check_kernelILb1EEvPKiPKfS3_PiPfi",
+      "variant": "probability_helper",
+      "dim": null,
+      "dtype": null,
+      "registers": 96,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 0,
+      "dynamic_shared_bytes": 0
+    }
+  ],
+  "static_codegen": [
+    {
+      "symbol": "_ZN7sage_vc39sage_vc_attention_kernel_scale_prefetchILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "instruction_count": 2848,
+      "scalar_work_after_pv_issue_before_wait": [],
+      "baseline_sass_unchanged": true,
+      "main_pv_commits": 1,
+      "extra_pv_fences": 0
+    },
+    {
+      "symbol": "_ZN7sage_vc40sage_vc_attention_kernel_scalar_prefetchILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "instruction_count": 2864,
+      "scalar_work_after_pv_issue_before_wait": [
+        {
+          "address": "4770",
+          "instruction": "FMUL.FTZ R150, R154, R151"
+        },
+        {
+          "address": "4780",
+          "instruction": "FMUL.FTZ R151, R150, UR16"
+        },
+        {
+          "address": "4790",
+          "instruction": "FMUL.FTZ R9, R151.reuse, 11.541560173034667969"
+        },
+        {
+          "address": "47a0",
+          "instruction": "FSETP.GE.FTZ.AND P3, PT, R151, 1.175494350822287508e-38, PT"
+        },
+        {
+          "address": "47b0",
+          "instruction": "@P3 FSETP.LT.FTZ.AND P0, PT, |R9|, +INF , PT"
+        }
+      ],
+      "baseline_sass_unchanged": null,
+      "main_pv_commits": 1,
+      "extra_pv_fences": 0
+    },
+    {
+      "symbol": "_ZN7sage_vc39sage_vc_attention_kernel_scale_prefetchILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "instruction_count": 2848,
+      "scalar_work_after_pv_issue_before_wait": [],
+      "baseline_sass_unchanged": true,
+      "main_pv_commits": 1,
+      "extra_pv_fences": 0
+    },
+    {
+      "symbol": "_ZN7sage_vc40sage_vc_attention_kernel_scalar_prefetchILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "instruction_count": 2864,
+      "scalar_work_after_pv_issue_before_wait": [
+        {
+          "address": "4770",
+          "instruction": "FMUL.FTZ R150, R154, R151"
+        },
+        {
+          "address": "4780",
+          "instruction": "FMUL.FTZ R151, R150, UR16"
+        },
+        {
+          "address": "4790",
+          "instruction": "FMUL.FTZ R9, R151.reuse, 11.541560173034667969"
+        },
+        {
+          "address": "47a0",
+          "instruction": "FSETP.GE.FTZ.AND P3, PT, R151, 1.175494350822287508e-38, PT"
+        },
+        {
+          "address": "47b0",
+          "instruction": "@P3 FSETP.LT.FTZ.AND P0, PT, |R9|, +INF , PT"
+        }
+      ],
+      "baseline_sass_unchanged": null,
+      "main_pv_commits": 1,
+      "extra_pv_fences": 0
+    },
+    {
+      "symbol": "_ZN7sage_vc39sage_vc_attention_kernel_scale_prefetchILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "instruction_count": 2536,
+      "scalar_work_after_pv_issue_before_wait": [],
+      "baseline_sass_unchanged": true,
+      "main_pv_commits": 1,
+      "extra_pv_fences": 0
+    },
+    {
+      "symbol": "_ZN7sage_vc40sage_vc_attention_kernel_scalar_prefetchILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "instruction_count": 2544,
+      "scalar_work_after_pv_issue_before_wait": [
+        {
+          "address": "4450",
+          "instruction": "FMUL.FTZ R109, R72, R3"
+        },
+        {
+          "address": "4460",
+          "instruction": "FMUL.FTZ R105, R109.reuse, 11.541560173034667969"
+        },
+        {
+          "address": "4470",
+          "instruction": "FSETP.GE.FTZ.AND P3, PT, R109, 1.175494350822287508e-38, PT"
+        },
+        {
+          "address": "4480",
+          "instruction": "@P3 FSETP.LT.FTZ.AND P0, PT, |R105|, +INF , PT"
+        }
+      ],
+      "baseline_sass_unchanged": null,
+      "main_pv_commits": 1,
+      "extra_pv_fences": 0
+    },
+    {
+      "symbol": "_ZN7sage_vc39sage_vc_attention_kernel_scale_prefetchILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "instruction_count": 2536,
+      "scalar_work_after_pv_issue_before_wait": [],
+      "baseline_sass_unchanged": true,
+      "main_pv_commits": 1,
+      "extra_pv_fences": 0
+    },
+    {
+      "symbol": "_ZN7sage_vc40sage_vc_attention_kernel_scalar_prefetchILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "instruction_count": 2544,
+      "scalar_work_after_pv_issue_before_wait": [
+        {
+          "address": "4450",
+          "instruction": "FMUL.FTZ R109, R72, R3"
+        },
+        {
+          "address": "4460",
+          "instruction": "FMUL.FTZ R105, R109.reuse, 11.541560173034667969"
+        },
+        {
+          "address": "4470",
+          "instruction": "FSETP.GE.FTZ.AND P3, PT, R109, 1.175494350822287508e-38, PT"
+        },
+        {
+          "address": "4480",
+          "instruction": "@P3 FSETP.LT.FTZ.AND P0, PT, |R105|, +INF , PT"
+        }
+      ],
+      "baseline_sass_unchanged": null,
+      "main_pv_commits": 1,
+      "extra_pv_fences": 0
+    }
+  ],
+  "contract": "K128 unchanged. Next-tile QK dequant/score scale, ExpCast gain and scale-only predicate moved into current PV interval; score-dependent max/range/warp check retained. Original FP32 product order, P bytes, decoded-P mass, history and tail preserved.",
+  "remote_gates": "Resource limit168/local0/same shared footprint; 28 scale-index/stream cases; 38 probability cases; 16 alternating tiny/normal scale/mixed-warp cases; 28 standard cases; main-shape all-row bitwise equality; 1% decoded reference is implementation-only.",
+  "limitation": "Static CUDA12.4 instruction placement, not dynamic utilization or speedup. Full attention and native FP8 conversion need H200 validation; CUDA13 may schedule differently.",
+  "current_h200_speedup": null
+}
