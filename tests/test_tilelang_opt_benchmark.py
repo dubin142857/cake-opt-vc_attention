@@ -82,9 +82,9 @@ def launcher_arguments(tmp_path):
 @pytest.mark.parametrize("options", [[], ["--device", "cuda:1", "--skip-cupti"]])
 def test_bash_entry_keeps_current_round_defaults(benchmark, launcher_arguments, options):
     args = benchmark.parse_args(launcher_arguments(*options))
-    assert args.variants == ["cached_no_ws_s1", "cached_no_ws_vec_decode_s1", "cached_no_ws_reduce4_s1"]
-    assert args.output == Path("results/h200_tilelang_no_ws_round4.json")
-    assert args.trace_dir == Path("results/tilelang_no_ws_round4_traces")
+    assert args.variants == ["cached_no_ws_s1", "cached_no_ws_vec_decode_s1", "vec_overlap"]
+    assert args.output == Path("results/h200_tilelang_no_ws_round5.json")
+    assert args.trace_dir == Path("results/tilelang_no_ws_round5_traces")
     if options:
         assert args.device == "cuda:1" and args.skip_cupti
 
@@ -132,7 +132,7 @@ def test_cli_defaults_keep_original_controls_and_only_valid_candidates(benchmark
     args = benchmark.parse_args([])
     assert (args.batch, args.heads, args.queries, args.tokens, args.dim, args.dtype) == (
         1, 28, 37741, 37741, 128, "bfloat16")
-    assert args.variants == ["cached_s1", "cached_s2", "cached_no_ws_s1"]
+    assert args.variants == ["cached_no_ws_s1", "cached_no_ws_vec_decode_s1"]
     assert args.validation_case == "all"
     assert args.output == Path("results/h200_tilelang_opt.json")
     configs = benchmark.configurations(args)
@@ -160,6 +160,7 @@ def test_cli_candidate_subset_is_deduplicated_and_overlap_is_explicit(benchmark)
     ["--variants", "reduce8_s1"], ["--variants", "cached_no_ws_s2"],
     ["--variants", "cached_no_ws_overlap_s2"], ["--variants", "cached_no_ws_int_mass_s2"],
     ["--variants", "cached_no_ws_vec_decode_s2"], ["--variants", "cached_no_ws_reduce4_s2"],
+    ["--variants", "vec_overlap_s2"],
     ["--queries", "0"], ["--dim", "32"],
     ["--check-queries", "-1"], ["--kernel-seconds", "nan"],
 ])
@@ -183,7 +184,7 @@ def test_dispatch_preserves_backend_stage_and_same_payload_without_late_binding(
     configs = benchmark.configurations(benchmark.parse_args([
         "--include-overlap", "--variants", "cached_s1", "cached_s2", "mma_qk_s1", "mma_qk_s2", "cached_no_ws_s1",
         "cached_no_ws_overlap_s1", "cached_no_ws_int_mass_s1", "cached_no_ws_vec_decode_s1",
-        "cached_no_ws_reduce4_s1"]))
+        "cached_no_ws_reduce4_s1", "vec_overlap"]))
     calls = benchmark.implementations(configs)
     payload = object()
     for name, call in calls.items():
@@ -194,21 +195,25 @@ def test_dispatch_preserves_backend_stage_and_same_payload_without_late_binding(
     assert len(invoked) == len(configs)
 
 
-def test_no_warp_specialization_maps_to_stage_one_and_can_be_selected_alone(benchmark):
-    assert "cached_no_ws_s1" in benchmark.parse_args([]).variants
-    args = benchmark.parse_args(["--variants", "cached_no_ws_s1"])
+@pytest.mark.parametrize("name, variant", [
+    ("cached_no_ws_s1", "cached_no_ws"),
+    ("cached_no_ws_vec_decode_s1", "cached_no_ws_vec_decode"),
+])
+def test_measured_defaults_map_to_stage_one_and_can_be_selected_alone(benchmark, name, variant):
+    assert name in benchmark.parse_args([]).variants
+    args = benchmark.parse_args(["--variants", name])
     configs = benchmark.configurations(args)
-    assert list(configs) == ["baseline_s1", "baseline_s2", "cached_no_ws_s1"]
-    assert configs["cached_no_ws_s1"] == (benchmark.optimized_backend, 1, "cached_no_ws")
+    assert list(configs) == ["baseline_s1", "baseline_s2", name]
+    assert configs[name] == (benchmark.optimized_backend, 1, variant)
 
 
 @pytest.mark.parametrize("name, variant", [
     ("cached_no_ws_overlap_s1", "cached_no_ws_overlap"),
     ("cached_no_ws_int_mass_s1", "cached_no_ws_int_mass"),
-    ("cached_no_ws_vec_decode_s1", "cached_no_ws_vec_decode"),
     ("cached_no_ws_reduce4_s1", "cached_no_ws_reduce4"),
+    ("vec_overlap", "vec_overlap"),
 ])
-def test_unmeasured_no_warp_specialization_candidates_are_explicit_and_stage_one(benchmark, name, variant):
+def test_experimental_candidates_are_explicit_and_stage_one(benchmark, name, variant):
     assert name not in benchmark.parse_args([]).variants
     configs = benchmark.configurations(benchmark.parse_args(["--variants", name]))
     assert list(configs) == ["baseline_s1", "baseline_s2", name]

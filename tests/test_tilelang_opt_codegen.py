@@ -9,7 +9,10 @@ tilelang = pytest.importorskip("tilelang")
 from tvm.target import Target
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from tilelang_expcast_opt import NO_WS_VARIANTS, compiler_pass_configs, make_primfunc
+from tilelang_expcast_opt import (
+    NO_WS_VARIANTS, PV_OVERLAP_VARIANTS, VEC_DECODE_VARIANTS,
+    compiler_pass_configs, make_primfunc,
+)
 
 
 def lower_source(dim, stages, variant, dtype, queries=65, keys=129):
@@ -24,6 +27,7 @@ def lower_source(dim, stages, variant, dtype, queries=65, keys=129):
     ("cached", 1), ("cached", 2), ("mma_qk", 1), ("mma_qk", 2),
     ("cached_no_ws", 1), ("cached_no_ws_overlap", 1), ("cached_no_ws_int_mass", 1),
     ("cached_no_ws_vec_decode", 1), ("cached_no_ws_reduce4", 1),
+    ("vec_overlap", 1),
 ])
 @pytest.mark.parametrize("dtype", ["float16", "bfloat16"])
 def test_cached_scales_and_native_low_precision_gemms(dim, stages, variant, dtype):
@@ -71,7 +75,7 @@ def test_cached_scales_and_native_low_precision_gemms(dim, stages, variant, dtyp
             r"tl::cp_async_gs(?:_conditional)?<16>", source[qk_done:]).start()
         assert "__syncthreads()" in source[qk_done:refill]
         pv = source.index("kFloat8_e4m3, tl::DataType::kFloat8_e4m3")
-        if variant == "cached_no_ws_overlap":
+        if variant in PV_OVERLAP_VARIANTS:
             commit = source.index("warpgroup_commit_batch()", pv)
             mass = source.index("AllReduce<tl::SumOp", pv)
             scale_history = re.search(r"accum\[.+?\] = vc_paper_mul", source[mass:])
@@ -101,7 +105,7 @@ def test_cached_scales_and_native_low_precision_gemms(dim, stages, variant, dtyp
             assert "(float)(v_.x)" in mass_region and "(float)(v_.y)" in mass_region
             assert "0x1p-9f" in mass_region
             assert not re.search(r"logits\[.+?\] = \(\(float\)prob\[", source)
-        elif variant == "cached_no_ws_vec_decode":
+        elif variant in VEC_DECODE_VARIANTS:
             assert "__tl_cvt_fp8x2_to_float2" in source
             assert not re.search(r"logits\[.+?\] = \(\(float\)prob\[", source)
         elif variant == "cached_no_ws_reduce4":

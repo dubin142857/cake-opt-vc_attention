@@ -10,8 +10,10 @@ from functools import lru_cache
 import tilelang_expcast as baseline
 
 NO_WS_VARIANTS = ("cached_no_ws", "cached_no_ws_overlap", "cached_no_ws_int_mass",
-                  "cached_no_ws_vec_decode", "cached_no_ws_reduce4")
+                  "cached_no_ws_vec_decode", "cached_no_ws_reduce4", "vec_overlap")
 VARIANTS = ("cached", "mma_qk", *NO_WS_VARIANTS)
+VEC_DECODE_VARIANTS = ("cached_no_ws_vec_decode", "vec_overlap")
+PV_OVERLAP_VARIANTS = ("cached_no_ws_overlap", "vec_overlap")
 
 
 def compiler_pass_configs(variant):
@@ -53,7 +55,7 @@ __device__ __forceinline__ int vc_opt_prob_units(uint8_t code) {
   return c < 8 ? c : (((c & 7) + 8) << ((c >> 3) - 1));
 }
 """
-    if variant == "cached_no_ws_overlap":
+    if variant in PV_OVERLAP_VARIANTS:
         # wait_wgmma has no shared-buffer read regions. Keep both operands
         # live through the wait so the software pipeline cannot reuse them.
         prelude += """
@@ -160,13 +162,13 @@ __device__ __forceinline__ void vc_mma_finish_k(const void* k) {
                     prob[i, j] = T.reinterpret(T.float8_e4m3fn, code)
                     if variant == "cached_no_ws_int_mass":
                         dots[i, j] = T.call_extern("int32", "vc_opt_prob_units", code)
-                    elif variant != "cached_no_ws_vec_decode":
+                    elif variant not in VEC_DECODE_VARIANTS:
                         logits[i, j] = T.cast(prob[i, j], T.float32)
-                if variant == "cached_no_ws_vec_decode":
+                if variant in VEC_DECODE_VARIANTS:
                     # Bulk copy uses packed FP8x2 conversion into FP32 without
                     # changing probability bytes or the mass reduction order.
                     T.copy(prob, logits, coalesced_width=2)
-                if variant == "cached_no_ws_overlap":
+                if variant in PV_OVERLAP_VARIANTS:
                     T.copy(prob, p_shared)
                     T.wgmma_gemm(p_shared, v, pv, transpose_B=True, clear_accum=True,
                                  policy=T.GemmWarpPolicy.FullRow)

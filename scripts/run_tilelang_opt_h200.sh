@@ -8,11 +8,11 @@ tl_args=(
   --variants
   cached_no_ws_s1
   cached_no_ws_vec_decode_s1
-  cached_no_ws_reduce4_s1
+  vec_overlap
   --output
-  results/h200_tilelang_no_ws_round4.json
+  results/h200_tilelang_no_ws_round5.json
   --trace-dir
-  results/tilelang_no_ws_round4_traces
+  results/tilelang_no_ws_round5_traces
 )
 # Reuse the dedicated environment; do not install packages or rebuild C++.
 tl_python="${TILELANG_PYTHON:-$PWD/.venv-tilelang-h200/bin/python3}"

@@ -27,6 +27,7 @@ CANDIDATES = {
     "cached_no_ws_int_mass_s1": (1, "cached_no_ws_int_mass"),
     "cached_no_ws_vec_decode_s1": (1, "cached_no_ws_vec_decode"),
     "cached_no_ws_reduce4_s1": (1, "cached_no_ws_reduce4"),
+    "vec_overlap": (1, "vec_overlap"),
 }
 
 
@@ -40,8 +41,8 @@ def parse_args(argv=None):
     parser.add_argument("--dtype", choices=("float16", "bfloat16"), default="bfloat16")
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--variants", nargs="+", choices=tuple(CANDIDATES),
-                        default=["cached_s1", "cached_s2", "cached_no_ws_s1"],
-                        help="Default: cached_s1/cached_s2/cached_no_ws_s1; other schedules are explicit experiments")
+                        default=["cached_no_ws_s1", "cached_no_ws_vec_decode_s1"],
+                        help="Default: measured no_ws/vec_decode; vec_overlap and other schedules are explicit experiments")
     parser.add_argument("--include-overlap", action="store_true", help="Also run original async PV schedules")
     parser.add_argument("--qkv-file", type=Path)
     parser.add_argument("--qkv-layout", choices=("NHD", "HND"), default="NHD")

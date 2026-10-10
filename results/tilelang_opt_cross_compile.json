@@ -1,6 +1,6 @@
 {
   "date": "2026-10-10",
-  "status": "cross_compile_passed_vector_decode_and_reduce4_hopper_runtime_pending",
+  "status": "cross_compile_passed_vec_overlap_hopper_runtime_pending",
   "target": "sm_90a",
   "compiler": "CUDA 12.4 NVRTC + ptxas",
   "shape": {
@@ -12,13 +12,13 @@
   "local_gpu": "RTX 3060 Laptop SM86",
   "compile_environment": "Windows NVRTC virtual stdint/stdlib headers and cuda::std compatibility imports; unchanged generated kernel bodies; not a Linux NVCC runtime validation",
   "tests": {
-    "cpu_auxiliary": 30,
-    "candidate_codegen": 36,
-    "candidate_configuration_rejection": 5,
+    "cpu_auxiliary": 32,
+    "candidate_codegen": 40,
+    "candidate_configuration_rejection": 6,
     "original_codegen": 8,
-    "passed": 79
+    "passed": 86
   },
-  "kernel_count": 48,
+  "kernel_count": 53,
   "kernels": [
     {
       "source": "baseline_bfloat16_d128_s1.cu",
@@ -971,6 +971,201 @@
         "normalized_mass_blocks_sha256": "9d6d04853f8c29d8a755f8ad2c382ef7dff22c7824b1846e96f4319572ba6ab1"
       },
       "copy_pipeline": "K/V cp.async; both GEMMs WGMMA; no producer warpgroup"
+    },
+    {
+      "source": "vec_overlap_bfloat16_d128_s1.cu",
+      "sha256": "cbadc46bc5aa00768451428a67b08bbe5739dc22531626d81e0324b89edaef39",
+      "ptx_sha256": "852ae320ff7db93b77ad8b97dcfdbdcb8473a3f6bf9d6829f4f12c3ede318378",
+      "shape": {
+        "batch": 1,
+        "heads": 2,
+        "queries": 65,
+        "keys": 257,
+        "dim": 128
+      },
+      "threads": 128,
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 221,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1330 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 221 registers\n",
+      "observations": {
+        "fp8_decode_ptx_count": 64,
+        "shuffle_ptx_count": 16,
+        "operand_fences_within_per_thread_fragment": true,
+        "pv_async_windows": [
+          {
+            "fp32_add": 70,
+            "fp32_mul": 66,
+            "pv_registers_read_before_wait": false
+          },
+          {
+            "fp32_add": 70,
+            "fp32_mul": 66,
+            "pv_registers_read_before_wait": false
+          }
+        ],
+        "sass_dependency_depth_measured": false
+      },
+      "copy_pipeline": "K/V cp.async; INT8 WGMMA QK; async FP8 WGMMA PV; no producer warpgroup"
+    },
+    {
+      "source": "vec_overlap_bfloat16_d64_s1.cu",
+      "sha256": "165698f3f4c5ff28a5e86c81955a185c6bef404f05a7d7eeed637274387bf14c",
+      "ptx_sha256": "1015ed3a7c03c52c8bcf2b60cca04ed033ba5c0f491af28726e7db5c52139530",
+      "shape": {
+        "batch": 1,
+        "heads": 2,
+        "queries": 65,
+        "keys": 257,
+        "dim": 64
+      },
+      "threads": 128,
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1338 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 168 registers\n",
+      "observations": {
+        "fp8_decode_ptx_count": 64,
+        "shuffle_ptx_count": 16,
+        "operand_fences_within_per_thread_fragment": true,
+        "pv_async_windows": [
+          {
+            "fp32_add": 70,
+            "fp32_mul": 34,
+            "pv_registers_read_before_wait": false
+          },
+          {
+            "fp32_add": 70,
+            "fp32_mul": 34,
+            "pv_registers_read_before_wait": false
+          }
+        ],
+        "sass_dependency_depth_measured": false
+      },
+      "copy_pipeline": "K/V cp.async; INT8 WGMMA QK; async FP8 WGMMA PV; no producer warpgroup"
+    },
+    {
+      "source": "vec_overlap_float16_d128_s1.cu",
+      "sha256": "6b04d5bec8dd79310704920aa07ce5459ed2382e5794f8436009edff83a47207",
+      "ptx_sha256": "d47f166b303b32a7300b8442d04f794abb729a0defb8b7abd2c7a73aabb5c55f",
+      "shape": {
+        "batch": 1,
+        "heads": 2,
+        "queries": 65,
+        "keys": 257,
+        "dim": 128
+      },
+      "threads": 128,
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 221,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1330 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 221 registers\n",
+      "observations": {
+        "fp8_decode_ptx_count": 64,
+        "shuffle_ptx_count": 16,
+        "operand_fences_within_per_thread_fragment": true,
+        "pv_async_windows": [
+          {
+            "fp32_add": 70,
+            "fp32_mul": 66,
+            "pv_registers_read_before_wait": false
+          },
+          {
+            "fp32_add": 70,
+            "fp32_mul": 66,
+            "pv_registers_read_before_wait": false
+          }
+        ],
+        "sass_dependency_depth_measured": false
+      },
+      "copy_pipeline": "K/V cp.async; INT8 WGMMA QK; async FP8 WGMMA PV; no producer warpgroup"
+    },
+    {
+      "source": "vec_overlap_float16_d64_s1.cu",
+      "sha256": "00ec96f6349253208e1fb9b46487d6498aece834824c386a03637a97a4ec4be9",
+      "ptx_sha256": "4f3104da8f0e7ebf161ffa4b79a7b656456356944b91497b4e085301b8712a42",
+      "shape": {
+        "batch": 1,
+        "heads": 2,
+        "queries": 65,
+        "keys": 257,
+        "dim": 64
+      },
+      "threads": 128,
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1338 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 168 registers\n",
+      "observations": {
+        "fp8_decode_ptx_count": 64,
+        "shuffle_ptx_count": 16,
+        "operand_fences_within_per_thread_fragment": true,
+        "pv_async_windows": [
+          {
+            "fp32_add": 70,
+            "fp32_mul": 34,
+            "pv_registers_read_before_wait": false
+          },
+          {
+            "fp32_add": 70,
+            "fp32_mul": 34,
+            "pv_registers_read_before_wait": false
+          }
+        ],
+        "sass_dependency_depth_measured": false
+      },
+      "copy_pipeline": "K/V cp.async; INT8 WGMMA QK; async FP8 WGMMA PV; no producer warpgroup"
+    },
+    {
+      "source": "vec_overlap_main_bfloat16_d128_s1.cu",
+      "sha256": "d4063158428aa0ce098fddf46008ae809fd9e3ba04f4ae9fb03822ccfd0c094a",
+      "ptx_sha256": "7524eb2c32ec2956cf80fde0ef413904b30bda0a3895aa45936f2ab72be78ec3",
+      "shape": {
+        "batch": 1,
+        "heads": 28,
+        "queries": 37741,
+        "keys": 37741,
+        "dim": 128
+      },
+      "threads": 128,
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 222,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1330 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 222 registers\n",
+      "observations": {
+        "fp8_decode_ptx_count": 64,
+        "shuffle_ptx_count": 16,
+        "operand_fences_within_per_thread_fragment": true,
+        "pv_async_windows": [
+          {
+            "fp32_add": 70,
+            "fp32_mul": 66,
+            "pv_registers_read_before_wait": false
+          },
+          {
+            "fp32_add": 70,
+            "fp32_mul": 66,
+            "pv_registers_read_before_wait": false
+          }
+        ],
+        "sass_dependency_depth_measured": false
+      },
+      "copy_pipeline": "K/V cp.async; INT8 WGMMA QK; async FP8 WGMMA PV; no producer warpgroup"
     }
   ],
   "ptx_scale_load_observation": {
@@ -1008,7 +1203,7 @@
     "mma_codegen": 8,
     "mma_cross_compile": 8,
     "checks": "Generated CUDA and PTX must keep K release after MMA and bar.sync 15,128",
-    "integration_tests_passed": 79,
+    "integration_tests_passed": 86,
     "ptx_k_release_order_checked": 8
   },
   "shape_scope": "Default shape describes baseline/cached/MMA; no_ws kernels carry per-kernel shapes",
@@ -1157,7 +1352,8 @@
     "results/h200_tilelang_opt_reported.json",
     "results/h200_tilelang_no_ws_reported.json",
     "results/h200_tilelang_no_ws_next_reported.json",
-    "results/h200_tilelang_launch_failure_reported.json"
+    "results/h200_tilelang_launch_failure_reported.json",
+    "results/h200_tilelang_no_ws_round4_reported.json"
   ],
   "new_no_ws_revision_checks": {
     "small_codegen": 8,
@@ -1229,7 +1425,7 @@
         }
       ]
     },
-    "hopper_runtime": "Pending full correctness, repeated stream checks and timing for vector decode and reduce4 only.",
+    "hopper_runtime": "User-reported completed timing: no_ws 39.3917ms, vector decode 38.7156ms, reduce4 40.3754ms. Vector decode saved 1.716% in this run; reduce4 slower by 2.497%. Validation inferred from reaching timing; full JSON and statistical significance unavailable.",
     "launcher_revision": {
       "default_argument_transport": "Bash array; no line continuation. Current round defaults precede explicit user overrides.",
       "real_bash_argv_regressions_passed": 3,
@@ -1246,5 +1442,168 @@
       "compiled_kernel_changes": false,
       "compiled_source_hashes_unchanged": 48
     }
+  },
+  "round5_revision_checks": {
+    "small_codegen": 4,
+    "cross_compile_small_and_main": 5,
+    "prior_48_source_hashes_unchanged": true,
+    "gpu_execution": false,
+    "baseline": "Measured vector decode control; direct Python defaults now no_ws plus vector decode.",
+    "new_explicit_candidate": "vec_overlap; combines packed decode with asynchronous PV and unchanged RN updates.",
+    "main_ptx_review": {
+      "gpu_execution": false,
+      "shape": {
+        "batch": 1,
+        "heads": 28,
+        "queries": 37741,
+        "keys": 37741,
+        "dim": 128,
+        "output_dtype": "bfloat16"
+      },
+      "variant": "vec_overlap",
+      "source": "vec_overlap_main_bfloat16_d128_s1.cu",
+      "source_sha256": "d4063158428aa0ce098fddf46008ae809fd9e3ba04f4ae9fb03822ccfd0c094a",
+      "ptx_sha256": "7524eb2c32ec2956cf80fde0ef413904b30bda0a3895aa45936f2ab72be78ec3",
+      "registers_per_thread": 222,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "fp8_decode_ptx_instructions": 64,
+      "half_to_float_ptx_instructions": 128,
+      "shfl_ptx_instructions": 16,
+      "public_source_byte_equal_private_probe": true,
+      "pv_wait_windows": [
+        {
+          "first_pv_line": 2883,
+          "wait_line": 3206,
+          "pv_instructions": 4,
+          "pv_virtual_registers": 64,
+          "scalar_references_to_pv_registers_before_wait": 0,
+          "commit_present": true,
+          "fp32_add_instructions_before_wait": 70,
+          "fp32_rn_mul_instructions_before_wait": 66
+        },
+        {
+          "first_pv_line": 5296,
+          "wait_line": 5605,
+          "pv_instructions": 4,
+          "pv_virtual_registers": 64,
+          "scalar_references_to_pv_registers_before_wait": 0,
+          "commit_present": true,
+          "fp32_add_instructions_before_wait": 70,
+          "fp32_rn_mul_instructions_before_wait": 66
+        }
+      ],
+      "limitation": "Conservative linear PTX-window check of virtual registers; this is not a SASS scheduler, shared-memory race, or GPU execution proof. Existing Hopper correctness and repeated stream gates are still required."
+    },
+    "rejected_vec_decode_two_stages": {
+      "decision": "Not exposed: D128 Q65/K257 spills in both dtypes; D64-only support is deferred.",
+      "gpu_execution": false,
+      "cases": [
+        {
+          "source": "vec_decode_s2_review_bfloat16_d128_s2.cu",
+          "sha256": "92edce1016e3d6528ba0d72f8e331cc4f0253de62ebc79934264d98f9951b154",
+          "shape": {
+            "B": 1,
+            "H": 2,
+            "Q": 65,
+            "K": 257
+          },
+          "dim": 128,
+          "registers": 255,
+          "stack_bytes": 120,
+          "spill_store_bytes": 120,
+          "spill_load_bytes": 120,
+          "nvrtc_passed": true,
+          "ptxas_passed": true,
+          "all_operand_fences_match_fragment_lengths": true
+        },
+        {
+          "source": "vec_decode_s2_review_bfloat16_d64_s2.cu",
+          "sha256": "68667ed8cc915edd192c4e24728041f2d93a410ac2d188573e65a419ce1bdf8d",
+          "shape": {
+            "B": 1,
+            "H": 2,
+            "Q": 65,
+            "K": 257
+          },
+          "dim": 64,
+          "registers": 228,
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "nvrtc_passed": true,
+          "ptxas_passed": true,
+          "all_operand_fences_match_fragment_lengths": true
+        },
+        {
+          "source": "vec_decode_s2_review_float16_d128_s2.cu",
+          "sha256": "d3f30a27cabe496bd3f7c01689e245ae01bde67d64753f3454a5b1ac3b794de4",
+          "shape": {
+            "B": 1,
+            "H": 2,
+            "Q": 65,
+            "K": 257
+          },
+          "dim": 128,
+          "registers": 255,
+          "stack_bytes": 120,
+          "spill_store_bytes": 120,
+          "spill_load_bytes": 120,
+          "nvrtc_passed": true,
+          "ptxas_passed": true,
+          "all_operand_fences_match_fragment_lengths": true
+        },
+        {
+          "source": "vec_decode_s2_review_float16_d64_s2.cu",
+          "sha256": "47027bce22530eb62242be963fbbf3d9722c426ac29e48b6ef72dcde1e48a770",
+          "shape": {
+            "B": 1,
+            "H": 2,
+            "Q": 65,
+            "K": 257
+          },
+          "dim": 64,
+          "registers": 228,
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "nvrtc_passed": true,
+          "ptxas_passed": true,
+          "all_operand_fences_match_fragment_lengths": true
+        },
+        {
+          "source": "vec_decode_s2_long_review_bfloat16_d64_k1025.cu",
+          "sha256": "61f7aa02934285727afe82bed9805c9a53bdf8d06872cc81c65b9f9f603a354c",
+          "shape": {
+            "B": 1,
+            "H": 2,
+            "Q": 65,
+            "K": 1025,
+            "D": 64
+          },
+          "dim": 64,
+          "registers": 194,
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "nvrtc_passed": true,
+          "ptxas_passed": true,
+          "all_operand_fences_match_fragment_lengths": true
+        }
+      ]
+    },
+    "other_probe": "ExpCast coalesced_width=4 generated identical CUDA on D128 BF16 Q65/K257; not exposed.",
+    "launcher": {
+      "variants": [
+        "cached_no_ws_s1",
+        "cached_no_ws_vec_decode_s1",
+        "vec_overlap"
+      ],
+      "output": "results/h200_tilelang_no_ws_round5.json",
+      "trace_dir": "results/tilelang_no_ws_round5_traces",
+      "single_command": "bash scripts/run_tilelang_opt_h200.sh"
+    },
+    "hopper_runtime": "Pending full correctness, repeated default/side stream gates and timing for vec_overlap."
   }
 }
