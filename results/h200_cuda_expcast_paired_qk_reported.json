@@ -1,0 +1,17 @@
+{
+  "source": "User-pasted H200 CUPTI table after run_paired_qk_h200.sh",
+  "scope": "GPU kernel duration summary only; full/core API tables, raw trials, remote compiled resources and validation details were not supplied",
+  "reported_json_path": "results/h200_cuda_expcast_paired_qk.json",
+  "milliseconds": {
+    "vc28_scale_prefetch": 23.4789,
+    "vc28_paired_qk": 24.5014,
+    "vc28_installed": 23.6508,
+    "sage_cpp": 24.8859,
+    "flash4": 30.5801
+  },
+  "table_columns": "attention, all kernels and all GPU work are equal for each reported row",
+  "candidate_extra_ms": 1.0225,
+  "candidate_latency_increase_percent": 4.354974040521498,
+  "decision": "Do not promote paired QK. Retain scale-prefetch. Fewer QK batches did not improve total GPU kernel duration in this run.",
+  "interpretation": "Higher register/shared footprint is a hypothesis, supported by local CUDA12.4 codegen only. The pasted table does not establish remote CUDA13 resource usage or the causal bottleneck. No statistical-significance, model-quality or end-to-end speedup claim."
+}

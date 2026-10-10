@@ -3,7 +3,30 @@
 2026-10-10。当前主线是 **INT8 QK + ExpCast + FP8 PV，V 聚类和平滑关闭**。
 保留 vc28 已测实现，新候选不修改已安装包和默认 dispatch。
 
-## 当前候选：两个 QK 块合并，ExpCast/PV 保留 K128 边界
+## 最新结论：paired QK 未获得收益，保留 K128 预取基线
+
+本轮 H200 CUPTI 回传：
+
+| 实现 | GPU 内核 ms |
+|---|---:|
+| vc28_scale_prefetch | 23.4789 |
+| vc28_paired_qk | 24.5014 |
+| vc28_installed | 23.6508 |
+| sage_cpp | 24.8859 |
+| flash4 | 30.5801 |
+
+paired QK 比预取基线增加 **1.0225 ms（4.35%）**，不提升为默认实现。
+继续保留 K128 预取路线，其同轮 Sage/FA4 内核加速比分别为 **1.060× / 1.302×**。
+原始汇总见 [回传记录](results/h200_cuda_expcast_paired_qk_reported.json)。
+尚未收到完整 API 表、配对 trials、远端 compiled_resources 或详细精度结果，
+不将这些内核加速比视为完整模型推理收益。
+
+本地 CUDA12.4 编译显示候选的寄存器和共享内存需求增加，是值得检查的退步原因；
+**不能仅凭该时间表认定远端 CUDA13 的资源用量或退步根因**。
+下一步先从已保存 JSON 提取 `compiled_resources`、`comparison`、`paired_comparisons`，
+检查远端资源和重复测量结果；无需重新编译或测速。
+
+## 已测候选：两个 QK 块合并，ExpCast/PV 保留 K128 边界
 
 最新 H200 CUPTI 回传：scale-prefetch **23.4322 ms**，mass-tail **23.4445 ms**，
 installed **23.5268 ms**，Sage **24.8497 ms**，FA4 **30.9068 ms**。
@@ -52,7 +75,8 @@ FP16/BF16、D64/D128、多 batch/head 和非默认 stream，尾部填充 V 故�
 精度门限验证实现一致性，不代表真实模型质量。
 
 本地 37 项 Python/生成代码检查通过，完整 SM90a attention 与独立 QK 检查交叉编译通过。
-本机只有 SM86，**尚未运行本候选的 Hopper attention**。详细资源见
+本机只有 SM86，未在本地运行 Hopper attention；现已收到上方 H200 性能汇总。
+详细本地编译资源见
 [本地编译记录](results/cuda_expcast_paired_qk_local_validation.json)。
 
 ## 已测候选：保留一次 PV 提交，延后少量 FP32 分母计算
