@@ -1,6 +1,6 @@
 {
   "date": "2026-10-10",
-  "status": "cross_compile_passed_no_ws_hopper_runtime_pending",
+  "status": "cross_compile_passed_new_overlap_and_integer_mass_hopper_runtime_pending",
   "target": "sm_90a",
   "compiler": "CUDA 12.4 NVRTC + ptxas",
   "shape": {
@@ -12,13 +12,13 @@
   "local_gpu": "RTX 3060 Laptop SM86",
   "compile_environment": "Windows NVRTC virtual stdint/stdlib headers and cuda::std compatibility imports; unchanged generated kernel bodies; not a Linux NVCC runtime validation",
   "tests": {
-    "cpu_auxiliary": 19,
-    "candidate_codegen": 20,
-    "candidate_configuration_rejection": 1,
+    "cpu_auxiliary": 23,
+    "candidate_codegen": 28,
+    "candidate_configuration_rejection": 3,
     "original_codegen": 8,
-    "passed": 48
+    "passed": 62
   },
-  "kernel_count": 28,
+  "kernel_count": 38,
   "kernels": [
     {
       "source": "baseline_bfloat16_d128_s1.cu",
@@ -371,6 +371,306 @@
       "spill_load_bytes": 0,
       "ptxas_log": "ptxas info    : 1338 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 168 registers\n",
       "copy_pipeline": "K/V cp.async; both GEMMs WGMMA; no producer warpgroup"
+    },
+    {
+      "source": "cached_no_ws_int_mass_bfloat16_d128_s1.cu",
+      "sha256": "c0f7414fa1e4ca7d6fae6e8ace41899a5ee8f6e79f0d1c827f456b90ac906d70",
+      "ptx_sha256": "5ea70b48a478f76a0b002f3318f437a3b5c4e9cbc0019283409f4568f958fb2a",
+      "shape": {
+        "batch": 1,
+        "heads": 2,
+        "queries": 65,
+        "keys": 257,
+        "dim": 128
+      },
+      "threads": 128,
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 254,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1330 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 254 registers\n",
+      "observations": {
+        "fp8_decode_ptx_count": 0
+      },
+      "copy_pipeline": "K/V cp.async; both GEMMs WGMMA; no producer warpgroup"
+    },
+    {
+      "source": "cached_no_ws_int_mass_bfloat16_d64_s1.cu",
+      "sha256": "580134e1175677d08cfbb0a3937d175b4ad87ae323009f7a88d085458b3d6bba",
+      "ptx_sha256": "2967020eefa2a35d1227c526d97a97c41f38d1cb894607d6310454a5102dea59",
+      "shape": {
+        "batch": 1,
+        "heads": 2,
+        "queries": 65,
+        "keys": 257,
+        "dim": 64
+      },
+      "threads": 128,
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 196,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1338 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 196 registers\n",
+      "observations": {
+        "fp8_decode_ptx_count": 0
+      },
+      "copy_pipeline": "K/V cp.async; both GEMMs WGMMA; no producer warpgroup"
+    },
+    {
+      "source": "cached_no_ws_int_mass_float16_d128_s1.cu",
+      "sha256": "1be1df82d7bc42a7c27861e93e27d51ce494d904adcd2cabe868b27a3c2496da",
+      "ptx_sha256": "4b1a0fe9661d4b46a0fc107cb9a3ad05300a0ed29617b443e1b48eab55fb400a",
+      "shape": {
+        "batch": 1,
+        "heads": 2,
+        "queries": 65,
+        "keys": 257,
+        "dim": 128
+      },
+      "threads": 128,
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 254,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1330 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 254 registers\n",
+      "observations": {
+        "fp8_decode_ptx_count": 0
+      },
+      "copy_pipeline": "K/V cp.async; both GEMMs WGMMA; no producer warpgroup"
+    },
+    {
+      "source": "cached_no_ws_int_mass_float16_d64_s1.cu",
+      "sha256": "e78b0ede579db8b40f7477921b668e12f5c4dfadf5194c7c6b3db8f9417c58e9",
+      "ptx_sha256": "feaa3fb307218261b48e5a2861637a19ea73229e6801e15ea7260f839abf0f55",
+      "shape": {
+        "batch": 1,
+        "heads": 2,
+        "queries": 65,
+        "keys": 257,
+        "dim": 64
+      },
+      "threads": 128,
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 196,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1338 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 196 registers\n",
+      "observations": {
+        "fp8_decode_ptx_count": 0
+      },
+      "copy_pipeline": "K/V cp.async; both GEMMs WGMMA; no producer warpgroup"
+    },
+    {
+      "source": "cached_no_ws_overlap_bfloat16_d128_s1.cu",
+      "sha256": "9de8ef626fc640302f1ed45ab6d688c7de196acc491f765a72a0c2947cee84a6",
+      "ptx_sha256": "a72c58456a8d68c03355c601df3fa31fe12bac1e95e7ece2ccfa46159b09b7ca",
+      "shape": {
+        "batch": 1,
+        "heads": 2,
+        "queries": 65,
+        "keys": 257,
+        "dim": 128
+      },
+      "threads": 128,
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 247,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1330 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 247 registers\n",
+      "observations": {
+        "fp8_decode_ptx_count": 128,
+        "pv_async_windows": [
+          {
+            "fp32_add": 70,
+            "fp32_mul": 66,
+            "pv_registers_read_before_wait": false
+          },
+          {
+            "fp32_add": 70,
+            "fp32_mul": 66,
+            "pv_registers_read_before_wait": false
+          }
+        ]
+      },
+      "copy_pipeline": "K/V cp.async; both GEMMs WGMMA; no producer warpgroup"
+    },
+    {
+      "source": "cached_no_ws_overlap_bfloat16_d64_s1.cu",
+      "sha256": "87aac8b7f58062c55e90d6f39748c6258c930883124f411d9900da5166771aae",
+      "ptx_sha256": "e8259690c34d449ce73b0b71894f639d9e125861a70ab577fcf1930020fce03b",
+      "shape": {
+        "batch": 1,
+        "heads": 2,
+        "queries": 65,
+        "keys": 257,
+        "dim": 64
+      },
+      "threads": 128,
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1338 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 168 registers\n",
+      "observations": {
+        "fp8_decode_ptx_count": 128,
+        "pv_async_windows": [
+          {
+            "fp32_add": 70,
+            "fp32_mul": 34,
+            "pv_registers_read_before_wait": false
+          },
+          {
+            "fp32_add": 70,
+            "fp32_mul": 34,
+            "pv_registers_read_before_wait": false
+          }
+        ]
+      },
+      "copy_pipeline": "K/V cp.async; both GEMMs WGMMA; no producer warpgroup"
+    },
+    {
+      "source": "cached_no_ws_overlap_float16_d128_s1.cu",
+      "sha256": "9de41ea2faf420a74a38bd00acf1c8f56e99a18253012caa5f77cc05a99b289f",
+      "ptx_sha256": "7ef942d8490f036933280c8e04689152ebd27d09750f9b68ad06b1577fab32e8",
+      "shape": {
+        "batch": 1,
+        "heads": 2,
+        "queries": 65,
+        "keys": 257,
+        "dim": 128
+      },
+      "threads": 128,
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 247,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1330 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 247 registers\n",
+      "observations": {
+        "fp8_decode_ptx_count": 128,
+        "pv_async_windows": [
+          {
+            "fp32_add": 70,
+            "fp32_mul": 66,
+            "pv_registers_read_before_wait": false
+          },
+          {
+            "fp32_add": 70,
+            "fp32_mul": 66,
+            "pv_registers_read_before_wait": false
+          }
+        ]
+      },
+      "copy_pipeline": "K/V cp.async; both GEMMs WGMMA; no producer warpgroup"
+    },
+    {
+      "source": "cached_no_ws_overlap_float16_d64_s1.cu",
+      "sha256": "04cfd89d1ff70a5fcd2bd85f1e999662c0317443ced54724eb48439ead4a680e",
+      "ptx_sha256": "cdfeab4d2e4d339e40de507bc34504a5e31921abdc039740a608553f90636de7",
+      "shape": {
+        "batch": 1,
+        "heads": 2,
+        "queries": 65,
+        "keys": 257,
+        "dim": 64
+      },
+      "threads": 128,
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1338 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 168 registers\n",
+      "observations": {
+        "fp8_decode_ptx_count": 128,
+        "pv_async_windows": [
+          {
+            "fp32_add": 70,
+            "fp32_mul": 34,
+            "pv_registers_read_before_wait": false
+          },
+          {
+            "fp32_add": 70,
+            "fp32_mul": 34,
+            "pv_registers_read_before_wait": false
+          }
+        ]
+      },
+      "copy_pipeline": "K/V cp.async; both GEMMs WGMMA; no producer warpgroup"
+    },
+    {
+      "source": "cached_no_ws_int_mass_main_bfloat16_d128_s1.cu",
+      "sha256": "8d90155e82fdb0024347cf5d6f537593da9c320e8022fed4bb0ecfca95fdda80",
+      "ptx_sha256": "c3f995cc7e4294d36e08333423c86cfb4d74de991f4b484423f8357ac051dd0c",
+      "shape": {
+        "batch": 1,
+        "heads": 28,
+        "queries": 37741,
+        "keys": 37741,
+        "dim": 128
+      },
+      "threads": 128,
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 247,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1330 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 247 registers\n",
+      "observations": {
+        "fp8_decode_ptx_count": 0
+      },
+      "copy_pipeline": "K/V cp.async; both GEMMs WGMMA; no producer warpgroup"
+    },
+    {
+      "source": "cached_no_ws_overlap_main_bfloat16_d128_s1.cu",
+      "sha256": "4d8a5cc8e46cc92ed518f434bf083773cba215e6c193413c2458b164de2843f6",
+      "ptx_sha256": "277a410f296366fcc20eae68a957fe9dd7d82d991fe73b45dfb69161455311f1",
+      "shape": {
+        "batch": 1,
+        "heads": 28,
+        "queries": 37741,
+        "keys": 37741,
+        "dim": 128
+      },
+      "threads": 128,
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 245,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1330 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 245 registers\n",
+      "observations": {
+        "fp8_decode_ptx_count": 128,
+        "pv_async_windows": [
+          {
+            "fp32_add": 70,
+            "fp32_mul": 66,
+            "pv_registers_read_before_wait": false
+          },
+          {
+            "fp32_add": 70,
+            "fp32_mul": 66,
+            "pv_registers_read_before_wait": false
+          }
+        ]
+      },
+      "copy_pipeline": "K/V cp.async; both GEMMs WGMMA; no producer warpgroup"
     }
   ],
   "ptx_scale_load_observation": {
@@ -408,7 +708,7 @@
     "mma_codegen": 8,
     "mma_cross_compile": 8,
     "checks": "Generated CUDA and PTX must keep K release after MMA and bar.sync 15,128",
-    "integration_tests_passed": 48,
+    "integration_tests_passed": 62,
     "ptx_k_release_order_checked": 8
   },
   "shape_scope": "Default shape describes baseline/cached/MMA; no_ws kernels carry per-kernel shapes",
@@ -551,6 +851,17 @@
     "supported_configs_cross_compile": 4,
     "single_stage_only": true,
     "checks": "128-thread launch, K/V cp.async and WGMMA completion plus CTA synchronization before buffer reuse",
-    "hopper_runtime": "Pending full correctness and timing on H200"
+    "hopper_runtime": "User-reported completed timing: no_ws 39.4224ms; validation success inferred from reaching timing, full JSON unavailable"
+  },
+  "h200_performance_summaries": [
+    "results/h200_tilelang_opt_reported.json",
+    "results/h200_tilelang_no_ws_reported.json"
+  ],
+  "new_no_ws_revision_checks": {
+    "small_codegen": 8,
+    "cross_compile_small_and_main": 10,
+    "gpu_execution": false,
+    "integer_mass_proof": "results/tilelang_int_mass_proof.json",
+    "hopper_runtime": "Pending full correctness and timing for the two new explicit candidates"
   }
 }

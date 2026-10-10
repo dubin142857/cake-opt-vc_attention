@@ -1,0 +1,119 @@
+{
+  "source": "User-provided H200 summary; not a local benchmark",
+  "scope": "CUPTI kernel only",
+  "complete_benchmark_json": false,
+  "remote_output": "results/h200_tilelang_no_ws.json",
+  "remote_output_provenance": "User-reported saved path; complete remote JSON not inspected",
+  "shape": {
+    "batch": 1,
+    "heads": 28,
+    "queries": 37741,
+    "keys": 37741,
+    "dim": 128,
+    "dtype": "bfloat16",
+    "provenance": "Script defaults; not verified against the complete run JSON"
+  },
+  "validation": "Completion of timing implies the script reached profiling after its validation gates; inferred from the supplied summary, not independently verified. Detailed validation metrics and case counts were not supplied.",
+  "rows": {
+    "baseline_s1": {
+      "attention_ms": 56.9145,
+      "all_kernel_ms": 56.9145,
+      "all_gpu_work_ms": 56.9145,
+      "sage_over_variant": 0.435871351,
+      "flash4_over_variant": 0.531997997
+    },
+    "baseline_s2": {
+      "attention_ms": 57.0217,
+      "all_kernel_ms": 57.0217,
+      "all_gpu_work_ms": 57.0217,
+      "sage_over_variant": 0.435051919,
+      "flash4_over_variant": 0.530997848
+    },
+    "cached_s1": {
+      "attention_ms": 49.4806,
+      "all_kernel_ms": 49.4806,
+      "all_gpu_work_ms": 49.4806,
+      "sage_over_variant": 0.501356087,
+      "flash4_over_variant": 0.611924674
+    },
+    "cached_s2": {
+      "attention_ms": 50.0607,
+      "all_kernel_ms": 50.0607,
+      "all_gpu_work_ms": 50.0607,
+      "sage_over_variant": 0.495546407,
+      "flash4_over_variant": 0.604833732
+    },
+    "cached_no_ws_s1": {
+      "attention_ms": 39.4224,
+      "all_kernel_ms": 39.4224,
+      "all_gpu_work_ms": 39.4224,
+      "sage_over_variant": 0.629271683,
+      "flash4_over_variant": 0.768050651
+    },
+    "sage_cpp": {
+      "attention_ms": 24.8074,
+      "all_kernel_ms": 24.8074,
+      "all_gpu_work_ms": 24.8074,
+      "sage_over_variant": 1,
+      "flash4_over_variant": 1.220539033
+    },
+    "flash4": {
+      "attention_ms": 30.2784,
+      "all_kernel_ms": 30.2784,
+      "all_gpu_work_ms": 30.2784,
+      "sage_over_variant": 0.819310135,
+      "flash4_over_variant": 1
+    }
+  },
+  "comparison_formula": {
+    "speedup": "reference all_kernel_ms / candidate all_kernel_ms; above 1 means faster",
+    "time_saved_ms": "reference all_kernel_ms - candidate all_kernel_ms",
+    "time_saved_percent": "100 * (reference all_kernel_ms - candidate all_kernel_ms) / reference all_kernel_ms; negative means more time"
+  },
+  "no_warp_specialization_comparisons": {
+    "baseline_s1": {
+      "reference": "baseline_s1",
+      "candidate": "cached_no_ws_s1",
+      "speedup": 1.443709668,
+      "time_saved_ms": 17.4921,
+      "time_saved_percent": 30.73399573
+    },
+    "cached_s1": {
+      "reference": "cached_s1",
+      "candidate": "cached_no_ws_s1",
+      "speedup": 1.25513921,
+      "time_saved_ms": 10.0582,
+      "time_saved_percent": 20.327562722
+    },
+    "sage_cpp": {
+      "reference": "sage_cpp",
+      "candidate": "cached_no_ws_s1",
+      "speedup": 0.629271683,
+      "time_saved_ms": -14.615,
+      "time_saved_percent": -58.913872474
+    },
+    "flash4": {
+      "reference": "flash4",
+      "candidate": "cached_no_ws_s1",
+      "speedup": 0.768050651,
+      "time_saved_ms": -9.144,
+      "time_saved_percent": -30.199746354
+    }
+  },
+  "stage_matched_cached_comparisons": {
+    "cached_s1": {
+      "reference": "baseline_s1",
+      "candidate": "cached_s1",
+      "speedup": 1.150238679,
+      "time_saved_ms": 7.4339,
+      "time_saved_percent": 13.061522108
+    },
+    "cached_s2": {
+      "reference": "baseline_s2",
+      "candidate": "cached_s2",
+      "speedup": 1.139051192,
+      "time_saved_ms": 6.961,
+      "time_saved_percent": 12.207633234
+    }
+  }
+}

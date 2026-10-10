@@ -3,12 +3,31 @@
 2026-10-10。新增 `scripts/tilelang_expcast_opt.py` 和独立入口
 `scripts/benchmark_tilelang_opt.py`，针对现有 Hopper INT8 QK / ExpCast / FP8 PV。
 原始 TileLang 实现继续作为对照。H200 同步修订后的测速摘要已返回：
-`cached_s1` 为当前最快的 TileLang 候选，默认只测试 `cached_s1/s2`。
-MMA 候选保留显式选择，新增 `cached_no_ws_s1` 供下一轮实验。
+`cached_no_ws_s1` 为当前最快的 TileLang 候选，默认测试 `cached_s1/s2` 和
+`cached_no_ws_s1`。MMA 候选保留显式选择。
 
 ## 用户提供的 H200 结果
 
-以下为同轮 CUPTI 的全部 kernel 时间，没有混用 API 时间。
+第二轮 no_ws 测速中，同轮 CUPTI 的全部 kernel 时间如下，没有混用 API 时间。
+
+| 实现 | 时间（ms） |
+| --- | ---: |
+| `baseline_s1` | 56.9145 |
+| `baseline_s2` | 57.0217 |
+| `cached_s1` | 49.4806 |
+| `cached_s2` | 50.0607 |
+| `cached_no_ws_s1` | 39.4224 |
+| `sage_cpp` | 24.8074 |
+| `flash4` | 30.2784 |
+
+no_ws 相对同轮 baseline_s1 加速 1.444×、耗时减少 30.73%；相对 cached_s1
+再加速 1.255×、耗时减少 20.33%。耗时仍为 Sage 的 1.589 倍、FA4 的 1.302 倍。
+完整七行摘要及比较计算在 `results/h200_tilelang_no_ws_reported.json`，
+上一轮保留在 `results/h200_tilelang_opt_reported.json`。两个摘要都来自用户提供的
+终端输出，没有读取服务器的完整 JSON；实际输入形状、校验误差和 trial 波动尚未
+独立核验。新候选完成测速意味着该轮脚本已经走过其校验门槛。
+
+第一轮的历史结果如下：
 
 | 实现 | 时间（ms） | 相对同 stage baseline |
 | --- | ---: | ---: |
@@ -30,7 +49,9 @@ MMA 候选保留显式选择，新增 `cached_no_ws_s1` 供下一轮实验。
 | --- | --- | --- |
 | `cached_s1/s2` | 每个 query tile 缓存 Q scale，每个 key tile 缓存 K scale，显式广播到 score fragment | 编译器是否已消除原实现的重复读取，以及新调度是否受益 |
 | `mma_qk_s1/s2` | 在缓存 scales 的基础上，K 从 shared 复制到 fragment，使 INT8 QK 使用 `mma.sync`；FP8 PV 继续使用 WGMMA | QK 等待和布局成本的变化能否抵消额外 K 寄存器复制 |
-| `cached_no_ws_s1`（显式选择） | 在 cached 基础上禁用自动 warp specialization，实际 CTA 从 256 线程变为 128；K/V 搬运同时从 TMA 改为 `cp.async`，两个 GEMM 保持 WGMMA | 更少的每 CTA 资源能否抵消搬运方式和同步变化的成本 |
+| `cached_no_ws_s1` | 在 cached 基础上禁用自动 warp specialization，实际 CTA 从 256 线程变为 128；K/V 搬运同时从 TMA 改为 `cp.async`，两个 GEMM 保持 WGMMA | H200 第二轮 39.4224 ms，相对 cached_s1 耗时减少 20.33%；不能单独归因于线程数 |
+| `cached_no_ws_overlap_s1`（显式实验） | 异步 PV 与 decoded-P 行求和、denom 更新、历史 accum 乘 alpha 重叠；wait 后加 PV | 主形状及小形状离线编译无 spill，H200 性能和运行一致性待测 |
+| `cached_no_ws_int_mass_s1`（显式实验） | 用整数单位计算每个 128-key tile 的 decoded-P 行求和，再精确转换为 FP32；PV 仍用 FP8 | 消除 scalar FP8 解码，但增加整数运算；是否更快待 H200 测试 |
 
 所有候选保持 BM64/BN128、128-key ExpCast 分块、per-thread INT8 QK、自然顺序
 `[B,H,D,Npad]` FP8 V、decoded-P 分母和逐块独立 FP32 PV 累加。
@@ -39,11 +60,23 @@ FP16/BF16、D64/128 均支持；cached/MMA 支持 stage 1/2，no_ws 只支持 st
 只用于非因果 MHA 和 Hopper SM90a。
 
 no_ws 的 Q65/K257 离线编译中，D64 使用 168 registers、D128 使用 247，
-无 stack/spill；双阶段试验产生了 spill，因此不提供该配置。新候选尚未在 H200
-执行。源码检查要求 `cp.async` 完成后再读 K/V，且 WGMMA 完成和线程同步后
+无 stack/spill；双阶段试验产生了 spill，因此不提供该配置。单阶段已经返回 H200
+测速摘要。源码检查要求 `cp.async` 完成后再读 K/V，且 WGMMA 完成和线程同步后
 才覆盖相应 shared buffer；这仍不能代替 GPU 运行一致性检查。
 默认主形状 B1/H28/Q37741/K37741/D128/BF16 也已离线编译：单阶段为
 245 registers、48 KiB 动态 shared、无 stack/spill，长循环的等待顺序同样通过检查。
+
+overlap 在 `T.wait_wgmma(0)` 后显式设置每线程 32/64-register operand fence，
+并用 V/P 的 pointer read 保持 shared buffer 生命周期，等待和线程同步后才覆盖 V。
+每块 PV 保持 `clear_accum=True`；历史缩放和 PV 相加仍分别按原 FP32 RN 顺序执行。
+与旧的 warp-specialized overlap 不同，此实验基于已经实测的 no_ws 搬运路径。
+
+整数 mass 的适用范围是 ExpCast 的非负 code 0..120、每块最多 128 个值。
+这些 FP8 值均为 2^-9 的整数倍，最大 units 为 131072，128 项之和不超过 2^24。
+任意 FP32 加法树的中间值都可精确表示，因此 `float(intsum)*2^-9` 与原 decoded-P
+FP32 行求和逐位一致。跨 tile 的在线 denom 更新保持原 FP32 操作。
+Torch 实际 FP8 bit patterns 0..120 和 10,125 行边界/随机输入已经检查，
+依据保存在 `results/tilelang_int_mass_proof.json`。这不替代完整 attention 的 H200 校验。
 
 本地 D128/BF16/s1 的 PTX 确认：原实现 QS/KS 均在 key 循环中加载，
 `cached` 把 QS 移到循环前。但 NVRTC 已把原实现的逐元素重复读取合并，
@@ -88,7 +121,7 @@ bash scripts/run_tilelang_opt_h200.sh
 
 脚本复用现有环境，不安装依赖、不构建项目的 C++ 扩展。测试默认同时包含已安装的
 Sage attention 和 FlashAttention-4 对照，以及原始 TileLang stage 1/2；
-默认优化候选为 `cached_s1/s2`。下一轮测试 128 线程候选：
+默认优化候选为 `cached_s1/s2` 和 `cached_no_ws_s1`。显式测试 128 线程候选：
 
 ```bash
 bash scripts/run_tilelang_opt_h200.sh \
@@ -102,6 +135,18 @@ bash scripts/run_tilelang_opt_h200.sh \
 ```bash
 bash scripts/run_tilelang_opt_h200.sh --skip-sage --skip-flash4
 ```
+
+下一轮比较当前最快版本和两个新实验，保留同场 Sage/FA4 与原始 stage 对照：
+
+```bash
+bash scripts/run_tilelang_opt_h200.sh \
+  --variants cached_no_ws_s1 cached_no_ws_overlap_s1 cached_no_ws_int_mass_s1 \
+  --output results/h200_tilelang_no_ws_next.json \
+  --trace-dir results/tilelang_no_ws_next_traces
+```
+
+新实验只支持单阶段，未加入默认候选。完整精度门槛、默认/非默认 stream 的
+三次逐位重复检查和 CUPTI 全 kernel 计时口径都与上一轮相同。
 
 自定义 Python、GPU、捕获的真实 QKV 或候选范围：
 
@@ -141,15 +186,16 @@ CUPTI attention / all-kernel / all-GPU-work 时间另报，不与 API 时间混�
 
 本地 GPU 是 RTX 3060 Laptop（SM86），没有执行 SM90a 内核。以下检查已经通过：
 
-- 19 项 CPU 辅助测试：V inverse permutation 的全部 FP8 bit patterns、CLI、候选隔离、
+- 23 项 CPU 辅助测试：V inverse permutation 的全部 FP8 bit patterns、CLI、候选隔离、
   尾块差异定位、严格一致性失败记录和缩短验证时的随机输入复现。
-- 20 项候选代码生成测试：cached/MMA 的两种 dtype、D64/128、stage 1/2，
-  以及 no_ws 单阶段的四个组合；另检查拒绝 no_ws 双阶段配置。
+- 28 项候选代码生成测试：cached/MMA 的两种 dtype、D64/128、stage 1/2，
+  以及三个 no_ws 单阶段候选的四个组合；另有三项拒绝 no_ws 双阶段配置。
   检查低精度 GEMM 类型、Q scale 读取位置和 K/V buffer 释放时序。
 - 原始 TileLang 的 8 项代码生成回归测试。
-- 原始 baseline 和 cached/MMA 共 24 份源码，外加 no_ws 的 4 份，
+- 原始 baseline 和 cached/MMA 共 24 份源码，外加三个 no_ws 候选的 12 份，
   经 CUDA 12.4 NVRTC 和 ptxas 交叉编译为 SM90a cubin，stack/spill 均为 0。
-  前 24 份为 240 registers；no_ws 的寄存器数见上文。
+  前 24 份为 240 registers；no_ws/overlap 的小形状 D64/D128 为 168/247，
+  integer mass 为 196/254。另编译两个新实验的默认主形状，并检查异步 PTX 时序。
   Windows NVRTC 检查使用标准整数头和 `cuda::std` 兼容包装；这不替代远端 NVCC 和运行校验。
 
 记录在 `results/tilelang_opt_cross_compile.json`，本地源码/PTX/cubin 放在

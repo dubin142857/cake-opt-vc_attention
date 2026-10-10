@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "status": "mathematical proof and CPU cross-check completed; Hopper execution pending",
+  "gpu_execution": false,
+  "scope": {
+    "dtype": "float8_e4m3fn",
+    "encoding_range_inclusive": [
+      0,
+      120
+    ],
+    "maximum_terms_per_key_tile": 128,
+    "operation": "sum decoded nonnegative FP8 P inside one key tile",
+    "cross_tile_constraint": "Online denominator alpha multiplication and addition retain their existing FP32 evaluation order; integer replacement applies only to the per-tile sum."
+  },
+  "proof": {
+    "integer_unit": "2^-9",
+    "integer_unit_value": 0.001953125,
+    "units_formula": "code if code < 8 else ((code & 7) + 8) << ((code >> 3) - 1)",
+    "maximum_units_per_value": 131072,
+    "maximum_integer_sum": 16777216,
+    "maximum_decoded_value": 256.0,
+    "maximum_decoded_sum": 32768.0,
+    "reason": "Every FP8 value in this encoding range is an integer multiple of 2^-9. Any intermediate subset sum is nonnegative and at most 2^24 integer units, so all FP32 additions in an arbitrary reduction tree are exact. Integer-to-FP32 conversion and power-of-two scaling are also exact.",
+    "per_tile_fp32_bitwise_equivalent": true
+  },
+  "cpu_cross_check": {
+    "torch_version": "2.3.1+cu121",
+    "device": "cpu",
+    "source_of_reference": "uint8 bits viewed as torch.float8_e4m3fn then cast to torch.float32",
+    "encoding_count": 121,
+    "encoding_mapping_bitwise_equal": true,
+    "rows": 10125,
+    "terms_per_row": 128,
+    "constant_encoding_rows": 121,
+    "random_rows": 10000,
+    "random_seed": 20261010,
+    "extra_boundary_rows": [
+      "all zero/subnormal codes 0..7 repeated 16 times",
+      "alternating maximum code 120 and zero",
+      "codes 120,1,7,8 repeated 32 times",
+      "127 maximum code 120 values and one minimum positive code 1"
+    ],
+    "reduction_orders": [
+      "torch.sum",
+      "left-to-right FP32 additions",
+      "recursive equal-half FP32 reduction tree"
+    ],
+    "all_reduction_orders_bitwise_equal_to_integer_sum": true,
+    "reproducer": ".venv-tilelang-opt/intmass_proof_cpu.py",
+    "reproducer_is_ignored_local_file": true,
+    "reproducer_sha256": "ba164b70e5ebcdf921060606695d9f691aa76e0055e5b1bf439ccf1057edbd4f"
+  },
+  "offline_sm90a_probe": {
+    "gpu_execution": false,
+    "shape": {
+      "batch": 1,
+      "heads": 28,
+      "queries": 37741,
+      "keys": 37741,
+      "dim": 128,
+      "output_dtype": "bfloat16"
+    },
+    "copy_schedule": "cached_no_ws, 128 threads, one stage",
+    "compiler": "CUDA 12.4 NVRTC compute_90a and ptxas sm_90a",
+    "probe_implementation": "Ignored temporary kernel module with identical integer units expression; this probe predates the public candidate and uses helper name vc_prob_units.",
+    "baseline": {
+      "registers_per_thread": 245,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_ptx_fp8_decode_cvt_rn_f16x2_e4m3x2_count": 128,
+      "source": "results/tilelang_opt_local_sources/intmass_probe_base_bf16_d128_main.cu",
+      "source_sha256": "df9017e26779e0e15a9cef22f14cf537e76ff655c0e2d320f8345efc7ccde82a",
+      "ptx_sha256": "b13051c5166f6ca11b6e79f643057c05605da06fe3df89b2144ddbf6855d94e1"
+    },
+    "integer_mass": {
+      "registers_per_thread": 247,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_ptx_fp8_decode_cvt_rn_f16x2_e4m3x2_count": 0,
+      "source": "results/tilelang_opt_local_sources/intmass_probe_int_bf16_d128_main.cu",
+      "source_sha256": "bcd8dee01c43266e17f6ba769dfcb1045624a473267e6f56ccb83d713f6e2ca9",
+      "ptx_sha256": "b52cd897ea3da6804bf822f084f1376c649fd993065b5309b6c549913630f144"
+    },
+    "raw_report": "results/tilelang_opt_local_sources/intmass_probe_compile_raw.json",
+    "raw_report_sha256": "e93e3b25dc7e39193263aa2b7ed711c5954542e6e1c5ceac42b280d6a60cd83c",
+    "artifacts_are_ignored_local_files": true,
+    "performance_measured": false
+  }
+}

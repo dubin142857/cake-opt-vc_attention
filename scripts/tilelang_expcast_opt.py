@@ -2,14 +2,15 @@
 
 The original tilelang_expcast backend and all C++ kernels remain the benchmark
 controls. These candidates cache quantization scales, compare INT8 MMA vs
-WGMMA, and test a single-warpgroup copy pipeline. The direct ExpCast formula
-and FP32 operation order are retained.
+WGMMA, and test a single-warpgroup copy pipeline, PV overlap, and exact integer
+probability sums. ExpCast FP32 evaluation and online FP32 update order are retained.
 """
 from functools import lru_cache
 
 import tilelang_expcast as baseline
 
-VARIANTS = ("cached", "mma_qk", "cached_no_ws")
+NO_WS_VARIANTS = ("cached_no_ws", "cached_no_ws_overlap", "cached_no_ws_int_mass")
+VARIANTS = ("cached", "mma_qk", *NO_WS_VARIANTS)
 
 
 def compiler_pass_configs(variant):
@@ -17,7 +18,7 @@ def compiler_pass_configs(variant):
     if variant not in VARIANTS:
         raise ValueError(f"Unknown TileLang optimization: {variant}")
     config = {tilelang.PassConfigKey.TL_ENABLE_FAST_MATH: True}
-    if variant == "cached_no_ws":
+    if variant in NO_WS_VARIANTS:
         # Keep the original 128-thread CTA instead of introducing an extra
         # producer warpgroup. TileLang also replaces K/V TMA with cp.async;
         # both GEMMs still use WGMMA on Hopper.
@@ -35,12 +36,30 @@ def make_primfunc(batch, heads, queries, keys, dim, output_dtype="bfloat16",
         raise ValueError("Expected nonempty FP16/BF16 MHA")
     if variant not in VARIANTS:
         raise ValueError(f"Unknown TileLang optimization: {variant}")
-    if variant == "cached_no_ws" and stages != 1:
-        raise ValueError("cached_no_ws supports one stage; two stages spill registers")
+    if variant in NO_WS_VARIANTS and stages != 1:
+        raise ValueError("no_ws variants support one stage; two stages spill registers on tail shapes")
     bm, bn = 64, 128
     blocks = (keys + bn - 1) // bn
     qs_len = (queries + bm - 1) // bm * 32
     prelude = (baseline.ROOT / "experiments/expcast/paper_math.cuh").read_text(encoding="utf-8")
+    if variant == "cached_no_ws_int_mass":
+        # ExpCast emits codes 0..120. Their decoded E4M3 values are integral
+        # multiples of 2^-9. Summing 128 codes stays <=2^24 units, so converting
+        # the integer sum back to FP32 exactly matches every FP32 sum order.
+        prelude += """
+__device__ __forceinline__ int vc_opt_prob_units(uint8_t code) {
+  const int c = static_cast<int>(code);
+  return c < 8 ? c : (((c & 7) + 8) << ((c >> 3) - 1));
+}
+"""
+    if variant == "cached_no_ws_overlap":
+        # wait_wgmma has no shared-buffer read regions. Keep both operands
+        # live through the wait so the software pipeline cannot reuse them.
+        prelude += """
+__device__ __forceinline__ void vc_opt_keep_shared_live(const void* v, const void* p) {
+  asm volatile("" : : "l"(v), "l"(p) : "memory");
+}
+"""
     if variant == "mma_qk":
         # Keep the generic shared-memory K reads live through MMA and an
         # explicit consumer rendezvous. A CTA-wide barrier would deadlock the
@@ -86,6 +105,8 @@ __device__ __forceinline__ void vc_mma_finish_k(const void* k) {
             previous = T.alloc_fragment((bm,), T.float32)
             alpha = T.alloc_fragment((bm,), T.float32)
             mass = T.alloc_fragment((bm,), T.float32)
+            if variant == "cached_no_ws_int_mass":
+                mass_units = T.alloc_fragment((bm,), T.int32)
             denom = T.alloc_fragment((bm,), T.float32)
             T.copy(Q[b, h, bx * bm:(bx + 1) * bm, :], q)
             for i in T.Parallel(bm):
@@ -124,17 +145,44 @@ __device__ __forceinline__ void vc_mma_finish_k(const void* k) {
                 for i, j in T.Parallel(bm, bn):
                     code = T.call_extern("uint8", "vc_paper_code", logits[i, j], maximum[i])
                     prob[i, j] = T.reinterpret(T.float8_e4m3fn, code)
-                    logits[i, j] = T.cast(prob[i, j], T.float32)
-                T.reduce_sum(logits, mass, dim=1)
-                T.copy(prob, p_shared)
-                T.gemm(p_shared, v, pv, transpose_B=True, clear_accum=True,
-                       policy=T.GemmWarpPolicy.FullRow)
-                for i in T.Parallel(bm):
-                    denom[i] = T.call_extern("float32", "vc_paper_add",
-                        T.call_extern("float32", "vc_paper_mul", denom[i], alpha[i]), mass[i])
-                for i, d in T.Parallel(bm, dim):
-                    accum[i, d] = T.call_extern("float32", "vc_paper_add",
-                        T.call_extern("float32", "vc_paper_mul", accum[i, d], alpha[i]), pv[i, d])
+                    if variant == "cached_no_ws_int_mass":
+                        dots[i, j] = T.call_extern("int32", "vc_opt_prob_units", code)
+                    else:
+                        logits[i, j] = T.cast(prob[i, j], T.float32)
+                if variant == "cached_no_ws_overlap":
+                    T.copy(prob, p_shared)
+                    T.wgmma_gemm(p_shared, v, pv, transpose_B=True, clear_accum=True,
+                                 policy=T.GemmWarpPolicy.FullRow)
+                    T.reduce_sum(logits, mass, dim=1)
+                    for i in T.Parallel(bm):
+                        denom[i] = T.call_extern("float32", "vc_paper_add",
+                            T.call_extern("float32", "vc_paper_mul", denom[i], alpha[i]), mass[i])
+                    for i, d in T.Parallel(bm, dim):
+                        accum[i, d] = T.call_extern("float32", "vc_paper_mul", accum[i, d], alpha[i])
+                    T.wait_wgmma(0)
+                    # The explicit register fence covers only the per-thread
+                    # fragment, rather than all bm*dim logical elements.
+                    T.warpgroup_fence_operand(pv, num_regs=bm * dim // 128)
+                    T.evaluate(T.call_extern("handle", "vc_opt_keep_shared_live",
+                                            T.access_ptr(v, "r"), T.access_ptr(p_shared, "r")))
+                    for i, d in T.Parallel(bm, dim):
+                        accum[i, d] = T.call_extern("float32", "vc_paper_add", accum[i, d], pv[i, d])
+                else:
+                    if variant == "cached_no_ws_int_mass":
+                        T.reduce_sum(dots, mass_units, dim=1)
+                        for i in T.Parallel(bm):
+                            mass[i] = T.cast(mass_units[i], T.float32) * T.float32(0.001953125)
+                    else:
+                        T.reduce_sum(logits, mass, dim=1)
+                    T.copy(prob, p_shared)
+                    T.gemm(p_shared, v, pv, transpose_B=True, clear_accum=True,
+                           policy=T.GemmWarpPolicy.FullRow)
+                    for i in T.Parallel(bm):
+                        denom[i] = T.call_extern("float32", "vc_paper_add",
+                            T.call_extern("float32", "vc_paper_mul", denom[i], alpha[i]), mass[i])
+                    for i, d in T.Parallel(bm, dim):
+                        accum[i, d] = T.call_extern("float32", "vc_paper_add",
+                            T.call_extern("float32", "vc_paper_mul", accum[i, d], alpha[i]), pv[i, d])
             for i, d in T.Parallel(bm, dim):
                 O[b, h, bx * bm + i, d] = T.call_extern("float32", "vc_paper_mul",
                     accum[i, d] / denom[i], VS[b, h, d])
