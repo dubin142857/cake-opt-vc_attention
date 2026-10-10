@@ -3,8 +3,9 @@
 2026-10-10。新增 `scripts/tilelang_expcast_opt.py` 和独立入口
 `scripts/benchmark_tilelang_opt.py`，针对现有 Hopper INT8 QK / ExpCast / FP8 PV。
 原始 TileLang 实现继续作为对照。H200 同步修订后的测速摘要已返回：
-`cached_no_ws_s1` 为当前最快的 TileLang 候选，默认测试 `cached_s1/s2` 和
-`cached_no_ws_s1`。MMA 候选保留显式选择。
+`cached_no_ws_s1` 为当前最快的 TileLang 候选。无参数 Bash 入口自动运行本轮
+no_ws、vec_decode、reduce4 三个方案；Python 入口的默认候选仍为
+`cached_s1/s2` 和 `cached_no_ws_s1`。MMA 候选保留显式选择。
 
 ## 用户提供的 H200 结果
 
@@ -150,34 +151,25 @@ bash scripts/run_tilelang_opt_h200.sh --validate-only \
 bash scripts/run_tilelang_opt_h200.sh
 ```
 
-脚本复用现有环境，不安装依赖、不构建项目的 C++ 扩展。测试默认同时包含已安装的
-Sage attention 和 FlashAttention-4 对照，以及原始 TileLang stage 1/2；
-默认优化候选为 `cached_s1/s2` 和 `cached_no_ws_s1`。显式测试 128 线程候选：
+无参数启动会自动选择本轮三个方案：`cached_no_ws_s1`、
+`cached_no_ws_vec_decode_s1`、`cached_no_ws_reduce4_s1`，并保留同场的
+Sage attention、FlashAttention-4 和原始 TileLang stage 1/2 对照。
+脚本先执行完整精度校验及默认/非默认 stream 各三次一致性检查，通过后测
+完整 API、prepared 核心 API，并单独运行 CUPTI kernel 计时。
 
-```bash
-bash scripts/run_tilelang_opt_h200.sh \
-  --variants cached_s1 cached_s2 cached_no_ws_s1 \
-  --output results/h200_tilelang_no_ws.json \
-  --trace-dir results/tilelang_no_ws_traces
-```
+结果自动写到 `results/h200_tilelang_no_ws_round4.json`，生成源码和 traces
+放到 `results/tilelang_no_ws_round4_traces/`。脚本复用已有环境，不安装依赖，
+不构建项目的 C++ 扩展；启动本轮测试无需输入长参数。
+后续迭代更新脚本内部的候选与结果路径，常规启动始终使用上述单行 Bash 命令。
 
-命令先执行完整正确性和跨流重复校验，通过后才测速。只测 TileLang 时：
+脚本带参数时原样透传，Python 入口的默认候选仍为 `cached_s1/s2` 和
+`cached_no_ws_s1`。vec_decode/reduce4 只支持单阶段，H200 正确性和速度
+待本轮验证；精度门槛、逐次一致性检查和 CUPTI 口径与前轮相同。
+仅运行 Python 入口默认的 TileLang 候选时，可省略外部库对照：
 
 ```bash
 bash scripts/run_tilelang_opt_h200.sh --skip-sage --skip-flash4
 ```
-
-下一轮比较当前最快版本和两个新实验，保留同场 Sage/FA4 与原始 stage 对照：
-
-```bash
-bash scripts/run_tilelang_opt_h200.sh \
-  --variants cached_no_ws_s1 cached_no_ws_vec_decode_s1 cached_no_ws_reduce4_s1 \
-  --output results/h200_tilelang_no_ws_round4.json \
-  --trace-dir results/tilelang_no_ws_round4_traces
-```
-
-新实验只支持单阶段，未加入默认候选。完整精度门槛、默认/非默认 stream 的
-三次逐位重复检查和 CUPTI 全 kernel 计时口径都与上一轮相同。
 
 自定义 Python、GPU、捕获的真实 QKV 或候选范围：
 
@@ -191,8 +183,9 @@ QKV 文件需为 `torch.save(dict(q=q, k=k, v=v), path)`，FP16/BF16 MHA，
 在 RoPE 后捕获。布局 `NHD` 表示 `[B,S,H,D]`，`HND` 表示 `[B,H,S,D]`。
 不提供文件时默认随机输入为 B1/H28/Q37741/K37741/D128/BF16。
 
-默认输出 `results/h200_tilelang_opt.json`，生成源码和 CUPTI traces 单独放在
-`results/tilelang_opt_traces/`。并发的 C++ 实验应使用不同 GPU 或错开性能测量，
+Python 入口的默认输出为 `results/h200_tilelang_opt.json`，生成源码和 CUPTI
+traces 放在 `results/tilelang_opt_traces/`；无参数 Bash 入口使用上述 round4 路径。
+并发的 C++ 实验应使用不同 GPU 或错开性能测量，
 避免资源竞争使时间失真。可用 `--output`、`--trace-dir` 给每轮设置独立路径。
 
 ## 校验和计时
