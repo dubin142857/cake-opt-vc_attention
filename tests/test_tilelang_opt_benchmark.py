@@ -1,6 +1,7 @@
 """CPU checks for benchmark payload adaptation, selection, and isolation."""
 import builtins
 import importlib.util
+import json
 from pathlib import Path
 
 import pytest
@@ -78,6 +79,7 @@ def test_cli_defaults_keep_original_controls_and_only_valid_candidates(benchmark
     assert (args.batch, args.heads, args.queries, args.tokens, args.dim, args.dtype) == (
         1, 28, 37741, 37741, 128, "bfloat16")
     assert args.variants == ["cached_s1", "cached_s2", "mma_qk_s1", "mma_qk_s2"]
+    assert args.validation_case == "all"
     assert args.output == Path("results/h200_tilelang_opt.json")
     configs = benchmark.configurations(args)
     assert list(configs) == ["baseline_s1", "baseline_s2", *args.variants]
@@ -130,3 +132,96 @@ def test_dispatch_preserves_backend_stage_and_same_payload_without_late_binding(
         assert call(payload) == (expected, stage, variant)
     assert all(item[1] is payload for item in invoked)
     assert len(invoked) == len(configs)
+
+
+def test_targeted_validation_selects_both_tail_patterns(benchmark):
+    args = benchmark.parse_args(["--validate-only", "--validation-case", "tail65_129"])
+    assert args.validate_only
+    assert benchmark.validation_cases(args.validation_case) == [
+        ("random", 65, 129), ("uniform_tiles", 65, 129)]
+    assert len(benchmark.validation_cases("all")) == 6
+
+
+def test_targeted_tail_inputs_match_full_suite_rng_for_every_dtype_and_dim(benchmark):
+    full_generator = torch.Generator(device="cpu").manual_seed(3333)
+    tail_generator = torch.Generator(device="cpu").manual_seed(3333)
+    checked = []
+    # Use the actual full-loop order and retain generator state across all four
+    # combinations; D128 must include draws consumed by the earlier D64 cases.
+    for dtype in (torch.float16, torch.bfloat16):
+        for dim in (64, 128):
+            full = dict(benchmark.yield_selected_inputs("all", dtype, dim, "cpu", full_generator))
+            tail = dict(benchmark.yield_selected_inputs("tail65_129", dtype, dim, "cpu", tail_generator))
+            assert set(tail) == {("random", 65, 129), ("uniform_tiles", 65, 129)}
+            for case, qkv in tail.items():
+                for actual, expected in zip(qkv, full[case]):
+                    assert actual.dtype == expected.dtype == dtype
+                    assert torch.equal(actual, expected), (dtype, dim, case)
+                checked.append((dtype, dim, case))
+            assert torch.equal(tail_generator.get_state(), full_generator.get_state())
+    assert len(checked) == 8
+
+
+def test_stability_synchronizes_before_reading_and_records_success(benchmark):
+    expected = torch.ones(1, 2, 65, 128)
+    actual = torch.zeros_like(expected)
+    events, records = [], []
+
+    def call():
+        events.append("launch")
+        return actual
+
+    def synchronize():
+        events.append("sync")
+        actual.copy_(expected)
+
+    def publish(row):
+        events.append("publish")
+        records.append(row)
+
+    benchmark.check_exact_run(call, synchronize, expected, stream="default", run_index=2, on_result=publish)
+    assert events == ["launch", "sync", "publish"]
+    assert records[0] == {"run_index": 2, "stream": "default", "status": "passed",
+                          "all_row_metrics": {"relative_rmse": 0., "max_abs": 0.,
+                                              "checked_queries": 65, "exact_match": True}}
+
+
+def test_stability_locates_tail_head_and_publishes_failure_before_raise(benchmark):
+    expected = torch.ones(1, 2, 65, 128)
+    actual = expected.clone()
+    actual[0, 1, 64, 84] += .000549
+    records = []
+    with pytest.raises(AssertionError, match="Exact stability failed on non_default run 1"):
+        benchmark.check_exact_run(lambda: actual, lambda: None, expected,
+                                  stream="non_default", run_index=1, on_result=records.append)
+    assert len(records) == 1
+    row = records[0]
+    assert row["status"] == "failed" and row["mismatched_elements"] == 1
+    assert row["affected_rows"] == {"count": 1, "first32": [[0, 1, 64]],
+                                    "by_head": [{"batch": 0, "head": 1, "count": 1,
+                                                 "first32_queries": [64]}]}
+    assert row["first_bad"]["coordinate"] == [0, 1, 64, 84]
+    assert row["first_bad"]["actual"] == actual[0, 1, 64, 84].item()
+    assert row["first_bad"]["expected"] == 1.
+    assert row["actual_all_finite"] and row["expected_all_finite"]
+    assert row["first_bad"]["actual_finite"] and row["first_bad"]["expected_finite"]
+    assert row["all_row_metrics"]["relative_rmse"] < .001
+    assert not row["all_row_metrics"]["exact_match"]
+
+
+def test_nonfinite_stability_failure_remains_valid_json(benchmark):
+    expected = torch.ones(1, 2, 65, 128)
+    actual = expected.clone()
+    actual[0, 1, 64, 84] = float("nan")
+    actual[0, 1, 64, 85] = float("inf")
+    records = []
+    with pytest.raises(AssertionError, match="Exact stability failed"):
+        benchmark.check_exact_run(lambda: actual, lambda: None, expected,
+                                  stream="default", run_index=1, on_result=records.append)
+    row = records[0]
+    assert row["mismatched_elements"] == 2
+    assert not row["actual_all_finite"] and row["expected_all_finite"]
+    assert row["first_bad"]["actual"] == "nan"
+    assert not row["first_bad"]["actual_finite"]
+    assert row["all_row_metrics"]["relative_rmse"] is None
+    json.dumps(row, allow_nan=False)

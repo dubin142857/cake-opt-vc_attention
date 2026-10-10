@@ -2,7 +2,8 @@
 
 2026-10-10。新增 `scripts/tilelang_expcast_opt.py` 和独立入口
 `scripts/benchmark_tilelang_opt.py`，针对现有 Hopper INT8 QK / ExpCast / FP8 PV。
-原始 TileLang 实现继续作为对照。本轮候选尚未在 H200 执行，不能据此宣称加速。
+原始 TileLang 实现继续作为对照。H200 首轮在 MMA 候选的跨流一致性检查中失败，
+下述同步修订尚待 H200 回归；目前没有本轮有效的性能结果。
 
 ## 候选
 
@@ -20,6 +21,33 @@ FP16/BF16、D64/128、stage 1/2 均支持。只用于非因果 MHA 和 Hopper SM
 `cached` 把 QS 移到循环前。但 NVRTC 已把原实现的逐元素重复读取合并，
 所以改善的是每线程 QS 随 key tile 重复加载，不能按源码估计大量 load 被消除。
 最终 SASS 和运行时间仍需实测。
+
+## H200 首轮失败与同步修订
+
+提交 `2ba6299` 的 `mma_qk_s1` 在 FP16、D128、Q65/K129 上通过了相对误差门槛，
+但非默认 stream 的输出与默认 stream 不逐位一致：115/16640 个元素不同，
+最大绝对误差 0.00054931640625，最大差异位于 head 1 的 query 64。
+这属于运行一致性问题，不能通过放宽精度门槛接受。
+
+本地检查没有发现 benchmark 输入被释放或缺失跨流等待；源码和 PTX 中的
+K barrier 也不足以确认根因。现采用更保守的 MMA 调度：将 K 的 empty-barrier
+释放延到全部 QK MMA 和显式 128-consumer 同步之后，用指针读取依赖保持 K 的
+生命周期，并设置编译器 memory fence。生产者不参与该同步，避免全 CTA 同步死锁。
+这是待验证的修复候选，不能以代码生成检查替代 H200 回归。
+
+验证增加同一 prepared payload 在默认 stream、非默认 stream 各三次调用，
+每次都要求与首次输出逐位一致；失败保存具体 head/query/channel 和行差异分布。
+先针对本次尾块形状回归：
+
+```bash
+bash scripts/run_tilelang_opt_h200.sh --validate-only \
+  --validation-case tail65_129 --variants mma_qk_s1 mma_qk_s2 \
+  --output results/h200_tilelang_mma_tail_regression.json
+```
+
+该命令检查 FP16/BF16、D64/128、random/uniform 的八个 Q65/K129 用例，
+并包含相同 stage 的原始 TileLang 对照。跳过案例仍按原顺序推进随机生成器，
+保证选中案例的输入与完整运行相同。通过后仍需默认完整验证和测速。
 
 ## 在已有 H200 环境运行
 
@@ -74,7 +102,8 @@ CUPTI attention / all-kernel / all-GPU-work 时间另报，不与 API 时间混�
 
 本地 GPU 是 RTX 3060 Laptop（SM86），没有执行 SM90a 内核。以下检查已经通过：
 
-- 12 项 CPU 辅助测试：V inverse permutation 的全部 FP8 bit patterns、CLI 和候选隔离。
+- 17 项 CPU 辅助测试：V inverse permutation 的全部 FP8 bit patterns、CLI、候选隔离、
+  尾块差异定位、严格一致性失败记录和缩短验证时的随机输入复现。
 - 16 项候选代码生成测试：两种 dtype、D64/128、stage 1/2、两个候选；
   检查低精度 GEMM 类型、Q scale 读取位置和 K/V buffer 释放时序。
 - 原始 TileLang 的 8 项代码生成回归测试。

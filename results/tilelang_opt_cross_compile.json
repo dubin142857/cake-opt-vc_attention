@@ -1,6 +1,6 @@
 {
   "date": "2026-10-10",
-  "status": "cross_compile_passed_gpu_runtime_unverified",
+  "status": "cross_compile_passed_hopper_sync_regression_pending",
   "target": "sm_90a",
   "compiler": "CUDA 12.4 NVRTC + ptxas",
   "shape": {
@@ -12,10 +12,10 @@
   "local_gpu": "RTX 3060 Laptop SM86",
   "compile_environment": "Windows NVRTC virtual stdint/stdlib headers and cuda::std compatibility imports; unchanged generated kernel bodies; not a Linux NVCC runtime validation",
   "tests": {
-    "cpu_auxiliary": 12,
+    "cpu_auxiliary": 17,
     "candidate_codegen": 16,
     "original_codegen": 8,
-    "passed": 36
+    "passed": 41
   },
   "kernel_count": 24,
   "kernels": [
@@ -197,91 +197,99 @@
     },
     {
       "source": "mma_qk_bfloat16_d128_s1.cu",
-      "sha256": "4f615c5792057c714b9969fbbc3ca9f3c4693c87b275e0a8de6e179245375c36",
+      "sha256": "2f124f4de3a73aaaf84952fbcf5c9d8acd0f37ddd2cc128324207d4f0a4061eb",
       "nvrtc_passed": true,
       "ptxas_passed": true,
       "registers": 240,
       "stack_bytes": 0,
       "spill_store_bytes": 0,
       "spill_load_bytes": 0,
-      "ptxas_log": "ptxas info    : 1823 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 240 registers, 1024 bytes smem\n"
+      "ptxas_log": "ptxas info    : 1823 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 240 registers, 1024 bytes smem\n",
+      "mma_lifetime": "K released after all MMA and explicit 128-consumer synchronization"
     },
     {
       "source": "mma_qk_bfloat16_d128_s2.cu",
-      "sha256": "5e6b3ca3ca35f1c2935e61a4be6e28f43d0fdefd8df329ef93891c7acf1d65ef",
+      "sha256": "374e8f68ad0c7602876b903a27bb452328f6eaf321c742641fd2024990b472c5",
       "nvrtc_passed": true,
       "ptxas_passed": true,
       "registers": 240,
       "stack_bytes": 0,
       "spill_store_bytes": 0,
       "spill_load_bytes": 0,
-      "ptxas_log": "ptxas info    : 1823 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 240 registers, 1024 bytes smem\n"
+      "ptxas_log": "ptxas info    : 1823 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 240 registers, 1024 bytes smem\n",
+      "mma_lifetime": "K released after all MMA and explicit 128-consumer synchronization"
     },
     {
       "source": "mma_qk_bfloat16_d64_s1.cu",
-      "sha256": "6ff9f00e3fb395cc3a9065bc6548b279490472612079838520f9b45341003d6c",
+      "sha256": "3d0aa794e86514829f04d2da9b58e17bc494fbf5c09d1058a9034b2fe140a263",
       "nvrtc_passed": true,
       "ptxas_passed": true,
       "registers": 240,
       "stack_bytes": 0,
       "spill_store_bytes": 0,
       "spill_load_bytes": 0,
-      "ptxas_log": "ptxas info    : 1823 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 240 registers, 1024 bytes smem\n"
+      "ptxas_log": "ptxas info    : 1823 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 240 registers, 1024 bytes smem\n",
+      "mma_lifetime": "K released after all MMA and explicit 128-consumer synchronization"
     },
     {
       "source": "mma_qk_bfloat16_d64_s2.cu",
-      "sha256": "e4af2d067a807591894441182d6282199af1f5154f6b9d2ba2399a5afbc3837d",
+      "sha256": "66c99433f6061614b646e0f27a865c3d8837adddf0b665dd03aec82b125dc89f",
       "nvrtc_passed": true,
       "ptxas_passed": true,
       "registers": 240,
       "stack_bytes": 0,
       "spill_store_bytes": 0,
       "spill_load_bytes": 0,
-      "ptxas_log": "ptxas info    : 1823 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 240 registers, 1024 bytes smem\n"
+      "ptxas_log": "ptxas info    : 1823 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 240 registers, 1024 bytes smem\n",
+      "mma_lifetime": "K released after all MMA and explicit 128-consumer synchronization"
     },
     {
       "source": "mma_qk_float16_d128_s1.cu",
-      "sha256": "b77f4ccca1b341cbd76bf7cdf45bb77ed3540ec69c1b0a5c16ee3103fe8d641c",
+      "sha256": "98aa570663556cc78213fb31047b1b4866e483142014a6668e65d4384c3ff84a",
       "nvrtc_passed": true,
       "ptxas_passed": true,
       "registers": 240,
       "stack_bytes": 0,
       "spill_store_bytes": 0,
       "spill_load_bytes": 0,
-      "ptxas_log": "ptxas info    : 1823 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 240 registers, 1024 bytes smem\n"
+      "ptxas_log": "ptxas info    : 1823 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 240 registers, 1024 bytes smem\n",
+      "mma_lifetime": "K released after all MMA and explicit 128-consumer synchronization"
     },
     {
       "source": "mma_qk_float16_d128_s2.cu",
-      "sha256": "17359d564bb39217ab3b716ef721b9b993351e46e9a116da39cb37317b490903",
+      "sha256": "a336af9759d4e6a2144206b8a6effe3da244135f589fe5c38cd93f000a8c0060",
       "nvrtc_passed": true,
       "ptxas_passed": true,
       "registers": 240,
       "stack_bytes": 0,
       "spill_store_bytes": 0,
       "spill_load_bytes": 0,
-      "ptxas_log": "ptxas info    : 1823 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 240 registers, 1024 bytes smem\n"
+      "ptxas_log": "ptxas info    : 1823 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 240 registers, 1024 bytes smem\n",
+      "mma_lifetime": "K released after all MMA and explicit 128-consumer synchronization"
     },
     {
       "source": "mma_qk_float16_d64_s1.cu",
-      "sha256": "e57890aa23f286cd2b6f82cd18580b62b60eedd8b54ecd2d9d788878e14de3ad",
+      "sha256": "7d1d61af69343eb02bb2b486d5b4fb668b4a8148b0a6dec4e8c6f9d1dbdb0b41",
       "nvrtc_passed": true,
       "ptxas_passed": true,
       "registers": 240,
       "stack_bytes": 0,
       "spill_store_bytes": 0,
       "spill_load_bytes": 0,
-      "ptxas_log": "ptxas info    : 1823 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 240 registers, 1024 bytes smem\n"
+      "ptxas_log": "ptxas info    : 1823 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 240 registers, 1024 bytes smem\n",
+      "mma_lifetime": "K released after all MMA and explicit 128-consumer synchronization"
     },
     {
       "source": "mma_qk_float16_d64_s2.cu",
-      "sha256": "c75919cb8a3bc62f67b274e6947836b0ed64bd72f55774d3715dcee829486f73",
+      "sha256": "867133ccab5e07f76abd6257e624cca87ea490d8d23708c09258a3f58ca4831c",
       "nvrtc_passed": true,
       "ptxas_passed": true,
       "registers": 240,
       "stack_bytes": 0,
       "spill_store_bytes": 0,
       "spill_load_bytes": 0,
-      "ptxas_log": "ptxas info    : 1823 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 240 registers, 1024 bytes smem\n"
+      "ptxas_log": "ptxas info    : 1823 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 240 registers, 1024 bytes smem\n",
+      "mma_lifetime": "K released after all MMA and explicit 128-consumer synchronization"
     }
   ],
   "ptx_scale_load_observation": {
@@ -293,5 +301,33 @@
       "cached": 66
     },
     "limitation": "PTX inspection is not final SASS or measured acceleration"
+  },
+  "runtime_feedback": {
+    "tested_commit": "2ba6299",
+    "source": "user-provided Hopper validation log",
+    "variant": "mma_qk_s1",
+    "dtype": "float16",
+    "dim": 128,
+    "queries": 65,
+    "keys": 129,
+    "failure": "non-default stream exact output comparison",
+    "mismatched_elements": 115,
+    "total_elements": 16640,
+    "max_abs": 0.00054931640625,
+    "max_abs_coordinate": [
+      0,
+      1,
+      64,
+      84
+    ],
+    "synchronization_revision": "Conservative delayed K release after MMA and consumer synchronization; root cause not confirmed",
+    "revised_kernel_runtime": "Pending Hopper regression; local GPU remains SM86"
+  },
+  "revision_checks": {
+    "mma_codegen": 8,
+    "mma_cross_compile": 8,
+    "checks": "Generated CUDA and PTX must keep K release after MMA and bar.sync 15,128",
+    "integration_tests_passed": 41,
+    "ptx_k_release_order_checked": 8
   }
 }

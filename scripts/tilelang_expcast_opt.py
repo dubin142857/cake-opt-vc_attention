@@ -25,6 +25,16 @@ def make_primfunc(batch, heads, queries, keys, dim, output_dtype="bfloat16",
     blocks = (keys + bn - 1) // bn
     qs_len = (queries + bm - 1) // bm * 32
     prelude = (baseline.ROOT / "experiments/expcast/paper_math.cuh").read_text(encoding="utf-8")
+    if variant == "mma_qk":
+        # Keep the generic shared-memory K reads live through MMA and an
+        # explicit consumer rendezvous. A CTA-wide barrier would deadlock the
+        # producer/consumer pipeline. Named barrier 15 is reserved for this
+        # helper; the pinned lowering uses named barrier 3 for its consumers.
+        prelude += """
+__device__ __forceinline__ void vc_mma_finish_k(const void* k) {
+  asm volatile("bar.sync 15, 128;" : : "l"(k) : "memory");
+}
+"""
 
     @T.prim_func
     def kernel(Q: T.Tensor((batch, heads, queries, dim), T.int8),
@@ -77,6 +87,7 @@ def make_primfunc(batch, heads, queries, keys, dim, output_dtype="bfloat16",
                     T.copy(k, k_register)
                     T.gemm(q, k_register, dots, transpose_B=True, clear_accum=True,
                            policy=T.GemmWarpPolicy.FullRow)
+                    T.evaluate(T.call_extern("handle", "vc_mma_finish_k", T.access_ptr(k, "r")))
                 else:
                     T.gemm(q, k, dots, transpose_B=True, clear_accum=True,
                            policy=T.GemmWarpPolicy.FullRow)

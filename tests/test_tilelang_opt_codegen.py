@@ -60,7 +60,13 @@ def test_cached_scales_and_native_low_precision_gemms(dim, stages, variant, dtyp
         assert consumer.index("warpgroup_wait<0>()", qk) < releases[0].start()
     else:
         assert consumer.index("k_register +") < releases[0].start()
+        # The shared K lifetime extends through every synchronous MMA and the
+        # explicit 128-consumer rendezvous, not just through the register copy.
+        finish = consumer.index("vc_mma_finish_k(")
+        assert consumer.rindex("tl::mma_sync", 0, finish) < finish < releases[0].start()
         assert "((signed char*)k)" not in consumer[releases[0].end():]
         assert "k_register" not in consumer[pv:]
+        assert "vc_mma_finish_k(" not in producer
+        assert 'asm volatile("bar.sync 15, 128;" : : "l"(k) : "memory")' in source
     assert "AllReduce<tl::MaxOp" in consumer
     assert "AllReduce<tl::SumOp" in consumer

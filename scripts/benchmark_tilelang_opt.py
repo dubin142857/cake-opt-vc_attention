@@ -42,6 +42,8 @@ def parse_args(argv=None):
     parser.add_argument("--skip-flash4", action="store_true")
     parser.add_argument("--skip-cupti", action="store_true")
     parser.add_argument("--validate-only", action="store_true")
+    parser.add_argument("--validation-case", choices=("all", "tail65_129"), default="all",
+                        help="Run all small cases or only Q65/K129 random and uniform cases")
     parser.add_argument("--kernel-warmup-seconds", type=float, default=2.)
     parser.add_argument("--kernel-seconds", type=float, default=1.)
     parser.add_argument("--trace-dir", type=Path, default=Path("results/tilelang_opt_traces"))
@@ -127,30 +129,113 @@ def all_row_metrics(actual, expected):
             "checked_queries": result["checked_queries"], "exact_match": result["exact_match"]}
 
 
+def mismatch_diagnostics(actual, expected):
+    """Locate exact regressions without retaining full output tensors in JSON."""
+    if actual.shape != expected.shape or actual.ndim != 4:
+        raise AssertionError("Expected matching BHND outputs")
+    unequal = actual != expected
+    affected = unequal.any(dim=-1)
+    rows = affected.nonzero().cpu().tolist()
+    coordinates = unequal.nonzero()
+    first = coordinates[0].tolist() if coordinates.shape[0] else None
+    by_head = []
+    for batch in range(actual.shape[0]):
+        for head in range(actual.shape[1]):
+            queries = affected[batch, head].nonzero().flatten().cpu().tolist()
+            if queries:
+                by_head.append({"batch": batch, "head": head, "count": len(queries),
+                                "first32_queries": queries[:32]})
+
+    def json_value(value):
+        value = value.item()
+        # Preserve evidence of nonfinite values without nonstandard JSON NaN.
+        return value if isinstance(value, int) or float("-inf") < value < float("inf") else str(value)
+
+    first_bad = None
+    if first is not None:
+        index = tuple(first)
+        first_bad = {"coordinate": first, "actual": json_value(actual[index]),
+                     "expected": json_value(expected[index]),
+                     "actual_finite": bool(torch.isfinite(actual[index])),
+                     "expected_finite": bool(torch.isfinite(expected[index]))}
+    return {"mismatched_elements": coordinates.shape[0],
+            "affected_rows": {"count": len(rows), "first32": rows[:32], "by_head": by_head},
+            "first_bad": first_bad, "actual_all_finite": bool(torch.isfinite(actual).all()),
+            "expected_all_finite": bool(torch.isfinite(expected).all())}
+
+
+def check_exact_run(call, synchronize, expected, *, stream, run_index, on_result):
+    """Run once, synchronize, publish diagnostics, and enforce exact stability.
+
+    Call/synchronize are injected so CPU tests can exercise failure handling.
+    No tolerance is introduced for repeated calls or a change of CUDA stream.
+    """
+    actual = call()
+    synchronize()
+    finite = bool(torch.isfinite(actual).all()) and bool(torch.isfinite(expected).all())
+    error = (all_row_metrics(actual, expected) if finite else
+             {"relative_rmse": None, "max_abs": None,
+              "checked_queries": expected.shape[2], "exact_match": False})
+    row = {"run_index": run_index, "stream": stream, "all_row_metrics": error,
+           "status": "passed" if finite and torch.equal(actual, expected) else "failed"}
+    if row["status"] == "failed":
+        row.update(mismatch_diagnostics(actual, expected))
+    on_result(row)
+    if row["status"] == "failed":
+        raise AssertionError(f"Exact stability failed on {stream} run {run_index}: {row}")
+
+
+def validation_cases(selection):
+    cases = [("random", m, n) for m, n in ((1, 1), (65, 129), (193, 256))]
+    cases += [("uniform_tiles", 65, n) for n in (128, 129, 257)]
+    if selection == "tail65_129":
+        return [case for case in cases if case[1:] == (65, 129)]
+    if selection != "all":
+        raise ValueError("Unknown validation case selection")
+    return cases
+
+
+def validation_inputs(case, dtype, dim, device, generator):
+    pattern, queries, keys = case
+    if pattern == "uniform_tiles":
+        return uniform_inputs(dtype, dim, keys, device)
+    q = torch.randn(1, 2, queries, dim, device=device, dtype=dtype, generator=generator)
+    k = torch.randn(1, 2, keys, dim, device=device, dtype=dtype, generator=generator)
+    v = torch.randn(k.shape, device=device, dtype=dtype, generator=generator)
+    if keys == 1:
+        q.zero_(); k.zero_()
+    return q, k, v
+
+
+def yield_selected_inputs(selection, dtype, dim, device, generator):
+    """Preserve full-suite RNG advancement while skipping compilation/checks."""
+    selected = set(validation_cases(selection))
+    for case in validation_cases("all"):
+        # Skipped random cases must still consume all three original draws.
+        # Uniform cases use no random draws. No quantization/JIT occurs here.
+        qkv = validation_inputs(case, dtype, dim, device, generator)
+        if case in selected:
+            yield case, qkv
+
+
 @torch.no_grad()
 def validate(configs, reference, device, report, save, source_dir):
     calls = implementations(configs)
-    validation = report["validation"] = {"status": "running", "cases": [],
-        "gates": "Baseline/decoded oracle <=1%; candidate/stage-matched baseline <=0.1%; non-default stream exact"}
+    selection = report["args"]["validation_case"]
+    report["accuracy_scope"] = {"validation_case": selection,
+        "validation_cases": 4 * len(validation_cases(selection)), "validation_all_rows": True,
+        "stability": "Same prepared payload; three default and three non-default runs, exact all-row comparison"}
+    validation = report["validation"] = {"status": "running", "cases": [], "seed": 3333,
+        "rng_order": "Full case order preserved, including Q/K/V draws for skipped random cases",
+        "gates": "Baseline/decoded oracle <=1%; candidate/stage-matched baseline <=0.1%; three default and three non-default stream runs exact"}
     generator = torch.Generator(device=device).manual_seed(3333)
     for dtype in (torch.float16, torch.bfloat16):
         for dim in (64, 128):
-            cases = [("random", m, n) for m, n in ((1, 1), (65, 129), (193, 256))]
-            cases += [("uniform_tiles", 65, n) for n in (128, 129, 257)]
-            for pattern, queries, keys in cases:
+            for (pattern, queries, keys), qkv in yield_selected_inputs(selection, dtype, dim, device, generator):
                 row = {"pattern": pattern, "dtype": str(dtype), "dim": dim,
                        "queries": queries, "keys": keys, "status": "running", "variants": {}}
                 validation["cases"].append(row)
                 save()
-                if pattern == "uniform_tiles":
-                    qkv = uniform_inputs(dtype, dim, keys, device)
-                else:
-                    q = torch.randn(1, 2, queries, dim, device=device, dtype=dtype, generator=generator)
-                    k = torch.randn(1, 2, keys, dim, device=device, dtype=dtype, generator=generator)
-                    v = torch.randn(k.shape, device=device, dtype=dtype, generator=generator)
-                    if keys == 1:
-                        q.zero_(); k.zero_()
-                    qkv = q, k, v
                 natural = baseline_backend.prepare(*qkv)
                 row["payload_check"] = check_value_payload(qkv[2], natural, reference)
                 oracle = reference.reference(oracle_state(natural, reference), chunk=32).to(dtype)
@@ -175,14 +260,29 @@ def validate(configs, reference, device, report, save, source_dir):
                         error["baseline_all_rows"] = all_row_metrics(out, baselines[stage])
                         save()
                         gate(error, "baseline_all_rows", .001, name)
+                    error["exact_stability"] = []
+
+                    def record_stability(result):
+                        error["exact_stability"].append(result)
+                        if result["status"] == "failed":
+                            error["status"] = row["status"] = validation["status"] = "failed"
+                        save()
+
+                    default_stream = torch.cuda.current_stream(device)
+                    for run_index in range(3):
+                        check_exact_run((lambda: out) if run_index == 0 else (lambda: call(natural)),
+                                        default_stream.synchronize, out, stream="default",
+                                        run_index=run_index, on_result=record_stability)
                     stream = torch.cuda.Stream(device=device)
-                    stream.wait_stream(torch.cuda.current_stream(device))
-                    with torch.cuda.stream(stream):
-                        side = call(natural)
-                    stream.synchronize()
-                    error["non_default_stream"] = all_row_metrics(side, out)
-                    save()
-                    torch.testing.assert_close(side, out, rtol=0, atol=0)
+                    stream.wait_stream(default_stream)
+
+                    def side_call():
+                        with torch.cuda.stream(stream):
+                            return call(natural)
+
+                    for run_index in range(3):
+                        check_exact_run(side_call, stream.synchronize, out, stream="non_default",
+                                        run_index=run_index, on_result=record_stability)
                     error["status"] = "passed"
                     save()
                 row["status"] = "passed"
@@ -255,10 +355,10 @@ def main(argv=None):
         index = torch.tensor(ids, device=device)
         golden = fp32_reference(*qkv, ids, 32)
         oracle = vc_reference.reference(sage_state, query_indices=ids, chunk=32).to(qkv[0].dtype)
-        report["accuracy_scope"] = {"dense_reference_queries": len(ids), "all_keys": args.tokens,
+        report["accuracy_scope"].update({"dense_reference_queries": len(ids), "all_keys": args.tokens,
             "same_algorithm_comparison": "All main-shape query rows, matched pipeline stage, <=0.1% relative RMSE",
-            "decoded_reference": "Sampled main-shape rows, <=1%; all rows in all 24 validation cases",
-            "dense_reference": "Diagnostic only; implementation checks are not model-quality gates"}
+            "decoded_reference": f"Sampled main-shape rows, <=1%; all rows in {len(report['validation']['cases'])} validation cases",
+            "dense_reference": "Diagnostic only; implementation checks are not model-quality gates"})
         report["accuracy"], report["tilelang_sources"] = {}, {}
         baselines = {}
         for name, call in full.items():
