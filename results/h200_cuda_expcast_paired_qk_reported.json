@@ -1,6 +1,6 @@
 {
-  "source": "User-pasted H200 CUPTI table after run_paired_qk_h200.sh",
-  "scope": "GPU kernel duration summary only; full/core API tables, raw trials, remote compiled resources and validation details were not supplied",
+  "source": "User-pasted H200 CUPTI table and subsequent compiled_resources/comparison/paired_comparisons output",
+  "scope": "GPU kernel durations, native resource counts, full/core API ratios, same-payload output check and paired trial summaries. Absolute API medians and detailed validation cases were not supplied.",
   "reported_json_path": "results/h200_cuda_expcast_paired_qk.json",
   "milliseconds": {
     "vc28_scale_prefetch": 23.4789,
@@ -12,6 +12,47 @@
   "table_columns": "attention, all kernels and all GPU work are equal for each reported row",
   "candidate_extra_ms": 1.0225,
   "candidate_latency_increase_percent": 4.354974040521498,
-  "decision": "Do not promote paired QK. Retain scale-prefetch. Fewer QK batches did not improve total GPU kernel duration in this run.",
-  "interpretation": "Higher register/shared footprint is a hypothesis, supported by local CUDA12.4 codegen only. The pasted table does not establish remote CUDA13 resource usage or the causal bottleneck. No statistical-significance, model-quality or end-to-end speedup claim."
+  "compiled_resources": {
+    "vc28_scale_prefetch": {
+      "dynamic_shared_bytes": 40960,
+      "local_bytes": 0,
+      "registers_per_thread": 168,
+      "static_shared_bytes": 128
+    },
+    "vc28_paired_qk": {
+      "dynamic_shared_bytes": 57344,
+      "local_bytes": 0,
+      "registers_per_thread": 240,
+      "static_shared_bytes": 128
+    }
+  },
+  "comparison": {
+    "full_old_over_new": 0.9581902583718022,
+    "core_old_over_new": 0.954003393295788,
+    "relative_rmse": 0.0,
+    "max_abs": 0.0,
+    "exact_match": true
+  },
+  "paired_trial_summaries": {
+    "full": {
+      "jit_vs_candidate": {"median_saved_ms": -1.0978163219988346, "min_saved_ms": -1.3362525962293148, "max_saved_ms": -0.8403054438531399, "faster_trials": 0, "trials": 9},
+      "installed_vs_jit": {"median_saved_ms": 0.39411745965480804, "min_saved_ms": 0.10185353457927704, "max_saved_ms": 0.5521516315639019, "faster_trials": 9, "trials": 9},
+      "installed_vs_candidate": {"median_saved_ms": -0.6776765920221806, "min_saved_ms": -1.0663243010640144, "max_saved_ms": -0.5090496502816677, "faster_trials": 0, "trials": 9}
+    },
+    "core": {
+      "jit_vs_candidate": {"median_saved_ms": -1.1412883177399635, "min_saved_ms": -1.438845507800579, "max_saved_ms": -0.8903816342353821, "faster_trials": 0, "trials": 9},
+      "installed_vs_jit": {"median_saved_ms": 0.3886214457452297, "min_saved_ms": -0.1385868526995182, "max_saved_ms": 0.6296040490269661, "faster_trials": 7, "trials": 9},
+      "installed_vs_candidate": {"median_saved_ms": -0.8173019625246525, "min_saved_ms": -1.065419614315033, "max_saved_ms": -0.5116842687129974, "faster_trials": 0, "trials": 9}
+    }
+  },
+  "register_budget_estimate": {
+    "registers_per_sm": 65536,
+    "threads_per_block": 128,
+    "scale_prefetch_blocks_per_sm_upper_bound": 3,
+    "paired_qk_blocks_per_sm_upper_bound": 2,
+    "source": "https://docs.nvidia.com/cuda/hopper-tuning-guide/index.html#occupancy",
+    "limitation": "Register-budget calculation only, not achieved occupancy/utilization or a measurement proving causality. Other launch/allocation limits can reduce residency."
+  },
+  "decision": "Do not promote paired QK. Retain scale-prefetch. Paired QK lost all 9 full API and all 9 fixed-core comparisons, with unchanged output.",
+  "interpretation": "Remote counts confirm greater register/shared footprint and zero local storage. Register-budget residency drops from at most 3 to at most 2 blocks per SM. This supports resource pressure as a cause worth prioritizing, but does not establish its fraction of the slowdown. Preprocessing is excluded in the fixed-core regression. These are repeated descriptive observations, not a formal significance test or a model-quality/end-to-end inference benchmark."
 }

@@ -18,13 +18,23 @@
 paired QK 比预取基线增加 **1.0225 ms（4.35%）**，不提升为默认实现。
 继续保留 K128 预取路线，其同轮 Sage/FA4 内核加速比分别为 **1.060× / 1.302×**。
 原始汇总见 [回传记录](results/h200_cuda_expcast_paired_qk_reported.json)。
-尚未收到完整 API 表、配对 trials、远端 compiled_resources 或详细精度结果，
-不将这些内核加速比视为完整模型推理收益。
+随后回传的资源和配对结果进一步确认：
 
-本地 CUDA12.4 编译显示候选的寄存器和共享内存需求增加，是值得检查的退步原因；
-**不能仅凭该时间表认定远端 CUDA13 的资源用量或退步根因**。
-下一步先从已保存 JSON 提取 `compiled_resources`、`comparison`、`paired_comparisons`，
-检查远端资源和重复测量结果；无需重新编译或测速。
+- 同输入输出 `exact_match=true`，RMSE/max-abs 均为 0。
+- paired QK 在 full API 和 fixed core 中均 **0/9 轮更快**；配对耗时增加中位数分别
+  为 **1.0978 ms / 1.1413 ms**，按各自 median 比值换算分别慢 **4.36% / 4.82%**。
+  fixed core 排除了预处理，因此退步也存在于核心计算路径。
+- 远端寄存器 **168 → 240**，动态共享内存 **40,960 → 57,344 B**，
+  两者 static shared 均 128 B，`local_bytes` 均为 0。
+- 预取 JIT 对 installed 的 full API 配对测试 **9/9 更快**，节省中位数 0.3941 ms；
+  fixed core 为 7/9 更快，节省中位数 0.3886 ms。仅描述这次运行，不外推所有场景。
+
+按 [NVIDIA Hopper 的每 SM 64K 个 32 位寄存器](https://docs.nvidia.com/cuda/hopper-tuning-guide/index.html#occupancy)
+及本内核每块 128 线程计算，寄存器预算允许的驻留上限由 **3 块降到 2 块**。
+这是预算估算，不是实际 occupancy/utilization 计数；尚不能量化它对退步的贡献。
+证据支持停止扩大 QK tile，后续以 K128 预取版为基线，优先检查概率处理的依赖链和
+临时寄存器生命周期；新候选需先检查资源占用和逐位一致性，再进行完整内核测试。
+这些 API/内核测量和精度门限均不代表完整模型推理收益或模型质量。
 
 ## 已测候选：两个 QK 块合并，ExpCast/PV 保留 K128 边界
 
