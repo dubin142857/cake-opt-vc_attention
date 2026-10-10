@@ -2,14 +2,15 @@
 
 The original tilelang_expcast backend and all C++ kernels remain the benchmark
 controls. These candidates cache quantization scales, compare INT8 MMA vs
-WGMMA, and test a single-warpgroup copy pipeline, PV overlap, and exact integer
-probability sums. ExpCast FP32 evaluation and online FP32 update order are retained.
+WGMMA, and test copy pipelines, PV overlap, packed FP8 decoding, and grouped
+reductions. ExpCast FP32 evaluation and online FP32 update order are retained.
 """
 from functools import lru_cache
 
 import tilelang_expcast as baseline
 
-NO_WS_VARIANTS = ("cached_no_ws", "cached_no_ws_overlap", "cached_no_ws_int_mass")
+NO_WS_VARIANTS = ("cached_no_ws", "cached_no_ws_overlap", "cached_no_ws_int_mass",
+                  "cached_no_ws_vec_decode", "cached_no_ws_reduce4")
 VARIANTS = ("cached", "mma_qk", *NO_WS_VARIANTS)
 
 
@@ -19,9 +20,9 @@ def compiler_pass_configs(variant):
         raise ValueError(f"Unknown TileLang optimization: {variant}")
     config = {tilelang.PassConfigKey.TL_ENABLE_FAST_MATH: True}
     if variant in NO_WS_VARIANTS:
-        # Keep the original 128-thread CTA instead of introducing an extra
-        # producer warpgroup. TileLang also replaces K/V TMA with cp.async;
-        # both GEMMs still use WGMMA on Hopper.
+        # Keep the 128-thread compute CTA without a producer warpgroup.
+        # TileLang replaces K/V TMA with cp.async; both GEMMs still use
+        # WGMMA on Hopper.
         config[tilelang.PassConfigKey.TL_DISABLE_WARP_SPECIALIZED] = True
     return config
 
@@ -97,6 +98,12 @@ __device__ __forceinline__ void vc_mma_finish_k(const void* k) {
             key_scale = T.alloc_fragment((bn,), T.float32)
             dots = T.alloc_fragment((bm, bn), T.int32)
             logits = T.alloc_fragment((bm, bn), T.float32)
+            if variant == "cached_no_ws_reduce4":
+                # g%4 keeps the four-lane ownership of the QK fragment. Reduce
+                # eight values locally, then four partials and a four-lane
+                # AllReduce, with both query rows kept separate.
+                grouped_values = T.alloc_fragment((bm, 16, 8), T.float32)
+                grouped_partial = T.alloc_fragment((bm, 16), T.float32)
             prob = T.alloc_fragment((bm, bn), T.float8_e4m3fn)
             p_shared = T.alloc_shared((bm, bn), T.float8_e4m3fn)
             pv = T.alloc_fragment((bm, dim), T.float32)
@@ -139,7 +146,13 @@ __device__ __forceinline__ void vc_mma_finish_k(const void* k) {
                     if tile * bn + j >= keys:
                         logits[i, j] = -T.infinity(T.float32)
                 T.copy(maximum, previous)
-                T.reduce_max(logits, maximum, dim=1, clear=False)
+                if variant == "cached_no_ws_reduce4":
+                    for i, g, r in T.Parallel(bm, 16, 8):
+                        grouped_values[i, g, r] = logits[i, (g // 4) * 32 + (r // 2) * 8 + (g % 4) * 2 + r % 2]
+                    T.reduce_max(grouped_values, grouped_partial, dim=2)
+                    T.reduce_max(grouped_partial, maximum, dim=1, clear=False)
+                else:
+                    T.reduce_max(logits, maximum, dim=1, clear=False)
                 for i in T.Parallel(bm):
                     alpha[i] = T.call_extern("float32", "vc_paper_alpha", previous[i], maximum[i])
                 for i, j in T.Parallel(bm, bn):
@@ -147,8 +160,12 @@ __device__ __forceinline__ void vc_mma_finish_k(const void* k) {
                     prob[i, j] = T.reinterpret(T.float8_e4m3fn, code)
                     if variant == "cached_no_ws_int_mass":
                         dots[i, j] = T.call_extern("int32", "vc_opt_prob_units", code)
-                    else:
+                    elif variant != "cached_no_ws_vec_decode":
                         logits[i, j] = T.cast(prob[i, j], T.float32)
+                if variant == "cached_no_ws_vec_decode":
+                    # Bulk copy uses packed FP8x2 conversion into FP32 without
+                    # changing probability bytes or the mass reduction order.
+                    T.copy(prob, logits, coalesced_width=2)
                 if variant == "cached_no_ws_overlap":
                     T.copy(prob, p_shared)
                     T.wgmma_gemm(p_shared, v, pv, transpose_B=True, clear_accum=True,
@@ -172,6 +189,11 @@ __device__ __forceinline__ void vc_mma_finish_k(const void* k) {
                         T.reduce_sum(dots, mass_units, dim=1)
                         for i in T.Parallel(bm):
                             mass[i] = T.cast(mass_units[i], T.float32) * T.float32(0.001953125)
+                    elif variant == "cached_no_ws_reduce4":
+                        for i, g, r in T.Parallel(bm, 16, 8):
+                            grouped_values[i, g, r] = logits[i, (g // 4) * 32 + (r // 2) * 8 + (g % 4) * 2 + r % 2]
+                        T.reduce_sum(grouped_values, grouped_partial, dim=2)
+                        T.reduce_sum(grouped_partial, mass, dim=1)
                     else:
                         T.reduce_sum(logits, mass, dim=1)
                     T.copy(prob, p_shared)

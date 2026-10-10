@@ -1,6 +1,6 @@
 {
   "date": "2026-10-10",
-  "status": "cross_compile_passed_new_overlap_and_integer_mass_hopper_runtime_pending",
+  "status": "cross_compile_passed_vector_decode_and_reduce4_hopper_runtime_pending",
   "target": "sm_90a",
   "compiler": "CUDA 12.4 NVRTC + ptxas",
   "shape": {
@@ -12,13 +12,13 @@
   "local_gpu": "RTX 3060 Laptop SM86",
   "compile_environment": "Windows NVRTC virtual stdint/stdlib headers and cuda::std compatibility imports; unchanged generated kernel bodies; not a Linux NVCC runtime validation",
   "tests": {
-    "cpu_auxiliary": 23,
-    "candidate_codegen": 28,
-    "candidate_configuration_rejection": 3,
+    "cpu_auxiliary": 27,
+    "candidate_codegen": 36,
+    "candidate_configuration_rejection": 5,
     "original_codegen": 8,
-    "passed": 62
+    "passed": 76
   },
-  "kernel_count": 38,
+  "kernel_count": 48,
   "kernels": [
     {
       "source": "baseline_bfloat16_d128_s1.cu",
@@ -671,6 +671,306 @@
         ]
       },
       "copy_pipeline": "K/V cp.async; both GEMMs WGMMA; no producer warpgroup"
+    },
+    {
+      "source": "cached_no_ws_reduce4_bfloat16_d128_s1.cu",
+      "sha256": "eeff5ef336d4c119577f359ee3bedf578538cbe504c8d9f43092e854738be4e2",
+      "ptx_sha256": "8846a6d98a8a1d6b1cd4dd80d3ef13246fb7b795bac53c7fd842305036822c07",
+      "shape": {
+        "batch": 1,
+        "heads": 2,
+        "queries": 65,
+        "keys": 257,
+        "dim": 128
+      },
+      "threads": 128,
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 247,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1330 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 247 registers\n",
+      "observations": {
+        "fp8_decode_ptx_count": 128,
+        "half_to_float_ptx_count": 128,
+        "shuffle_ptx_count": 16,
+        "operand_fences_within_per_thread_fragment": true,
+        "sass_dependency_depth_measured": false,
+        "per_row_per_thread_reduction": "Four independent 8-value reductions, then 4 partials and the original four-lane AllReduce; CUDA source structure",
+        "grouped_fragments_fully_initialized_and_running_max_retained": true
+      },
+      "copy_pipeline": "K/V cp.async; both GEMMs WGMMA; no producer warpgroup"
+    },
+    {
+      "source": "cached_no_ws_reduce4_bfloat16_d64_s1.cu",
+      "sha256": "0fb1cc0d600b126139af917059772f393508bf367034545951508a672dae113e",
+      "ptx_sha256": "5c1c6f3d909a9b0ee3dea7b28e43b9329fdd2e140843a18dd567e2943363a6e8",
+      "shape": {
+        "batch": 1,
+        "heads": 2,
+        "queries": 65,
+        "keys": 257,
+        "dim": 64
+      },
+      "threads": 128,
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1338 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 168 registers\n",
+      "observations": {
+        "fp8_decode_ptx_count": 128,
+        "half_to_float_ptx_count": 128,
+        "shuffle_ptx_count": 16,
+        "operand_fences_within_per_thread_fragment": true,
+        "sass_dependency_depth_measured": false,
+        "per_row_per_thread_reduction": "Four independent 8-value reductions, then 4 partials and the original four-lane AllReduce; CUDA source structure",
+        "grouped_fragments_fully_initialized_and_running_max_retained": true
+      },
+      "copy_pipeline": "K/V cp.async; both GEMMs WGMMA; no producer warpgroup"
+    },
+    {
+      "source": "cached_no_ws_reduce4_float16_d128_s1.cu",
+      "sha256": "41b20c95dd3dd4062a68eb5e555bcffb97550343bee9337a4fdc9028bd4153a2",
+      "ptx_sha256": "54ce19154014765f0c8faa25f35502d8e24cbc21107ac7f274825202d1dc775a",
+      "shape": {
+        "batch": 1,
+        "heads": 2,
+        "queries": 65,
+        "keys": 257,
+        "dim": 128
+      },
+      "threads": 128,
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 247,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1330 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 247 registers\n",
+      "observations": {
+        "fp8_decode_ptx_count": 128,
+        "half_to_float_ptx_count": 128,
+        "shuffle_ptx_count": 16,
+        "operand_fences_within_per_thread_fragment": true,
+        "sass_dependency_depth_measured": false,
+        "per_row_per_thread_reduction": "Four independent 8-value reductions, then 4 partials and the original four-lane AllReduce; CUDA source structure",
+        "grouped_fragments_fully_initialized_and_running_max_retained": true
+      },
+      "copy_pipeline": "K/V cp.async; both GEMMs WGMMA; no producer warpgroup"
+    },
+    {
+      "source": "cached_no_ws_reduce4_float16_d64_s1.cu",
+      "sha256": "51ad3e3256ff7eb36e0f628dd2d9d348b845350f6a045f7229f7407c1ab0ae75",
+      "ptx_sha256": "4f1275e20f527996255ae912c91d934b9e6e199d7380557fa5caab779edcad0e",
+      "shape": {
+        "batch": 1,
+        "heads": 2,
+        "queries": 65,
+        "keys": 257,
+        "dim": 64
+      },
+      "threads": 128,
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1338 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 168 registers\n",
+      "observations": {
+        "fp8_decode_ptx_count": 128,
+        "half_to_float_ptx_count": 128,
+        "shuffle_ptx_count": 16,
+        "operand_fences_within_per_thread_fragment": true,
+        "sass_dependency_depth_measured": false,
+        "per_row_per_thread_reduction": "Four independent 8-value reductions, then 4 partials and the original four-lane AllReduce; CUDA source structure",
+        "grouped_fragments_fully_initialized_and_running_max_retained": true
+      },
+      "copy_pipeline": "K/V cp.async; both GEMMs WGMMA; no producer warpgroup"
+    },
+    {
+      "source": "cached_no_ws_vec_decode_bfloat16_d128_s1.cu",
+      "sha256": "578845e933de6748d5b8342607d5e25c26f3a17ee3c7b72af55a6c9bcd1936d2",
+      "ptx_sha256": "4e88252aca7fe4c6b5049c0c21bb05d18901da80da6f2f10252b74da630756e4",
+      "shape": {
+        "batch": 1,
+        "heads": 2,
+        "queries": 65,
+        "keys": 257,
+        "dim": 128
+      },
+      "threads": 128,
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 221,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1330 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 221 registers\n",
+      "observations": {
+        "fp8_decode_ptx_count": 64,
+        "half_to_float_ptx_count": 128,
+        "shuffle_ptx_count": 16,
+        "operand_fences_within_per_thread_fragment": true,
+        "sass_dependency_depth_measured": false,
+        "mass_reduction_order_unchanged": true,
+        "normalized_mass_blocks_sha256": "9d6d04853f8c29d8a755f8ad2c382ef7dff22c7824b1846e96f4319572ba6ab1"
+      },
+      "copy_pipeline": "K/V cp.async; both GEMMs WGMMA; no producer warpgroup"
+    },
+    {
+      "source": "cached_no_ws_vec_decode_bfloat16_d64_s1.cu",
+      "sha256": "9e62088a082db0a0aafd04493a5e2314d33cc424971cf9cc2bb5a8de2d9d414f",
+      "ptx_sha256": "27904f968177ea915700388ec96c8bfe10306a36fbc3a4f0a111cf68a65acfbe",
+      "shape": {
+        "batch": 1,
+        "heads": 2,
+        "queries": 65,
+        "keys": 257,
+        "dim": 64
+      },
+      "threads": 128,
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1338 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 168 registers\n",
+      "observations": {
+        "fp8_decode_ptx_count": 64,
+        "half_to_float_ptx_count": 128,
+        "shuffle_ptx_count": 16,
+        "operand_fences_within_per_thread_fragment": true,
+        "sass_dependency_depth_measured": false,
+        "mass_reduction_order_unchanged": true,
+        "normalized_mass_blocks_sha256": "9d6d04853f8c29d8a755f8ad2c382ef7dff22c7824b1846e96f4319572ba6ab1"
+      },
+      "copy_pipeline": "K/V cp.async; both GEMMs WGMMA; no producer warpgroup"
+    },
+    {
+      "source": "cached_no_ws_vec_decode_float16_d128_s1.cu",
+      "sha256": "03c95a25af1810284e3c282281ab5881d2d3b592cd7c8d4e3a3897d79cca6372",
+      "ptx_sha256": "d375c9f64ef1e5e1afdc23f4fc545799c8275d37e9dd1bf805f3c047928e77a7",
+      "shape": {
+        "batch": 1,
+        "heads": 2,
+        "queries": 65,
+        "keys": 257,
+        "dim": 128
+      },
+      "threads": 128,
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 221,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1330 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 221 registers\n",
+      "observations": {
+        "fp8_decode_ptx_count": 64,
+        "half_to_float_ptx_count": 128,
+        "shuffle_ptx_count": 16,
+        "operand_fences_within_per_thread_fragment": true,
+        "sass_dependency_depth_measured": false,
+        "mass_reduction_order_unchanged": true,
+        "normalized_mass_blocks_sha256": "9d6d04853f8c29d8a755f8ad2c382ef7dff22c7824b1846e96f4319572ba6ab1"
+      },
+      "copy_pipeline": "K/V cp.async; both GEMMs WGMMA; no producer warpgroup"
+    },
+    {
+      "source": "cached_no_ws_vec_decode_float16_d64_s1.cu",
+      "sha256": "9c0d91aebdfefad80710f7f70c9c6477868c0d08bb066531f059c7c5fac2853d",
+      "ptx_sha256": "a74e2ee6e51b9dd0f15f1f63027fbbf7b8951b6549080f91ad31ec20f1a9df24",
+      "shape": {
+        "batch": 1,
+        "heads": 2,
+        "queries": 65,
+        "keys": 257,
+        "dim": 64
+      },
+      "threads": 128,
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1338 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 168 registers\n",
+      "observations": {
+        "fp8_decode_ptx_count": 64,
+        "half_to_float_ptx_count": 128,
+        "shuffle_ptx_count": 16,
+        "operand_fences_within_per_thread_fragment": true,
+        "sass_dependency_depth_measured": false,
+        "mass_reduction_order_unchanged": true,
+        "normalized_mass_blocks_sha256": "9d6d04853f8c29d8a755f8ad2c382ef7dff22c7824b1846e96f4319572ba6ab1"
+      },
+      "copy_pipeline": "K/V cp.async; both GEMMs WGMMA; no producer warpgroup"
+    },
+    {
+      "source": "cached_no_ws_reduce4_main_bfloat16_d128_s1.cu",
+      "sha256": "6084b9b05b2c2e25bc3056f0aa7a3953a5d0d2549cdd1a43e316562736a4d52a",
+      "ptx_sha256": "9912f197743d1d5fe071f8262424715b8fc5dd72b17d031998d779a8fd8e6bf9",
+      "shape": {
+        "batch": 1,
+        "heads": 28,
+        "queries": 37741,
+        "keys": 37741,
+        "dim": 128
+      },
+      "threads": 128,
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 246,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1330 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 246 registers\n",
+      "observations": {
+        "fp8_decode_ptx_count": 128,
+        "half_to_float_ptx_count": 128,
+        "shuffle_ptx_count": 16,
+        "operand_fences_within_per_thread_fragment": true,
+        "sass_dependency_depth_measured": false,
+        "per_row_per_thread_reduction": "Four independent 8-value reductions, then 4 partials and the original four-lane AllReduce; CUDA source structure",
+        "grouped_fragments_fully_initialized_and_running_max_retained": true
+      },
+      "copy_pipeline": "K/V cp.async; both GEMMs WGMMA; no producer warpgroup"
+    },
+    {
+      "source": "cached_no_ws_vec_decode_main_bfloat16_d128_s1.cu",
+      "sha256": "2818a4d045a246a7cd7cfafee4aa70f750f7c5d15993c68472670c9aa9634760",
+      "ptx_sha256": "2f5cf29b6302ab853fefe2fb4d67c659be12326eb251972e389aacf54960793f",
+      "shape": {
+        "batch": 1,
+        "heads": 28,
+        "queries": 37741,
+        "keys": 37741,
+        "dim": 128
+      },
+      "threads": 128,
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 222,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1330 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 222 registers\n",
+      "observations": {
+        "fp8_decode_ptx_count": 64,
+        "half_to_float_ptx_count": 128,
+        "shuffle_ptx_count": 16,
+        "operand_fences_within_per_thread_fragment": true,
+        "sass_dependency_depth_measured": false,
+        "mass_reduction_order_unchanged": true,
+        "normalized_mass_blocks_sha256": "9d6d04853f8c29d8a755f8ad2c382ef7dff22c7824b1846e96f4319572ba6ab1"
+      },
+      "copy_pipeline": "K/V cp.async; both GEMMs WGMMA; no producer warpgroup"
     }
   ],
   "ptx_scale_load_observation": {
@@ -708,7 +1008,7 @@
     "mma_codegen": 8,
     "mma_cross_compile": 8,
     "checks": "Generated CUDA and PTX must keep K release after MMA and bar.sync 15,128",
-    "integration_tests_passed": 62,
+    "integration_tests_passed": 76,
     "ptx_k_release_order_checked": 8
   },
   "shape_scope": "Default shape describes baseline/cached/MMA; no_ws kernels carry per-kernel shapes",
@@ -855,13 +1155,79 @@
   },
   "h200_performance_summaries": [
     "results/h200_tilelang_opt_reported.json",
-    "results/h200_tilelang_no_ws_reported.json"
+    "results/h200_tilelang_no_ws_reported.json",
+    "results/h200_tilelang_no_ws_next_reported.json"
   ],
   "new_no_ws_revision_checks": {
     "small_codegen": 8,
     "cross_compile_small_and_main": 10,
     "gpu_execution": false,
     "integer_mass_proof": "results/tilelang_int_mass_proof.json",
-    "hopper_runtime": "Pending full correctness and timing for the two new explicit candidates"
+    "hopper_runtime": "User-reported completed timing: overlap 40.0123ms, integer mass 47.3561ms, control no_ws 39.1710ms; both experiments slower. Validation inferred from reaching timing; full JSON unavailable."
+  },
+  "round4_revision_checks": {
+    "small_codegen": 8,
+    "cross_compile_small_and_main": 10,
+    "prior_38_source_hashes_unchanged": true,
+    "gpu_execution": false,
+    "cpu_equivalence": {
+      "gpu_execution": false,
+      "script": ".venv-tilelang-opt/reduce4_equivalence_probe.py",
+      "script_sha256": "adfcd9d7e66e2b25107873486d44a1f8a0e698b8ba4a60c9dfbe8322e1e98588",
+      "real_fp8_reference": {
+        "torch": "2.3.1+cu121",
+        "fp8_min_positive": 0.001953125,
+        "fp8_code120": 256.0,
+        "code_mapping_equal_count": 121,
+        "test_rows": 10125,
+        "max_integer_sum": 16777216,
+        "all_three_reduction_orders_bitwise_equal": true,
+        "max_value_sum": 32768.0
+      },
+      "grouping_and_conversion_verification": {
+        "reduce4_128_column_bijection": true,
+        "inverse_mapping_verified": true,
+        "sum_real_fp8_rows_bitexact": 10125,
+        "half_roundtrip_real_fp8_bitexact": true,
+        "running_max_3_tiles_1000_rows_bitexact": true,
+        "tail_last_tile_one_valid_key": true,
+        "generated_local_permutation_64_bijection_and_same_rows": true
+      }
+    },
+    "sum_equivalence_scope": "ExpCast E4M3 codes 0..120, at most 128 nonnegative values per tile. Every FP32 partial sum is an integer multiple of 2^-9 with integer magnitude <=2^24; different local sum groupings are exact. Cross-tile RN updates unchanged.",
+    "rejected_query_tile_128": {
+      "reason": "Autogenerated operand fence covers 128 elements while the per-thread dots/pv fragments contain 64; not exposed in the script.",
+      "gpu_execution": false,
+      "cases": [
+        {
+          "source": "q128_guard_review_m129_n257_float16_d128_s1.cu",
+          "sha256": "3a5909f9536c9cd7f0a3b10b319ec2c50128a73f1199a7883870d0b094530d44",
+          "fragment_elements": {
+            "dots": 64,
+            "pv": 64
+          },
+          "generated_fence_element_count": 128
+        },
+        {
+          "source": "q128_guard_review_m1_n1_bfloat16_d128_s1.cu",
+          "sha256": "4d5bd4da5cd2f4761443daf249f67899770068e99d4c29bf83e924a99080e5ea",
+          "fragment_elements": {
+            "dots": 64,
+            "pv": 64
+          },
+          "generated_fence_element_count": 128
+        },
+        {
+          "source": "q128_guard_review_m65_n257_bfloat16_d128_s1.cu",
+          "sha256": "ed26bb99fafa2d0b1be2fae6e1e235c416726ebc107d99aa8999606db3aa7200",
+          "fragment_elements": {
+            "dots": 64,
+            "pv": 64
+          },
+          "generated_fence_element_count": 128
+        }
+      ]
+    },
+    "hopper_runtime": "Pending full correctness, repeated stream checks and timing for vector decode and reduce4 only."
   }
 }

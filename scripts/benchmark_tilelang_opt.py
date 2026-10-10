@@ -25,6 +25,8 @@ CANDIDATES = {
     "cached_no_ws_s1": (1, "cached_no_ws"),
     "cached_no_ws_overlap_s1": (1, "cached_no_ws_overlap"),
     "cached_no_ws_int_mass_s1": (1, "cached_no_ws_int_mass"),
+    "cached_no_ws_vec_decode_s1": (1, "cached_no_ws_vec_decode"),
+    "cached_no_ws_reduce4_s1": (1, "cached_no_ws_reduce4"),
 }
 
 

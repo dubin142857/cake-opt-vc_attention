@@ -105,6 +105,7 @@ def test_cli_candidate_subset_is_deduplicated_and_overlap_is_explicit(benchmark)
 @pytest.mark.parametrize("arguments", [
     ["--variants", "reduce8_s1"], ["--variants", "cached_no_ws_s2"],
     ["--variants", "cached_no_ws_overlap_s2"], ["--variants", "cached_no_ws_int_mass_s2"],
+    ["--variants", "cached_no_ws_vec_decode_s2"], ["--variants", "cached_no_ws_reduce4_s2"],
     ["--queries", "0"], ["--dim", "32"],
     ["--check-queries", "-1"], ["--kernel-seconds", "nan"],
 ])
@@ -127,7 +128,8 @@ def test_dispatch_preserves_backend_stage_and_same_payload_without_late_binding(
     monkeypatch.setattr(benchmark.optimized_backend, "forward_prepared", backend("candidate"))
     configs = benchmark.configurations(benchmark.parse_args([
         "--include-overlap", "--variants", "cached_s1", "cached_s2", "mma_qk_s1", "mma_qk_s2", "cached_no_ws_s1",
-        "cached_no_ws_overlap_s1", "cached_no_ws_int_mass_s1"]))
+        "cached_no_ws_overlap_s1", "cached_no_ws_int_mass_s1", "cached_no_ws_vec_decode_s1",
+        "cached_no_ws_reduce4_s1"]))
     calls = benchmark.implementations(configs)
     payload = object()
     for name, call in calls.items():
@@ -149,6 +151,8 @@ def test_no_warp_specialization_maps_to_stage_one_and_can_be_selected_alone(benc
 @pytest.mark.parametrize("name, variant", [
     ("cached_no_ws_overlap_s1", "cached_no_ws_overlap"),
     ("cached_no_ws_int_mass_s1", "cached_no_ws_int_mass"),
+    ("cached_no_ws_vec_decode_s1", "cached_no_ws_vec_decode"),
+    ("cached_no_ws_reduce4_s1", "cached_no_ws_reduce4"),
 ])
 def test_unmeasured_no_warp_specialization_candidates_are_explicit_and_stage_one(benchmark, name, variant):
     assert name not in benchmark.parse_args([]).variants

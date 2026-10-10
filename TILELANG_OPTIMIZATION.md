@@ -8,7 +8,29 @@
 
 ## 用户提供的 H200 结果
 
-第二轮 no_ws 测速中，同轮 CUPTI 的全部 kernel 时间如下，没有混用 API 时间。
+最新第三轮 no_ws 测速中，同轮 CUPTI 的全部 kernel 时间如下，没有混用 API 时间。
+
+| 实现 | 时间（ms） |
+| --- | ---: |
+| `baseline_s1` | 57.2842 |
+| `baseline_s2` | 57.3722 |
+| `cached_no_ws_s1` | 39.1710 |
+| `cached_no_ws_overlap_s1` | 40.0123 |
+| `cached_no_ws_int_mass_s1` | 47.3561 |
+| `sage_cpp` | 24.8608 |
+| `flash4` | 30.8192 |
+
+`cached_no_ws_s1` 仍是本轮最快的 TileLang 方案，相对 baseline_s1 加速
+1.462×、耗时减少 31.62%。overlap 相对它增加 2.148% 耗时，integer mass
+增加 20.896%；两个实验保留显式选择，均不进入默认候选。完整七行摘要与
+同轮比较在 `results/h200_tilelang_no_ws_next_reported.json`。
+
+这些时间来自用户提供的摘要。用户报告服务器保存了
+`results/h200_tilelang_no_ws_next.json`，尚未读取其完整内容；实际形状、
+详细精度指标和 trial 波动未独立核验。完成测速意味着脚本已走过校验门槛，
+这是依据脚本流程和摘要作出的推断，不能当作独立验证结果。
+
+前一轮 no_ws 历史结果如下：
 
 | 实现 | 时间（ms） |
 | --- | ---: |
@@ -49,15 +71,24 @@ no_ws 相对同轮 baseline_s1 加速 1.444×、耗时减少 30.73%；相对 cac
 | --- | --- | --- |
 | `cached_s1/s2` | 每个 query tile 缓存 Q scale，每个 key tile 缓存 K scale，显式广播到 score fragment | 编译器是否已消除原实现的重复读取，以及新调度是否受益 |
 | `mma_qk_s1/s2` | 在缓存 scales 的基础上，K 从 shared 复制到 fragment，使 INT8 QK 使用 `mma.sync`；FP8 PV 继续使用 WGMMA | QK 等待和布局成本的变化能否抵消额外 K 寄存器复制 |
-| `cached_no_ws_s1` | 在 cached 基础上禁用自动 warp specialization，实际 CTA 从 256 线程变为 128；K/V 搬运同时从 TMA 改为 `cp.async`，两个 GEMM 保持 WGMMA | H200 第二轮 39.4224 ms，相对 cached_s1 耗时减少 20.33%；不能单独归因于线程数 |
-| `cached_no_ws_overlap_s1`（显式实验） | 异步 PV 与 decoded-P 行求和、denom 更新、历史 accum 乘 alpha 重叠；wait 后加 PV | 主形状及小形状离线编译无 spill，H200 性能和运行一致性待测 |
-| `cached_no_ws_int_mass_s1`（显式实验） | 用整数单位计算每个 128-key tile 的 decoded-P 行求和，再精确转换为 FP32；PV 仍用 FP8 | 消除 scalar FP8 解码，但增加整数运算；是否更快待 H200 测试 |
+| `cached_no_ws_s1` | 在 cached 基础上禁用自动 warp specialization，实际 CTA 从 256 线程变为 128；K/V 搬运同时从 TMA 改为 `cp.async`，两个 GEMM 保持 WGMMA | 最新同轮 H200 39.1710 ms；前一轮相对 cached_s1 耗时减少 20.33%，不能单独归因于线程数 |
+| `cached_no_ws_overlap_s1`（显式实验） | 异步 PV 与 decoded-P 行求和、denom 更新、历史 accum 乘 alpha 重叠；wait 后加 PV | 最新同轮 40.0123 ms，相对 no_ws 增时 2.148%，不默认 |
+| `cached_no_ws_int_mass_s1`（显式实验） | 用整数单位计算每个 128-key tile 的 decoded-P 行求和，再精确转换为 FP32；PV 仍用 FP8 | 最新同轮 47.3561 ms，相对 no_ws 增时 20.896%，不默认 |
+| `cached_no_ws_vec_decode_s1`（新显式实验） | 用 `T.copy(prob, logits, coalesced_width=2)` 批量将 FP8 解码到 FP32 | 本地主形状 PTX 的解码指令从 128 降到 64；H200 运行一致性和速度尚待验证 |
+| `cached_no_ws_reduce4_s1`（新显式实验） | 每线程先归约 8 个值，再合并 4 个 partials，最后进行 4-lane 归约 | 缩短 max/sum 串行链，保持最大值与 decoded-P 分母语义；H200 尚待验证 |
 
 所有候选保持 BM64/BN128、128-key ExpCast 分块、per-thread INT8 QK、自然顺序
 `[B,H,D,Npad]` FP8 V、decoded-P 分母和逐块独立 FP32 PV 累加。
 V 平滑/分组关闭；直接 ExpCast 的 FP32 运算顺序与原实现一致。
 FP16/BF16、D64/128 均支持；cached/MMA 支持 stage 1/2，no_ws 只支持 stage 1。
 只用于非因果 MHA 和 Hopper SM90a。
+
+新两个显式实验均基于 no_ws 单阶段实现。vec_decode 保留 P 的原始 FP8 编码
+和分母归约顺序，只尝试用 FP8x2 转换替代逐元素转换。reduce4 对 score 最大值
+与 decoded-P 求和分别重排归约布局；输出仍使用原来的 online softmax 更新。
+两个方案的 H200 运行一致性和速度均未测，离线生成和编译不能替代完整验证。
+另一个 Q128 试验在静态审查中发现自动寄存器 fence 超出实际 fragment 的范围，
+已撤回、不提供 CLI；vec_decode 和 reduce4 不受影响。
 
 no_ws 的 Q65/K257 离线编译中，D64 使用 168 registers、D128 使用 247，
 无 stack/spill；双阶段试验产生了 spill，因此不提供该配置。单阶段已经返回 H200
@@ -140,9 +171,9 @@ bash scripts/run_tilelang_opt_h200.sh --skip-sage --skip-flash4
 
 ```bash
 bash scripts/run_tilelang_opt_h200.sh \
-  --variants cached_no_ws_s1 cached_no_ws_overlap_s1 cached_no_ws_int_mass_s1 \
-  --output results/h200_tilelang_no_ws_next.json \
-  --trace-dir results/tilelang_no_ws_next_traces
+  --variants cached_no_ws_s1 cached_no_ws_vec_decode_s1 cached_no_ws_reduce4_s1 \
+  --output results/h200_tilelang_no_ws_round4.json \
+  --trace-dir results/tilelang_no_ws_round4_traces
 ```
 
 新实验只支持单阶段，未加入默认候选。完整精度门槛、默认/非默认 stream 的
@@ -186,17 +217,26 @@ CUPTI attention / all-kernel / all-GPU-work 时间另报，不与 API 时间混�
 
 本地 GPU 是 RTX 3060 Laptop（SM86），没有执行 SM90a 内核。以下检查已经通过：
 
-- 23 项 CPU 辅助测试：V inverse permutation 的全部 FP8 bit patterns、CLI、候选隔离、
+- 27 项 CPU 辅助测试：V inverse permutation 的全部 FP8 bit patterns、CLI、候选隔离、
   尾块差异定位、严格一致性失败记录和缩短验证时的随机输入复现。
-- 28 项候选代码生成测试：cached/MMA 的两种 dtype、D64/128、stage 1/2，
-  以及三个 no_ws 单阶段候选的四个组合；另有三项拒绝 no_ws 双阶段配置。
+- 36 项候选代码生成测试：cached/MMA 的两种 dtype、D64/128、stage 1/2，
+  以及五个 no_ws 单阶段候选的四个组合；另有五项拒绝 no_ws 双阶段配置。
   检查低精度 GEMM 类型、Q scale 读取位置和 K/V buffer 释放时序。
 - 原始 TileLang 的 8 项代码生成回归测试。
-- 原始 baseline 和 cached/MMA 共 24 份源码，外加三个 no_ws 候选的 12 份，
-  经 CUDA 12.4 NVRTC 和 ptxas 交叉编译为 SM90a cubin，stack/spill 均为 0。
-  前 24 份为 240 registers；no_ws/overlap 的小形状 D64/D128 为 168/247，
-  integer mass 为 196/254。另编译两个新实验的默认主形状，并检查异步 PTX 时序。
+- 共 48 份源码经 CUDA 12.4 NVRTC 和 ptxas 交叉编译为 SM90a cubin，
+  stack/spill 均为 0。原有 38 份源码 hash 保持不变，包括 baseline 和
+  cached/MMA 的 24 份小形状、no_ws/overlap/integer mass 的 12 份小形状，
+  以及 overlap/integer mass 的两份主形状。前 24 份为 240 registers；
+  no_ws/overlap 小形状 D64/D128 为 168/247，integer mass 为 196/254。
+  新增 vec_decode/reduce4 的 8 份小形状和两份主形状均已完成编译：
+  vec_decode 小形状 D64/D128 为 168/221 registers，reduce4 为 168/247，
+  两种 dtype 相同；BF16/D128 默认主形状分别为 222/246，原 no_ws 为 245。
   Windows NVRTC 检查使用标准整数头和 `cuda::std` 兼容包装；这不替代远端 NVCC 和运行校验。
+
+CPU 辅助、候选代码生成、配置拒绝和原始回归共 76 项测试通过。
+主形状 PTX 中，no_ws、vec_decode、reduce4 的 FP8 解码指令计数分别为
+128、64、128；三者 shuffle 计数均为 16。vec_decode 确实减少了静态解码
+指令，reduce4 没有减少 shuffle 数量；这些统计不能直接推导 H200 加速幅度。
 
 记录在 `results/tilelang_opt_cross_compile.json`，本地源码/PTX/cubin 放在
 `results/tilelang_opt_local_sources/`（生成文件不纳入 Git）。
@@ -208,5 +248,5 @@ python -m pytest tests/test_tilelang_opt_benchmark.py \
   tests/test_tilelang_opt_codegen.py tests/test_tilelang_expcast_codegen.py -q
 ```
 
-另试过缩短 max/sum 依赖链的归约布局，但 TileLang 0.1.15 生成了未初始化值；
+另试过 `reduce8` 的归约布局，但 TileLang 0.1.15 生成了未初始化值；
 该候选已撤掉，不在远端脚本中。最终速度与运行正确性以 H200 JSON 为准。

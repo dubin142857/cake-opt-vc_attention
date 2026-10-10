@@ -23,6 +23,7 @@ def lower_source(dim, stages, variant, dtype, queries=65, keys=129):
 @pytest.mark.parametrize("variant,stages", [
     ("cached", 1), ("cached", 2), ("mma_qk", 1), ("mma_qk", 2),
     ("cached_no_ws", 1), ("cached_no_ws_overlap", 1), ("cached_no_ws_int_mass", 1),
+    ("cached_no_ws_vec_decode", 1), ("cached_no_ws_reduce4", 1),
 ])
 @pytest.mark.parametrize("dtype", ["float16", "bfloat16"])
 def test_cached_scales_and_native_low_precision_gemms(dim, stages, variant, dtype):
@@ -48,6 +49,14 @@ def test_cached_scales_and_native_low_precision_gemms(dim, stages, variant, dtyp
         assert "kInt8, tl::DataType::kInt8" in source
     if variant in NO_WS_VARIANTS:
         assert "__launch_bounds__(128, 1)" in source
+        # The operand fence must cover only the physical per-thread fragment.
+        # A Q128/256-thread probe exposed an out-of-bounds default fence.
+        for name in ("dots", "pv"):
+            size = int(re.search(rf"\b(?:int|float) {name}\[(\d+)\]", source)[1])
+            fences = re.findall(
+                rf"warpgroup_fence_operand\(reinterpret_cast<[^>]+>\({name} \+ 0\), (\d+)\)",
+                source)
+            assert fences and all(int(count) <= size for count in fences)
         assert "warpgroup_reg_alloc" not in source
         assert "warpgroup_reg_dealloc" not in source
         assert "if (((int)threadIdx.x) < 128)" not in source
@@ -92,6 +101,13 @@ def test_cached_scales_and_native_low_precision_gemms(dim, stages, variant, dtyp
             assert "(float)(v_.x)" in mass_region and "(float)(v_.y)" in mass_region
             assert "0x1p-9f" in mass_region
             assert not re.search(r"logits\[.+?\] = \(\(float\)prob\[", source)
+        elif variant == "cached_no_ws_vec_decode":
+            assert "__tl_cvt_fp8x2_to_float2" in source
+            assert not re.search(r"logits\[.+?\] = \(\(float\)prob\[", source)
+        elif variant == "cached_no_ws_reduce4":
+            assert "float grouped_values[64]" in source
+            assert "float grouped_partial[8]" in source
+            assert "grouped_partial" in source[source.index("AllReduce<tl::MaxOp"):]
         return
     # The compiler adds a producer warpgroup. Explicit lifetimes must prevent
     # either DMA buffer from being overwritten while a GEMM still uses it.
