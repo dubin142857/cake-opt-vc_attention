@@ -3,7 +3,60 @@
 2026-10-10。当前主线是 **INT8 QK + ExpCast + FP8 PV，V 聚类和平滑关闭**。
 保留 vc28 已测实现，新候选不修改已安装包和默认 dispatch。
 
-## 当前候选：提前一轮读取 K scale
+## 当前候选：最后一组概率解码/求和与前三次 PV 重叠
+
+上轮 H200 CUPTI：scale-prefetch **23.4629 ms**，同次 JIT vc28 **23.6402 ms**，
+installed vc28 **23.6394 ms**，Sage **24.8479 ms**，FA4 **30.6937 ms**。
+预取候选节省 0.1773 ms，约 0.75%；这是小幅正向结果，目前只有 GPU 时间汇总，
+没有据此推断 full API 收益或跨轮稳定性。
+
+这次以 scale-prefetch 为基线，只调整 MAIN tile 中概率分母与 PV 的执行顺序。
+一个 K128 tile 的 PV 分成四次 K32 WGMMA：
+
+- 先编码全部 P 字节，完成前三组 P 的解码和 FP32 局部求和。
+- 发起前三次 PV，再执行第四组 P 的解码和 FP32 求和。
+- 所有 warp 执行寄存器 fence 后发起第四次 PV，保留后续历史缩放、下一块 scale 预取和最终等待。
+
+待完成的前三组 P 和 PV 累加寄存器在等待前不被普通指令访问；中间只读取尚未发给 WGMMA
+的第四组 P。fence 位于 fallback 分支之外，整个 warpgroup 都会执行。
+这遵循 [NVIDIA PTX WGMMA 的寄存器访问与 fence 约束](https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#asynchronous-warpgroup-level-matrix-instructions-wgmma-fence)。
+P 编码、分母加法顺序、两级 FP32 PV 累加及尾块处理保持原算法，未引入 P 的共享内存副本。
+
+```bash
+git pull --ff-only origin master
+bash scripts/run_pv_prefix_h200.sh
+```
+
+默认 BF16、NHD `[1,37741,28,128]`，INT8 QK + ExpCast + FP8 PV，V 聚类/平滑关闭。
+沿用已安装依赖，首次运行编译独立 JIT 模块；无需重新安装包，也无需 ncu/nvdisasm。
+9 轮 API 和 5 轮 CUPTI 分开记录，输出 `results/h200_cuda_expcast_pv_prefix.json`。
+可追加 `--validate-only` 或 `--qkv-file ... --qkv-layout NHD`。
+
+| 行名 | 含义 |
+|---|---|
+| vc28_scale_prefetch | 上轮预取候选，同次 JIT 编译的基线 |
+| vc28_prefix_serial | 使用拆分后的概率函数，但仍先完成全部求和，再发起 PV |
+| vc28_prefix_overlap | 同一拆分函数，将最后一组解码/求和放在前三次 PV 发起后 |
+| vc28_installed | 已安装 vc28，独立对照 |
+| sage_cpp / flash4 | 外部性能及精度对照 |
+
+三个 JIT 版本都保留 K scale 预取。串行版用于区分拆分函数本身的代价与重叠调度的收益。
+JSON 的 `paired_comparisons` 增加串行版/重叠版的逐轮差值；full/core API 与 CUPTI
+保持独立口径。仅当新版本在完整 attention 中变快，才有采用依据。
+
+测速前执行 38 个概率状态检查、28 个变化 scale 检查、8 个不同 warp 混合普通/fallback
+路径检查，以及原有 28 个 attention 配置。主尺寸也检查所有输出行。
+候选和串行对照相对同次编译的预取基线必须**逐位一致**；decoded reference 仍保留 1%
+实现一致性门限，任一失败即停止测速。这些门限不代表模型质量通过。
+
+本地 **95 项测试通过**，其中 38 项概率状态检查在 SM86 GPU 上实际执行，使用软件 FP8 解码。
+CUDA 12.4 已交叉编译 FP16/BF16 × D64/D128 × 三个版本，共 12 个完整 SM90a kernel；
+D128 全部为 168 个寄存器，D64 为 127/128/128，均无 stack/spill。
+SASS 确认前三次 PV 与第四次 PV 之间有解码、FP32 求和及 fence，没有插入等待前三次 PV 完成的指令。
+**本地未执行完整 Hopper attention，实际正确性和性能仍待 H200 验证。**
+证据见 [PV prefix 本地检查](results/cuda_expcast_pv_prefix_local_validation.json)。
+
+## 已测候选：提前一轮读取 K scale
 
 最新用户回传的 CUPTI 汇总：balanced-max **23.5873 ms**，fused-quad **23.7386 ms**，
 installed vc28 **23.3888 ms**，Sage **25.0717 ms**，FA4 **31.0350 ms**。

@@ -17,9 +17,12 @@ import split_mass_native as native
 import balanced_max_native
 import fused_quad_native
 import scale_prefetch_native
+import pv_prefix_native
 
 VARIANTS={"vc28_jit":False,"vc28_split_mass":True}
 EXPERIMENTS={
+    "pv_prefix":(pv_prefix_native,"vc28_prefix_overlap",
+        "Scale-prefetch in every JIT arm. Encode all P, defer only last K32 decode/FP32 sum until first three PV operations are pending; serial-prefix control isolates overlap. Same P bytes, mass addition order and two-level PV accumulation; no shared copy."),
     "scale_prefetch":(scale_prefetch_native,"vc28_scale_prefetch",
         "Original vc28 kernel template as baseline. Load the NEXT K scale during current PV and carry one FP32 scalar. Same QK/PV, probability bytes, FP32 mass/history, per-thread scales and tail masking; no additional shared buffers."),
     "fused_quad":(fused_quad_native,"vc28_fused_quad",
@@ -59,10 +62,18 @@ def parse_args(argv=None):
     return a
 
 
+def variant_modes(backend,candidate,baseline):
+    return {baseline:False,candidate:True,**getattr(backend,"EXTRA_VARIANTS",{})}
+
+
+def run_variant(backend,ext,state,mode):
+    return backend.forward(ext,state,mode) if type(mode) is bool else backend.forward_mode(ext,state,mode)
+
+
 def make_calls(ext,vc,qkv,state,backend=native,candidate="vc28_split_mass",baseline="vc28_jit"):
-    variants={baseline:False,candidate:True}
-    core={name:lambda split=split:backend.forward(ext,state,split) for name,split in variants.items()}
-    full={name:lambda split=split:backend.forward(ext,vc.prepare(*qkv,expcast=True,v_smooth=False),split)
+    variants=variant_modes(backend,candidate,baseline)
+    core={name:lambda split=split:run_variant(backend,ext,state,split) for name,split in variants.items()}
+    full={name:lambda split=split:run_variant(backend,ext,vc.prepare(*qkv,expcast=True,v_smooth=False),split)
           for name,split in variants.items()}
     core["vc28_installed"]=lambda:vc.forward_prepared(state,kernel_mode="vc28_stream_i2f")
     full["vc28_installed"]=lambda:vc.sageattn_vc(*qkv,tensor_layout="HND",expcast=True,v_smooth=False,kernel_mode="vc28_stream_i2f")
@@ -98,10 +109,10 @@ def validate(ext,vc,reference,device,progress,backend=native,candidate="vc28_spl
                 row=dict(dtype=str(dtype),dim=d,queries=m,keys=n,pattern=pattern,variants={})
                 rows.append(row);progress(rows)
                 outputs={}
-                for name,split in {baseline:False,candidate:True}.items():
+                for name,split in variant_modes(backend,candidate,baseline).items():
                     print("Validate",name,str(dtype),d,m,n,pattern,flush=True)
                     row["variants"][name]={"status":"running"};progress(rows)
-                    out=backend.forward(ext,state,split)
+                    out=run_variant(backend,ext,state,split)
                     result={"vs_installed":metrics(out,old,limit=.001),
                             "vs_decoded_reference":metrics(out,oracle,limit=.01)}
                     if split:
@@ -116,7 +127,7 @@ def validate(ext,vc,reference,device,progress,backend=native,candidate="vc28_spl
                         mean=(values.mean(-1)*state["vs"]).unsqueeze(2).expand_as(out).to(dtype)
                         torch.testing.assert_close(oracle,mean,rtol=.001,atol=.001)
                     stream=torch.cuda.Stream(device=device);stream.wait_stream(torch.cuda.current_stream(device))
-                    with torch.cuda.stream(stream):side=backend.forward(ext,state,split)
+                    with torch.cuda.stream(stream):side=run_variant(backend,ext,state,split)
                     stream.synchronize();torch.testing.assert_close(side,out,rtol=0,atol=0)
                     outputs[name]=out;result["status"]="passed"
                     row["variants"][name]=result;progress(rows)
@@ -127,7 +138,7 @@ def validate(ext,vc,reference,device,progress,backend=native,candidate="vc28_spl
 def main():
     a=parse_args();a.output.parent.mkdir(parents=True,exist_ok=True);a.trace_dir.mkdir(parents=True,exist_ok=True)
     backend,candidate,change=EXPERIMENTS[a.experiment]
-    baseline_name="vc28_balanced_max" if a.experiment=="fused_quad" else "vc28_jit"
+    baseline_name=getattr(backend,"BASELINE","vc28_balanced_max" if a.experiment=="fused_quad" else "vc28_jit")
     report={"status":"starting","contract":"vc28 folded ExpCast; INT8 QK; FP8 PV; V smooth OFF",
             "experiment":a.experiment,"change":change,"baseline":baseline_name,
             "gates":"1% decoded reference; 0.1% ALL-row same-algorithm regression. Implementation, not model quality."}
@@ -141,13 +152,15 @@ def main():
         report["environment"]={"torch":torch.__version__,"cuda":torch.version.cuda,"gpu":torch.cuda.get_device_name(device),
                                "native_version":vc._extension().sage_vc_kernel_version}
         ext,report["build"]=backend.load_native();save()
-        if a.experiment=="scale_prefetch":
+        if a.experiment in ("scale_prefetch","pv_prefix"):
             report["build_audit"]=backend.build_audit(ext,vc,report["build"],a.dim,0 if a.dtype=="float16" else 1);save()
             from validate_scale_prefetch import validate as validate_scale
             report["scale_validation"]=validate_scale(ext,backend,vc,vc_reference,device,lambda r:update("scale_validation",r))
-        if a.experiment=="fused_quad":
+        if a.experiment in ("fused_quad","pv_prefix"):
             from validate_fused_quad_math import validate as validate_math
-            report["probability_validation"]=validate_math(ext,device,lambda r:update("probability_validation",r))
+            report["probability_validation"]=validate_math(ext,device,lambda r:update("probability_validation",r),label=a.experiment)
+        if a.experiment=="pv_prefix":
+            report["pipeline_validation"]=backend.validate_pipeline(ext,vc,vc_reference,device,lambda r:update("pipeline_validation",r))
         report["validation"]=validate(ext,vc,vc_reference,device,lambda r:update("validation",r),backend,candidate,baseline_name)
         if a.validate_only:
             report["status"]="validation_passed";save();print("Validation passed:",a.output);return
@@ -174,12 +187,13 @@ def main():
                 row.update(vs_jit_baseline=metrics(out,baseline,limit=.001),exact_vs_jit_baseline=torch.equal(out,baseline),
                            vs_installed=metrics(out,installed,limit=.001),
                            decoded_reference=metrics(out.index_select(2,index),oracle,limit=.01))
-                if name==candidate and getattr(backend,"EXACT_OUTPUT",False):
+                if name in variant_modes(backend,candidate,baseline_name) and getattr(backend,"EXACT_OUTPUT",False):
                     from validate_scale_prefetch import assert_exact
                     row["bitwise_gate"]=assert_exact(out,baseline)
             report["accuracy"][name]=row;save()
         raw=ext.resources(a.dim,0 if a.dtype=="float16" else 1)
         report["compiled_resources"]={baseline_name:raw["expcast_plain"],candidate:raw["expcast_probe"]}
+        if a.experiment=="pv_prefix":report["compiled_resources"]["vc28_prefix_serial"]=raw["prefix_serial"]
         samples={"full":{n:[] for n in full},"core":{n:[] for n in core}}
         for call in full.values():run_window(call,a.kernel_warmup_seconds,device)
         rng=random.Random(a.seed+3400);report["trial_order"]=[]
@@ -208,6 +222,9 @@ def main():
                        "installed_vs_jit":paired_timings(group["vc28_installed"],group[baseline_name]),
                        "installed_vs_candidate":paired_timings(group["vc28_installed"],group[candidate])}
                 for scope,group in samples.items()}
+        for scope,group in samples.items():
+            for name in getattr(backend,"EXTRA_VARIANTS",{}):
+                paired[scope][name+"_vs_candidate"]=paired_timings(group[name],group[candidate])
         update("paired_comparisons",paired)
         print(f"Same-payload {baseline_name} / {candidate} (>1 faster); ALL output rows:",json.dumps(comparison))
         for scope,group in paired.items():

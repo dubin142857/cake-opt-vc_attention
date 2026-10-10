@@ -39,7 +39,7 @@ def check_case(ext, pattern, steps, device, side_stream=False):
     stream.synchronize()
     for label, a, b in zip(("P bytes", "max/alpha/mass"), new, old):
         if not torch.equal(a.view(torch.uint8), b.view(torch.uint8)):
-            raise AssertionError(f"Fused quad changed {label}: {pattern}, {steps} tiles, side_stream={side_stream}")
+            raise AssertionError(f"Probability helper changed {label}: {pattern}, {steps} tiles, side_stream={side_stream}")
     if not torch.isfinite(new[1]).all():
         raise AssertionError("Nonfinite probability state")
     codes = new[0].view(torch.uint8)
@@ -62,7 +62,7 @@ def check_case(ext, pattern, steps, device, side_stream=False):
 
 
 @torch.no_grad()
-def validate(ext, device, progress=lambda rows: None):
+def validate(ext, device, progress=lambda rows: None, label="Fused quad"):
     rows = []
     cases = [(p, s) for p in ("random", "stable", "fallback", "tiny", "mixed") for s in (1, 7, 296)]
     cases += [(p, 1) for p in ("codes", "rounding_ties", "all_zero", "all_max")]
@@ -72,5 +72,5 @@ def validate(ext, device, progress=lambda rows: None):
             rows.append(row); progress(rows)
             row.update(check_case(ext, pattern, steps, device, side)); progress(rows)
     native = torch.cuda.get_device_capability(device) >= (8, 9)
-    print(f"Fused quad probability: {len(rows)} exact cases passed; native FP8 decode={native}", flush=True)
+    print(f"{label} probability: {len(rows)} exact cases passed; native FP8 decode={native}", flush=True)
     return {"status": "passed", "native_fp8_decode": native, "cases": rows}

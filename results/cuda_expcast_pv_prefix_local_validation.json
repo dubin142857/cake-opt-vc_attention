@@ -1,0 +1,769 @@
+{
+  "date": "2026-10-10",
+  "status": "local_checks_passed_h200_pending",
+  "tests_passed": 95,
+  "pytest_files": [
+    "tests/test_pv_prefix.py",
+    "tests/test_pv_prefix_cuda.py",
+    "tests/test_scale_prefetch.py",
+    "tests/test_split_mass.py",
+    "tests/test_balanced_max.py",
+    "tests/test_fused_quad.py",
+    "tests/test_kernel_timing.py"
+  ],
+  "probability_gpu_cases": {
+    "status": "passed",
+    "native_fp8_decode": false,
+    "cases": [
+      {
+        "pattern": "random",
+        "tiles": 1,
+        "side_stream": false,
+        "status": "passed",
+        "P_and_state_bitwise_equal": true,
+        "fp64_mass_oracle_exact": true
+      },
+      {
+        "pattern": "random",
+        "tiles": 1,
+        "side_stream": true,
+        "status": "passed",
+        "P_and_state_bitwise_equal": true,
+        "fp64_mass_oracle_exact": true
+      },
+      {
+        "pattern": "random",
+        "tiles": 7,
+        "side_stream": false,
+        "status": "passed",
+        "P_and_state_bitwise_equal": true,
+        "fp64_mass_oracle_exact": true
+      },
+      {
+        "pattern": "random",
+        "tiles": 7,
+        "side_stream": true,
+        "status": "passed",
+        "P_and_state_bitwise_equal": true,
+        "fp64_mass_oracle_exact": true
+      },
+      {
+        "pattern": "random",
+        "tiles": 296,
+        "side_stream": false,
+        "status": "passed",
+        "P_and_state_bitwise_equal": true,
+        "fp64_mass_oracle_exact": true
+      },
+      {
+        "pattern": "random",
+        "tiles": 296,
+        "side_stream": true,
+        "status": "passed",
+        "P_and_state_bitwise_equal": true,
+        "fp64_mass_oracle_exact": true
+      },
+      {
+        "pattern": "stable",
+        "tiles": 1,
+        "side_stream": false,
+        "status": "passed",
+        "P_and_state_bitwise_equal": true,
+        "fp64_mass_oracle_exact": true
+      },
+      {
+        "pattern": "stable",
+        "tiles": 1,
+        "side_stream": true,
+        "status": "passed",
+        "P_and_state_bitwise_equal": true,
+        "fp64_mass_oracle_exact": true
+      },
+      {
+        "pattern": "stable",
+        "tiles": 7,
+        "side_stream": false,
+        "status": "passed",
+        "P_and_state_bitwise_equal": true,
+        "fp64_mass_oracle_exact": true
+      },
+      {
+        "pattern": "stable",
+        "tiles": 7,
+        "side_stream": true,
+        "status": "passed",
+        "P_and_state_bitwise_equal": true,
+        "fp64_mass_oracle_exact": true
+      },
+      {
+        "pattern": "stable",
+        "tiles": 296,
+        "side_stream": false,
+        "status": "passed",
+        "P_and_state_bitwise_equal": true,
+        "fp64_mass_oracle_exact": true
+      },
+      {
+        "pattern": "stable",
+        "tiles": 296,
+        "side_stream": true,
+        "status": "passed",
+        "P_and_state_bitwise_equal": true,
+        "fp64_mass_oracle_exact": true
+      },
+      {
+        "pattern": "fallback",
+        "tiles": 1,
+        "side_stream": false,
+        "status": "passed",
+        "P_and_state_bitwise_equal": true,
+        "fp64_mass_oracle_exact": true
+      },
+      {
+        "pattern": "fallback",
+        "tiles": 1,
+        "side_stream": true,
+        "status": "passed",
+        "P_and_state_bitwise_equal": true,
+        "fp64_mass_oracle_exact": true
+      },
+      {
+        "pattern": "fallback",
+        "tiles": 7,
+        "side_stream": false,
+        "status": "passed",
+        "P_and_state_bitwise_equal": true,
+        "fp64_mass_oracle_exact": true
+      },
+      {
+        "pattern": "fallback",
+        "tiles": 7,
+        "side_stream": true,
+        "status": "passed",
+        "P_and_state_bitwise_equal": true,
+        "fp64_mass_oracle_exact": true
+      },
+      {
+        "pattern": "fallback",
+        "tiles": 296,
+        "side_stream": false,
+        "status": "passed",
+        "P_and_state_bitwise_equal": true,
+        "fp64_mass_oracle_exact": true
+      },
+      {
+        "pattern": "fallback",
+        "tiles": 296,
+        "side_stream": true,
+        "status": "passed",
+        "P_and_state_bitwise_equal": true,
+        "fp64_mass_oracle_exact": true
+      },
+      {
+        "pattern": "tiny",
+        "tiles": 1,
+        "side_stream": false,
+        "status": "passed",
+        "P_and_state_bitwise_equal": true,
+        "fp64_mass_oracle_exact": true
+      },
+      {
+        "pattern": "tiny",
+        "tiles": 1,
+        "side_stream": true,
+        "status": "passed",
+        "P_and_state_bitwise_equal": true,
+        "fp64_mass_oracle_exact": true
+      },
+      {
+        "pattern": "tiny",
+        "tiles": 7,
+        "side_stream": false,
+        "status": "passed",
+        "P_and_state_bitwise_equal": true,
+        "fp64_mass_oracle_exact": true
+      },
+      {
+        "pattern": "tiny",
+        "tiles": 7,
+        "side_stream": true,
+        "status": "passed",
+        "P_and_state_bitwise_equal": true,
+        "fp64_mass_oracle_exact": true
+      },
+      {
+        "pattern": "tiny",
+        "tiles": 296,
+        "side_stream": false,
+        "status": "passed",
+        "P_and_state_bitwise_equal": true,
+        "fp64_mass_oracle_exact": true
+      },
+      {
+        "pattern": "tiny",
+        "tiles": 296,
+        "side_stream": true,
+        "status": "passed",
+        "P_and_state_bitwise_equal": true,
+        "fp64_mass_oracle_exact": true
+      },
+      {
+        "pattern": "mixed",
+        "tiles": 1,
+        "side_stream": false,
+        "status": "passed",
+        "P_and_state_bitwise_equal": true,
+        "fp64_mass_oracle_exact": true
+      },
+      {
+        "pattern": "mixed",
+        "tiles": 1,
+        "side_stream": true,
+        "status": "passed",
+        "P_and_state_bitwise_equal": true,
+        "fp64_mass_oracle_exact": true
+      },
+      {
+        "pattern": "mixed",
+        "tiles": 7,
+        "side_stream": false,
+        "status": "passed",
+        "P_and_state_bitwise_equal": true,
+        "fp64_mass_oracle_exact": true
+      },
+      {
+        "pattern": "mixed",
+        "tiles": 7,
+        "side_stream": true,
+        "status": "passed",
+        "P_and_state_bitwise_equal": true,
+        "fp64_mass_oracle_exact": true
+      },
+      {
+        "pattern": "mixed",
+        "tiles": 296,
+        "side_stream": false,
+        "status": "passed",
+        "P_and_state_bitwise_equal": true,
+        "fp64_mass_oracle_exact": true
+      },
+      {
+        "pattern": "mixed",
+        "tiles": 296,
+        "side_stream": true,
+        "status": "passed",
+        "P_and_state_bitwise_equal": true,
+        "fp64_mass_oracle_exact": true
+      },
+      {
+        "pattern": "codes",
+        "tiles": 1,
+        "side_stream": false,
+        "status": "passed",
+        "P_and_state_bitwise_equal": true,
+        "fp64_mass_oracle_exact": true
+      },
+      {
+        "pattern": "codes",
+        "tiles": 1,
+        "side_stream": true,
+        "status": "passed",
+        "P_and_state_bitwise_equal": true,
+        "fp64_mass_oracle_exact": true
+      },
+      {
+        "pattern": "rounding_ties",
+        "tiles": 1,
+        "side_stream": false,
+        "status": "passed",
+        "P_and_state_bitwise_equal": true,
+        "fp64_mass_oracle_exact": true
+      },
+      {
+        "pattern": "rounding_ties",
+        "tiles": 1,
+        "side_stream": true,
+        "status": "passed",
+        "P_and_state_bitwise_equal": true,
+        "fp64_mass_oracle_exact": true
+      },
+      {
+        "pattern": "all_zero",
+        "tiles": 1,
+        "side_stream": false,
+        "status": "passed",
+        "P_and_state_bitwise_equal": true,
+        "fp64_mass_oracle_exact": true
+      },
+      {
+        "pattern": "all_zero",
+        "tiles": 1,
+        "side_stream": true,
+        "status": "passed",
+        "P_and_state_bitwise_equal": true,
+        "fp64_mass_oracle_exact": true
+      },
+      {
+        "pattern": "all_max",
+        "tiles": 1,
+        "side_stream": false,
+        "status": "passed",
+        "P_and_state_bitwise_equal": true,
+        "fp64_mass_oracle_exact": true
+      },
+      {
+        "pattern": "all_max",
+        "tiles": 1,
+        "side_stream": true,
+        "status": "passed",
+        "P_and_state_bitwise_equal": true,
+        "fp64_mass_oracle_exact": true
+      }
+    ]
+  },
+  "source_sha256": "4c16dbdde18749a6bd9e115f8f3a2c0f4b95919a14433980a1ec2076ae724dc2",
+  "local_gpu": "RTX3060 Laptop SM86; probability helper uses software FP8 decoding",
+  "full_attention_executed": false,
+  "cross_compile": "CUDA12.4 SM90a; FP16/BF16 x D64/D128 x baseline/serial/overlap, plus two helper kernels",
+  "contract": "All JIT arms retain K-scale prefetch. Defer only final K32 decoded-P FP32 mass until first three PV WGMMA are pending. Same P bytes, pair-chain sum order, history and two-level PV accumulation. No shared copy; V smoothing off.",
+  "remote_gates": "38 helper cases; 28 varying-scale cases; 8 mixed-warp fallback cases; 28 standard attention cases; all-row main shape bitwise gate; 1% decoded-reference implementation gate, not model quality",
+  "compiled_resources": [
+    {
+      "symbol": "_ZN7sage_vc39sage_vc_attention_kernel_scale_prefetchILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "variant": "vc28_scale_prefetch",
+      "dim": 128,
+      "dtype": "bfloat16",
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128
+    },
+    {
+      "symbol": "_ZN7sage_vc34sage_vc_attention_kernel_pv_prefixILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "variant": "vc28_prefix_serial",
+      "dim": 128,
+      "dtype": "bfloat16",
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128
+    },
+    {
+      "symbol": "_ZN7sage_vc34sage_vc_attention_kernel_pv_prefixILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0ELb1EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "variant": "vc28_prefix_overlap",
+      "dim": 128,
+      "dtype": "bfloat16",
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128
+    },
+    {
+      "symbol": "_ZN7sage_vc39sage_vc_attention_kernel_scale_prefetchILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "variant": "vc28_scale_prefetch",
+      "dim": 128,
+      "dtype": "float16",
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128
+    },
+    {
+      "symbol": "_ZN7sage_vc34sage_vc_attention_kernel_pv_prefixILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "variant": "vc28_prefix_serial",
+      "dim": 128,
+      "dtype": "float16",
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128
+    },
+    {
+      "symbol": "_ZN7sage_vc34sage_vc_attention_kernel_pv_prefixILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0ELb1EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "variant": "vc28_prefix_overlap",
+      "dim": 128,
+      "dtype": "float16",
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128
+    },
+    {
+      "symbol": "_ZN7sage_vc39sage_vc_attention_kernel_scale_prefetchILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "variant": "vc28_scale_prefetch",
+      "dim": 64,
+      "dtype": "bfloat16",
+      "registers": 127,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128
+    },
+    {
+      "symbol": "_ZN7sage_vc34sage_vc_attention_kernel_pv_prefixILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "variant": "vc28_prefix_serial",
+      "dim": 64,
+      "dtype": "bfloat16",
+      "registers": 128,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128
+    },
+    {
+      "symbol": "_ZN7sage_vc34sage_vc_attention_kernel_pv_prefixILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0ELb1EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "variant": "vc28_prefix_overlap",
+      "dim": 64,
+      "dtype": "bfloat16",
+      "registers": 128,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128
+    },
+    {
+      "symbol": "_ZN7sage_vc39sage_vc_attention_kernel_scale_prefetchILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "variant": "vc28_scale_prefetch",
+      "dim": 64,
+      "dtype": "float16",
+      "registers": 127,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128
+    },
+    {
+      "symbol": "_ZN7sage_vc34sage_vc_attention_kernel_pv_prefixILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "variant": "vc28_prefix_serial",
+      "dim": 64,
+      "dtype": "float16",
+      "registers": 128,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128
+    },
+    {
+      "symbol": "_ZN7sage_vc34sage_vc_attention_kernel_pv_prefixILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0ELb1EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "variant": "vc28_prefix_overlap",
+      "dim": 64,
+      "dtype": "float16",
+      "registers": 128,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128
+    },
+    {
+      "symbol": "_Z22pv_prefix_check_kernelILb0EEvPKiPKfS3_PiPfi",
+      "variant": "probability_helper",
+      "dim": null,
+      "dtype": null,
+      "registers": 80,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 0
+    },
+    {
+      "symbol": "_Z22pv_prefix_check_kernelILb1EEvPKiPKfS3_PiPfi",
+      "variant": "probability_helper",
+      "dim": null,
+      "dtype": null,
+      "registers": 96,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 0
+    }
+  ],
+  "sass_d128_bfloat16": [
+    {
+      "symbol": "_ZN7sage_vc39sage_vc_attention_kernel_scale_prefetchILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "variant": "vc28_scale_prefetch",
+      "static_instructions": 2848,
+      "main_pv_addresses": [
+        "4590",
+        "4650",
+        "46f0",
+        "4720"
+      ],
+      "wait_between_first_and_fourth_pv": false,
+      "between_third_and_fourth_pv": [
+        {
+          "address": "4700",
+          "instruction": "UMOV UR10, UR14"
+        },
+        {
+          "address": "4710",
+          "instruction": "UMOV UR11, 0x40000040"
+        }
+      ],
+      "interpretation": "Static CUDA12.4 scheduling evidence only; not measured overlap, utilization or speedup"
+    },
+    {
+      "symbol": "_ZN7sage_vc34sage_vc_attention_kernel_pv_prefixILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "variant": "vc28_prefix_serial",
+      "static_instructions": 2856,
+      "main_pv_addresses": [
+        "4600",
+        "46c0",
+        "4760",
+        "4790"
+      ],
+      "wait_between_first_and_fourth_pv": false,
+      "between_third_and_fourth_pv": [
+        {
+          "address": "4770",
+          "instruction": "UMOV UR10, UR14"
+        },
+        {
+          "address": "4780",
+          "instruction": "UMOV UR11, 0x40000040"
+        }
+      ],
+      "interpretation": "Static CUDA12.4 scheduling evidence only; not measured overlap, utilization or speedup"
+    },
+    {
+      "symbol": "_ZN7sage_vc34sage_vc_attention_kernel_pv_prefixILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0ELb1EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "variant": "vc28_prefix_overlap",
+      "static_instructions": 2856,
+      "main_pv_addresses": [
+        "4320",
+        "4380",
+        "4420",
+        "4780"
+      ],
+      "wait_between_first_and_fourth_pv": false,
+      "between_third_and_fourth_pv": [
+        {
+          "address": "4430",
+          "instruction": "UMOV UR10, UR14"
+        },
+        {
+          "address": "4440",
+          "instruction": "UMOV UR11, 0x40000040"
+        },
+        {
+          "address": "4450",
+          "instruction": "@!P0 BRA 0x4740"
+        },
+        {
+          "address": "4460",
+          "instruction": "F2FP.F16.E4M3.UNPACK_B R158, R88"
+        },
+        {
+          "address": "4470",
+          "instruction": "F2FP.F16.E4M3.UNPACK_B R160, R89"
+        },
+        {
+          "address": "4480",
+          "instruction": "SHF.R.U32.HI R162, RZ, 0x10, R89"
+        },
+        {
+          "address": "4490",
+          "instruction": "HADD2.F32 R159, -RZ, R158.H0_H0"
+        },
+        {
+          "address": "44a0",
+          "instruction": "HADD2.F32 R158, -RZ, R158.H1_H1"
+        },
+        {
+          "address": "44b0",
+          "instruction": "F2FP.F16.E4M3.UNPACK_B R162, R162"
+        },
+        {
+          "address": "44c0",
+          "instruction": "HADD2.F32 R161, -RZ, R160.H0_H0"
+        },
+        {
+          "address": "44d0",
+          "instruction": "HADD2.F32 R160, -RZ, R160.H1_H1"
+        },
+        {
+          "address": "44e0",
+          "instruction": "FADD.FTZ R159, R159, R158"
+        },
+        {
+          "address": "44f0",
+          "instruction": "SHF.R.U32.HI R158, RZ, 0x10, R88"
+        },
+        {
+          "address": "4500",
+          "instruction": "FADD.FTZ R161, R161, R160"
+        },
+        {
+          "address": "4510",
+          "instruction": "F2FP.F16.E4M3.UNPACK_B R158, R158"
+        },
+        {
+          "address": "4520",
+          "instruction": "FADD.FTZ R152, R152, R159"
+        },
+        {
+          "address": "4530",
+          "instruction": "FADD.FTZ R150, R150, R161"
+        },
+        {
+          "address": "4540",
+          "instruction": "HADD2.F32 R160, -RZ, R158.H0_H0"
+        },
+        {
+          "address": "4550",
+          "instruction": "HADD2.F32 R163, -RZ, R158.H1_H1"
+        },
+        {
+          "address": "4560",
+          "instruction": "FADD.FTZ R158, R160, R163"
+        },
+        {
+          "address": "4570",
+          "instruction": "HADD2.F32 R160, -RZ, R162.H0_H0"
+        },
+        {
+          "address": "4580",
+          "instruction": "HADD2.F32 R163, -RZ, R162.H1_H1"
+        },
+        {
+          "address": "4590",
+          "instruction": "FADD.FTZ R151, R151, R158"
+        },
+        {
+          "address": "45a0",
+          "instruction": "F2FP.F16.E4M3.UNPACK_B R158, R90"
+        },
+        {
+          "address": "45b0",
+          "instruction": "SHF.R.U32.HI R162, RZ, 0x10, R91"
+        },
+        {
+          "address": "45c0",
+          "instruction": "FADD.FTZ R160, R160, R163"
+        },
+        {
+          "address": "45d0",
+          "instruction": "HADD2.F32 R159, -RZ, R158.H0_H0"
+        },
+        {
+          "address": "45e0",
+          "instruction": "F2FP.F16.E4M3.UNPACK_B R162, R162"
+        },
+        {
+          "address": "45f0",
+          "instruction": "HADD2.F32 R158, -RZ, R158.H1_H1"
+        },
+        {
+          "address": "4600",
+          "instruction": "FADD.FTZ R149, R149, R160"
+        },
+        {
+          "address": "4610",
+          "instruction": "F2FP.F16.E4M3.UNPACK_B R160, R91"
+        },
+        {
+          "address": "4620",
+          "instruction": "FADD.FTZ R159, R159, R158"
+        },
+        {
+          "address": "4630",
+          "instruction": "SHF.R.U32.HI R158, RZ, 0x10, R90"
+        },
+        {
+          "address": "4640",
+          "instruction": "HADD2.F32 R161, -RZ, R160.H0_H0"
+        },
+        {
+          "address": "4650",
+          "instruction": "HADD2.F32 R160, -RZ, R160.H1_H1"
+        },
+        {
+          "address": "4660",
+          "instruction": "F2FP.F16.E4M3.UNPACK_B R158, R158"
+        },
+        {
+          "address": "4670",
+          "instruction": "FADD.FTZ R152, R152, R159"
+        },
+        {
+          "address": "4680",
+          "instruction": "FADD.FTZ R161, R161, R160"
+        },
+        {
+          "address": "4690",
+          "instruction": "HADD2.F32 R160, -RZ, R158.H0_H0"
+        },
+        {
+          "address": "46a0",
+          "instruction": "HADD2.F32 R163, -RZ, R158.H1_H1"
+        },
+        {
+          "address": "46b0",
+          "instruction": "FADD.FTZ R150, R150, R161"
+        },
+        {
+          "address": "46c0",
+          "instruction": "FADD.FTZ R158, R160, R163"
+        },
+        {
+          "address": "46d0",
+          "instruction": "HADD2.F32 R160, -RZ, R162.H0_H0"
+        },
+        {
+          "address": "46e0",
+          "instruction": "HADD2.F32 R163, -RZ, R162.H1_H1"
+        },
+        {
+          "address": "46f0",
+          "instruction": "FADD.FTZ R151, R151, R158"
+        },
+        {
+          "address": "4700",
+          "instruction": "FADD.FTZ R160, R160, R163"
+        },
+        {
+          "address": "4710",
+          "instruction": "FADD.FTZ R159, R152, R151"
+        },
+        {
+          "address": "4720",
+          "instruction": "FADD.FTZ R149, R149, R160"
+        },
+        {
+          "address": "4730",
+          "instruction": "FADD.FTZ R158, R150, R149"
+        },
+        {
+          "address": "4740",
+          "instruction": "FSETP.NEU.FTZ.AND P0, PT, R21, 1, PT"
+        },
+        {
+          "address": "4750",
+          "instruction": "WARPGROUP.ARRIVE"
+        },
+        {
+          "address": "4760",
+          "instruction": "FSETP.NEU.FTZ.AND P1, PT, R20, 1, PT"
+        },
+        {
+          "address": "4770",
+          "instruction": "PLOP3.LUT P0, PT, P1, P0, PT, 0x2, 0x0"
+        }
+      ],
+      "interpretation": "Static CUDA12.4 scheduling evidence only; not measured overlap, utilization or speedup"
+    }
+  ],
+  "previous_h200_user_report": {
+    "scope": "CUPTI GPU ms excerpt only; raw trials/accuracy/API times not supplied",
+    "vc28_jit": 23.6402,
+    "vc28_scale_prefetch": 23.4629,
+    "vc28_installed": 23.6394,
+    "sage_cpp": 24.8479,
+    "flash4": 30.6937
+  }
+}
