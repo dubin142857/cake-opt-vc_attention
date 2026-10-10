@@ -1,7 +1,8 @@
 # MiniMax-H3 / A5 VC-Attention 实验
 
 **当前 H200 主路线（2026-10-10）：`sageattn_vc`，INT8 QK + FP8 PV。**
-新候选：`bash scripts/run_mass_tail_h200.sh`，保留一次 PV 提交，将最后四对解码值的 FP32 转换/求和排入 PV 区间；对比预取基线、installed、Sage 和 FA4，逐位验证后测速，见 [CUDA 实验说明](SAGE_CUDA_EXPCAST.md)。H200 表现待实测。
+新候选：`bash scripts/run_paired_qk_h200.sh`，将两个 MAIN 块的 QK 合为 N256，ExpCast/PV 仍按原顺序分两次 K128 处理；对比预取基线、installed、Sage 和 FA4，逐位验证后测速。寄存器/共享内存需求增加，H200 收益待实测，见 [CUDA 实验说明](SAGE_CUDA_EXPCAST.md)。
+最新 mass-tail 为 23.4445 ms，预取基线为 23.4322 ms，未显示收益；保留为历史实验。
 上轮 prefix-overlap 为 23.5372 ms，仍慢于预取基线 23.4155 ms，暂不采用；`bash scripts/run_pv_prefix_h200.sh` 保留作对照。
 上轮 K scale 预取实测 23.4629 vs 同次 JIT 23.6402 ms，约节省 0.75% GPU 时间；原入口 `bash scripts/run_scale_prefetch_h200.sh` 保留。
 上轮 fused-quad 未体现收益（23.7386 vs balanced-max 23.5873 ms，installed 23.3888 ms），保留为历史实验。

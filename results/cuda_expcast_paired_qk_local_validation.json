@@ -1,0 +1,194 @@
+{
+  "date": "2026-10-10",
+  "status": "local_checks_passed_h200_pending",
+  "tests_passed": 37,
+  "full_hopper_attention_executed": false,
+  "local_gpu": "RTX3060 Laptop SM86",
+  "cross_compile": "CUDA12.4 SM90a; FP16/BF16 x D64/D128 x baseline/candidate + two independent QK check kernels",
+  "source_sha256": "c493814a9c18ae1413e4c756c9fcace50ceba68a223af314e175d81bc1545cb6",
+  "compiled_resources": [
+    {
+      "symbol": "_ZN7sage_vc22check_paired_qk_kernelILi128EEEv14CUtensorMap_stS1_Pi",
+      "variant": "integer_qk_check",
+      "dim": 128,
+      "dtype": "int8_to_int32",
+      "registers": 164,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128,
+      "dynamic_shared_bytes": 40960
+    },
+    {
+      "symbol": "_ZN7sage_vc22check_paired_qk_kernelILi64EEEv14CUtensorMap_stS1_Pi",
+      "variant": "integer_qk_check",
+      "dim": 64,
+      "dtype": "int8_to_int32",
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128,
+      "dynamic_shared_bytes": 20480
+    },
+    {
+      "symbol": "_ZN7sage_vc39sage_vc_attention_kernel_scale_prefetchILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "variant": "vc28_scale_prefetch",
+      "dim": 128,
+      "dtype": "bfloat16",
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128,
+      "dynamic_shared_bytes": 40960
+    },
+    {
+      "symbol": "_ZN7sage_vc34sage_vc_attention_kernel_paired_qkILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi240ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "variant": "vc28_paired_qk",
+      "dim": 128,
+      "dtype": "bfloat16",
+      "registers": 240,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128,
+      "dynamic_shared_bytes": 57344
+    },
+    {
+      "symbol": "_ZN7sage_vc39sage_vc_attention_kernel_scale_prefetchILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "variant": "vc28_scale_prefetch",
+      "dim": 128,
+      "dtype": "float16",
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128,
+      "dynamic_shared_bytes": 40960
+    },
+    {
+      "symbol": "_ZN7sage_vc34sage_vc_attention_kernel_paired_qkILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi240ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "variant": "vc28_paired_qk",
+      "dim": 128,
+      "dtype": "float16",
+      "registers": 240,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128,
+      "dynamic_shared_bytes": 57344
+    },
+    {
+      "symbol": "_ZN7sage_vc39sage_vc_attention_kernel_scale_prefetchILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "variant": "vc28_scale_prefetch",
+      "dim": 64,
+      "dtype": "bfloat16",
+      "registers": 127,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128,
+      "dynamic_shared_bytes": 20480
+    },
+    {
+      "symbol": "_ZN7sage_vc34sage_vc_attention_kernel_paired_qkILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi240ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "variant": "vc28_paired_qk",
+      "dim": 64,
+      "dtype": "bfloat16",
+      "registers": 240,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128,
+      "dynamic_shared_bytes": 28672
+    },
+    {
+      "symbol": "_ZN7sage_vc39sage_vc_attention_kernel_scale_prefetchILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "variant": "vc28_scale_prefetch",
+      "dim": 64,
+      "dtype": "float16",
+      "registers": 127,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128,
+      "dynamic_shared_bytes": 20480
+    },
+    {
+      "symbol": "_ZN7sage_vc34sage_vc_attention_kernel_paired_qkILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi240ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "variant": "vc28_paired_qk",
+      "dim": 64,
+      "dtype": "float16",
+      "registers": 240,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128,
+      "dynamic_shared_bytes": 28672
+    }
+  ],
+  "static_codegen": [
+    {
+      "symbol": "_ZN7sage_vc39sage_vc_attention_kernel_scale_prefetchILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "wide_qk_static_instructions": 0,
+      "narrow_qk_static_instructions": 8,
+      "instruction_count": 2848,
+      "baseline_sass_unchanged": true
+    },
+    {
+      "symbol": "_ZN7sage_vc34sage_vc_attention_kernel_paired_qkILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi240ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "wide_qk_static_instructions": 4,
+      "narrow_qk_static_instructions": 8,
+      "instruction_count": 4984,
+      "baseline_sass_unchanged": null
+    },
+    {
+      "symbol": "_ZN7sage_vc39sage_vc_attention_kernel_scale_prefetchILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "wide_qk_static_instructions": 0,
+      "narrow_qk_static_instructions": 8,
+      "instruction_count": 2848,
+      "baseline_sass_unchanged": true
+    },
+    {
+      "symbol": "_ZN7sage_vc34sage_vc_attention_kernel_paired_qkILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi240ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "wide_qk_static_instructions": 4,
+      "narrow_qk_static_instructions": 8,
+      "instruction_count": 4984,
+      "baseline_sass_unchanged": null
+    },
+    {
+      "symbol": "_ZN7sage_vc39sage_vc_attention_kernel_scale_prefetchILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "wide_qk_static_instructions": 0,
+      "narrow_qk_static_instructions": 4,
+      "instruction_count": 2536,
+      "baseline_sass_unchanged": true
+    },
+    {
+      "symbol": "_ZN7sage_vc34sage_vc_attention_kernel_paired_qkILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi240ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "wide_qk_static_instructions": 2,
+      "narrow_qk_static_instructions": 4,
+      "instruction_count": 4504,
+      "baseline_sass_unchanged": null
+    },
+    {
+      "symbol": "_ZN7sage_vc39sage_vc_attention_kernel_scale_prefetchILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "wide_qk_static_instructions": 0,
+      "narrow_qk_static_instructions": 4,
+      "instruction_count": 2536,
+      "baseline_sass_unchanged": true
+    },
+    {
+      "symbol": "_ZN7sage_vc34sage_vc_attention_kernel_paired_qkILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi240ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "wide_qk_static_instructions": 2,
+      "narrow_qk_static_instructions": 4,
+      "instruction_count": 4504,
+      "baseline_sass_unchanged": null
+    }
+  ],
+  "resource_risk": "Candidate cap240 vs baseline cap168. Increased register/shared footprint may outweigh fewer QK batches. Cap224 initial build spilled; final cap240 has no stack/spill.",
+  "contract": "One N256 INT8 QK batch per two MAIN K128 blocks. Two original K128 ExpCast/PV recurrences. Final 1-2 tiles retain N128 QK; final tail arithmetic unchanged.",
+  "remote_gates": "6 integer CPU-oracle QK checks; 60 scale/tail/stream checks; 28 standard configurations; all-row main-shape bitwise equality; 1% decoded reference. Implementation-only.",
+  "limitation": "Static instruction counts include loop bodies/remainders; not measured dynamic cycles, utilization or performance. CUDA13 may produce different code.",
+  "current_h200_speedup": null
+}

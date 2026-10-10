@@ -19,9 +19,12 @@ import fused_quad_native
 import scale_prefetch_native
 import pv_prefix_native
 import mass_tail_native
+import paired_qk_native
 
 VARIANTS={"vc28_jit":False,"vc28_split_mass":True}
 EXPERIMENTS={
+    "paired_qk":(paired_qk_native,"vc28_paired_qk",
+        "Scale-prefetch baseline; one N256 INT8 QK batch for two MAIN K128 tiles. Sequential original K128 ExpCast/PV, scales and FP32 recurrence retained; final 1--2 tiles use N128 QK. Larger K shared buffer and register footprint; experimental, no claimed speedup."),
     "mass_tail":(mass_tail_native,"vc28_mass_tail",
         "Scale-prefetch baseline; carry four decoded half2 pairs and complete FP32 local mass during a single four-MMA PV batch. No extra WGMMA fence/commit or shared P copy. Exact tile-sum regrouping; FP32 history and two-level PV unchanged."),
     "pv_prefix":(pv_prefix_native,"vc28_prefix_overlap",
@@ -155,6 +158,10 @@ def main():
         report["environment"]={"torch":torch.__version__,"cuda":torch.version.cuda,"gpu":torch.cuda.get_device_name(device),
                                "native_version":vc._extension().sage_vc_kernel_version}
         ext,report["build"]=backend.load_native();save()
+        if a.experiment=="paired_qk":
+            report["build_audit"]=backend.build_audit(ext,vc,report["build"],a.dim,0 if a.dtype=="float16" else 1);save()
+            report["qk_validation"]=backend.validate_qk(ext,device,lambda r:update("qk_validation",r))
+            report["pipeline_validation"]=backend.validate_pipeline(ext,vc,vc_reference,device,lambda r:update("pipeline_validation",r))
         if a.experiment in ("scale_prefetch","pv_prefix","mass_tail"):
             report["build_audit"]=backend.build_audit(ext,vc,report["build"],a.dim,0 if a.dtype=="float16" else 1);save()
             from validate_scale_prefetch import validate as validate_scale

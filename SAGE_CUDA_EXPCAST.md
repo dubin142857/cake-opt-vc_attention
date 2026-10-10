@@ -3,7 +3,59 @@
 2026-10-10。当前主线是 **INT8 QK + ExpCast + FP8 PV，V 聚类和平滑关闭**。
 保留 vc28 已测实现，新候选不修改已安装包和默认 dispatch。
 
-## 当前候选：保留一次 PV 提交，延后少量 FP32 分母计算
+## 当前候选：两个 QK 块合并，ExpCast/PV 保留 K128 边界
+
+最新 H200 CUPTI 回传：scale-prefetch **23.4322 ms**，mass-tail **23.4445 ms**，
+installed **23.5268 ms**，Sage **24.8497 ms**，FA4 **30.9068 ms**。
+mass-tail 慢 0.0123 ms，约 0.05%，没有显示收益，继续以 scale-prefetch 为基线。
+[回传记录](results/h200_cuda_expcast_mass_tail_reported.json) 只包含用户提供的汇总数值，
+不能据此推断完整 API 时间、统计显著性或模型质量。
+
+此前局部求和、max 树和打包调度收益有限。这轮试验改变 QK 的计算块大小：
+
+- 对两个连续 MAIN K128 块，一次发起 `m64n256k32.s32.s8.s8` QK 批次。
+  两块的点积计算量不变，QK 提交/等待和 K 的 TMA 搬运次数按块对减少。
+- 分数依次进入原有两次 K128 ExpCast 和 FP8 PV。每块仍用自己的 K scale，
+  保留 online max、decoded-P FP32 分母、历史缩放和两级 PV 累加。
+- 最后 1–2 个逻辑块使用原 N128 QK；最终块保留原来的浮点转换和 mask 路径。
+  不把两个块合成一次 K256 softmax，以免改变概率量化和归一化语义。
+
+主要代价是同时保留两块 QK 分数。本地 CUDA 12.4 SM90a 编译中，候选用
+**240 寄存器/线程**，D128 动态共享内存 **57,344 B**；基线为 168 寄存器和
+40,960 B。初版 cap224 有少量 spill，改为 cap240 后八个 attention 实例均无
+stack/spill；这会减少可驻留线程块，**不保证更快**。
+反汇编已确认生成真实 N256 INT8 MMA。编译和反汇编不能替代 H200 运行验证。
+
+```bash
+git pull --ff-only origin master
+bash scripts/run_paired_qk_h200.sh
+```
+
+默认 BF16、NHD `[1,37741,28,128]`，INT8 QK + ExpCast + FP8 PV，V 聚类/平滑关闭。
+使用现有 Torch、Sage local、FA4 和 nvcc；首次编译独立 JIT，不改已安装包，
+不要求 ncu/nvdisasm。输出 `results/h200_cuda_expcast_paired_qk.json`。
+可追加 `--validate-only`，或 `--qkv-file ... --qkv-layout NHD` 测真实输入。
+
+| 行名 | 含义 |
+|---|---|
+| vc28_scale_prefetch | 同次 JIT 编译的预取基线 |
+| vc28_paired_qk | N256 QK + 两次原 K128 ExpCast/PV |
+| vc28_installed | 已安装 vc28 |
+| sage_cpp / flash4 | 外部对照 |
+
+先运行 6 个 N256 QK 的整数 CPU oracle 检查，独立确认累加寄存器与矩阵列的对应；
+再跑 60 个分块/scale 检查和原有 28 个 attention 配置。覆盖 K 长度
+1、127、128、129、255、256、257、383、384、385、511、512、513、769、37741，
+FP16/BF16、D64/D128、多 batch/head 和非默认 stream，尾部填充 V 故意置为非零。
+相对预取基线要求**所有输出逐位相等**，decoded reference 保留 1% 实现门限。
+任一失败立即停止；成功后跑 9 轮 API 和 5 轮 CUPTI，二者分开报告。
+精度门限验证实现一致性，不代表真实模型质量。
+
+本地 37 项 Python/生成代码检查通过，完整 SM90a attention 与独立 QK 检查交叉编译通过。
+本机只有 SM86，**尚未运行本候选的 Hopper attention**。详细资源见
+[本地编译记录](results/cuda_expcast_paired_qk_local_validation.json)。
+
+## 已测候选：保留一次 PV 提交，延后少量 FP32 分母计算
 
 最新 H200 回传：预取基线 **23.4155 ms**，prefix-overlap **23.5372 ms**，
 prefix-serial **23.6871 ms**，installed **23.6530 ms**，Sage **24.8849 ms**，
@@ -52,7 +104,8 @@ FP16/BF16 × D64/D128 × 两条路径共 8 个完整 SM90a kernel 交叉编译�
 D128 为 168 寄存器，D64 为 127，均无 stack/spill。
 预取基线的 D128 BF16 指令文本与上轮相同。新候选的八次 FP32 转换和八次加法
 已被编译器排入 PV 指令之间，保留单次提交，未增加 fence/wait。
-这仅证明静态调度发生变化，**H200 完整正确性和性能待实测**；CUDA 13 的调度可能不同。
+这仅证明静态调度发生变化；CUDA 13 的调度可能不同。现已收到上方 mass-tail GPU 时间汇总，
+未显示收益；用户尚未提供该轮完整正确性报告或原始 trials。
 证据见 [mass-tail 本地检查](results/cuda_expcast_mass_tail_local_validation.json)。
 
 ## 已测候选：最后一组概率解码/求和与前三次 PV 重叠

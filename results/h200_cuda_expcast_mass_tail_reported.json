@@ -1,0 +1,14 @@
+{
+  "source": "User-pasted H200 CUPTI table after run_mass_tail_h200.sh",
+  "scope": "GPU kernel duration summary only; API tables, raw trials and validation details were not supplied",
+  "reported_json_path": "results/h200_cuda_expcast_mass_tail.json",
+  "milliseconds": {
+    "vc28_scale_prefetch": 23.4322,
+    "vc28_mass_tail": 23.4445,
+    "vc28_installed": 23.5268,
+    "sage_cpp": 24.8497,
+    "flash4": 30.9068
+  },
+  "table_columns": "attention, all kernels and all GPU work are equal for each reported row",
+  "decision": "Retain scale-prefetch. Mass-tail is 0.0123 ms slower in this summary (about 0.05%); no demonstrated improvement. No statistical-significance or model-quality claim."
+}
