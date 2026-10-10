@@ -1,0 +1,297 @@
+{
+  "date": "2026-10-10",
+  "status": "cross_compile_passed_gpu_runtime_unverified",
+  "target": "sm_90a",
+  "compiler": "CUDA 12.4 NVRTC + ptxas",
+  "shape": {
+    "batch": 1,
+    "heads": 2,
+    "queries": 65,
+    "keys": 129
+  },
+  "local_gpu": "RTX 3060 Laptop SM86",
+  "compile_environment": "Windows NVRTC virtual stdint/stdlib headers and cuda::std compatibility imports; unchanged generated kernel bodies; not a Linux NVCC runtime validation",
+  "tests": {
+    "cpu_auxiliary": 12,
+    "candidate_codegen": 16,
+    "original_codegen": 8,
+    "passed": 36
+  },
+  "kernel_count": 24,
+  "kernels": [
+    {
+      "source": "baseline_bfloat16_d128_s1.cu",
+      "sha256": "ebca1976794f9e8093e931431efcf13b38f3f37e51e2523ed5b7a29f3a3d46c1",
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 240,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1331 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_paper_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_paper_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 240 registers, 1024 bytes smem\n"
+    },
+    {
+      "source": "baseline_bfloat16_d128_s2.cu",
+      "sha256": "4c22b9464170a66ab80c5932f1ff78f021abf4d707768def9e84609fa1387c6a",
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 240,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1331 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_paper_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_paper_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 240 registers, 1024 bytes smem\n"
+    },
+    {
+      "source": "baseline_bfloat16_d64_s1.cu",
+      "sha256": "fbff8cc1ef16b7b38c771399e8ba20f5382b8c0c3c61c71b35114f9e1977d586",
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 240,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1339 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_paper_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_paper_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 240 registers, 1024 bytes smem\n"
+    },
+    {
+      "source": "baseline_bfloat16_d64_s2.cu",
+      "sha256": "626c0d75da6e27d9aad5ec5a2cb86837427b49e3d48c69113760f4725ac2172b",
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 240,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1339 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_paper_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_paper_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 240 registers, 1024 bytes smem\n"
+    },
+    {
+      "source": "baseline_float16_d128_s1.cu",
+      "sha256": "463b133a87ad11f4e992ea0cd4d34028471bbfab529f56da6f28aa2b698414d0",
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 240,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1331 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_paper_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_paper_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 240 registers, 1024 bytes smem\n"
+    },
+    {
+      "source": "baseline_float16_d128_s2.cu",
+      "sha256": "608e63ba23d25b62bcd4d58f945cf1ea94c836b3ad55cf70245f89c9d639a806",
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 240,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1331 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_paper_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_paper_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 240 registers, 1024 bytes smem\n"
+    },
+    {
+      "source": "baseline_float16_d64_s1.cu",
+      "sha256": "b35273a2cd36f821cc12f91ada92daf2eaac156b561d1c6159a667a509516aa1",
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 240,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1339 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_paper_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_paper_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 240 registers, 1024 bytes smem\n"
+    },
+    {
+      "source": "baseline_float16_d64_s2.cu",
+      "sha256": "cc26b8a01b64dabbc505266838c60443f9cf9a9182ac0c42b0fd24e044afaf5c",
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 240,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1339 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_paper_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_paper_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 240 registers, 1024 bytes smem\n"
+    },
+    {
+      "source": "cached_bfloat16_d128_s1.cu",
+      "sha256": "1b1113a70d204a5d30fac02aa61fb49a851f919ec72ddb3c3f0f75620be91ac3",
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 240,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1331 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 240 registers, 1024 bytes smem\n"
+    },
+    {
+      "source": "cached_bfloat16_d128_s2.cu",
+      "sha256": "895ad3c6bf925a7ae8ac49f5ebf1d63481736beebcd56fd7ec0cc4d6b3d86f2e",
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 240,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1331 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 240 registers, 1024 bytes smem\n"
+    },
+    {
+      "source": "cached_bfloat16_d64_s1.cu",
+      "sha256": "eec4894b2ea9d44fa05665f99b46a9969f341539b41523d7dfe32165a7b96875",
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 240,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1339 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 240 registers, 1024 bytes smem\n"
+    },
+    {
+      "source": "cached_bfloat16_d64_s2.cu",
+      "sha256": "5bebcca97c9884928d3a2ca264f695276d3a7d799ac1b85c3d18ee2bb9f6cba7",
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 240,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1339 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 240 registers, 1024 bytes smem\n"
+    },
+    {
+      "source": "cached_float16_d128_s1.cu",
+      "sha256": "9a0d739531aaf50c206ba5a0b88a86a5081a05e54bd9e483e94049a8e60c0c67",
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 240,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1331 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 240 registers, 1024 bytes smem\n"
+    },
+    {
+      "source": "cached_float16_d128_s2.cu",
+      "sha256": "4bc1146703ca5dd51d8398c3a5afbc155a04b26386c1426aeca13e4a2d1255bf",
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 240,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1331 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 240 registers, 1024 bytes smem\n"
+    },
+    {
+      "source": "cached_float16_d64_s1.cu",
+      "sha256": "ba2589d535c8a4a93181c1e979432bdfebf2a4148228821dcd2a185e00896c36",
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 240,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1339 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 240 registers, 1024 bytes smem\n"
+    },
+    {
+      "source": "cached_float16_d64_s2.cu",
+      "sha256": "c646b67d464c7867cae07120b44e537aab3dee03cb9ca98e069d38036e18762c",
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 240,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1339 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 240 registers, 1024 bytes smem\n"
+    },
+    {
+      "source": "mma_qk_bfloat16_d128_s1.cu",
+      "sha256": "4f615c5792057c714b9969fbbc3ca9f3c4693c87b275e0a8de6e179245375c36",
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 240,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1823 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 240 registers, 1024 bytes smem\n"
+    },
+    {
+      "source": "mma_qk_bfloat16_d128_s2.cu",
+      "sha256": "5e6b3ca3ca35f1c2935e61a4be6e28f43d0fdefd8df329ef93891c7acf1d65ef",
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 240,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1823 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 240 registers, 1024 bytes smem\n"
+    },
+    {
+      "source": "mma_qk_bfloat16_d64_s1.cu",
+      "sha256": "6ff9f00e3fb395cc3a9065bc6548b279490472612079838520f9b45341003d6c",
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 240,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1823 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 240 registers, 1024 bytes smem\n"
+    },
+    {
+      "source": "mma_qk_bfloat16_d64_s2.cu",
+      "sha256": "e4af2d067a807591894441182d6282199af1f5154f6b9d2ba2399a5afbc3837d",
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 240,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1823 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 240 registers, 1024 bytes smem\n"
+    },
+    {
+      "source": "mma_qk_float16_d128_s1.cu",
+      "sha256": "b77f4ccca1b341cbd76bf7cdf45bb77ed3540ec69c1b0a5c16ee3103fe8d641c",
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 240,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1823 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 240 registers, 1024 bytes smem\n"
+    },
+    {
+      "source": "mma_qk_float16_d128_s2.cu",
+      "sha256": "17359d564bb39217ab3b716ef721b9b993351e46e9a116da39cb37317b490903",
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 240,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1823 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 240 registers, 1024 bytes smem\n"
+    },
+    {
+      "source": "mma_qk_float16_d64_s1.cu",
+      "sha256": "e57890aa23f286cd2b6f82cd18580b62b60eedd8b54ecd2d9d788878e14de3ad",
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 240,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1823 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 240 registers, 1024 bytes smem\n"
+    },
+    {
+      "source": "mma_qk_float16_d64_s2.cu",
+      "sha256": "c75919cb8a3bc62f67b274e6947836b0ed64bd72f55774d3715dcee829486f73",
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 240,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1823 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 240 registers, 1024 bytes smem\n"
+    }
+  ],
+  "ptx_scale_load_observation": {
+    "configuration": "D128/BF16/stages1",
+    "baseline": "QS and KS loaded inside key loop; NVRTC already merges elementwise duplicate reads",
+    "cached": "QS loaded once before key loop, KS within loop",
+    "static_global_fp32_load_instructions": {
+      "baseline": 66,
+      "cached": 66
+    },
+    "limitation": "PTX inspection is not final SASS or measured acceleration"
+  }
+}
