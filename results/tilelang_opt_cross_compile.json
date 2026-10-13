@@ -1653,7 +1653,8 @@
     "results/h200_tilelang_no_ws_next_reported.json",
     "results/h200_tilelang_launch_failure_reported.json",
     "results/h200_tilelang_no_ws_round4_reported.json",
-    "results/h200_tilelang_no_ws_round5_reported.json"
+    "results/h200_tilelang_no_ws_round5_reported.json",
+    "results/h200_tilelang_no_ws_round5_repeat_reported.json"
   ],
   "new_no_ws_revision_checks": {
     "small_codegen": 8,
@@ -1904,7 +1905,8 @@
       "trace_dir": "results/tilelang_no_ws_round5_traces",
       "single_command": "bash scripts/run_tilelang_opt_h200.sh"
     },
-    "hopper_runtime": "User-reported completed H200 timing: no_ws 38.8468ms, vector decode 38.6095ms, vec_overlap 38.7002ms. Vector decode saved 0.611% against no_ws in this run; vec_overlap used 0.235% more time than vector decode. Validation inferred from reaching timing; full remote JSON and trial-level variability unavailable. No statistical significance is claimed."
+    "hopper_runtime": "User-reported completed H200 timing: no_ws 38.8468ms, vector decode 38.6095ms, vec_overlap 38.7002ms. Vector decode saved 0.611% against no_ws in this run; vec_overlap used 0.235% more time than vector decode. Validation inferred from reaching timing; full remote JSON and trial-level variability unavailable. No statistical significance is claimed.",
+    "hopper_runtime_repeat": "User-reported round5 repeat: no_ws 38.7870ms, vector decode 38.7171ms, vec_overlap 38.4041ms. Overlap used 0.808% less time than vector decode in this run, reversing the preceding 0.235% regression. Full remote JSON and trial-level dispersion unavailable; no stable gain or statistical significance is claimed. This table contains no vec_q128 and reports the round5 output path."
   },
   "round6_probe_checks": {
     "column_split": {
@@ -2057,7 +2059,7 @@
     "original_codegen": 8,
     "fence_pass_safety_tests": 6,
     "gpu_execution": false,
-    "hopper_runtime": "Pending H200 correctness, repeated default/side stream gates and timing. Local SM86 cannot execute SM90a kernels; host JIT/runtime adapter execution is not independently verified.",
+    "hopper_runtime": "Pending H200 correctness, repeated default/side stream gates and timing for vec_q128. The newest user-supplied table is another round5 run without vec_q128, not a round6 validation or performance result. Local SM86 cannot execute SM90a kernels; host JIT/runtime adapter execution is not independently verified.",
     "local_api_review": "JITKernel backend_context and lower_with_context use the same candidate-only pipeline and existing adapter path. Backend selection honors TILELANG_EXECUTION_BACKEND.",
     "launcher": {
       "variants": [

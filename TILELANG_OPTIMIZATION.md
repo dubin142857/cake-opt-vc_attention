@@ -3,14 +3,39 @@
 2026-10-10。新增 `scripts/tilelang_expcast_opt.py` 和独立入口
 `scripts/benchmark_tilelang_opt.py`，针对现有 Hopper INT8 QK / ExpCast / FP8 PV。
 原始 TileLang 实现继续作为对照。H200 同步修订后的测速摘要已返回：
-最新同轮摘要中，`cached_no_ws_vec_decode_s1` 为已测 TileLang 的最低耗时方案，
-后续实验以它作为已测对照；第六轮新增 `vec_q128`，尚未执行 H200 验证和测速。
+第五轮复测中 `vec_overlap` 为该表最低耗时的 TileLang 方案，但它与 vec_decode
+在两次测量中的排序反转。no_ws 和 vec_decode 仍作为第六轮已测对照；
+第六轮新增 `vec_q128`，尚未执行 H200 验证和测速。
 Bash 入口运行 no_ws、vec_decode、`vec_q128` 三个方案，附加参数可覆盖指定选项；直接调用
 Python 入口时，默认只比较已测的 no_ws 和 vec_decode。MMA 候选保留显式选择。
 
 ## 用户提供的 H200 结果
 
-第五轮已返回以下同轮 CUPTI kernel 摘要；attention、all-kernel、all-GPU-work
+第五轮复测返回以下同轮 CUPTI kernel 摘要；attention、all-kernel、all-GPU-work
+三列逐行同值，没有混用 API 时间：
+
+| 实现 | 时间（ms） |
+| --- | ---: |
+| `baseline_s1` | 56.8998 |
+| `baseline_s2` | 57.0399 |
+| `cached_no_ws_s1` | 38.7870 |
+| `cached_no_ws_vec_decode_s1` | 38.7171 |
+| `vec_overlap` | 38.4041 |
+| `sage_cpp` | 24.4413 |
+| `flash4` | 30.7025 |
+
+此次 vec_overlap 相对同轮 vec_decode 节省 0.3130 ms、耗时减少 0.808%；
+初次则是 vec_overlap 38.7002 ms、vec_decode 38.6095 ms，组合耗时增加
+0.235%。两次排序反转，且没有 trial 级数据，不能判断差异显著或组合稳定更快。
+复测摘要保存在 `results/h200_tilelang_no_ws_round5_repeat_reported.json`；
+初次摘要和下表保持原样。
+
+用户报告复测仍保存到远端 `results/h200_tilelang_no_ws_round5.json`，完整文件
+尚未读取，实际形状未核验。完成计时意味着脚本已走过验证门槛，这是依据流程
+作出的推断；详细精度指标和用例数量未提供。此次未运行 `vec_q128`，
+Q128 的 H200 正确性和耗时仍待验证，当前第六轮启动配置保持不变。
+
+第五轮初次返回以下同轮 CUPTI kernel 摘要；attention、all-kernel、all-GPU-work
 三列逐行同值，没有混用 API 时间：
 
 | 实现 | 时间（ms） |
@@ -127,12 +152,12 @@ no_ws 相对同轮 baseline_s1 加速 1.444×、耗时减少 30.73%；相对 cac
 | --- | --- | --- |
 | `cached_s1/s2` | 每个 query tile 缓存 Q scale，每个 key tile 缓存 K scale，显式广播到 score fragment | 编译器是否已消除原实现的重复读取，以及新调度是否受益 |
 | `mma_qk_s1/s2` | 在缓存 scales 的基础上，K 从 shared 复制到 fragment，使 INT8 QK 使用 `mma.sync`；FP8 PV 继续使用 WGMMA | QK 等待和布局成本的变化能否抵消额外 K 寄存器复制 |
-| `cached_no_ws_s1` | 在 cached 基础上禁用自动 warp specialization，实际 CTA 从 256 线程变为 128；K/V 搬运同时从 TMA 改为 `cp.async`，两个 GEMM 保持 WGMMA | 第五轮 38.8468 ms；前轮相对 cached_s1 耗时减少 20.33%，不能单独归因于线程数 |
+| `cached_no_ws_s1` | 在 cached 基础上禁用自动 warp specialization，实际 CTA 从 256 线程变为 128；K/V 搬运同时从 TMA 改为 `cp.async`，两个 GEMM 保持 WGMMA | 第五轮复测 38.7870 ms，初次 38.8468 ms；前轮相对 cached_s1 耗时减少 20.33%，不能单独归因于线程数 |
 | `cached_no_ws_overlap_s1`（显式实验） | 异步 PV 与 decoded-P 行求和、denom 更新、历史 accum 乘 alpha 重叠；wait 后加 PV | 最新同轮 40.0123 ms，相对 no_ws 增时 2.148%，不默认 |
 | `cached_no_ws_int_mass_s1`（显式实验） | 用整数单位计算每个 128-key tile 的 decoded-P 行求和，再精确转换为 FP32；PV 仍用 FP8 | 最新同轮 47.3561 ms，相对 no_ws 增时 20.896%，不默认 |
-| `cached_no_ws_vec_decode_s1`（已测对照） | 用 `T.copy(prob, logits, coalesced_width=2)` 批量将 FP8 解码到 FP32 | 第五轮 38.6095 ms，相对同轮 no_ws 耗时减少 0.611%；本地主形状 PTX 解码指令从 128 降到 64 |
+| `cached_no_ws_vec_decode_s1`（已测对照） | 用 `T.copy(prob, logits, coalesced_width=2)` 批量将 FP8 解码到 FP32 | 第五轮复测 38.7171 ms，初次 38.6095 ms；复测相对同轮 no_ws 耗时减少 0.180%；本地主形状 PTX 解码指令从 128 降到 64 |
 | `cached_no_ws_reduce4_s1`（显式实验） | 每线程先归约 8 个值，再合并 4 个 partials，最后进行 4-lane 归约 | 第四轮 40.3754 ms，相对同轮 no_ws 耗时增加 2.497%；保持最大值与 decoded-P 分母语义 |
-| `vec_overlap`（显式实验） | 在 vec_decode 基础上，让异步 PV 与 decoded-P 行求和及 FP32 历史更新重叠，等待后加 PV | 第五轮 38.7002 ms，相对同轮 vec_decode 耗时增加 0.235%；详细一致性和误差指标未独立核验 |
+| `vec_overlap`（显式实验） | 在 vec_decode 基础上，让异步 PV 与 decoded-P 行求和及 FP32 历史更新重叠，等待后加 PV | 第五轮复测 38.4041 ms，比同轮 vec_decode 省时 0.808%；初次 38.7002 ms、增时 0.235%，两次排序反转；详细一致性和误差指标未独立核验 |
 | `vec_q128`（第六轮待测） | 在 vec_decode 基础上使用 BM128、256 线程、128-key tile 和候选独立的 BackendContext | 本地生成与交叉编译通过；H200 正确性和耗时尚未验证 |
 
 除 `vec_q128` 使用 BM128 外，其余候选保持 BM64；所有候选保持 BN128、
@@ -149,8 +174,9 @@ FP16/BF16、D64/128 均支持；cached/MMA 支持 stage 1/2，no_ws 只支持 st
 离线生成和编译不能替代完整验证。
 第五轮将 vec_decode 与安全的 PV 异步重叠组合成短名 `vec_overlap`，仅支持
 单阶段。它保持原来的 FP8 P、解码分母和 FP32 历史累加语义，等待 PV 完成后
-才读结果、复用 shared buffer。该组合已返回第五轮摘要，没有降低 vec_decode
-对照的耗时；第六轮改测 `vec_q128`。此前较慢的 reduce4
+才读结果、复用 shared buffer。该组合第五轮初次比 vec_decode 耗时增加 0.235%，
+复测则减少 0.808%；缺少 trial 级波动数据，不能判断稳定更快。
+第六轮仍比较 no_ws、vec_decode 和待测的 `vec_q128`。此前较慢的 reduce4
 保留显式选择，不进入本轮启动默认项。
 vec_decode 的双阶段也未发布：离线 Q65/K257、D128、FP16/BF16 均为
 255 registers、120 B stack，spill store/load 各 120 B。D64 双阶段虽能编译，
