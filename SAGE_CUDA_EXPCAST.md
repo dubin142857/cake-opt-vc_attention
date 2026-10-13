@@ -3,6 +3,68 @@
 2026-10-13。当前主线是 **INT8 QK + ExpCast + FP8 PV，V 聚类和平滑关闭**。
 保留 vc28 已测实现，新候选不修改已安装包和默认 dispatch。
 
+## 当前候选：Tensor Core 分母归约
+
+本轮直接修改概率处理的主要工作，不再搬移几个标量。保持 K128 scale-prefetch
+基线以及原来的 INT8 QK、FP8 P/V、P 编码和 FP32 在线更新，V 聚类/平滑仍关闭。
+新路径是：
+
+1. 按 vc28 原公式产生完全相同的 P 字节。
+2. 将 P 无损解码为 FP16，用矩阵乘常量 0/1 的方式求局部分母，累加类型为 FP32。
+3. 每个 K32 组执行两次 `mma.m16n8k16`，四组共 8 次；再用 FP32 加法合并四个局部和。
+
+常量矩阵 B 按 lane 分组选取元素，每个线程仍得到**自己原来的 32 个 P 值之和**，
+没有把整行总和复制给各线程，也没有改变跨 tile 的分母递推。
+每个 K32 组从零开始累加，QK/PV 的矩阵指令、尾块 mask、异常范围 fallback 均保持基线。
+没有额外共享内存或 warpgroup fence/commit。
+
+数值范围：码值 0..120 对应非负 E4M3 概率，都是 `2^-9` 的整数倍，最大为 256。
+每线程每组只选中 8 个值，最多 `2^20` 个单位；整块 32 个值最多 `2^22` 个单位，
+FP32 可以精确表示这些局部和。非零值解码后最小 `2^-9`，在 FP16 中也都是正常数；
+这里没有 FP16 分母累加，也没有降低 P 精度。
+片段映射依据 [NVIDIA PTX 矩阵片段文档](https://docs.nvidia.com/cuda/archive/12.4.1/parallel-thread-execution/index.html)，
+上述分组归约与范围证明是本实现的推导，并通过独立矩阵重建和 GPU 测试核对。
+
+本地 CUDA12.4 SM90a 机器码确认，D128 的 **常规编码/求和分支**：
+
+| 静态指令 | scale-prefetch | tensor-mass |
+|---|---:|---:|
+| FP8 → FP16 成对解码 | 32 | 32 |
+| 逐值 FP16 → FP32 (`HADD2.F32`) | 64 | 0 |
+| FP32 标量加法 (`FADD.FTZ`) | 66 | 6 |
+| FP16 Tensor Core MMA，FP32 累加 | 0 | 8 |
+| 该分支全部静态指令 | 325 | 239 |
+
+这是局部分支静态指令数，**不是 26% 的 attention 加速**。新增矩阵指令可能带来
+Tensor Core 争用和等待，CUDA13 的调度也可能不同，必须用完整内核结果判断。
+早期 FP8 PTX MMA 写法被 CUDA12.4 展开为 FP16 HMMA 并引入额外合并；最终显式使用
+FP16 MMA/FP32 累加。因此不能宣称“FP8 解码已消除”或“分母使用原生 FP8 MMA”。
+
+本地 **85 项测试通过**，其中 40 项实际 GPU 测试覆盖 193 个直接字节/映射场景、
+38 个 P/max/alpha/mass 场景及混合 warp fallback；全部字节码、每个寄存器位置、
+大值与极小值混合均通过独立整数/FP64 oracle。SM86 执行相同的 FP16 MMA 归约，
+但 FP8 解码是软件路径；没有在本地执行完整 Hopper attention。
+8 个 attention 实例交叉编译均无 stack/spill；D128 两者 168 寄存器，D64 基线
+127/候选 128。共享内存不变：D128 动态 40,960 B、静态 128 B。
+基线机器指令与上一轮一致，详见 [本地证据](results/cuda_expcast_tensor_mass_local_validation.json)。
+
+远端一键运行：
+
+```bash
+git pull --ff-only origin master
+bash scripts/run_tensor_mass_h200.sh
+```
+
+默认 **BF16、NHD `[1,37741,28,128]`**；不重装已安装包，不需要 ncu/nvdisasm 或新依赖。
+首次用现有 nvcc 编译独立 JIT。先过编译资源门限、193 个分母测试、28 个 scale/stream
+测试、38 个概率状态测试、16 个 scale 交替测试、28 个 attention 配置，再测主尺寸；
+候选相对基线必须全部输出逐位一致，失败就停止计时。
+
+对比行：`vc28_scale_prefetch`、`vc28_tensor_mass`、`vc28_installed`、`sage_cpp`、`flash4`。
+9 轮随机顺序 API 测试与 5 轮 CUPTI 窗口分别统计；full API 包含新鲜预处理，fixed core
+共用相同量化输入。输出 `results/h200_cuda_expcast_tensor_mass.json`。
+可追加 `--validate-only` 只跑检查。H200 收益待测，当前默认入口仍不变。
+
 ## 最新结果：标量预取未显示收益，保留 K scale 预取
 
 H200 同轮 CUPTI 汇总如下，attention/all kernels/all GPU work 三列各行数值相等：

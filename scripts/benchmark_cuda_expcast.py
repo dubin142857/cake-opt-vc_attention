@@ -21,9 +21,12 @@ import pv_prefix_native
 import mass_tail_native
 import paired_qk_native
 import scalar_prefetch_native
+import tensor_mass_native
 
 VARIANTS={"vc28_jit":False,"vc28_split_mass":True}
 EXPERIMENTS={
+    "tensor_mass":(tensor_mass_native,"vc28_tensor_mass",
+        "K128 scale-prefetch baseline; exactly decode FP8 P to FP16, then eight FP16 MMA/FP32-accumulation operations replace per-element FP32 conversion/summation. A register-only selector preserves each thread's partial denominator; each K32 group starts at zero, joined with FP32 adds. Same encoding, QK/PV, history, fallback and tail; exact Hopper byte/mapping gates required."),
     "scalar_prefetch":(scalar_prefetch_native,"vc28_scalar_prefetch",
         "K128 scale-prefetch baseline; prepare next-tile dequant/score scale, affine gain and scale-valid predicate during current PV. Current-score max/range checks and warp vote remain in place. Same FP32 multiplication order, P bytes, FP32 mass/history and tail/PV math."),
     "paired_qk":(paired_qk_native,"vc28_paired_qk",
@@ -161,21 +164,24 @@ def main():
         report["environment"]={"torch":torch.__version__,"cuda":torch.version.cuda,"gpu":torch.cuda.get_device_name(device),
                                "native_version":vc._extension().sage_vc_kernel_version}
         ext,report["build"]=backend.load_native();save()
-        if a.experiment=="scalar_prefetch":
+        if a.experiment in ("scalar_prefetch","tensor_mass"):
             report["resource_validation"]=backend.check_resources(ext);save()
-            print("Scalar-prefetch resource gate:",json.dumps(report["resource_validation"]),flush=True)
+            print("Candidate resource gate:",json.dumps(report["resource_validation"]),flush=True)
+        if a.experiment=="tensor_mass":
+            from validate_tensor_mass import validate as validate_mass
+            report["mass_validation"]=validate_mass(ext,device,lambda r:update("mass_validation",r))
         if a.experiment=="paired_qk":
             report["build_audit"]=backend.build_audit(ext,vc,report["build"],a.dim,0 if a.dtype=="float16" else 1);save()
             report["qk_validation"]=backend.validate_qk(ext,device,lambda r:update("qk_validation",r))
             report["pipeline_validation"]=backend.validate_pipeline(ext,vc,vc_reference,device,lambda r:update("pipeline_validation",r))
-        if a.experiment in ("scale_prefetch","pv_prefix","mass_tail","scalar_prefetch"):
+        if a.experiment in ("scale_prefetch","pv_prefix","mass_tail","scalar_prefetch","tensor_mass"):
             report["build_audit"]=backend.build_audit(ext,vc,report["build"],a.dim,0 if a.dtype=="float16" else 1);save()
             from validate_scale_prefetch import validate as validate_scale
             report["scale_validation"]=validate_scale(ext,backend,vc,vc_reference,device,lambda r:update("scale_validation",r))
-        if a.experiment in ("fused_quad","pv_prefix","mass_tail","scalar_prefetch"):
+        if a.experiment in ("fused_quad","pv_prefix","mass_tail","scalar_prefetch","tensor_mass"):
             from validate_fused_quad_math import validate as validate_math
             report["probability_validation"]=validate_math(ext,device,lambda r:update("probability_validation",r),label=a.experiment)
-        if a.experiment in ("pv_prefix","mass_tail","scalar_prefetch"):
+        if a.experiment in ("pv_prefix","mass_tail","scalar_prefetch","tensor_mass"):
             report["pipeline_validation"]=backend.validate_pipeline(ext,vc,vc_reference,device,lambda r:update("pipeline_validation",r))
         report["validation"]=validate(ext,vc,vc_reference,device,lambda r:update("validation",r),backend,candidate,baseline_name)
         if a.validate_only:

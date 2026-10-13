@@ -98,7 +98,7 @@ def build_audit(ext,vc,build,dim,output_type):
 forward=base.forward
 
 
-def check_resources(ext):
+def check_resources(ext, label="Scalar-prefetch"):
     """Reject resource regressions before remote correctness/timing work."""
     rows=[]
     for dim in (64,128):
@@ -108,13 +108,13 @@ def check_resources(ext):
             if (new["registers_per_thread"]>168 or new["local_bytes"]!=0 or
                     new["dynamic_shared_bytes"]!=320*dim or
                     new["static_shared_bytes"]>old["static_shared_bytes"]):
-                raise RuntimeError(f"Scalar-prefetch resource gate failed: D{dim}, output {output_type}: {new}")
+                raise RuntimeError(f"{label} resource gate failed: D{dim}, output {output_type}: {new}")
             rows.append({"dim":dim,"output_type":output_type,"baseline":old,"candidate":new})
     return {"status":"passed","rows":rows,
             "scope":"Compiled resources; not achieved occupancy or a performance guarantee"}
 
 
-def validate_pipeline(ext,vc,reference,device,progress):
+def validate_pipeline(ext,vc,reference,device,progress,label="scalar-prefetch"):
     """Alternating scalar predicates and independent per-warp fallback state."""
     import torch
     from validate_scale_prefetch import assert_exact
@@ -136,7 +136,7 @@ def validate_pipeline(ext,vc,reference,device,progress):
                      "pattern":"alternating tiny/normal K scales; alternate warps with 128x Q scale",
                      "status":"running"}
                 rows.append(row);progress(rows)
-                print("Validate scalar-prefetch transitions",str(dtype),dim,n,flush=True)
+                print("Validate",label,"transitions",str(dtype),dim,n,flush=True)
                 old=forward(ext,state,False);out=forward(ext,state,True)
                 row["vs_baseline"]=assert_exact(out,old)
                 row["decoded_reference"]=metrics(out,reference.reference(state,chunk=32).to(dtype),limit=.01)

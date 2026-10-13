@@ -1,0 +1,247 @@
+{
+  "date": "2026-10-13",
+  "status": "local_checks_passed_h200_pending",
+  "tests_passed": 85,
+  "python_regression_tests": 45,
+  "gpu_tests": 40,
+  "byte_denominator_cases": 193,
+  "gpu_result": "38 P/max/alpha/mass cases bitwise equal and FP64 mass oracle exact; 193 direct-byte cases match integer-unit oracle, including all codes 0..120, every word position and mixed FP8 subnormals; one mixed-warp fallback case.",
+  "full_hopper_attention_executed": false,
+  "local_gpu": "RTX3060 Laptop SM86; same FP16 MMA/FP32 reduction, software FP8 decoding",
+  "cross_compile": "CUDA12.4 SM90a; 8 attention instantiations + 3 helper kernels",
+  "compiled_source_sha256": "b9dd792a4267f1f644c0311a01d652c7cb6cf933131a2140422751a4e6143fa0",
+  "current_source_sha256": "c020a59651422e30ed07fb97fe47c0d402108050db1c4b7b626bf09315fbbfa1",
+  "source_matches_current_tokens": true,
+  "compiled_source_equals_current": false,
+  "compiled_resources": [
+    {
+      "symbol": "_ZN7sage_vc39sage_vc_attention_kernel_scale_prefetchILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "variant": "vc28_scale_prefetch",
+      "dim": 128,
+      "dtype": "bfloat16",
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128,
+      "dynamic_shared_bytes": 40960
+    },
+    {
+      "symbol": "_ZN7sage_vc36sage_vc_attention_kernel_tensor_massILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "variant": "vc28_tensor_mass",
+      "dim": 128,
+      "dtype": "bfloat16",
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128,
+      "dynamic_shared_bytes": 40960
+    },
+    {
+      "symbol": "_ZN7sage_vc39sage_vc_attention_kernel_scale_prefetchILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "variant": "vc28_scale_prefetch",
+      "dim": 128,
+      "dtype": "float16",
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128,
+      "dynamic_shared_bytes": 40960
+    },
+    {
+      "symbol": "_ZN7sage_vc36sage_vc_attention_kernel_tensor_massILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "variant": "vc28_tensor_mass",
+      "dim": 128,
+      "dtype": "float16",
+      "registers": 168,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128,
+      "dynamic_shared_bytes": 40960
+    },
+    {
+      "symbol": "_ZN7sage_vc39sage_vc_attention_kernel_scale_prefetchILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "variant": "vc28_scale_prefetch",
+      "dim": 64,
+      "dtype": "bfloat16",
+      "registers": 127,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128,
+      "dynamic_shared_bytes": 20480
+    },
+    {
+      "symbol": "_ZN7sage_vc36sage_vc_attention_kernel_tensor_massILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "variant": "vc28_tensor_mass",
+      "dim": 64,
+      "dtype": "bfloat16",
+      "registers": 128,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128,
+      "dynamic_shared_bytes": 20480
+    },
+    {
+      "symbol": "_ZN7sage_vc39sage_vc_attention_kernel_scale_prefetchILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "variant": "vc28_scale_prefetch",
+      "dim": 64,
+      "dtype": "float16",
+      "registers": 127,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128,
+      "dynamic_shared_bytes": 20480
+    },
+    {
+      "symbol": "_ZN7sage_vc36sage_vc_attention_kernel_tensor_massILj64ELj128ELj128ELj64EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "variant": "vc28_tensor_mass",
+      "dim": 64,
+      "dtype": "float16",
+      "registers": 128,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 128,
+      "dynamic_shared_bytes": 20480
+    },
+    {
+      "symbol": "_Z24tensor_mass_bytes_kernelPKiPfi",
+      "variant": "probability_helper",
+      "dim": null,
+      "dtype": null,
+      "registers": 30,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 0,
+      "dynamic_shared_bytes": 0
+    },
+    {
+      "symbol": "_Z24tensor_mass_check_kernelILb0EEvPKiPKfS3_PiPfi",
+      "variant": "probability_helper",
+      "dim": null,
+      "dtype": null,
+      "registers": 80,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 0,
+      "dynamic_shared_bytes": 0
+    },
+    {
+      "symbol": "_Z24tensor_mass_check_kernelILb1EEvPKiPKfS3_PiPfi",
+      "variant": "probability_helper",
+      "dim": null,
+      "dtype": null,
+      "registers": 80,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "static_shared_bytes": 0,
+      "dynamic_shared_bytes": 0
+    }
+  ],
+  "static_codegen": [
+    {
+      "symbol": "_ZN7sage_vc39sage_vc_attention_kernel_scale_prefetchILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "instruction_count_total": 2848,
+      "guarded_main_encode_mass_region": {
+        "begin": "0x3060",
+        "end_exclusive": "0x44b0",
+        "instruction_count": 325,
+        "opcodes": {
+          "I2FP.F32.S32.RZ": 64,
+          "MOV": 1,
+          "FFMA.FTZ": 2,
+          "FFMA": 64,
+          "F2IP.U8.F32.NTZ": 32,
+          "F2FP.F16.E4M3.UNPACK_B": 32,
+          "HADD2.F32": 64,
+          "FADD.FTZ": 66
+        }
+      },
+      "baseline_sass_unchanged": true
+    },
+    {
+      "symbol": "_ZN7sage_vc36sage_vc_attention_kernel_tensor_massILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E13__nv_bfloat16L8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "instruction_count_total": 2760,
+      "guarded_main_encode_mass_region": {
+        "begin": "0x3070",
+        "end_exclusive": "0x3f60",
+        "instruction_count": 239,
+        "opcodes": {
+          "I2FP.F32.S32.RZ": 64,
+          "MOV": 10,
+          "FFMA.FTZ": 2,
+          "FFMA": 64,
+          "LOP3.LUT": 1,
+          "SHF.R.U32.HI": 17,
+          "F2IP.U8.F32.NTZ": 32,
+          "ISETP.NE.AND": 1,
+          "SEL": 1,
+          "F2FP.F16.E4M3.UNPACK_B": 32,
+          "HMMA.16816.F32": 8,
+          "NOP": 1,
+          "FADD.FTZ": 6
+        }
+      },
+      "baseline_sass_unchanged": null
+    },
+    {
+      "symbol": "_ZN7sage_vc39sage_vc_attention_kernel_scale_prefetchILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "instruction_count_total": 2848,
+      "guarded_main_encode_mass_region": {
+        "begin": "0x3060",
+        "end_exclusive": "0x44b0",
+        "instruction_count": 325,
+        "opcodes": {
+          "I2FP.F32.S32.RZ": 64,
+          "MOV": 1,
+          "FFMA.FTZ": 2,
+          "FFMA": 64,
+          "F2IP.U8.F32.NTZ": 32,
+          "F2FP.F16.E4M3.UNPACK_B": 32,
+          "HADD2.F32": 64,
+          "FADD.FTZ": 66
+        }
+      },
+      "baseline_sass_unchanged": true
+    },
+    {
+      "symbol": "_ZN7sage_vc36sage_vc_attention_kernel_tensor_massILj64ELj128ELj128ELj128EL16QuantGranularity3ELS1_3E6__halfL8MaskMode0ELb0ELb1ELb1ELb0ELb0ELb1ELi0ELi168ELb0ELi9ELb0ELb0ELb0EEEv14CUtensorMap_stS4_S4_PfS5_S5_PT5_Pvjjjjjjf",
+      "instruction_count_total": 2760,
+      "guarded_main_encode_mass_region": {
+        "begin": "0x3070",
+        "end_exclusive": "0x3f60",
+        "instruction_count": 239,
+        "opcodes": {
+          "I2FP.F32.S32.RZ": 64,
+          "MOV": 10,
+          "FFMA.FTZ": 2,
+          "FFMA": 64,
+          "LOP3.LUT": 1,
+          "SHF.R.U32.HI": 17,
+          "F2IP.U8.F32.NTZ": 32,
+          "ISETP.NE.AND": 1,
+          "SEL": 1,
+          "F2FP.F16.E4M3.UNPACK_B": 32,
+          "HMMA.16816.F32": 8,
+          "NOP": 1,
+          "FADD.FTZ": 6
+        }
+      },
+      "baseline_sass_unchanged": null
+    }
+  ],
+  "contract": "K128 scale-prefetch unchanged. Exactly decode FP8 P into FP16. Each K32 group starts with zero accumulator and uses two FP16 MMAs with a lane-selector B and FP32 accumulation to sum each thread's own 8 values; FP32 adds join four partials. Same P bytes, history and two-level PV; original fallback/tail retained.",
+  "actual_sm90a_lowering": "32 FP8-to-half2 decode instructions plus 8 FP16 HMMA instructions per guarded encode/mass branch. The D128 branch removes 64 half-to-float HADD2.F32 instructions, reduces FADD.FTZ from 66 to 6, and reduces total static instruction count 325->239. Do not claim no FP8 decode or infer attention speedup from static counts.",
+  "remote_gates": "Resource cap168/local0/same shared; 193 byte/mapping cases; 28 scale/stream cases; 38 probability cases; 16 tiny/normal scale transition cases; 28 standard cases; all-row exact main-shape comparison. Stop before timing if any gate fails.",
+  "limitation": "Hopper native FP8 decode and full attention still require remote validation. All nonzero decoded values are normal FP16, avoiding MMA subnormal-input ambiguity. Tensor Core contention/latency may offset reduced scalar work. CUDA13 lowering may differ.",
+  "current_h200_speedup": null
+}
