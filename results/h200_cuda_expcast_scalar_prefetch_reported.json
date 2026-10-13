@@ -1,0 +1,17 @@
+{
+  "date": "2026-10-13",
+  "source": "User-pasted H200 CUPTI table after run_scalar_prefetch_h200.sh",
+  "scope": "GPU kernel duration summary only; API tables, paired trials, remote compiled resources and detailed validation results were not supplied",
+  "reported_json_path": "results/h200_cuda_expcast_scalar_prefetch.json",
+  "milliseconds": {
+    "vc28_scale_prefetch": 22.9710,
+    "vc28_scalar_prefetch": 23.0945,
+    "vc28_installed": 23.3871,
+    "sage_cpp": 24.7461,
+    "flash4": 30.4702
+  },
+  "table_columns": "attention, all kernels and all GPU work are equal for each reported row",
+  "candidate_extra_ms": 0.1235,
+  "candidate_latency_increase_percent": 0.5376344086021501,
+  "decision": "Retain scale-prefetch. Scalar-prefetch shows no improvement in this summary. The small difference needs paired trial evidence before calling it a stable regression. No API speedup, statistical-significance or model-quality claim. The unchanged baseline's lower time than earlier runs is not a candidate improvement."
+}

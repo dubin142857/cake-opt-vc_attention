@@ -1,9 +1,32 @@
 # H200 CUDA 主线：ExpCast 调度候选
 
-2026-10-10。当前主线是 **INT8 QK + ExpCast + FP8 PV，V 聚类和平滑关闭**。
+2026-10-13。当前主线是 **INT8 QK + ExpCast + FP8 PV，V 聚类和平滑关闭**。
 保留 vc28 已测实现，新候选不修改已安装包和默认 dispatch。
 
-## 当前候选：K128 内提前准备下一块 ExpCast 标量
+## 最新结果：标量预取未显示收益，保留 K scale 预取
+
+H200 同轮 CUPTI 汇总如下，attention/all kernels/all GPU work 三列各行数值相等：
+
+| 实现 | GPU 内核 ms |
+|---|---:|
+| vc28_scale_prefetch | 22.9710 |
+| vc28_scalar_prefetch | 23.0945 |
+| vc28_installed | 23.3871 |
+| sage_cpp | 24.7461 |
+| flash4 | 30.4702 |
+
+标量预取候选增加 **0.1235 ms（0.54%）**，暂不采用。继续以 scale-prefetch 为基线，
+本轮相对 Sage/FA4 的内核加速比分别为 **1.077× / 1.326×**。
+这些是 GPU 时间，不能替代 full API 或模型端到端收益。
+
+本次只收到汇总表，尚无该轮 API 配对记录、编译资源和详细一致性结果；
+0.54% 的差距不足以单独证明稳定退步，也无法据此判定具体瓶颈。
+基线本身没有改变，不能把它相对上一轮的绝对耗时下降归因于标量预取候选。
+后续先读取已保存 JSON 的资源、同输入一致性及 full/core 的 `jit_vs_candidate`
+配对摘要，无需重新编译或计时。
+详见 [回传记录](results/h200_cuda_expcast_scalar_prefetch_reported.json)。
+
+## 已测候选：K128 内提前准备下一块 ExpCast 标量
 
 以已测 `scale_prefetch` 为基线，保持 Q64/K128 分块。上一版仅在 PV 期间加载
 下一块 K scale；本轮把其后的标量计算也提前：
@@ -51,10 +74,11 @@ D128 两条路径都是 **168 寄存器、40,960 B 动态共享内存**；
 D64 基线为 127 寄存器、候选 128，共享内存均 20,480 B；静态共享内存均 128 B。
 预取基线的指令文本与前一轮一致。D128 候选的三次乘法和两个 scale 比较位于
 PV 提交后、等待前；D64 的部分标量工作排在 PV 指令之间。
-这些是静态编译证据，**H200 正确性及加速效果待实测**，CUDA13 调度可能不同。
+这些是静态编译证据，CUDA13 调度可能不同。H200 性能汇总见上文；
+该轮详细正确性和编译资源尚未回传，不能用本地结果替代。
 详见 [本地验证记录](results/cuda_expcast_scalar_prefetch_local_validation.json)。
 
-## 最新结论：paired QK 未获得收益，保留 K128 预取基线
+## 已测结论：paired QK 未获得收益，保留 K128 预取基线
 
 本轮 H200 CUPTI 回传：
 
