@@ -1,6 +1,6 @@
 {
-  "date": "2026-10-10",
-  "status": "cross_compile_passed_vec_overlap_hopper_runtime_pending",
+  "date": "2026-10-13",
+  "status": "cross_compile_passed_vec_q128_hopper_runtime_pending",
   "target": "sm_90a",
   "compiler": "CUDA 12.4 NVRTC + ptxas",
   "shape": {
@@ -12,13 +12,15 @@
   "local_gpu": "RTX 3060 Laptop SM86",
   "compile_environment": "Windows NVRTC virtual stdint/stdlib headers and cuda::std compatibility imports; unchanged generated kernel bodies; not a Linux NVCC runtime validation",
   "tests": {
-    "cpu_auxiliary": 32,
-    "candidate_codegen": 40,
-    "candidate_configuration_rejection": 6,
+    "cpu_auxiliary": 36,
+    "candidate_codegen": 44,
+    "candidate_configuration_rejection": 7,
+    "q128_boundary_codegen": 4,
     "original_codegen": 8,
-    "passed": 86
+    "fence_pass_safety": 6,
+    "passed": 105
   },
-  "kernel_count": 53,
+  "kernel_count": 62,
   "kernels": [
     {
       "source": "baseline_bfloat16_d128_s1.cu",
@@ -1166,6 +1168,303 @@
         "sass_dependency_depth_measured": false
       },
       "copy_pipeline": "K/V cp.async; INT8 WGMMA QK; async FP8 WGMMA PV; no producer warpgroup"
+    },
+    {
+      "source": "vec_q128_bfloat16_d128_s1.cu",
+      "sha256": "a4e7b5f38c82b171a5a3bc8fa18709591152e0e9d876d50132407b2d74e11664",
+      "ptx_sha256": "9a1f1bc94a44cad9a73dd1c20962357d972464fd106e20ae0f5364177e06e6f5",
+      "shape": {
+        "batch": 1,
+        "heads": 2,
+        "queries": 65,
+        "keys": 257,
+        "dim": 128
+      },
+      "threads": 256,
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 239,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1330 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 239 registers\n",
+      "observations": {
+        "compute_query_tile": 128,
+        "quantization_query_tile": 64,
+        "compute_warpgroups": 2,
+        "query_scale_guard": "logical row < queries",
+        "physical_fragment_registers": {
+          "dots": 64,
+          "pv": 64
+        },
+        "operand_fences_match_physical_fragments": true,
+        "fence_fix_scope": "candidate-local post-lowering TIR pass, no global registry or installation edits"
+      },
+      "copy_pipeline": "Shared K/V cp.async for two compute warpgroups; INT8 QK WGMMA and FP8 PV WGMMA"
+    },
+    {
+      "source": "vec_q128_bfloat16_d64_s1.cu",
+      "sha256": "b07ab20b666c55039a453944fd7a4d8f257589fb2155d8fd33c06499eb5f6dc7",
+      "ptx_sha256": "5eb18ada00d2cf142ea740351601e66c3f0ec8526f383b47e9a813dcfa9ff33a",
+      "shape": {
+        "batch": 1,
+        "heads": 2,
+        "queries": 65,
+        "keys": 257,
+        "dim": 64
+      },
+      "threads": 256,
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 167,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1338 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 167 registers\n",
+      "observations": {
+        "compute_query_tile": 128,
+        "quantization_query_tile": 64,
+        "compute_warpgroups": 2,
+        "query_scale_guard": "logical row < queries",
+        "physical_fragment_registers": {
+          "dots": 64,
+          "pv": 32
+        },
+        "operand_fences_match_physical_fragments": true,
+        "fence_fix_scope": "candidate-local post-lowering TIR pass, no global registry or installation edits"
+      },
+      "copy_pipeline": "Shared K/V cp.async for two compute warpgroups; INT8 QK WGMMA and FP8 PV WGMMA"
+    },
+    {
+      "source": "vec_q128_boundary_bfloat16_d128_q128_k257_s1.cu",
+      "sha256": "8982ec28ac9bcd2019492f67afc1f1a8f8d0b98450485bf92a0851cde8a5dcfd",
+      "ptx_sha256": "cd3325fe1c72d8e47efb0492e665c69fe8e0ab72e0dfc9feb2690305a1dc4f6f",
+      "shape": {
+        "batch": 1,
+        "heads": 2,
+        "queries": 128,
+        "keys": 257,
+        "dim": 128
+      },
+      "threads": 256,
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 239,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1330 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 239 registers\n",
+      "observations": {
+        "compute_query_tile": 128,
+        "quantization_query_tile": 64,
+        "compute_warpgroups": 2,
+        "query_scale_guard": "logical row < queries",
+        "physical_fragment_registers": {
+          "dots": 64,
+          "pv": 64
+        },
+        "operand_fences_match_physical_fragments": true,
+        "fence_fix_scope": "candidate-local post-lowering TIR pass, no global registry or installation edits"
+      },
+      "copy_pipeline": "Shared K/V cp.async for two compute warpgroups; INT8 QK WGMMA and FP8 PV WGMMA"
+    },
+    {
+      "source": "vec_q128_boundary_bfloat16_d128_q129_k257_s1.cu",
+      "sha256": "2dbf33be64e084daeb26d9bea03719b1f4fca3abcdc17946c65011b635ba6840",
+      "ptx_sha256": "8e21b4bac048e13143a46133055cdad8dcdfae5cbfa5386b38978fb51a0f07b0",
+      "shape": {
+        "batch": 1,
+        "heads": 2,
+        "queries": 128,
+        "keys": 257,
+        "dim": 128
+      },
+      "threads": 256,
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 233,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1330 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 233 registers\n",
+      "observations": {
+        "compute_query_tile": 128,
+        "quantization_query_tile": 64,
+        "compute_warpgroups": 2,
+        "query_scale_guard": "logical row < queries",
+        "physical_fragment_registers": {
+          "dots": 64,
+          "pv": 64
+        },
+        "operand_fences_match_physical_fragments": true,
+        "fence_fix_scope": "candidate-local post-lowering TIR pass, no global registry or installation edits"
+      },
+      "copy_pipeline": "Shared K/V cp.async for two compute warpgroups; INT8 QK WGMMA and FP8 PV WGMMA"
+    },
+    {
+      "source": "vec_q128_boundary_bfloat16_d128_q1_k257_s1.cu",
+      "sha256": "cf8ac28dfe39f5d74cdf0ee185da89c4e94af6fa8296d653c39da082585390af",
+      "ptx_sha256": "365abd7ac3d6c2b41fbcd1afcd62a17f5795e422929ecffdb13e88ba2ada9dbc",
+      "shape": {
+        "batch": 1,
+        "heads": 2,
+        "queries": 128,
+        "keys": 257,
+        "dim": 128
+      },
+      "threads": 256,
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 239,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1330 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 239 registers\n",
+      "observations": {
+        "compute_query_tile": 128,
+        "quantization_query_tile": 64,
+        "compute_warpgroups": 2,
+        "query_scale_guard": "logical row < queries",
+        "physical_fragment_registers": {
+          "dots": 64,
+          "pv": 64
+        },
+        "operand_fences_match_physical_fragments": true,
+        "fence_fix_scope": "candidate-local post-lowering TIR pass, no global registry or installation edits"
+      },
+      "copy_pipeline": "Shared K/V cp.async for two compute warpgroups; INT8 QK WGMMA and FP8 PV WGMMA"
+    },
+    {
+      "source": "vec_q128_boundary_bfloat16_d128_q257_k257_s1.cu",
+      "sha256": "fe133c9060270ff43a12a64c4d9f8ad37f0fd7daeffd35477fed3099aa72baf3",
+      "ptx_sha256": "e9d8de7fa74da94b81f89645a620557febaf6e6178fe3a2234e3eb9354c60a73",
+      "shape": {
+        "batch": 1,
+        "heads": 2,
+        "queries": 128,
+        "keys": 257,
+        "dim": 128
+      },
+      "threads": 256,
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 233,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1330 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 233 registers\n",
+      "observations": {
+        "compute_query_tile": 128,
+        "quantization_query_tile": 64,
+        "compute_warpgroups": 2,
+        "query_scale_guard": "logical row < queries",
+        "physical_fragment_registers": {
+          "dots": 64,
+          "pv": 64
+        },
+        "operand_fences_match_physical_fragments": true,
+        "fence_fix_scope": "candidate-local post-lowering TIR pass, no global registry or installation edits"
+      },
+      "copy_pipeline": "Shared K/V cp.async for two compute warpgroups; INT8 QK WGMMA and FP8 PV WGMMA"
+    },
+    {
+      "source": "vec_q128_float16_d128_s1.cu",
+      "sha256": "f2792885221860eb7f1c72bc9b4ebe1361b040c05ef01e504a45696f338a4117",
+      "ptx_sha256": "385d6c7f442a46b38a352e26a74290b534dc5e480ca480aab42cc90e2c1a1d1b",
+      "shape": {
+        "batch": 1,
+        "heads": 2,
+        "queries": 65,
+        "keys": 257,
+        "dim": 128
+      },
+      "threads": 256,
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 239,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1330 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 239 registers\n",
+      "observations": {
+        "compute_query_tile": 128,
+        "quantization_query_tile": 64,
+        "compute_warpgroups": 2,
+        "query_scale_guard": "logical row < queries",
+        "physical_fragment_registers": {
+          "dots": 64,
+          "pv": 64
+        },
+        "operand_fences_match_physical_fragments": true,
+        "fence_fix_scope": "candidate-local post-lowering TIR pass, no global registry or installation edits"
+      },
+      "copy_pipeline": "Shared K/V cp.async for two compute warpgroups; INT8 QK WGMMA and FP8 PV WGMMA"
+    },
+    {
+      "source": "vec_q128_float16_d64_s1.cu",
+      "sha256": "1587176129fa3c3f7f63b0ff6d3f8f74fcfbd1012b282e74dbac69c4911f71e6",
+      "ptx_sha256": "e5507b7f44d28e7fcf82dbfcac28b69bf5fd063ab5d6540a4d7a87437d646692",
+      "shape": {
+        "batch": 1,
+        "heads": 2,
+        "queries": 65,
+        "keys": 257,
+        "dim": 64
+      },
+      "threads": 256,
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 167,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1338 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 167 registers\n",
+      "observations": {
+        "compute_query_tile": 128,
+        "quantization_query_tile": 64,
+        "compute_warpgroups": 2,
+        "query_scale_guard": "logical row < queries",
+        "physical_fragment_registers": {
+          "dots": 64,
+          "pv": 32
+        },
+        "operand_fences_match_physical_fragments": true,
+        "fence_fix_scope": "candidate-local post-lowering TIR pass, no global registry or installation edits"
+      },
+      "copy_pipeline": "Shared K/V cp.async for two compute warpgroups; INT8 QK WGMMA and FP8 PV WGMMA"
+    },
+    {
+      "source": "vec_q128_main_bfloat16_d128_s1.cu",
+      "sha256": "c447024a6eff0af00e7d881e00cc121738017bf3349dacbd8266e402f4d63c11",
+      "ptx_sha256": "ee0e796d3d06af03fdd81a0e984d8c45494c568dce1580da6f4d6fc46738a63d",
+      "shape": {
+        "batch": 1,
+        "heads": 28,
+        "queries": 37741,
+        "keys": 37741,
+        "dim": 128
+      },
+      "threads": 256,
+      "nvrtc_passed": true,
+      "ptxas_passed": true,
+      "registers": 238,
+      "stack_bytes": 0,
+      "spill_store_bytes": 0,
+      "spill_load_bytes": 0,
+      "ptxas_log": "ptxas info    : 1330 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 238 registers\n",
+      "observations": {
+        "compute_query_tile": 128,
+        "quantization_query_tile": 64,
+        "compute_warpgroups": 2,
+        "query_scale_guard": "logical row < queries",
+        "physical_fragment_registers": {
+          "dots": 64,
+          "pv": 64
+        },
+        "operand_fences_match_physical_fragments": true,
+        "fence_fix_scope": "candidate-local post-lowering TIR pass, no global registry or installation edits"
+      },
+      "copy_pipeline": "Shared K/V cp.async for two compute warpgroups; INT8 QK WGMMA and FP8 PV WGMMA"
     }
   ],
   "ptx_scale_load_observation": {
@@ -1203,7 +1502,7 @@
     "mma_codegen": 8,
     "mma_cross_compile": 8,
     "checks": "Generated CUDA and PTX must keep K release after MMA and bar.sync 15,128",
-    "integration_tests_passed": 86,
+    "integration_tests_passed": 105,
     "ptx_k_release_order_checked": 8
   },
   "shape_scope": "Default shape describes baseline/cached/MMA; no_ws kernels carry per-kernel shapes",
@@ -1353,7 +1652,8 @@
     "results/h200_tilelang_no_ws_reported.json",
     "results/h200_tilelang_no_ws_next_reported.json",
     "results/h200_tilelang_launch_failure_reported.json",
-    "results/h200_tilelang_no_ws_round4_reported.json"
+    "results/h200_tilelang_no_ws_round4_reported.json",
+    "results/h200_tilelang_no_ws_round5_reported.json"
   ],
   "new_no_ws_revision_checks": {
     "small_codegen": 8,
@@ -1604,6 +1904,191 @@
       "trace_dir": "results/tilelang_no_ws_round5_traces",
       "single_command": "bash scripts/run_tilelang_opt_h200.sh"
     },
-    "hopper_runtime": "Pending full correctness, repeated default/side stream gates and timing for vec_overlap."
+    "hopper_runtime": "User-reported completed H200 timing: no_ws 38.8468ms, vector decode 38.6095ms, vec_overlap 38.7002ms. Vector decode saved 0.611% against no_ws in this run; vec_overlap used 0.235% more time than vector decode. Validation inferred from reaching timing; full remote JSON and trial-level variability unavailable. No statistical significance is claimed."
+  },
+  "round6_probe_checks": {
+    "column_split": {
+      "decision": "Not exposed: BM64 with 256 FullCol threads adds shared-memory cross-warpgroup reductions; 148 registers on the main shape do not increase register-limited resident warps compared with the measured 128-thread control.",
+      "occupancy_scope": "Register-capacity bound only, not an achieved-occupancy measurement.",
+      "cases": [
+        {
+          "source": "round6_col_probe_main_d128_bfloat16.cu",
+          "sha256": "b0c54f7c57212e6ce6557233be3de848cfe154ac6d7036634c9815fc92e71db7",
+          "ptx_sha256": "249af920a6b17769780acbe28edd931e2b9b0379a4a4d779a029681b809b5bdf",
+          "registers": 148,
+          "threads": 256,
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "nvrtc_passed": true,
+          "ptxas_passed": true,
+          "gpu_execution": false
+        },
+        {
+          "source": "round6_col_probe_tail_d128_bfloat16.cu",
+          "sha256": "3161503c8fc2d125f680aecd0f87e0dda210cb2a875fb8a6ceec55bcec2d2512",
+          "ptx_sha256": "3a3e6baea5f428e7faf07b980b885d257d522afdbdc625d8a032f66a4f9bd84c",
+          "registers": 145,
+          "threads": 256,
+          "stack_bytes": 0,
+          "spill_store_bytes": 0,
+          "spill_load_bytes": 0,
+          "nvrtc_passed": true,
+          "ptxas_passed": true,
+          "gpu_execution": false
+        }
+      ]
+    },
+    "warp_specialized_vector_decode_s2": {
+      "decision": "Not exposed: actual local-memory writes occur in the hot loop despite zero ptxas-reported register spills.",
+      "report": {
+        "decision": "rejected_not_exposed",
+        "reason": "WS packed decode retains 256-thread/240-register allocation and adds actual local-memory probability stores; no demonstrated advantage over noWS vector decode.",
+        "gpu_execution": false,
+        "compiler": "NVRTC12.4 + ptxas sm_90a, fastmath",
+        "stage_count": 2,
+        "variant": "cached_vec_ws temporary ignored module",
+        "tracked_files_modified": false,
+        "installed_tilelang_modified": false,
+        "kernels": [
+          {
+            "source": "ws_vec_review_main_d128_bf16_s2.cu",
+            "sha256": "4f484ecece825b37f25835714cbabfbc017a7bb5d5a55668d011027865eb3af5",
+            "dim": 128,
+            "threads": 256,
+            "registers": 240,
+            "dynamic_shared_bytes": 81920,
+            "static_shared_bytes": 1024,
+            "stack_bytes": 64,
+            "spill_store_bytes": 0,
+            "spill_load_bytes": 0,
+            "nvrtc_passed": true,
+            "ptxas_passed": true,
+            "sass_local_store_instruction_count": 16,
+            "sass_local_load_instruction_count": 0,
+            "sass_local_store_notes": "8 entry zero-initialization STL.64 + 8 probability-buffer STL.64 in consumer key-loop; stores persist without ptxas spills",
+            "ptx_local_store_count": 32,
+            "all_operand_fences_match_fragment_lengths": true,
+            "shared_release_order_valid": true,
+            "tma_q_k_v_retained": true,
+            "shared_double_buffer_retained": true,
+            "ptxas_log": "ptxas info    : 1331 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    64 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 240 registers, 64 bytes cumulative stack size, 1024 bytes smem\n"
+          },
+          {
+            "source": "ws_vec_review_tail_d128_bf16_s2.cu",
+            "sha256": "a1fe4d5352e20610ac0e4633c54069bd365f32d773b6b40b928afb456ad2a398",
+            "dim": 128,
+            "threads": 256,
+            "registers": 240,
+            "dynamic_shared_bytes": 81920,
+            "static_shared_bytes": 1024,
+            "stack_bytes": 64,
+            "spill_store_bytes": 0,
+            "spill_load_bytes": 0,
+            "nvrtc_passed": true,
+            "ptxas_passed": true,
+            "sass_local_store_instruction_count": 16,
+            "sass_local_load_instruction_count": 0,
+            "sass_local_store_notes": "8 entry zero-initialization STL.64 + 8 probability-buffer STL.64 in consumer key-loop; stores persist without ptxas spills",
+            "ptx_local_store_count": 32,
+            "all_operand_fences_match_fragment_lengths": true,
+            "shared_release_order_valid": true,
+            "tma_q_k_v_retained": true,
+            "shared_double_buffer_retained": true,
+            "ptxas_log": "ptxas info    : 1331 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    64 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 240 registers, 64 bytes cumulative stack size, 1024 bytes smem\n"
+          },
+          {
+            "source": "ws_vec_review_tail_d128_f16_s2.cu",
+            "sha256": "2549365a11ecec1adbbfe25cf4a5a0a961cc78e00ff82fdbba1cc0f00047cd28",
+            "dim": 128,
+            "threads": 256,
+            "registers": 240,
+            "dynamic_shared_bytes": 81920,
+            "static_shared_bytes": 1024,
+            "stack_bytes": 64,
+            "spill_store_bytes": 0,
+            "spill_load_bytes": 0,
+            "nvrtc_passed": true,
+            "ptxas_passed": true,
+            "sass_local_store_instruction_count": 16,
+            "sass_local_load_instruction_count": 0,
+            "sass_local_store_notes": "8 entry zero-initialization STL.64 + 8 probability-buffer STL.64 in consumer key-loop; stores persist without ptxas spills",
+            "ptx_local_store_count": 32,
+            "all_operand_fences_match_fragment_lengths": true,
+            "shared_release_order_valid": true,
+            "tma_q_k_v_retained": true,
+            "shared_double_buffer_retained": true,
+            "ptxas_log": "ptxas info    : 1331 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    64 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 240 registers, 64 bytes cumulative stack size, 1024 bytes smem\n"
+          },
+          {
+            "source": "ws_vec_review_tail_d64_bf16_s2.cu",
+            "sha256": "f27d0e749bcbc529b3667a10fb3ab5e148d48b04077f7c2f2e3bf30e5a821114",
+            "dim": 64,
+            "threads": 256,
+            "registers": 240,
+            "dynamic_shared_bytes": 45056,
+            "static_shared_bytes": 1024,
+            "stack_bytes": 64,
+            "spill_store_bytes": 0,
+            "spill_load_bytes": 0,
+            "nvrtc_passed": true,
+            "ptxas_passed": true,
+            "sass_local_store_instruction_count": 16,
+            "sass_local_load_instruction_count": 0,
+            "sass_local_store_notes": "8 entry zero-initialization STL.64 + 8 probability-buffer STL.64 in consumer key-loop; stores persist without ptxas spills",
+            "ptx_local_store_count": 32,
+            "all_operand_fences_match_fragment_lengths": true,
+            "shared_release_order_valid": true,
+            "tma_q_k_v_retained": true,
+            "shared_double_buffer_retained": true,
+            "ptxas_log": "ptxas info    : 1339 bytes gmem\nptxas info    : Compiling entry function 'vc_tilelang_opt_kernel' for 'sm_90a'\nptxas info    : Function properties for vc_tilelang_opt_kernel\n    64 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\nptxas info    : Used 240 registers, 64 bytes cumulative stack size, 1024 bytes smem\n"
+          }
+        ]
+      }
+    }
+  },
+  "round6_revision_checks": {
+    "new_candidate": "vec_q128; two compute warpgroups reuse K/V for BM128, BN128, with packed FP8 decode",
+    "public_cross_compile_small_boundary_and_main": 9,
+    "prior_53_source_hashes_unchanged": true,
+    "candidate_codegen": 44,
+    "candidate_configuration_rejection": 7,
+    "q128_boundary_codegen": 4,
+    "original_codegen": 8,
+    "fence_pass_safety_tests": 6,
+    "gpu_execution": false,
+    "hopper_runtime": "Pending H200 correctness, repeated default/side stream gates and timing. Local SM86 cannot execute SM90a kernels; host JIT/runtime adapter execution is not independently verified.",
+    "local_api_review": "JITKernel backend_context and lower_with_context use the same candidate-only pipeline and existing adapter path. Backend selection honors TILELANG_EXECUTION_BACKEND.",
+    "launcher": {
+      "variants": [
+        "cached_no_ws_s1",
+        "cached_no_ws_vec_decode_s1",
+        "vec_q128"
+      ],
+      "output": "results/h200_tilelang_no_ws_round6.json",
+      "trace_dir": "results/tilelang_no_ws_round6_traces",
+      "single_command": "bash scripts/run_tilelang_opt_h200.sh",
+      "bash_syntax_and_real_argv_tests_passed": true,
+      "shell_lf_verified": true
+    },
+    "cpu_auxiliary": 36,
+    "passed": 105,
+    "validation_cases": {
+      "all": 32,
+      "targeted_tail": 8,
+      "new_boundaries": [
+        {
+          "queries": 128,
+          "keys": 257
+        },
+        {
+          "queries": 129,
+          "keys": 257
+        }
+      ],
+      "historical_24_inputs_unchanged": true,
+      "boundary_random_seed": 3334,
+      "original_random_seed": 3333
+    }
   }
 }

@@ -6,20 +6,16 @@ import sys
 import pytest
 
 tilelang = pytest.importorskip("tilelang")
-from tvm.target import Target
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from tilelang_expcast_opt import (
     NO_WS_VARIANTS, PV_OVERLAP_VARIANTS, VEC_DECODE_VARIANTS,
-    compiler_pass_configs, make_primfunc,
+    lower_source as lower_candidate_source, make_primfunc,
 )
 
 
 def lower_source(dim, stages, variant, dtype, queries=65, keys=129):
-    target = Target({"kind": "cuda", "arch": "sm_90a"})
-    with target, tilelang.transform.PassContext(config=compiler_pass_configs(variant)):
-        return tilelang.lower(make_primfunc(1, 2, queries, keys, dim, dtype, stages, variant),
-                              target=target).kernel_source
+    return lower_candidate_source(1, 2, queries, keys, dim, dtype, stages, variant)
 
 
 @pytest.mark.parametrize("dim", [64, 128])
@@ -28,6 +24,7 @@ def lower_source(dim, stages, variant, dtype, queries=65, keys=129):
     ("cached_no_ws", 1), ("cached_no_ws_overlap", 1), ("cached_no_ws_int_mass", 1),
     ("cached_no_ws_vec_decode", 1), ("cached_no_ws_reduce4", 1),
     ("vec_overlap", 1),
+    ("vec_q128", 1),
 ])
 @pytest.mark.parametrize("dtype", ["float16", "bfloat16"])
 def test_cached_scales_and_native_low_precision_gemms(dim, stages, variant, dtype):
@@ -52,7 +49,8 @@ def test_cached_scales_and_native_low_precision_gemms(dim, stages, variant, dtyp
     else:
         assert "kInt8, tl::DataType::kInt8" in source
     if variant in NO_WS_VARIANTS:
-        assert "__launch_bounds__(128, 1)" in source
+        threads = 256 if variant == "vec_q128" else 128
+        assert f"__launch_bounds__({threads}, 1)" in source
         # The operand fence must cover only the physical per-thread fragment.
         # A Q128/256-thread probe exposed an out-of-bounds default fence.
         for name in ("dots", "pv"):
@@ -147,3 +145,35 @@ def test_cached_scales_and_native_low_precision_gemms(dim, stages, variant, dtyp
 def test_no_ws_two_stages_rejected(variant):
     with pytest.raises(ValueError, match="two stages spill registers"):
         make_primfunc(1, 2, 65, 257, 128, stages=2, variant=variant)
+
+
+@pytest.mark.parametrize("queries", [1, 128, 129, 257])
+def test_q128_quantization_geometry_and_guarded_short_final_cta(queries):
+    func = make_primfunc(1, 2, queries, 257, 128, "bfloat16", 1, "vec_q128")
+    qs = next(buf for buf in func.buffer_map.values() if buf.name == "QS")
+    assert tuple(int(size) for size in qs.shape) == (1, 2, (queries + 63) // 64 * 32)
+    source = lower_source(128, 1, "vec_q128", "bfloat16", queries, 257)
+    outdir = Path(__file__).resolve().parents[1] / "results" / "tilelang_opt_local_sources"
+    (outdir / f"vec_q128_boundary_bfloat16_d128_q{queries}_k257_s1.cu").write_text(source, encoding="utf-8")
+    assert "__launch_bounds__(256, 1)" in source
+    # Both warpgroups stay active for shared K/V consumption, including an
+    # entirely invalid second half or a final CTA with one valid query.
+    assert "return;" not in source
+    assert "__syncthreads()" in source
+    assert "NamedBarrier<128>" not in source
+    qs_read = source.index("QS[")
+    assert "query_scale" in source[:qs_read]
+    if queries % 128:
+        from test_tilelang_expcast_codegen import branch_body
+        guard = source.rfind("if (", 0, qs_read)
+        guarded_body, end = branch_body(source, guard)
+        assert "QS[" in guarded_body
+        inactive_body, _ = branch_body(source, source.index("else", end))
+        assert "query_scale" in inactive_body and "QS[" not in inactive_body
+    # The compiler pass corrects physical per-thread lengths for both GEMMs.
+    for name in ("dots", "pv"):
+        size = int(re.search(rf"\b(?:int|float) {name}\[(\d+)\]", source)[1])
+        assert size == 64
+        fences = re.findall(
+            rf"warpgroup_fence_operand\(reinterpret_cast<[^>]+>\({name} \+ 0\), (\d+)\)", source)
+        assert fences and all(int(count) == size for count in fences)

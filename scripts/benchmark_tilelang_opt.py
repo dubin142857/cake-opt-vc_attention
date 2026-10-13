@@ -28,7 +28,10 @@ CANDIDATES = {
     "cached_no_ws_vec_decode_s1": (1, "cached_no_ws_vec_decode"),
     "cached_no_ws_reduce4_s1": (1, "cached_no_ws_reduce4"),
     "vec_overlap": (1, "vec_overlap"),
+    "vec_q128": (1, "vec_q128"),
 }
+
+Q128_VALIDATION_CASES = (("random", 128, 257), ("random", 129, 257))
 
 
 def parse_args(argv=None):
@@ -42,7 +45,7 @@ def parse_args(argv=None):
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--variants", nargs="+", choices=tuple(CANDIDATES),
                         default=["cached_no_ws_s1", "cached_no_ws_vec_decode_s1"],
-                        help="Default: measured no_ws/vec_decode; vec_overlap and other schedules are explicit experiments")
+                        help="Default: measured no_ws/vec_decode; vec_q128, vec_overlap and other schedules are explicit experiments")
     parser.add_argument("--include-overlap", action="store_true", help="Also run original async PV schedules")
     parser.add_argument("--qkv-file", type=Path)
     parser.add_argument("--qkv-layout", choices=("NHD", "HND"), default="NHD")
@@ -196,6 +199,7 @@ def check_exact_run(call, synchronize, expected, *, stream, run_index, on_result
 def validation_cases(selection):
     cases = [("random", m, n) for m, n in ((1, 1), (65, 129), (193, 256))]
     cases += [("uniform_tiles", 65, n) for n in (128, 129, 257)]
+    cases += Q128_VALIDATION_CASES
     if selection == "tail65_129":
         return [case for case in cases if case[1:] == (65, 129)]
     if selection != "all":
@@ -216,9 +220,14 @@ def validation_inputs(case, dtype, dim, device, generator):
 
 
 def yield_selected_inputs(selection, dtype, dim, device, generator):
-    """Preserve full-suite RNG advancement while skipping compilation/checks."""
+    """Keep historical RNG draws; new Q128 boundaries use a separate seed."""
     selected = set(validation_cases(selection))
+    boundary_generator = torch.Generator(device=device).manual_seed(3334)
     for case in validation_cases("all"):
+        if case in Q128_VALIDATION_CASES:
+            if case in selected:
+                yield case, validation_inputs(case, dtype, dim, device, boundary_generator)
+            continue
         # Skipped random cases must still consume all three original draws.
         # Uniform cases use no random draws. No quantization/JIT occurs here.
         qkv = validation_inputs(case, dtype, dim, device, generator)
@@ -234,7 +243,7 @@ def validate(configs, reference, device, report, save, source_dir):
         "validation_cases": 4 * len(validation_cases(selection)), "validation_all_rows": True,
         "stability": "Same prepared payload; three default and three non-default runs, exact all-row comparison"}
     validation = report["validation"] = {"status": "running", "cases": [], "seed": 3333,
-        "rng_order": "Full case order preserved, including Q/K/V draws for skipped random cases",
+        "rng_order": "Original 24-case RNG order preserved, including skipped random draws; Q128/Q129 boundaries use independent seed 3334 per dtype/dim",
         "gates": "Baseline/decoded oracle <=1%; candidate/stage-matched baseline <=0.1%; three default and three non-default stream runs exact"}
     generator = torch.Generator(device=device).manual_seed(3333)
     for dtype in (torch.float16, torch.bfloat16):

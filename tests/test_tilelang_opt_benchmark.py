@@ -82,9 +82,9 @@ def launcher_arguments(tmp_path):
 @pytest.mark.parametrize("options", [[], ["--device", "cuda:1", "--skip-cupti"]])
 def test_bash_entry_keeps_current_round_defaults(benchmark, launcher_arguments, options):
     args = benchmark.parse_args(launcher_arguments(*options))
-    assert args.variants == ["cached_no_ws_s1", "cached_no_ws_vec_decode_s1", "vec_overlap"]
-    assert args.output == Path("results/h200_tilelang_no_ws_round5.json")
-    assert args.trace_dir == Path("results/tilelang_no_ws_round5_traces")
+    assert args.variants == ["cached_no_ws_s1", "cached_no_ws_vec_decode_s1", "vec_q128"]
+    assert args.output == Path("results/h200_tilelang_no_ws_round6.json")
+    assert args.trace_dir == Path("results/tilelang_no_ws_round6_traces")
     if options:
         assert args.device == "cuda:1" and args.skip_cupti
 
@@ -161,6 +161,7 @@ def test_cli_candidate_subset_is_deduplicated_and_overlap_is_explicit(benchmark)
     ["--variants", "cached_no_ws_overlap_s2"], ["--variants", "cached_no_ws_int_mass_s2"],
     ["--variants", "cached_no_ws_vec_decode_s2"], ["--variants", "cached_no_ws_reduce4_s2"],
     ["--variants", "vec_overlap_s2"],
+    ["--variants", "vec_q128_s2"],
     ["--queries", "0"], ["--dim", "32"],
     ["--check-queries", "-1"], ["--kernel-seconds", "nan"],
 ])
@@ -184,7 +185,7 @@ def test_dispatch_preserves_backend_stage_and_same_payload_without_late_binding(
     configs = benchmark.configurations(benchmark.parse_args([
         "--include-overlap", "--variants", "cached_s1", "cached_s2", "mma_qk_s1", "mma_qk_s2", "cached_no_ws_s1",
         "cached_no_ws_overlap_s1", "cached_no_ws_int_mass_s1", "cached_no_ws_vec_decode_s1",
-        "cached_no_ws_reduce4_s1", "vec_overlap"]))
+        "cached_no_ws_reduce4_s1", "vec_overlap", "vec_q128"]))
     calls = benchmark.implementations(configs)
     payload = object()
     for name, call in calls.items():
@@ -212,6 +213,7 @@ def test_measured_defaults_map_to_stage_one_and_can_be_selected_alone(benchmark,
     ("cached_no_ws_int_mass_s1", "cached_no_ws_int_mass"),
     ("cached_no_ws_reduce4_s1", "cached_no_ws_reduce4"),
     ("vec_overlap", "vec_overlap"),
+    ("vec_q128", "vec_q128"),
 ])
 def test_experimental_candidates_are_explicit_and_stage_one(benchmark, name, variant):
     assert name not in benchmark.parse_args([]).variants
@@ -225,7 +227,9 @@ def test_targeted_validation_selects_both_tail_patterns(benchmark):
     assert args.validate_only
     assert benchmark.validation_cases(args.validation_case) == [
         ("random", 65, 129), ("uniform_tiles", 65, 129)]
-    assert len(benchmark.validation_cases("all")) == 6
+    assert len(benchmark.validation_cases("all")) == 8
+    assert benchmark.validation_cases("all")[-2:] == [
+        ("random", 128, 257), ("random", 129, 257)]
 
 
 def test_targeted_tail_inputs_match_full_suite_rng_for_every_dtype_and_dim(benchmark):
@@ -246,6 +250,36 @@ def test_targeted_tail_inputs_match_full_suite_rng_for_every_dtype_and_dim(bench
                 checked.append((dtype, dim, case))
             assert torch.equal(tail_generator.get_state(), full_generator.get_state())
     assert len(checked) == 8
+
+
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_q128_boundaries_preserve_historical_inputs_and_rng_state(benchmark, dtype):
+    historical = [("random", 1, 1), ("random", 65, 129), ("random", 193, 256),
+                  ("uniform_tiles", 65, 128), ("uniform_tiles", 65, 129),
+                  ("uniform_tiles", 65, 257)]
+    # Advance both streams through prior dtype combinations as the real loop
+    # does, then compare legacy values and the final state after each dim.
+    original = torch.Generator(device="cpu").manual_seed(3333)
+    extended = torch.Generator(device="cpu").manual_seed(3333)
+    for previous_dtype in (torch.float16, torch.bfloat16):
+        for dim in (64, 128):
+            expected = {case: benchmark.validation_inputs(case, previous_dtype, dim, "cpu", original)
+                        for case in historical}
+            actual = dict(benchmark.yield_selected_inputs("all", previous_dtype, dim, "cpu", extended))
+            assert torch.equal(original.get_state(), extended.get_state())
+            if previous_dtype != dtype:
+                continue
+            for case, qkv in expected.items():
+                assert all(torch.equal(a, b) for a, b in zip(actual[case], qkv)), (dtype, dim, case)
+            # Verify new boundaries are actual random tensors from their
+            # independent stream, including its progression across both cases.
+            boundary_generator = torch.Generator(device="cpu").manual_seed(3334)
+            for queries in (128, 129):
+                case = ("random", queries, 257)
+                boundary = benchmark.validation_inputs(case, dtype, dim, "cpu", boundary_generator)
+                assert all(torch.equal(a, b) for a, b in zip(actual[case], boundary))
+                assert actual[case][0].shape == (1, 2, queries, dim)
+                assert actual[case][1].shape == actual[case][2].shape == (1, 2, 257, dim)
 
 
 def test_stability_synchronizes_before_reading_and_records_success(benchmark):

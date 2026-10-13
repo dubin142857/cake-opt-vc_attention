@@ -10,9 +10,9 @@ from functools import lru_cache
 import tilelang_expcast as baseline
 
 NO_WS_VARIANTS = ("cached_no_ws", "cached_no_ws_overlap", "cached_no_ws_int_mass",
-                  "cached_no_ws_vec_decode", "cached_no_ws_reduce4", "vec_overlap")
+                  "cached_no_ws_vec_decode", "cached_no_ws_reduce4", "vec_overlap", "vec_q128")
 VARIANTS = ("cached", "mma_qk", *NO_WS_VARIANTS)
-VEC_DECODE_VARIANTS = ("cached_no_ws_vec_decode", "vec_overlap")
+VEC_DECODE_VARIANTS = ("cached_no_ws_vec_decode", "vec_overlap", "vec_q128")
 PV_OVERLAP_VARIANTS = ("cached_no_ws_overlap", "vec_overlap")
 
 
@@ -22,7 +22,7 @@ def compiler_pass_configs(variant):
         raise ValueError(f"Unknown TileLang optimization: {variant}")
     config = {tilelang.PassConfigKey.TL_ENABLE_FAST_MATH: True}
     if variant in NO_WS_VARIANTS:
-        # Keep the 128-thread compute CTA without a producer warpgroup.
+        # Keep compute warpgroups without a separate producer warpgroup.
         # TileLang replaces K/V TMA with cp.async; both GEMMs still use
         # WGMMA on Hopper.
         config[tilelang.PassConfigKey.TL_DISABLE_WARP_SPECIALIZED] = True
@@ -41,9 +41,11 @@ def make_primfunc(batch, heads, queries, keys, dim, output_dtype="bfloat16",
         raise ValueError(f"Unknown TileLang optimization: {variant}")
     if variant in NO_WS_VARIANTS and stages != 1:
         raise ValueError("no_ws variants support one stage; two stages spill registers on tail shapes")
-    bm, bn = 64, 128
+    bm, bn = (128 if variant == "vec_q128" else 64), 128
+    threads = 256 if variant == "vec_q128" else 128
     blocks = (keys + bn - 1) // bn
-    qs_len = (queries + bm - 1) // bm * 32
+    # Sage's Q quantization always uses BLKQ64, including the BM128 candidate.
+    qs_len = (queries + 63) // 64 * 32
     prelude = (baseline.ROOT / "experiments/expcast/paper_math.cuh").read_text(encoding="utf-8")
     if variant == "cached_no_ws_int_mass":
         # ExpCast emits codes 0..120. Their decoded E4M3 values are integral
@@ -85,7 +87,7 @@ __device__ __forceinline__ void vc_mma_finish_k(const void* k) {
                scale: T.float32):
         T.func_attr({"global_symbol": "vc_tilelang_opt"})
         with T.Kernel(T.ceildiv(queries, bm), heads, batch,
-                      threads=128, prelude=prelude) as (bx, h, b):
+                      threads=threads, prelude=prelude) as (bx, h, b):
             q = T.alloc_shared((bm, dim), T.int8)
             k = T.alloc_shared((bn, dim), T.int8)
             if variant == "mma_qk":
@@ -120,7 +122,16 @@ __device__ __forceinline__ void vc_mma_finish_k(const void* k) {
             T.copy(Q[b, h, bx * bm:(bx + 1) * bm, :], q)
             for i in T.Parallel(bm):
                 row = bx * bm + i
-                query_scale[i] = QS[b, h, (row // 16) * 8 + row % 8]
+                if variant == "vec_q128":
+                    # Quantized scales pad to 64 rows, whereas this compute
+                    # tile pads to 128. The second warpgroup may have no valid
+                    # queries, but must still participate in CTA barriers.
+                    if row < queries:
+                        query_scale[i] = QS[b, h, (row // 16) * 8 + row % 8]
+                    else:
+                        query_scale[i] = T.float32(0)
+                else:
+                    query_scale[i] = QS[b, h, (row // 16) * 8 + row % 8]
             T.fill(maximum, -5e6)
             T.clear(accum)
             T.clear(denom)
@@ -218,10 +229,33 @@ def compile_kernel(batch, heads, queries, keys, dim, dtype, stages=1, variant="c
     import tilelang
     if tilelang.__version__.split("+")[0] != "0.1.15":
         raise RuntimeError("This experiment pins TileLang 0.1.15")
+    func = make_primfunc(batch, heads, queries, keys, dim, dtype, stages, variant)
+    if variant == "vec_q128":
+        from tilelang.jit.kernel import JITKernel
+        from tilelang_q128_lowering import create_q128_context
+        # This context fixes only this candidate's oversized automatic operand
+        # fences. Existing kernels use the original TileLang compilation path.
+        return JITKernel(func, out_idx=[6],
+                         backend_context=create_q128_context({"kind": "cuda", "arch": "sm_90a"}),
+                         pass_configs=compiler_pass_configs(variant))
     return tilelang.compile(
-        make_primfunc(batch, heads, queries, keys, dim, dtype, stages, variant),
+        func,
         out_idx=[6], target={"kind": "cuda", "arch": "sm_90a"},
         pass_configs=compiler_pass_configs(variant))
+
+
+def lower_source(batch, heads, queries, keys, dim, dtype, stages=1, variant="cached"):
+    """Offline code generation through the same candidate pipeline as the JIT."""
+    import tilelang
+    from tvm.target import Target
+    target = Target({"kind": "cuda", "arch": "sm_90a"})
+    func = make_primfunc(batch, heads, queries, keys, dim, dtype, stages, variant)
+    with target, tilelang.transform.PassContext(config=compiler_pass_configs(variant)):
+        if variant == "vec_q128":
+            from tilelang.engine.lower import lower_with_context
+            from tilelang_q128_lowering import create_q128_context
+            return lower_with_context(func, create_q128_context(target)).kernel_source
+        return tilelang.lower(func, target=target).kernel_source
 
 
 def forward_prepared(state, stages=1, variant="cached"):
