@@ -1,7 +1,7 @@
 # MiniMax-H3 / A5 VC-Attention 实验
 
 **当前 H200 主路线（2026-10-13）：`sageattn_vc`，INT8 QK + FP8 PV。**
-最新 scalar-prefetch 为 23.0945 ms，同轮 scale-prefetch 为 22.9710 ms，候选慢 0.1235 ms（0.54%），未显示收益，继续保留 K128 scale-prefetch 基线。该轮基线相对 Sage/FA4 的 GPU 内核加速比为 1.077×/1.326×，不代表完整 API 或模型收益；小幅差异还需结合配对记录判断。`bash scripts/run_scalar_prefetch_h200.sh` 保留作实验对照，见 [CUDA 实验说明](SAGE_CUDA_EXPCAST.md)。
+最新 scalar-prefetch 为 23.0945 ms，同轮 scale-prefetch 为 22.9710 ms，候选慢 0.1235 ms（0.54%），不采用，继续保留 K128 scale-prefetch 基线。随后回传确认两者编译资源相同、输出逐位一致，但 full/core 均仅 2/9 轮更快，配对节省中位数均为负。该轮基线相对 Sage/FA4 的 GPU 内核加速比为 1.077×/1.326×，不代表完整 API 或模型收益。`bash scripts/run_scalar_prefetch_h200.sh` 保留作实验对照，见 [CUDA 实验说明](SAGE_CUDA_EXPCAST.md)。
 最新 paired-QK 实测 24.5014 ms，比同轮预取基线 23.4789 ms 慢 4.35%，不采用；继续保留 K128 预取路线。该轮基线对 Sage/FA4 的 GPU 内核加速比分别为 1.060×/1.302×，不是完整 API 收益，见 [CUDA 实验说明](SAGE_CUDA_EXPCAST.md)。`bash scripts/run_paired_qk_h200.sh` 保留为实验对照。
 最新 mass-tail 为 23.4445 ms，预取基线为 23.4322 ms，未显示收益；保留为历史实验。
 上轮 prefix-overlap 为 23.5372 ms，仍慢于预取基线 23.4155 ms，暂不采用；`bash scripts/run_pv_prefix_h200.sh` 保留作对照。

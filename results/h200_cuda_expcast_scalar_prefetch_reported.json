@@ -1,7 +1,7 @@
 {
   "date": "2026-10-13",
-  "source": "User-pasted H200 CUPTI table after run_scalar_prefetch_h200.sh",
-  "scope": "GPU kernel duration summary only; API tables, paired trials, remote compiled resources and detailed validation results were not supplied",
+  "source": "User-pasted H200 CUPTI table and subsequent compiled_resources/comparison/paired_comparisons summaries",
+  "scope": "GPU kernel durations, native resource counts, full/core API ratios, same-payload output check and paired trial summaries. Absolute API medians, raw paired trials and detailed validation cases were not supplied.",
   "reported_json_path": "results/h200_cuda_expcast_scalar_prefetch.json",
   "milliseconds": {
     "vc28_scale_prefetch": 22.9710,
@@ -13,5 +13,48 @@
   "table_columns": "attention, all kernels and all GPU work are equal for each reported row",
   "candidate_extra_ms": 0.1235,
   "candidate_latency_increase_percent": 0.5376344086021501,
-  "decision": "Retain scale-prefetch. Scalar-prefetch shows no improvement in this summary. The small difference needs paired trial evidence before calling it a stable regression. No API speedup, statistical-significance or model-quality claim. The unchanged baseline's lower time than earlier runs is not a candidate improvement."
+  "compiled_resources": {
+    "vc28_scale_prefetch": {
+      "dynamic_shared_bytes": 40960,
+      "local_bytes": 0,
+      "registers_per_thread": 168,
+      "static_shared_bytes": 128
+    },
+    "vc28_scalar_prefetch": {
+      "dynamic_shared_bytes": 40960,
+      "local_bytes": 0,
+      "registers_per_thread": 168,
+      "static_shared_bytes": 128
+    }
+  },
+  "comparison": {
+    "full_old_over_new": 0.9916225729284079,
+    "core_old_over_new": 0.9971018972059243,
+    "relative_rmse": 0.0,
+    "max_abs": 0.0,
+    "exact_match": true
+  },
+  "paired_trial_summaries": {
+    "full": {
+      "jit_vs_candidate": {
+        "median_saved_ms": -0.035949237644672394,
+        "min_saved_ms": -0.57024285197258,
+        "max_saved_ms": 0.13293083757162094,
+        "faster_trials": 2,
+        "trials": 9,
+        "note": "Matched trial indices with randomized within-trial order; descriptive, not a significance test."
+      }
+    },
+    "core": {
+      "jit_vs_candidate": {
+        "median_saved_ms": -0.1409030519425869,
+        "min_saved_ms": -0.3336748108267784,
+        "max_saved_ms": 0.0809619203209877,
+        "faster_trials": 2,
+        "trials": 9,
+        "note": "Matched trial indices with randomized within-trial order; descriptive, not a significance test."
+      }
+    }
+  },
+  "decision": "Retain scale-prefetch. Scalar-prefetch has identical output and reported resource counts but no performance benefit: only 2/9 faster trials for both full/core APIs, with negative paired median savings. This supports rejecting this candidate, not a statistical-significance or model-quality claim. Equal resources do not prove equal scheduling or identify the critical path. The unchanged baseline's lower time than earlier runs is not a candidate improvement."
 }
