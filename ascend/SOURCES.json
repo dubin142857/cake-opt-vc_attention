@@ -1,13 +1,26 @@
 {
   "component": "vc-attention-ascend",
-  "status": "experimental; 0.1.1 fixes cross-query-task vscale UB reuse ordering with MTE3_S; remote rebuild and validation pending, no valid performance claim. User diagnostics: Q32/K37741 passed, Q1025/K129 failed and repeated identical payloads were nondeterministic; isolated failing Q32 tiles passed",
+  "status": "experimental; user reported 0.1.1 completed long-shape benchmark after MTE3_S reuse fix. 0.2.0 adds opt-in M64 execution with unchanged Q32/K128 quantization and separate sampled phase probes. Local CPU/host checks only; new native compilation, correctness and speed remain pending on remote NPU. Default remains M32.",
   "target": "DAV-2201: A2 Ascend910B1-B4/B2C and A3 Ascend910_93xx; exact selected runtime SoC, including reported Ascend910_9382",
   "skill_repository": {
     "url": "https://github.com/hicann/cannbot-skills",
     "commit": "dbf4019cae5d757820f03c9cd21e0f0b277e1701",
     "license": "CANN Open Software License Agreement Version 2.0",
-    "skills": ["ops/npu-arch", "ops/ascendc-direct-invoke-template", "ops/torch-ascendc-op-extension", "ops/ascendc-tiling-design", "ops/ascendc-api-best-practices", "ops/ascendc-env-check", "ops/ascendc-sync-audit"],
-    "additional_references": ["ops/npu-arch/references/npu-hardware-params.md", "ops/ascendc-env-check/scripts/get_npu_arch.py", "ops/catlass-op-develop/references/patterns/fa-kernel-recipes.md", "plugins-community/ascendc-port-orchestrator/examples/a3_mix_fa_min"],
+    "skills": [
+      "ops/npu-arch",
+      "ops/ascendc-direct-invoke-template",
+      "ops/torch-ascendc-op-extension",
+      "ops/ascendc-tiling-design",
+      "ops/ascendc-api-best-practices",
+      "ops/ascendc-env-check",
+      "ops/ascendc-sync-audit"
+    ],
+    "additional_references": [
+      "ops/npu-arch/references/npu-hardware-params.md",
+      "ops/ascendc-env-check/scripts/get_npu_arch.py",
+      "ops/catlass-op-develop/references/patterns/fa-kernel-recipes.md",
+      "plugins-community/ascendc-port-orchestrator/examples/a3_mix_fa_min"
+    ],
     "usage": "Hardware/API guidance, packaging and mixed-core handshake patterns. A2 and A3 share DAV-2201 and runtime SocVersion::ASCEND910B; compile for the exact SKU. A3 handshake example is a reference, not evidence of this kernel running on A2/A3. VC numerical kernels were written for this port."
   },
   "official_api_sources": {
@@ -22,7 +35,11 @@
     "matmul_config": "https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/82RC1alpha003/API/ascendcopapi/atlasascendc_api_07_0625.html",
     "cmake_kernel_launch": "https://www.hiascend.com/document/detail/en/canncommercial/850/opdevg/Ascendcopdevg/atlas_ascendc_10_0056.html",
     "torch_npu_baseline": "https://www.hiascend.com/document/detail/zh/Pytorch/60RC2/apiref/apilist/ptaoplist_000460.html",
-    "torch_npu_nd_format": "https://www.hiascend.com/doc_center/source/zh/CANNCommunityEdition/80RC1alpha003/apiref/fmkadptapi/ptaoplist_000663.html"
+    "torch_npu_nd_format": "https://www.hiascend.com/doc_center/source/zh/CANNCommunityEdition/80RC1alpha003/apiref/fmkadptapi/ptaoplist_000663.html",
+    "system_timer": "https://www.hiascend.com/doc_center/source/en/CANNCommunityEdition/900/API/ascendcopapi/atlasascendc_api_07_0282.html",
+    "pipe_barrier": "https://www.hiascend.com/doc_center/source/en/CANNCommunityEdition/900/API/ascendcopapi/atlasascendc_api_07_0271.html",
+    "cross_core_wait": "https://www.hiascend.com/doc_center/source/en/CANNCommunityEdition/900/API/ascendcopapi/atlasascendc_api_07_0274.html",
+    "cache_writeback": "https://www.hiascend.com/doc_center/source/en/CANNCommunityEdition/900/API/ascendcopapi/atlasascendc_api_07_0177.html"
   },
   "numerical_scope": "INT8 QK, per-block Q32/K128 scales, two-round FP32 ExpCast, channel E4M3 V decoded to FP16, FP16 PV with FP32 accumulation; no V smoothing; no claim of bitwise CUDA or complete paper reproduction",
   "mindie_laser_baseline": {
@@ -30,7 +47,15 @@
     "inspected_commit": "71098c20ff90838d1fd1ca0a40515c751a3869b0",
     "python_package": "mindiesd",
     "native_operator": "mindiesd::la",
-    "references": ["mindiesd/layers/flash_attn/ascend_laser_attention.py", "mindiesd/layers/flash_attn/attention_forward.py", "mindiesd/layers/_custom_ops.py", "csrc/plugin/register_ops.cpp", "csrc/plugin/la.cpp", "csrc/ops/laser_attention/op_host/laser_attention_tiling.cpp", "docs/zh/installation.md"],
+    "references": [
+      "mindiesd/layers/flash_attn/ascend_laser_attention.py",
+      "mindiesd/layers/flash_attn/attention_forward.py",
+      "mindiesd/layers/_custom_ops.py",
+      "csrc/plugin/register_ops.cpp",
+      "csrc/plugin/la.cpp",
+      "csrc/ops/laser_attention/op_host/laser_attention_tiling.cpp",
+      "docs/zh/installation.md"
+    ],
     "integration": "Calls installed preprocessing/postprocessing and registered native operator; no upstream implementation vendored; no automatic attention dispatch",
     "mindie_llm_repository_checked": "https://github.com/Ascend/MindIE-LLM",
     "mindie_llm_commit_checked": "9446ed407f817b2bd937ca1e4e63907b2f2eea7f",

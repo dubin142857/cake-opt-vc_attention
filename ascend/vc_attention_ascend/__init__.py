@@ -1,6 +1,6 @@
 """Experimental Ascend A2/A3 forward attention; see ASCEND_910B.md."""
 
-from .api import attention, prepare, run_prepared, load_native
+from .api import attention, prepare, run_prepared, profile_prepared, load_native
 
-__version__ = "0.1.1"
-__all__ = ["attention", "prepare", "run_prepared", "load_native"]
+__version__ = "0.2.0"
+__all__ = ["attention", "prepare", "run_prepared", "profile_prepared", "load_native"]

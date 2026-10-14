@@ -1,0 +1,1809 @@
+{
+  "date": "2026-10-14",
+  "vc_ascend_version": "0.2.0",
+  "status": "local_cpu_and_host_layout_checks_passed; remote_CANN_compile_and_NPU_validation_pending",
+  "change": "Opt-in M64 execution tile with original Q32/K128 scale granularity; separate AIC/AIV sampled system-tick probes; default M32 retained",
+  "remote_previous_version_evidence": {
+    "source": "user-provided completed 0.1.1 benchmark table, not local execution; not M64 results",
+    "soc": "Ascend910_9382",
+    "cann": "9.0.1",
+    "shape_nhd": [
+      1,
+      37741,
+      28,
+      128
+    ],
+    "dtype": "bfloat16",
+    "rows": {
+      "vc_expcast": {
+        "full_api_ms": 2040.545,
+        "fixed_core_ms": 2004.0513,
+        "dense_rmse_percent": 4.368437
+      },
+      "vc_control": {
+        "full_api_ms": 1899.7418,
+        "fixed_core_ms": 1861.6662,
+        "dense_rmse_percent": 2.979953
+      },
+      "cann_fusion_attention": {
+        "full_api_ms": 128.0532,
+        "dense_rmse_percent": 0.233752
+      },
+      "mindie_laser": {
+        "full_api_ms": 83.2749,
+        "fixed_core_ms": 80.5977,
+        "dense_rmse_percent": 0.190947
+      }
+    },
+    "scope": "Synchronized API wall time; decoded gate and model quality are distinct from dense RMSE"
+  },
+  "local_validation": {
+    "pytest": {
+      "passed": 102,
+      "failed": 0,
+      "seconds": 2.74,
+      "files": [
+        "tests/test_ascend_accuracy_diagnostics.py",
+        "tests/test_ascend_soc_preflight.py",
+        "tests/test_ascend910b_reference.py",
+        "tests/test_mindie_laser_backend.py",
+        "tests/test_ascend_reuse_validation.py",
+        "tests/test_ascend_profile_report.py",
+        "tests/test_ascend_tiled_api.py"
+      ],
+      "scope": "CPU references, fake-native dispatch, report aggregation and gate/failure handling only"
+    },
+    "host_cpp": {
+      "compiler": "MSVC 2017 /std:c++17",
+      "test": "tests/ascend_tiling_layout_smoke.cpp",
+      "status": "passed",
+      "scope": "M32/M64 Tiling ABI, scratch partition, UB arithmetic, original Q32 scale ownership and query/head/tail coverage"
+    },
+    "python_ast": "passed",
+    "bash_n": [
+      "scripts/run_ascend910b.sh",
+      "scripts/run_ascend910b_profile.sh"
+    ],
+    "native_compile": "not available locally",
+    "npu_execution": "not available locally"
+  },
+  "sync_audit": {
+    "files_scanned": [
+      "ascend/csrc/vc_kernel.cpp",
+      "ascend/csrc/vc_phase_probe.h",
+      "ascend/csrc/vc_tiling.h"
+    ],
+    "event_count": 61,
+    "findings": [
+      {
+        "code": "SYNC-08",
+        "severity": "红线",
+        "file": "ascend/csrc/vc_phase_probe.h",
+        "line": 67,
+        "message": "SetFlag 前存在提前退出（可能跳过 Set → 死锁）: SetFlag<Event>",
+        "detail": "同函数 __aicore__ inline void MarkEvent 内未被兜底的 return/break: [65]；确认所有路径都触发 SetFlag | 历史 case: cann/ops-nn PR#N/A (buffer_index_mismatch) | 修复提示: 将 buffer 索引统一为 flag 索引变量（如 biasBufId_ = scaleL1BufId） | diff证据: @@ -811,7 +811,7 @@\n-        biasBufId_ = abL1LoopCnt_ & 1;\n+        biasBufId_ = scaleL1BufId;..."
+      },
+      {
+        "code": "SYNC-07",
+        "severity": "红线",
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "line": 89,
+        "message": "CrossCoreSetFlag/WaitFlag 与 Matmul 高阶 API 混用（flagId 冲突风险）",
+        "detail": "高阶 API 内部已用 CrossCoreSetFlag，混用有 flagId 冲突；应删除手写 CrossCore | 历史 case: cann/ops-transformer PR#3921 (flag_pair) | 修复提示: 补齐缺失的 SetFlag 或 WaitFlag，确保所有路径都触发 SetFlag | diff证据: @@ -595,6 +595,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::VectorBufferInit() {\n     // ..."
+      },
+      {
+        "code": "SYNC-05",
+        "severity": "高",
+        "file": "ascend/csrc/vc_phase_probe.h",
+        "line": 67,
+        "message": "未知 HardEvent 方向（疑似笔误）: Event",
+        "detail": "不在已知合法方向表（32 种）中；请核对是否拼写错误，或为脚本未收录的新方向（用 ascendc-docs-search 核实后可补充 KNOWN_HARDEVENTS） | 历史 case: cann/ops-nn PR#N/A (buffer_index_mismatch) | 修复提示: 将 buffer 索引统一为 flag 索引变量（如 biasBufId_ = scaleL1BufId） | diff证据: @@ -811,7 +811,7 @@\n-        biasBufId_ = abL1LoopCnt_ & 1;\n+        biasBufId_ = scaleL1BufId;..."
+      },
+      {
+        "code": "SYNC-05",
+        "severity": "高",
+        "file": "ascend/csrc/vc_phase_probe.h",
+        "line": 68,
+        "message": "未知 HardEvent 方向（疑似笔误）: Event",
+        "detail": "不在已知合法方向表（32 种）中；请核对是否拼写错误，或为脚本未收录的新方向（用 ascendc-docs-search 核实后可补充 KNOWN_HARDEVENTS） | 历史 case: cann/ops-nn PR#N/A (buffer_index_mismatch) | 修复提示: 将 buffer 索引统一为 flag 索引变量（如 biasBufId_ = scaleL1BufId） | diff证据: @@ -811,7 +811,7 @@\n-        biasBufId_ = abL1LoopCnt_ & 1;\n+        biasBufId_ = scaleL1BufId;..."
+      },
+      {
+        "code": "SYNC-09",
+        "severity": "性能",
+        "file": "ascend/csrc/vc_phase_probe.h",
+        "line": 39,
+        "message": "PipeBarrier<PIPE_ALL> 粒度过粗",
+        "detail": "若仅需 V 排序可用 PipeBarrier<PIPE_V>；确认无跨 PIPE 依赖后再收窄"
+      },
+      {
+        "code": "SYNC-09",
+        "severity": "性能",
+        "file": "ascend/csrc/vc_phase_probe.h",
+        "line": 57,
+        "message": "PipeBarrier<PIPE_ALL> 粒度过粗",
+        "detail": "若仅需 V 排序可用 PipeBarrier<PIPE_V>；确认无跨 PIPE 依赖后再收窄"
+      },
+      {
+        "code": "SYNC-09",
+        "severity": "性能",
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "line": 158,
+        "message": "同一函数连续 PipeBarrier 过多: 19 个 in __aicore__ inline void RunVector",
+        "detail": "行: [158, 172, 174, 186, 188, 190, 198, 202, 204, 206, 208, 210, 213, 218, 220, 230, 232, 250, 262]；分析是否可合并"
+      },
+      {
+        "code": "SYNC-09",
+        "severity": "性能",
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "line": 158,
+        "message": "同一文件 PipeBarrier<PIPE_V> 过多: 19 个",
+        "detail": "行: [158, 172, 174, 186, 188, 190, 198, 202, 204, 206, 208, 210, 213, 218, 220, 230, 232, 250, 262]；分析是否可合并"
+      }
+    ],
+    "events": [
+      {
+        "kind": "cset",
+        "event_type": "crosscore",
+        "flag_id": "S_READY",
+        "line": 69,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunCube",
+        "raw": "CrossCoreSetFlag<2, PIPE_FIX>(",
+        "side": "",
+        "pipe_param": "PIPE_FIX"
+      },
+      {
+        "kind": "cwait",
+        "event_type": "crosscore",
+        "flag_id": "P_READY",
+        "line": 70,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunCube",
+        "raw": "CrossCoreWaitFlag(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "cset",
+        "event_type": "crosscore",
+        "flag_id": "O_READY",
+        "line": 81,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunCube",
+        "raw": "CrossCoreSetFlag<2, PIPE_FIX>(",
+        "side": "",
+        "pipe_param": "PIPE_FIX"
+      },
+      {
+        "kind": "cwait",
+        "event_type": "crosscore",
+        "flag_id": "O_USED",
+        "line": 82,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunCube",
+        "raw": "CrossCoreWaitFlag(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "set",
+        "event_type": "MTE2_V",
+        "flag_id": "EVENT_ID0",
+        "line": 141,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "SetFlag<HardEvent::MTE2_V>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "wait",
+        "event_type": "MTE2_V",
+        "flag_id": "EVENT_ID0",
+        "line": 142,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "WaitFlag<HardEvent::MTE2_V>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "set",
+        "event_type": "MTE2_S",
+        "flag_id": "EVENT_ID0",
+        "line": 151,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "SetFlag<HardEvent::MTE2_S>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "wait",
+        "event_type": "MTE2_S",
+        "flag_id": "EVENT_ID0",
+        "line": 152,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "WaitFlag<HardEvent::MTE2_S>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "set",
+        "event_type": "MTE2_V",
+        "flag_id": "EVENT_ID0",
+        "line": 153,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "SetFlag<HardEvent::MTE2_V>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "wait",
+        "event_type": "MTE2_V",
+        "flag_id": "EVENT_ID0",
+        "line": 154,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "WaitFlag<HardEvent::MTE2_V>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "pipebarrier",
+        "event_type": "PIPE_V",
+        "flag_id": "",
+        "line": 158,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "PipeBarrier<PIPE_V>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "cwait",
+        "event_type": "crosscore",
+        "flag_id": "S_READY",
+        "line": 161,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "CrossCoreWaitFlag(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "set",
+        "event_type": "MTE2_V",
+        "flag_id": "EVENT_ID0",
+        "line": 165,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "SetFlag<HardEvent::MTE2_V>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "wait",
+        "event_type": "MTE2_V",
+        "flag_id": "EVENT_ID0",
+        "line": 166,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "WaitFlag<HardEvent::MTE2_V>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "set",
+        "event_type": "MTE2_S",
+        "flag_id": "EVENT_ID0",
+        "line": 167,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "SetFlag<HardEvent::MTE2_S>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "wait",
+        "event_type": "MTE2_S",
+        "flag_id": "EVENT_ID0",
+        "line": 168,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "WaitFlag<HardEvent::MTE2_S>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "pipebarrier",
+        "event_type": "PIPE_V",
+        "flag_id": "",
+        "line": 172,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "PipeBarrier<PIPE_V>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "pipebarrier",
+        "event_type": "PIPE_V",
+        "flag_id": "",
+        "line": 174,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "PipeBarrier<PIPE_V>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "set",
+        "event_type": "V_S",
+        "flag_id": "EVENT_ID0",
+        "line": 178,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "SetFlag<HardEvent::V_S>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "wait",
+        "event_type": "V_S",
+        "flag_id": "EVENT_ID0",
+        "line": 179,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "WaitFlag<HardEvent::V_S>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "set",
+        "event_type": "S_V",
+        "flag_id": "EVENT_ID0",
+        "line": 182,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "SetFlag<HardEvent::S_V>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "wait",
+        "event_type": "S_V",
+        "flag_id": "EVENT_ID0",
+        "line": 183,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "WaitFlag<HardEvent::S_V>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "pipebarrier",
+        "event_type": "PIPE_V",
+        "flag_id": "",
+        "line": 186,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "PipeBarrier<PIPE_V>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "pipebarrier",
+        "event_type": "PIPE_V",
+        "flag_id": "",
+        "line": 188,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "PipeBarrier<PIPE_V>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "pipebarrier",
+        "event_type": "PIPE_V",
+        "flag_id": "",
+        "line": 190,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "PipeBarrier<PIPE_V>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "set",
+        "event_type": "V_S",
+        "flag_id": "EVENT_ID0",
+        "line": 192,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "SetFlag<HardEvent::V_S>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "wait",
+        "event_type": "V_S",
+        "flag_id": "EVENT_ID0",
+        "line": 193,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "WaitFlag<HardEvent::V_S>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "pipebarrier",
+        "event_type": "PIPE_V",
+        "flag_id": "",
+        "line": 198,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "PipeBarrier<PIPE_V>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "pipebarrier",
+        "event_type": "PIPE_V",
+        "flag_id": "",
+        "line": 202,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "PipeBarrier<PIPE_V>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "pipebarrier",
+        "event_type": "PIPE_V",
+        "flag_id": "",
+        "line": 204,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "PipeBarrier<PIPE_V>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "pipebarrier",
+        "event_type": "PIPE_V",
+        "flag_id": "",
+        "line": 206,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "PipeBarrier<PIPE_V>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "pipebarrier",
+        "event_type": "PIPE_V",
+        "flag_id": "",
+        "line": 208,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "PipeBarrier<PIPE_V>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "pipebarrier",
+        "event_type": "PIPE_V",
+        "flag_id": "",
+        "line": 210,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "PipeBarrier<PIPE_V>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "pipebarrier",
+        "event_type": "PIPE_V",
+        "flag_id": "",
+        "line": 213,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "PipeBarrier<PIPE_V>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "pipebarrier",
+        "event_type": "PIPE_V",
+        "flag_id": "",
+        "line": 218,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "PipeBarrier<PIPE_V>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "pipebarrier",
+        "event_type": "PIPE_V",
+        "flag_id": "",
+        "line": 220,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "PipeBarrier<PIPE_V>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "set",
+        "event_type": "V_MTE3",
+        "flag_id": "EVENT_ID0",
+        "line": 223,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "SetFlag<HardEvent::V_MTE3>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "wait",
+        "event_type": "V_MTE3",
+        "flag_id": "EVENT_ID0",
+        "line": 224,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "WaitFlag<HardEvent::V_MTE3>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "cset",
+        "event_type": "crosscore",
+        "flag_id": "P_READY",
+        "line": 226,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "CrossCoreSetFlag<2, PIPE_MTE3>(",
+        "side": "",
+        "pipe_param": "PIPE_MTE3"
+      },
+      {
+        "kind": "pipebarrier",
+        "event_type": "PIPE_V",
+        "flag_id": "",
+        "line": 230,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "PipeBarrier<PIPE_V>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "pipebarrier",
+        "event_type": "PIPE_V",
+        "flag_id": "",
+        "line": 232,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "PipeBarrier<PIPE_V>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "set",
+        "event_type": "V_S",
+        "flag_id": "EVENT_ID0",
+        "line": 234,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "SetFlag<HardEvent::V_S>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "wait",
+        "event_type": "V_S",
+        "flag_id": "EVENT_ID0",
+        "line": 235,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "WaitFlag<HardEvent::V_S>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "cwait",
+        "event_type": "crosscore",
+        "flag_id": "O_READY",
+        "line": 241,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "CrossCoreWaitFlag(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "set",
+        "event_type": "MTE3_V",
+        "flag_id": "EVENT_ID0",
+        "line": 244,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "SetFlag<HardEvent::MTE3_V>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "wait",
+        "event_type": "MTE3_V",
+        "flag_id": "EVENT_ID0",
+        "line": 245,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "WaitFlag<HardEvent::MTE3_V>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "set",
+        "event_type": "MTE2_V",
+        "flag_id": "EVENT_ID0",
+        "line": 247,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "SetFlag<HardEvent::MTE2_V>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "wait",
+        "event_type": "MTE2_V",
+        "flag_id": "EVENT_ID0",
+        "line": 248,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "WaitFlag<HardEvent::MTE2_V>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "pipebarrier",
+        "event_type": "PIPE_V",
+        "flag_id": "",
+        "line": 250,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "PipeBarrier<PIPE_V>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "cset",
+        "event_type": "crosscore",
+        "flag_id": "O_USED",
+        "line": 253,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "CrossCoreSetFlag<2, PIPE_V>(",
+        "side": "",
+        "pipe_param": "PIPE_V"
+      },
+      {
+        "kind": "set",
+        "event_type": "V_S",
+        "flag_id": "EVENT_ID0",
+        "line": 256,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "SetFlag<HardEvent::V_S>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "wait",
+        "event_type": "V_S",
+        "flag_id": "EVENT_ID0",
+        "line": 257,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "WaitFlag<HardEvent::V_S>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "pipebarrier",
+        "event_type": "PIPE_V",
+        "flag_id": "",
+        "line": 262,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "PipeBarrier<PIPE_V>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "set",
+        "event_type": "V_MTE3",
+        "flag_id": "EVENT_ID0",
+        "line": 265,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "SetFlag<HardEvent::V_MTE3>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "wait",
+        "event_type": "V_MTE3",
+        "flag_id": "EVENT_ID0",
+        "line": 266,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "WaitFlag<HardEvent::V_MTE3>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "set",
+        "event_type": "MTE3_S",
+        "flag_id": "taskDoneEvent",
+        "line": 272,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "SetFlag<HardEvent::MTE3_S>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "wait",
+        "event_type": "MTE3_S",
+        "flag_id": "taskDoneEvent",
+        "line": 273,
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "func": "__aicore__ inline void RunVector",
+        "raw": "WaitFlag<HardEvent::MTE3_S>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "pipebarrier",
+        "event_type": "PIPE_ALL",
+        "flag_id": "",
+        "line": 39,
+        "file": "ascend/csrc/vc_phase_probe.h",
+        "func": "__aicore__ inline void Begin",
+        "raw": "PipeBarrier<PIPE_ALL>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "pipebarrier",
+        "event_type": "PIPE_ALL",
+        "flag_id": "",
+        "line": 57,
+        "file": "ascend/csrc/vc_phase_probe.h",
+        "func": "__aicore__ inline void MarkAll",
+        "raw": "PipeBarrier<PIPE_ALL>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "set",
+        "event_type": "Event",
+        "flag_id": "id",
+        "line": 67,
+        "file": "ascend/csrc/vc_phase_probe.h",
+        "func": "__aicore__ inline void MarkEvent",
+        "raw": "SetFlag<Event>(",
+        "side": "",
+        "pipe_param": ""
+      },
+      {
+        "kind": "wait",
+        "event_type": "Event",
+        "flag_id": "id",
+        "line": 68,
+        "file": "ascend/csrc/vc_phase_probe.h",
+        "func": "__aicore__ inline void MarkEvent",
+        "raw": "WaitFlag<Event>(",
+        "side": "",
+        "pipe_param": ""
+      }
+    ]
+  },
+  "flow_analyzer": {
+    "files_scanned": [
+      "ascend/csrc/vc_kernel.cpp",
+      "ascend/csrc/vc_phase_probe.h",
+      "ascend/csrc/vc_tiling.h"
+    ],
+    "frontends": {
+      "ascend/csrc/vc_kernel.cpp": "regex",
+      "ascend/csrc/vc_phase_probe.h": "regex",
+      "ascend/csrc/vc_tiling.h": "regex"
+    },
+    "operations": [
+      {
+        "id": "o1",
+        "kind": "datacopy",
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "line": 140,
+        "func": "RunVector",
+        "pipe": "MTE2",
+        "object": "",
+        "field": "",
+        "buffers": [],
+        "raw": "DataCopy(table, lg, 128);"
+      },
+      {
+        "id": "o2",
+        "kind": "datacopy",
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "line": 149,
+        "func": "RunVector",
+        "pipe": "MTE2",
+        "object": "",
+        "field": "",
+        "buffers": [],
+        "raw": "DataCopy(qscale, qsg[(head * (t.qpad / Q_SCALE_BLOCK) + qr / Q_SCALE_BLOCK) * 8], 8);"
+      },
+      {
+        "id": "o3",
+        "kind": "datacopy",
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "line": 150,
+        "func": "RunVector",
+        "pipe": "MTE2",
+        "object": "",
+        "field": "",
+        "buffers": [],
+        "raw": "DataCopy(vscale, vsg[head * t.dim], t.dim);"
+      },
+      {
+        "id": "o4",
+        "kind": "datacopy",
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "line": 163,
+        "func": "RunVector",
+        "pipe": "MTE2",
+        "object": "",
+        "field": "",
+        "buffers": [],
+        "raw": "DataCopy(raw, sg, ROWS * N);"
+      },
+      {
+        "id": "o5",
+        "kind": "datacopy",
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "line": 164,
+        "func": "RunVector",
+        "pipe": "MTE2",
+        "object": "",
+        "field": "",
+        "buffers": [],
+        "raw": "DataCopy(kscale, ksg[(head * (t.kpad / N) + key / N) * 8], 8);"
+      },
+      {
+        "id": "o6",
+        "kind": "datacopy",
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "line": 225,
+        "func": "RunVector",
+        "pipe": "MTE2",
+        "object": "",
+        "field": "",
+        "buffers": [],
+        "raw": "DataCopy(pg, ph, ROWS * N);"
+      },
+      {
+        "id": "o7",
+        "kind": "datacopy",
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "line": 246,
+        "func": "RunVector",
+        "pipe": "MTE2",
+        "object": "",
+        "field": "",
+        "buffers": [],
+        "raw": "DataCopy(pv, og, ROWS * t.dim);"
+      },
+      {
+        "id": "o8",
+        "kind": "datacopy",
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "line": 267,
+        "func": "RunVector",
+        "pipe": "MTE2",
+        "object": "",
+        "field": "",
+        "buffers": [],
+        "raw": "DataCopy(out[head * t.qpad * t.dim + uint64_t(qr) * t.dim], acc, ROWS * t.dim);"
+      }
+    ],
+    "buffer_accesses": [],
+    "buffer_dependencies": [],
+    "sync_edges": [
+      {
+        "id": "s1",
+        "kind": "set",
+        "event_type": "MTE2_V",
+        "flag_id": "EVENT_ID0",
+        "index_expr": "",
+        "index_var": "",
+        "index_root": "",
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "line": 141,
+        "func": "RunVector",
+        "raw": "SetFlag<HardEvent::MTE2_V>(EVENT_ID0);",
+        "index_summary": {
+          "raw": "",
+          "root": "",
+          "index_var": "",
+          "slot": "",
+          "offset": 0,
+          "modulo": "",
+          "stride": "",
+          "canonical": "<constant>:expr=",
+          "unknown": ""
+        }
+      },
+      {
+        "id": "s2",
+        "kind": "wait",
+        "event_type": "MTE2_V",
+        "flag_id": "EVENT_ID0",
+        "index_expr": "",
+        "index_var": "",
+        "index_root": "",
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "line": 142,
+        "func": "RunVector",
+        "raw": "WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);",
+        "index_summary": {
+          "raw": "",
+          "root": "",
+          "index_var": "",
+          "slot": "",
+          "offset": 0,
+          "modulo": "",
+          "stride": "",
+          "canonical": "<constant>:expr=",
+          "unknown": ""
+        }
+      },
+      {
+        "id": "s3",
+        "kind": "set",
+        "event_type": "MTE2_S",
+        "flag_id": "EVENT_ID0",
+        "index_expr": "",
+        "index_var": "",
+        "index_root": "",
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "line": 151,
+        "func": "RunVector",
+        "raw": "SetFlag<HardEvent::MTE2_S>(EVENT_ID0);",
+        "index_summary": {
+          "raw": "",
+          "root": "",
+          "index_var": "",
+          "slot": "",
+          "offset": 0,
+          "modulo": "",
+          "stride": "",
+          "canonical": "<constant>:expr=",
+          "unknown": ""
+        }
+      },
+      {
+        "id": "s4",
+        "kind": "wait",
+        "event_type": "MTE2_S",
+        "flag_id": "EVENT_ID0",
+        "index_expr": "",
+        "index_var": "",
+        "index_root": "",
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "line": 152,
+        "func": "RunVector",
+        "raw": "WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);",
+        "index_summary": {
+          "raw": "",
+          "root": "",
+          "index_var": "",
+          "slot": "",
+          "offset": 0,
+          "modulo": "",
+          "stride": "",
+          "canonical": "<constant>:expr=",
+          "unknown": ""
+        }
+      },
+      {
+        "id": "s5",
+        "kind": "set",
+        "event_type": "MTE2_V",
+        "flag_id": "EVENT_ID0",
+        "index_expr": "",
+        "index_var": "",
+        "index_root": "",
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "line": 153,
+        "func": "RunVector",
+        "raw": "SetFlag<HardEvent::MTE2_V>(EVENT_ID0);",
+        "index_summary": {
+          "raw": "",
+          "root": "",
+          "index_var": "",
+          "slot": "",
+          "offset": 0,
+          "modulo": "",
+          "stride": "",
+          "canonical": "<constant>:expr=",
+          "unknown": ""
+        }
+      },
+      {
+        "id": "s6",
+        "kind": "wait",
+        "event_type": "MTE2_V",
+        "flag_id": "EVENT_ID0",
+        "index_expr": "",
+        "index_var": "",
+        "index_root": "",
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "line": 154,
+        "func": "RunVector",
+        "raw": "WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);",
+        "index_summary": {
+          "raw": "",
+          "root": "",
+          "index_var": "",
+          "slot": "",
+          "offset": 0,
+          "modulo": "",
+          "stride": "",
+          "canonical": "<constant>:expr=",
+          "unknown": ""
+        }
+      },
+      {
+        "id": "s7",
+        "kind": "set",
+        "event_type": "MTE2_V",
+        "flag_id": "EVENT_ID0",
+        "index_expr": "",
+        "index_var": "",
+        "index_root": "",
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "line": 165,
+        "func": "RunVector",
+        "raw": "SetFlag<HardEvent::MTE2_V>(EVENT_ID0);",
+        "index_summary": {
+          "raw": "",
+          "root": "",
+          "index_var": "",
+          "slot": "",
+          "offset": 0,
+          "modulo": "",
+          "stride": "",
+          "canonical": "<constant>:expr=",
+          "unknown": ""
+        }
+      },
+      {
+        "id": "s8",
+        "kind": "wait",
+        "event_type": "MTE2_V",
+        "flag_id": "EVENT_ID0",
+        "index_expr": "",
+        "index_var": "",
+        "index_root": "",
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "line": 166,
+        "func": "RunVector",
+        "raw": "WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);",
+        "index_summary": {
+          "raw": "",
+          "root": "",
+          "index_var": "",
+          "slot": "",
+          "offset": 0,
+          "modulo": "",
+          "stride": "",
+          "canonical": "<constant>:expr=",
+          "unknown": ""
+        }
+      },
+      {
+        "id": "s9",
+        "kind": "set",
+        "event_type": "MTE2_S",
+        "flag_id": "EVENT_ID0",
+        "index_expr": "",
+        "index_var": "",
+        "index_root": "",
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "line": 167,
+        "func": "RunVector",
+        "raw": "SetFlag<HardEvent::MTE2_S>(EVENT_ID0);",
+        "index_summary": {
+          "raw": "",
+          "root": "",
+          "index_var": "",
+          "slot": "",
+          "offset": 0,
+          "modulo": "",
+          "stride": "",
+          "canonical": "<constant>:expr=",
+          "unknown": ""
+        }
+      },
+      {
+        "id": "s10",
+        "kind": "wait",
+        "event_type": "MTE2_S",
+        "flag_id": "EVENT_ID0",
+        "index_expr": "",
+        "index_var": "",
+        "index_root": "",
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "line": 168,
+        "func": "RunVector",
+        "raw": "WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);",
+        "index_summary": {
+          "raw": "",
+          "root": "",
+          "index_var": "",
+          "slot": "",
+          "offset": 0,
+          "modulo": "",
+          "stride": "",
+          "canonical": "<constant>:expr=",
+          "unknown": ""
+        }
+      },
+      {
+        "id": "s11",
+        "kind": "set",
+        "event_type": "V_S",
+        "flag_id": "EVENT_ID0",
+        "index_expr": "",
+        "index_var": "",
+        "index_root": "",
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "line": 178,
+        "func": "RunVector",
+        "raw": "SetFlag<HardEvent::V_S>(EVENT_ID0);",
+        "index_summary": {
+          "raw": "",
+          "root": "",
+          "index_var": "",
+          "slot": "",
+          "offset": 0,
+          "modulo": "",
+          "stride": "",
+          "canonical": "<constant>:expr=",
+          "unknown": ""
+        }
+      },
+      {
+        "id": "s12",
+        "kind": "wait",
+        "event_type": "V_S",
+        "flag_id": "EVENT_ID0",
+        "index_expr": "",
+        "index_var": "",
+        "index_root": "",
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "line": 179,
+        "func": "RunVector",
+        "raw": "WaitFlag<HardEvent::V_S>(EVENT_ID0);",
+        "index_summary": {
+          "raw": "",
+          "root": "",
+          "index_var": "",
+          "slot": "",
+          "offset": 0,
+          "modulo": "",
+          "stride": "",
+          "canonical": "<constant>:expr=",
+          "unknown": ""
+        }
+      },
+      {
+        "id": "s13",
+        "kind": "set",
+        "event_type": "S_V",
+        "flag_id": "EVENT_ID0",
+        "index_expr": "",
+        "index_var": "",
+        "index_root": "",
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "line": 182,
+        "func": "RunVector",
+        "raw": "SetFlag<HardEvent::S_V>(EVENT_ID0);",
+        "index_summary": {
+          "raw": "",
+          "root": "",
+          "index_var": "",
+          "slot": "",
+          "offset": 0,
+          "modulo": "",
+          "stride": "",
+          "canonical": "<constant>:expr=",
+          "unknown": ""
+        }
+      },
+      {
+        "id": "s14",
+        "kind": "wait",
+        "event_type": "S_V",
+        "flag_id": "EVENT_ID0",
+        "index_expr": "",
+        "index_var": "",
+        "index_root": "",
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "line": 183,
+        "func": "RunVector",
+        "raw": "WaitFlag<HardEvent::S_V>(EVENT_ID0);",
+        "index_summary": {
+          "raw": "",
+          "root": "",
+          "index_var": "",
+          "slot": "",
+          "offset": 0,
+          "modulo": "",
+          "stride": "",
+          "canonical": "<constant>:expr=",
+          "unknown": ""
+        }
+      },
+      {
+        "id": "s15",
+        "kind": "set",
+        "event_type": "V_S",
+        "flag_id": "EVENT_ID0",
+        "index_expr": "",
+        "index_var": "",
+        "index_root": "",
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "line": 192,
+        "func": "RunVector",
+        "raw": "SetFlag<HardEvent::V_S>(EVENT_ID0);",
+        "index_summary": {
+          "raw": "",
+          "root": "",
+          "index_var": "",
+          "slot": "",
+          "offset": 0,
+          "modulo": "",
+          "stride": "",
+          "canonical": "<constant>:expr=",
+          "unknown": ""
+        }
+      },
+      {
+        "id": "s16",
+        "kind": "wait",
+        "event_type": "V_S",
+        "flag_id": "EVENT_ID0",
+        "index_expr": "",
+        "index_var": "",
+        "index_root": "",
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "line": 193,
+        "func": "RunVector",
+        "raw": "WaitFlag<HardEvent::V_S>(EVENT_ID0);",
+        "index_summary": {
+          "raw": "",
+          "root": "",
+          "index_var": "",
+          "slot": "",
+          "offset": 0,
+          "modulo": "",
+          "stride": "",
+          "canonical": "<constant>:expr=",
+          "unknown": ""
+        }
+      },
+      {
+        "id": "s17",
+        "kind": "set",
+        "event_type": "V_MTE3",
+        "flag_id": "EVENT_ID0",
+        "index_expr": "",
+        "index_var": "",
+        "index_root": "",
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "line": 223,
+        "func": "RunVector",
+        "raw": "SetFlag<HardEvent::V_MTE3>(EVENT_ID0);",
+        "index_summary": {
+          "raw": "",
+          "root": "",
+          "index_var": "",
+          "slot": "",
+          "offset": 0,
+          "modulo": "",
+          "stride": "",
+          "canonical": "<constant>:expr=",
+          "unknown": ""
+        }
+      },
+      {
+        "id": "s18",
+        "kind": "wait",
+        "event_type": "V_MTE3",
+        "flag_id": "EVENT_ID0",
+        "index_expr": "",
+        "index_var": "",
+        "index_root": "",
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "line": 224,
+        "func": "RunVector",
+        "raw": "WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);",
+        "index_summary": {
+          "raw": "",
+          "root": "",
+          "index_var": "",
+          "slot": "",
+          "offset": 0,
+          "modulo": "",
+          "stride": "",
+          "canonical": "<constant>:expr=",
+          "unknown": ""
+        }
+      },
+      {
+        "id": "s19",
+        "kind": "set",
+        "event_type": "V_S",
+        "flag_id": "EVENT_ID0",
+        "index_expr": "",
+        "index_var": "",
+        "index_root": "",
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "line": 234,
+        "func": "RunVector",
+        "raw": "SetFlag<HardEvent::V_S>(EVENT_ID0);",
+        "index_summary": {
+          "raw": "",
+          "root": "",
+          "index_var": "",
+          "slot": "",
+          "offset": 0,
+          "modulo": "",
+          "stride": "",
+          "canonical": "<constant>:expr=",
+          "unknown": ""
+        }
+      },
+      {
+        "id": "s20",
+        "kind": "wait",
+        "event_type": "V_S",
+        "flag_id": "EVENT_ID0",
+        "index_expr": "",
+        "index_var": "",
+        "index_root": "",
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "line": 235,
+        "func": "RunVector",
+        "raw": "WaitFlag<HardEvent::V_S>(EVENT_ID0);",
+        "index_summary": {
+          "raw": "",
+          "root": "",
+          "index_var": "",
+          "slot": "",
+          "offset": 0,
+          "modulo": "",
+          "stride": "",
+          "canonical": "<constant>:expr=",
+          "unknown": ""
+        }
+      },
+      {
+        "id": "s21",
+        "kind": "set",
+        "event_type": "MTE3_V",
+        "flag_id": "EVENT_ID0",
+        "index_expr": "",
+        "index_var": "",
+        "index_root": "",
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "line": 244,
+        "func": "RunVector",
+        "raw": "SetFlag<HardEvent::MTE3_V>(EVENT_ID0);",
+        "index_summary": {
+          "raw": "",
+          "root": "",
+          "index_var": "",
+          "slot": "",
+          "offset": 0,
+          "modulo": "",
+          "stride": "",
+          "canonical": "<constant>:expr=",
+          "unknown": ""
+        }
+      },
+      {
+        "id": "s22",
+        "kind": "wait",
+        "event_type": "MTE3_V",
+        "flag_id": "EVENT_ID0",
+        "index_expr": "",
+        "index_var": "",
+        "index_root": "",
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "line": 245,
+        "func": "RunVector",
+        "raw": "WaitFlag<HardEvent::MTE3_V>(EVENT_ID0);",
+        "index_summary": {
+          "raw": "",
+          "root": "",
+          "index_var": "",
+          "slot": "",
+          "offset": 0,
+          "modulo": "",
+          "stride": "",
+          "canonical": "<constant>:expr=",
+          "unknown": ""
+        }
+      },
+      {
+        "id": "s23",
+        "kind": "set",
+        "event_type": "MTE2_V",
+        "flag_id": "EVENT_ID0",
+        "index_expr": "",
+        "index_var": "",
+        "index_root": "",
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "line": 247,
+        "func": "RunVector",
+        "raw": "SetFlag<HardEvent::MTE2_V>(EVENT_ID0);",
+        "index_summary": {
+          "raw": "",
+          "root": "",
+          "index_var": "",
+          "slot": "",
+          "offset": 0,
+          "modulo": "",
+          "stride": "",
+          "canonical": "<constant>:expr=",
+          "unknown": ""
+        }
+      },
+      {
+        "id": "s24",
+        "kind": "wait",
+        "event_type": "MTE2_V",
+        "flag_id": "EVENT_ID0",
+        "index_expr": "",
+        "index_var": "",
+        "index_root": "",
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "line": 248,
+        "func": "RunVector",
+        "raw": "WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);",
+        "index_summary": {
+          "raw": "",
+          "root": "",
+          "index_var": "",
+          "slot": "",
+          "offset": 0,
+          "modulo": "",
+          "stride": "",
+          "canonical": "<constant>:expr=",
+          "unknown": ""
+        }
+      },
+      {
+        "id": "s25",
+        "kind": "set",
+        "event_type": "V_S",
+        "flag_id": "EVENT_ID0",
+        "index_expr": "",
+        "index_var": "",
+        "index_root": "",
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "line": 256,
+        "func": "RunVector",
+        "raw": "SetFlag<HardEvent::V_S>(EVENT_ID0);",
+        "index_summary": {
+          "raw": "",
+          "root": "",
+          "index_var": "",
+          "slot": "",
+          "offset": 0,
+          "modulo": "",
+          "stride": "",
+          "canonical": "<constant>:expr=",
+          "unknown": ""
+        }
+      },
+      {
+        "id": "s26",
+        "kind": "wait",
+        "event_type": "V_S",
+        "flag_id": "EVENT_ID0",
+        "index_expr": "",
+        "index_var": "",
+        "index_root": "",
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "line": 257,
+        "func": "RunVector",
+        "raw": "WaitFlag<HardEvent::V_S>(EVENT_ID0);",
+        "index_summary": {
+          "raw": "",
+          "root": "",
+          "index_var": "",
+          "slot": "",
+          "offset": 0,
+          "modulo": "",
+          "stride": "",
+          "canonical": "<constant>:expr=",
+          "unknown": ""
+        }
+      },
+      {
+        "id": "s27",
+        "kind": "set",
+        "event_type": "V_MTE3",
+        "flag_id": "EVENT_ID0",
+        "index_expr": "",
+        "index_var": "",
+        "index_root": "",
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "line": 265,
+        "func": "RunVector",
+        "raw": "SetFlag<HardEvent::V_MTE3>(EVENT_ID0);",
+        "index_summary": {
+          "raw": "",
+          "root": "",
+          "index_var": "",
+          "slot": "",
+          "offset": 0,
+          "modulo": "",
+          "stride": "",
+          "canonical": "<constant>:expr=",
+          "unknown": ""
+        }
+      },
+      {
+        "id": "s28",
+        "kind": "wait",
+        "event_type": "V_MTE3",
+        "flag_id": "EVENT_ID0",
+        "index_expr": "",
+        "index_var": "",
+        "index_root": "",
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "line": 266,
+        "func": "RunVector",
+        "raw": "WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);",
+        "index_summary": {
+          "raw": "",
+          "root": "",
+          "index_var": "",
+          "slot": "",
+          "offset": 0,
+          "modulo": "",
+          "stride": "",
+          "canonical": "<constant>:expr=",
+          "unknown": ""
+        }
+      },
+      {
+        "id": "s29",
+        "kind": "set",
+        "event_type": "MTE3_S",
+        "flag_id": "taskDoneEvent",
+        "index_expr": "",
+        "index_var": "",
+        "index_root": "",
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "line": 272,
+        "func": "RunVector",
+        "raw": "SetFlag<HardEvent::MTE3_S>(taskDoneEvent);",
+        "index_summary": {
+          "raw": "",
+          "root": "",
+          "index_var": "",
+          "slot": "",
+          "offset": 0,
+          "modulo": "",
+          "stride": "",
+          "canonical": "<constant>:expr=",
+          "unknown": ""
+        }
+      },
+      {
+        "id": "s30",
+        "kind": "wait",
+        "event_type": "MTE3_S",
+        "flag_id": "taskDoneEvent",
+        "index_expr": "",
+        "index_var": "",
+        "index_root": "",
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "line": 273,
+        "func": "RunVector",
+        "raw": "WaitFlag<HardEvent::MTE3_S>(taskDoneEvent);",
+        "index_summary": {
+          "raw": "",
+          "root": "",
+          "index_var": "",
+          "slot": "",
+          "offset": 0,
+          "modulo": "",
+          "stride": "",
+          "canonical": "<constant>:expr=",
+          "unknown": ""
+        }
+      },
+      {
+        "id": "s31",
+        "kind": "set",
+        "event_type": "Event",
+        "flag_id": "id",
+        "index_expr": "",
+        "index_var": "",
+        "index_root": "",
+        "file": "ascend/csrc/vc_phase_probe.h",
+        "line": 67,
+        "func": "MarkEvent",
+        "raw": "AscendC::SetFlag<Event>(id);",
+        "index_summary": {
+          "raw": "",
+          "root": "",
+          "index_var": "",
+          "slot": "",
+          "offset": 0,
+          "modulo": "",
+          "stride": "",
+          "canonical": "<constant>:expr=",
+          "unknown": ""
+        }
+      },
+      {
+        "id": "s32",
+        "kind": "wait",
+        "event_type": "Event",
+        "flag_id": "id",
+        "index_expr": "",
+        "index_var": "",
+        "index_root": "",
+        "file": "ascend/csrc/vc_phase_probe.h",
+        "line": 68,
+        "func": "MarkEvent",
+        "raw": "AscendC::WaitFlag<Event>(id);",
+        "index_summary": {
+          "raw": "",
+          "root": "",
+          "index_var": "",
+          "slot": "",
+          "offset": 0,
+          "modulo": "",
+          "stride": "",
+          "canonical": "<constant>:expr=",
+          "unknown": ""
+        }
+      }
+    ],
+    "sync_coverages": [],
+    "aliases": {
+      "ascend/csrc/vc_kernel.cpp": {
+        "<global>": {},
+        "ReadControl": {
+          "src": "uint32_t",
+          "dst": "uint32_t"
+        },
+        "RunAttention": {},
+        "RunCube": {
+          "localWs": "ws",
+          "task": "core",
+          "head": "core",
+          "qr": "core"
+        },
+        "RunVector": {
+          "taskDoneEvent": "int32_t",
+          "raw": "rawBuf",
+          "score": "scoreBuf",
+          "ph": "pBuf",
+          "acc": "accBuf",
+          "pv": "pvBuf",
+          "vscale": "vsBuf",
+          "states": "stateBuf",
+          "m": "stateBuf",
+          "rowmax": "stateBuf",
+          "qscale": "stateBuf",
+          "table": "lutBuf",
+          "tmp": "tmpBuf",
+          "localWs": "ws",
+          "task": "core",
+          "head": "core",
+          "qb": "core",
+          "qr": "core",
+          "valid": "keys",
+          "j": "keys"
+        },
+        "vc910_forward": {},
+        "vc910_forward_m64": {},
+        "vc910_profile": {},
+        "vc910_profile_m64": {}
+      },
+      "ascend/csrc/vc_phase_probe.h": {
+        "<global>": {
+          "core_": "role_",
+          "last_": "values_"
+        },
+        "Begin": {
+          "tile": "key",
+          "last_": "uint64_t"
+        },
+        "Finish": {
+          "offset": "uint64_t"
+        },
+        "Init": {
+          "base_": "trace",
+          "core_": "core",
+          "role_": "role"
+        },
+        "Mark": {
+          "now": "uint64_t",
+          "last_": "uint64_t"
+        },
+        "MarkAll": {},
+        "MarkEvent": {
+          "id": "int32_t"
+        }
+      },
+      "ascend/csrc/vc_tiling.h": {
+        "<global>": {}
+      }
+    },
+    "findings": []
+  },
+  "manual_review": {
+    "SYNC-07": "Retained open candidate: local Cube MatmulImpl, explicit mode-2 flags 8/9/10/15, no KFC registration. Existing remote 0.1.1 run does not replace checking target SDK internal flag allocation.",
+    "SYNC-08": "Probe MarkEvent returns before BOTH adjacent SetFlag and WaitFlag; otherwise both execute on the same core and same active branch. No unmatched event introduced by this return.",
+    "SYNC-05": "Template parameter Event instantiated only as HardEvent::V_S, MTE2_S, MTE3_S; regex does not resolve template argument.",
+    "SYNC-09": "Original Vector barriers retained. New PIPE_ALL only in instrumented completion boundaries; stateless PhaseProbe<false> removes timers, record state and additional synchronization in production.",
+    "trace_ownership": "Host enforces 64-byte base alignment. Each core/role/sample owns 128 bytes; both cache lines explicitly flushed after final sampled timestamp.",
+    "scope": "Source review and regex tool evidence; no claim of complete synchronization proof"
+  },
+  "remote_acceptance": {
+    "entry": "bash scripts/run_ascend910b_profile.sh",
+    "report": "results/ascend910b_profile.json",
+    "required": [
+      "build all four native entry points",
+      "baseline regression suite",
+      "M32/M64 decoded reference within 1%",
+      "all-row M64/M32 and probe/plain within 0.1%",
+      "repeat cast output equality",
+      "long-shape baseline comparison",
+      "separate probe perturbation calibration"
+    ],
+    "performance_claim": "none until remote measurements",
+    "model_quality_claim": false
+  },
+  "source_sha256_lf": {
+    "ascend/csrc/vc_kernel.cpp": "116ebe18497487696bab6dd107524597595711a97b97f2f04231c452f00c034c",
+    "ascend/csrc/vc_tiling.h": "4c88af31dc9ea3d6121f68af93249f64176b50f49c21baa4bd053929947e480c",
+    "ascend/csrc/vc_tiling_host.h": "3d4dd74787c887e65536a39f7a6065bbd7e21fde9b2d9eed0f6861b30d451ed4",
+    "ascend/csrc/vc_phase_probe.h": "04b6d660449de0499368d0b1cab7ede1bb94d56516ade88d81cf9fcc9beb59c6",
+    "ascend/csrc/vc_torch.cpp": "0cf54edc650d348641dd8b8f461b63a031f33dcf90221dd4dd37ae5998fa2367",
+    "ascend/vc_attention_ascend/api.py": "1b3dd0b816b44801d489ffc2f7622805a175eb1e559f1064e99bf4b04d021879",
+    "scripts/profile_ascend910b.py": "eb8271b14bac0ed08bf3dbf4c09d0de9f6bf1f11ace3da3bd60c160607882676",
+    "scripts/run_ascend910b.sh": "0456479749a9a135e3c99628a0c9e29a150dbb144f46ae192669e71c765805aa",
+    "scripts/run_ascend910b_profile.sh": "cb5232475ac920050613a7b8b9123b063430ebd1aca296d300d31a4e0b4bd1f4",
+    "tests/ascend_tiling_layout_smoke.cpp": "ebbbc87f6f7803303fb9f8a0c314a69fa7058988ac97903fe74aa23923fbf3c3",
+    "tests/test_ascend_profile_report.py": "5e8d9c7719c339a56be8def2bba94bf84caa4355374ffdaec46b599ac16c689e",
+    "tests/test_ascend_tiled_api.py": "34636a12ddf2a6de725254388474df97896cd2401628812d4b1a6a596498c4ee"
+  }
+}

@@ -3,6 +3,7 @@
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
 #include "vc_tiling.h"
+#include "vc_phase_probe.h"
 
 using namespace AscendC;
 using namespace matmul;
@@ -26,10 +27,11 @@ using FType = MatmulType<TPosition::GM, CubeFormat::ND, float>;
 
 // Local Cube implementation: no KFC Matmul client and no REGIST_MATMUL_OBJ.
 // Explicit mode-2 flags belong exclusively to this kernel.
+template <uint32_t M, bool Profile>
 class Cube {
 public:
     __aicore__ inline void RunCube(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR ws,
-                              GM_ADDR qt, GM_ADDR vt, const Tiling& t) {
+                              GM_ADDR qt, GM_ADDR vt, GM_ADDR trace, const Tiling& t) {
         TPipe pipe;
         TCubeTiling qkt, pvt;
         ReadControl(qt, qkt);
@@ -46,6 +48,8 @@ public:
         kg.SetGlobalBuffer(reinterpret_cast<__gm__ int8_t*>(k));
         vg.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(v));
         const uint32_t core = GetBlockIdx();
+        PhaseProbe<Profile> probe;
+        probe.Init(trace, core, 0);
         auto localWs = ws + uint64_t(core) * t.workspace_bytes;
         sg.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(localWs), M * N);
         pg.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(localWs + M * N * 4), M * N);
@@ -54,14 +58,17 @@ public:
             const uint64_t head = task / (t.qpad / M);
             const uint32_t qr = (task % (t.qpad / M)) * M;
             for (uint32_t key = 0; key < t.kpad; key += N) {
+                probe.Begin(task, key, t);
                 mmq.SetOrgShape(M, N, t.dim, t.dim);
                 mmq.SetSingleShape(M, N, t.dim);
                 mmq.SetTensorA(qg[head * t.qpad * t.dim + uint64_t(qr) * t.dim], false);
                 mmq.SetTensorB(kg[head * t.kpad * t.dim + uint64_t(key) * t.dim], true);
                 mmq.template IterateAll<true>(sg, 0);
                 mmq.End();
+                probe.MarkAll(0); // QK API, including completed GM writeback
                 CrossCoreSetFlag<2, PIPE_FIX>(S_READY);
                 CrossCoreWaitFlag(P_READY);  // both AIV halves published P
+                probe.Mark(1); // exposed wait, not the duration of all Vector work
 
                 // A[P] stride=N; B[V] stride=D. Four-argument form is intentional.
                 mmv.SetOrgShape(M, t.dim, N, t.dim);
@@ -70,8 +77,11 @@ public:
                 mmv.SetTensorB(vg[head * t.kpad * t.dim + uint64_t(key) * t.dim], false);
                 mmv.template IterateAll<true>(og, 0);
                 mmv.End();
+                probe.MarkAll(2); // PV API, including completed GM writeback
                 CrossCoreSetFlag<2, PIPE_FIX>(O_READY);
                 CrossCoreWaitFlag(O_USED);  // protect scratch from next tile/task
+                probe.Mark(3);
+                probe.Finish();
             }
         }
     }
@@ -80,10 +90,13 @@ private:
     MatmulImpl<HType, HType, FType, FType, MM_CONFIG> mmv;
 };
 
+template <uint32_t M, bool Profile>
 class Vector {
+    static constexpr uint32_t ROWS = M / 2;
+    static_assert(M == 32 || M == 64, "Each AIV must stay within one Q32 quantization block");
 public:
     __aicore__ inline void RunVector(GM_ADDR qs, GM_ADDR ks, GM_ADDR vs, GM_ADDR lut,
-                              GM_ADDR output, GM_ADDR ws, const Tiling& t) {
+                              GM_ADDR output, GM_ADDR ws, GM_ADDR trace, const Tiling& t) {
         TPipe pipe;
         pipe.InitBuffer(rawBuf, ROWS * N * 4);
         pipe.InitBuffer(scoreBuf, ROWS * N * 4);
@@ -115,6 +128,8 @@ public:
         out.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(output));
         const uint32_t core = GetBlockIdx() / GetSubBlockNum();
         const uint32_t sub = GetSubBlockIdx();
+        PhaseProbe<Profile> probe;
+        probe.Init(trace, core, 1 + sub);
         auto localWs = ws + uint64_t(core) * t.workspace_bytes;
         GlobalTensor<int32_t> sg;
         GlobalTensor<half> pg;
@@ -130,7 +145,8 @@ public:
             const uint64_t head = task / (t.qpad / M);
             const uint32_t qb = task % (t.qpad / M);
             const uint32_t qr = qb * M + sub * ROWS;
-            DataCopy(qscale, qsg[(head * (t.qpad / M) + qb) * 8], 8);
+            // Computational tile M64 has two independently quantized Q32 halves.
+            DataCopy(qscale, qsg[(head * (t.qpad / Q_SCALE_BLOCK) + qr / Q_SCALE_BLOCK) * 8], 8);
             DataCopy(vscale, vsg[head * t.dim], t.dim);
             SetFlag<HardEvent::MTE2_S>(EVENT_ID0);
             WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);
@@ -141,7 +157,9 @@ public:
             Duplicate(acc, 0.0f, ROWS * t.dim);
             PipeBarrier<PIPE_V>();
             for (uint32_t key = 0; key < t.kpad; key += N) {
+                probe.Begin(task, key, t);
                 CrossCoreWaitFlag(S_READY);
+                probe.Mark(0);
                 DataCopy(raw, sg, ROWS * N);
                 DataCopy(kscale, ksg[(head * (t.kpad / N) + key / N) * 8], 8);
                 SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
@@ -149,6 +167,7 @@ public:
                 SetFlag<HardEvent::MTE2_S>(EVENT_ID0);
                 WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);
                 const float scale = (qscale.GetValue(0) * kscale.GetValue(0)) * t.scale;
+                probe.Mark(1); // MTE2_S above completed raw scores and scale loads
                 Cast(score, raw, RoundMode::CAST_NONE, ROWS * N);
                 PipeBarrier<PIPE_V>();
                 Muls(score, score, scale, ROWS * N);
@@ -200,10 +219,12 @@ public:
                 ReduceSum<float, Pattern::Reduce::AR, false>(mass, score, tmp, shape, true);
                 PipeBarrier<PIPE_V>();
                 Cast(ph, score, RoundMode::CAST_NONE, ROWS * N);
+                probe.template MarkEvent<HardEvent::V_S>(2, pipe);
                 SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
                 WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
                 DataCopy(pg, ph, ROWS * N);
                 CrossCoreSetFlag<2, PIPE_MTE3>(P_READY);
+                probe.template MarkEvent<HardEvent::MTE3_S>(3, pipe);
                 // History update uses only private UB, while Cube computes PV.
                 Mul(l, l, alpha, ROWS);
                 PipeBarrier<PIPE_V>();
@@ -216,16 +237,21 @@ public:
                 for (uint32_t r = 0; r < ROWS; ++r) alpha_scalar[r] = alpha.GetValue(r);
                 for (uint32_t r = 0; r < ROWS; ++r)
                     Muls(acc[r * t.dim], acc[r * t.dim], alpha_scalar[r], t.dim);
+                probe.template MarkEvent<HardEvent::V_S>(4, pipe);
                 CrossCoreWaitFlag(O_READY);
+                probe.Mark(5); // only PV wait still exposed after history work
                 // ph cannot be overwritten until its MTE3 completes.
                 SetFlag<HardEvent::MTE3_V>(EVENT_ID0);
                 WaitFlag<HardEvent::MTE3_V>(EVENT_ID0);
                 DataCopy(pv, og, ROWS * t.dim);
                 SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
                 WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
+                probe.template MarkEvent<HardEvent::MTE2_S>(6, pipe);
                 PipeBarrier<PIPE_V>();
                 Add(acc, acc, pv, ROWS * t.dim);
+                probe.template MarkEvent<HardEvent::V_S>(7, pipe);
                 CrossCoreSetFlag<2, PIPE_V>(O_USED);
+                probe.Finish();
             }
             SetFlag<HardEvent::V_S>(EVENT_ID0);
             WaitFlag<HardEvent::V_S>(EVENT_ID0);
@@ -252,19 +278,44 @@ private:
     TBuf<TPosition::VECCALC> vsBuf, stateBuf, lutBuf, tmpBuf;
 };
 
-extern "C" __global__ __aicore__ void vc910_forward(
+template <uint32_t TileM, bool Profile>
+__aicore__ inline void RunAttention(
     GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR qs, GM_ADDR ks, GM_ADDR vs,
-    GM_ADDR lut, GM_ADDR output, GM_ADDR ws, GM_ADDR qt, GM_ADDR vt, GM_ADDR tiling) {
+    GM_ADDR lut, GM_ADDR output, GM_ADDR ws, GM_ADDR qt, GM_ADDR vt, GM_ADDR tiling, GM_ADDR trace) {
     // Legacy ascendc.cmake emits MIX for __aicore__ kernels using both pipelines.
     // No KERNEL_TASK_TYPE_DEFAULT (arch35 only), no KFC workspace parameter.
     Tiling t;
     ReadControl(tiling, t);
     if ASCEND_IS_AIC {
-        Cube cube;
-        cube.RunCube(q, k, v, ws, qt, vt, t);
+        Cube<TileM, Profile> cube;
+        cube.RunCube(q, k, v, ws, qt, vt, trace, t);
     }
     if ASCEND_IS_AIV {
-        Vector vector;
-        vector.RunVector(qs, ks, vs, lut, output, ws, t);
+        Vector<TileM, Profile> vector;
+        vector.RunVector(qs, ks, vs, lut, output, ws, trace, t);
     }
+}
+
+extern "C" __global__ __aicore__ void vc910_forward(
+    GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR qs, GM_ADDR ks, GM_ADDR vs,
+    GM_ADDR lut, GM_ADDR output, GM_ADDR ws, GM_ADDR qt, GM_ADDR vt, GM_ADDR tiling, GM_ADDR trace) {
+    RunAttention<32, false>(q, k, v, qs, ks, vs, lut, output, ws, qt, vt, tiling, trace);
+}
+
+extern "C" __global__ __aicore__ void vc910_forward_m64(
+    GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR qs, GM_ADDR ks, GM_ADDR vs,
+    GM_ADDR lut, GM_ADDR output, GM_ADDR ws, GM_ADDR qt, GM_ADDR vt, GM_ADDR tiling, GM_ADDR trace) {
+    RunAttention<64, false>(q, k, v, qs, ks, vs, lut, output, ws, qt, vt, tiling, trace);
+}
+
+extern "C" __global__ __aicore__ void vc910_profile(
+    GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR qs, GM_ADDR ks, GM_ADDR vs,
+    GM_ADDR lut, GM_ADDR output, GM_ADDR ws, GM_ADDR qt, GM_ADDR vt, GM_ADDR tiling, GM_ADDR trace) {
+    RunAttention<32, true>(q, k, v, qs, ks, vs, lut, output, ws, qt, vt, tiling, trace);
+}
+
+extern "C" __global__ __aicore__ void vc910_profile_m64(
+    GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR qs, GM_ADDR ks, GM_ADDR vs,
+    GM_ADDR lut, GM_ADDR output, GM_ADDR ws, GM_ADDR qt, GM_ADDR vt, GM_ADDR tiling, GM_ADDR trace) {
+    RunAttention<64, true>(q, k, v, qs, ks, vs, lut, output, ws, qt, vt, tiling, trace);
 }

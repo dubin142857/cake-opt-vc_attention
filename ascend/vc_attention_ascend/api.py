@@ -98,23 +98,45 @@ def prepare(q, k, v, *, layout="NHD", v_quantize=True, check_finite=True, _refer
     return payload
 
 
-@torch.no_grad()
-def run_prepared(payload, *, expcast=True):
-    """Native launch, allocation and final cast/layout; excludes quantization."""
-    if payload["q"].device.type != "npu":
-        raise ValueError("run_prepared requires NPU tensors")
-    op = load_native()
-    out = op.forward(payload["q"], payload["k"], payload["v"], payload["q_scale"],
-                     payload["k_scale"], payload["v_scale"], payload["lut"],
-                     payload["queries"], payload["keys"], payload["scale"], bool(expcast))
+def _native_args(payload, expcast):
+    return (payload["q"], payload["k"], payload["v"], payload["q_scale"],
+            payload["k_scale"], payload["v_scale"], payload["lut"],
+            payload["queries"], payload["keys"], payload["scale"], bool(expcast))
+
+
+def _format_output(out, payload):
     out = out[:, :, :payload["queries"]].to(payload["dtype"])
     return out.transpose(1, 2).contiguous() if payload["layout"] == "NHD" else out.contiguous()
 
 
 @torch.no_grad()
+def run_prepared(payload, *, expcast=True, tile_m=32):
+    """Native launch, allocation and final cast/layout; excludes quantization."""
+    if payload["q"].device.type != "npu":
+        raise ValueError("run_prepared requires NPU tensors")
+    if tile_m not in (32, 64):
+        raise ValueError("tile_m must be 32 or 64; Q quantization remains Q32")
+    op = load_native()
+    args = _native_args(payload, expcast)
+    out = op.forward(*args) if tile_m == 32 else op.forward_tiled(*args, int(tile_m))
+    return _format_output(out, payload)
+
+
+@torch.no_grad()
+def profile_prepared(payload, *, expcast=True, tile_m=32):
+    """Instrumented output + [core,role,sample,field] system ticks, not production timings."""
+    if payload["q"].device.type != "npu":
+        raise ValueError("profile_prepared requires NPU tensors")
+    if tile_m not in (32, 64):
+        raise ValueError("tile_m must be 32 or 64")
+    out, records = load_native().profile_tiled(*_native_args(payload, expcast), int(tile_m))
+    return _format_output(out, payload), records
+
+
+@torch.no_grad()
 def attention(q, k, v, *, layout="NHD", expcast=True, v_quantize=True,
-              causal=False, v_smooth=False, check_finite=True):
+              causal=False, v_smooth=False, check_finite=True, tile_m=32):
     if causal or v_smooth:
         raise NotImplementedError("This 910B port is dense noncausal, without V clustering/smoothing")
     return run_prepared(prepare(q, k, v, layout=layout, v_quantize=v_quantize,
-                               check_finite=check_finite), expcast=expcast)
+                               check_finite=check_finite), expcast=expcast, tile_m=tile_m)

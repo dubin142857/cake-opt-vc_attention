@@ -10,10 +10,16 @@
 #include <cstring>
 #include <limits>
 #include <string>
+#include <tuple>
 #include "vc_tiling_host.h"
 
-extern "C" uint32_t aclrtlaunch_vc910_forward(uint32_t, void*, void*, void*, void*,
-    void*, void*, void*, void*, void*, void*, void*, void*, void*);
+extern "C" {
+uint32_t aclrtlaunch_vc910_forward(uint32_t blocks, void* stream, void* q, void* k, void* v,
+    void* qs, void* ks, void* vs, void* lut, void* out, void* ws, void* qt, void* vt, void* meta, void* trace);
+decltype(aclrtlaunch_vc910_forward) aclrtlaunch_vc910_forward_m64;
+decltype(aclrtlaunch_vc910_forward) aclrtlaunch_vc910_profile;
+decltype(aclrtlaunch_vc910_forward) aclrtlaunch_vc910_profile_m64;
+}
 
 namespace {
 using namespace vc910;
@@ -49,7 +55,7 @@ void Check(const at::Tensor& q, const at::Tensor& k, const at::Tensor& v,
     TORCH_CHECK(std::isfinite(scale) && scale > 0 && scale <= std::numeric_limits<float>::max(), "Invalid scale");
 }
 
-at::Tensor CubeTiling(platform_ascendc::PlatformAscendC* platform, bool qk, int d,
+at::Tensor CubeTiling(platform_ascendc::PlatformAscendC* platform, bool qk, int d, int tile_m,
                       uint64_t l1, uint64_t l0c, const at::TensorOptions& options) {
     using namespace matmul_tiling;
     MatmulApiTiling api(*platform);
@@ -58,16 +64,16 @@ at::Tensor CubeTiling(platform_ascendc::PlatformAscendC* platform, bool qk, int 
     api.SetCType(TPosition::GM, CubeFormat::ND, qk ? DataType::DT_INT32 : DataType::DT_FLOAT);
     api.SetBiasType(TPosition::GM, CubeFormat::ND, qk ? DataType::DT_INT32 : DataType::DT_FLOAT);
     const int n = qk ? N : d, k = qk ? d : N;
-    api.SetShape(M, n, k);
-    api.SetOrgShape(M, n, k);
-    api.SetFixSplit(M, n, k);
+    api.SetShape(tile_m, n, k);
+    api.SetOrgShape(tile_m, n, k);
+    api.SetFixSplit(tile_m, n, k);
     api.SetBias(false);
     // Two sequential local matmul objects share the physical Cube memories.
     api.SetBufferSpace(l1 / 2, l0c / 2, -1);
     optiling::TCubeTiling t;
     TORCH_CHECK(api.GetTiling(t) == 0, "CANN MatmulApiTiling failed for ", qk ? "INT8 QK" : "FP16 PV");
     t.set_usedCoreNum(1);
-    t.set_singleCoreM(M); t.set_singleCoreN(n); t.set_singleCoreK(k);
+    t.set_singleCoreM(tile_m); t.set_singleCoreN(n); t.set_singleCoreK(k);
     t.set_dbL0A(1); t.set_dbL0B(1); t.set_dbL0C(1);
     t.set_shareMode(0); t.set_shareL1Size(l1 / 2); t.set_shareL0CSize(l0c / 2);
     auto host = at::empty({int64_t(t.GetDataSize())}, at::TensorOptions().dtype(at::kByte).device(at::kCPU));
@@ -75,10 +81,12 @@ at::Tensor CubeTiling(platform_ascendc::PlatformAscendC* platform, bool qk, int 
     return host.to(options.device());
 }
 
-at::Tensor Forward(const at::Tensor& q, const at::Tensor& k, const at::Tensor& v,
+std::tuple<at::Tensor, at::Tensor> ForwardImpl(const at::Tensor& q, const at::Tensor& k, const at::Tensor& v,
     const at::Tensor& qs, const at::Tensor& ks, const at::Tensor& vs, const at::Tensor& lut,
-    int64_t queries, int64_t keys, double scale, bool expcast) {
+    int64_t queries, int64_t keys, double scale, bool expcast, int64_t tile_m, bool profile) {
     Check(q, k, v, qs, ks, vs, lut, queries, keys, scale);
+    TORCH_CHECK(tile_m == 32 || tile_m == 64, "tile_m must be 32 or 64; Q quantization stays Q32");
+    TORCH_CHECK(queries < INT32_MAX - tile_m, "Query padding exceeds the native indexing contract");
     TORCH_CHECK(q.is_privateuseone(), "NPU payload required");
     c10::OptionalDeviceGuard guard(q.device());
     const char* soc = aclrtGetSocName();
@@ -100,35 +108,67 @@ at::Tensor Forward(const at::Tensor& q, const at::Tensor& k, const at::Tensor& v
     TORCH_CHECK(platform->GetCoreNumAiv() >= 2 * core_count,
                 "This mixed kernel requires two AIV cores per AIC; check the device partition");
     uint32_t max_tmp = 0, min_tmp = 0, sum_tmp = 0;
-    ge::Shape shape({ROWS, N});
+    ge::Shape shape({tile_m / 2, N});
     AscendC::GetReduceMaxMaxMinTmpSize(shape, ge::DT_FLOAT, AscendC::ReducePattern::AR,
                                      true, false, max_tmp, min_tmp);
     AscendC::GetReduceSumMaxMinTmpSize(shape, ge::DT_FLOAT, AscendC::ReducePattern::AR,
                                      true, false, sum_tmp, min_tmp);
     auto reduce_bytes = (std::max(max_tmp, sum_tmp) + 31) / 32 * 32;
     reduce_bytes = std::max(reduce_bytes, uint32_t(32));
-    TORCH_CHECK(VectorBytes(reduce_bytes) <= ub, "Vector UB budget exceeds device capacity");
-    const uint64_t tasks = uint64_t(q.size(0)) * q.size(1) * (q.size(2) / M);
+    TORCH_CHECK(VectorBytes(reduce_bytes, uint32_t(tile_m)) <= ub, "Vector UB budget exceeds device capacity");
+    // Payloads retain Q32 quantization. Only append a dummy Q32 block when the
+    // M64 Cube would otherwise read beyond Q's allocation. Account for this in
+    // both fixed-core and full-API timing; never requantize the valid operands.
+    const int64_t extra_q = (tile_m - q.size(2) % tile_m) % tile_m;
+    auto qp = extra_q ? at::constant_pad_nd(q, {0, 0, 0, extra_q}, 0) : q;
+    auto qsp = extra_q ? at::constant_pad_nd(qs, {0, 0, 0, extra_q / Q_SCALE_BLOCK}, 1) : qs;
+    const uint64_t tasks = uint64_t(q.size(0)) * q.size(1) * (qp.size(2) / tile_m);
     const uint32_t cores = std::min<uint64_t>(core_count, tasks);
     Tiling t{uint32_t(q.size(0)), uint32_t(q.size(1)), uint32_t(queries), uint32_t(keys),
-             uint32_t(q.size(2)), uint32_t(k.size(2)), uint32_t(q.size(3)), cores,
+             uint32_t(qp.size(2)), uint32_t(k.size(2)), uint32_t(q.size(3)), cores,
              reduce_bytes, uint32_t(expcast), float(scale), 0, tasks};
-    t.workspace_bytes = uint32_t(WorkspaceBytes(t.dim));  // D=64/128 checked above
-    auto qt = CubeTiling(platform, true, t.dim, l1, l0c, q.options());
-    auto vt = CubeTiling(platform, false, t.dim, l1, l0c, q.options());
+    t.workspace_bytes = uint32_t(WorkspaceBytes(t.dim, uint32_t(tile_m)));
+    auto qt = CubeTiling(platform, true, t.dim, int(tile_m), l1, l0c, q.options());
+    auto vt = CubeTiling(platform, false, t.dim, int(tile_m), l1, l0c, q.options());
     auto meta_cpu = at::empty({int64_t(sizeof(t))}, at::TensorOptions().dtype(at::kByte).device(at::kCPU));
     std::memcpy(meta_cpu.data_ptr(), &t, sizeof(t));
     auto meta = meta_cpu.to(q.device());
     auto workspace = at::empty({int64_t(uint64_t(cores) * t.workspace_bytes)}, q.options().dtype(at::kByte));
-    auto out = at::empty(q.sizes(), q.options().dtype(at::kFloat));
+    auto out = at::empty(qp.sizes(), q.options().dtype(at::kFloat));
+    at::Tensor trace;
+    if (profile) {
+        trace = at::zeros({cores, PROFILE_ROLES, PROFILE_SAMPLES, PROFILE_FIELDS}, q.options().dtype(at::kLong));
+        TORCH_CHECK(reinterpret_cast<uintptr_t>(trace.data_ptr()) % 64 == 0,
+                    "Profile records must start on a 64-byte cache-line boundary");
+    }
     // Drain PTA's host queue before direct launch, including all .to() above.
     auto stream = c10_npu::getCurrentNPUStream(q.device().index()).stream(true);
-    auto ret = aclrtlaunch_vc910_forward(cores, stream, q.data_ptr(), k.data_ptr(), v.data_ptr(),
-        qs.data_ptr(), ks.data_ptr(), vs.data_ptr(), lut.data_ptr(), out.data_ptr(), workspace.data_ptr(),
-        qt.data_ptr(), vt.data_ptr(), meta.data_ptr());
+    auto launch = profile ? (tile_m == 64 ? aclrtlaunch_vc910_profile_m64 : aclrtlaunch_vc910_profile)
+                          : (tile_m == 64 ? aclrtlaunch_vc910_forward_m64 : aclrtlaunch_vc910_forward);
+    auto ret = launch(cores, stream, qp.data_ptr(), k.data_ptr(), v.data_ptr(),
+        qsp.data_ptr(), ks.data_ptr(), vs.data_ptr(), lut.data_ptr(), out.data_ptr(), workspace.data_ptr(),
+        qt.data_ptr(), vt.data_ptr(), meta.data_ptr(), profile ? trace.data_ptr() : nullptr);
     TORCH_CHECK(ret == ACL_SUCCESS, "vc910_forward launch failed: ", ret);
     // Workspaces allocated on the current stream; caching allocator retains stream ordering.
-    return out;
+    return {out, trace};
+}
+
+at::Tensor Forward(const at::Tensor& q, const at::Tensor& k, const at::Tensor& v,
+    const at::Tensor& qs, const at::Tensor& ks, const at::Tensor& vs, const at::Tensor& lut,
+    int64_t queries, int64_t keys, double scale, bool expcast) {
+    return std::get<0>(ForwardImpl(q, k, v, qs, ks, vs, lut, queries, keys, scale, expcast, 32, false));
+}
+
+at::Tensor ForwardTiled(const at::Tensor& q, const at::Tensor& k, const at::Tensor& v,
+    const at::Tensor& qs, const at::Tensor& ks, const at::Tensor& vs, const at::Tensor& lut,
+    int64_t queries, int64_t keys, double scale, bool expcast, int64_t tile_m) {
+    return std::get<0>(ForwardImpl(q, k, v, qs, ks, vs, lut, queries, keys, scale, expcast, tile_m, false));
+}
+
+std::tuple<at::Tensor, at::Tensor> ProfileTiled(const at::Tensor& q, const at::Tensor& k, const at::Tensor& v,
+    const at::Tensor& qs, const at::Tensor& ks, const at::Tensor& vs, const at::Tensor& lut,
+    int64_t queries, int64_t keys, double scale, bool expcast, int64_t tile_m) {
+    return ForwardImpl(q, k, v, qs, ks, vs, lut, queries, keys, scale, expcast, tile_m, true);
 }
 
 at::Tensor Meta(const at::Tensor& q, const at::Tensor& k, const at::Tensor& v,
@@ -137,10 +177,29 @@ at::Tensor Meta(const at::Tensor& q, const at::Tensor& k, const at::Tensor& v,
     Check(q, k, v, qs, ks, vs, lut, queries, keys, scale);
     return at::empty(q.sizes(), q.options().dtype(at::kFloat));
 }
+
+at::Tensor MetaTiled(const at::Tensor& q, const at::Tensor& k, const at::Tensor& v,
+    const at::Tensor& qs, const at::Tensor& ks, const at::Tensor& vs, const at::Tensor& lut,
+    int64_t queries, int64_t keys, double scale, bool expcast, int64_t tile_m) {
+    Check(q, k, v, qs, ks, vs, lut, queries, keys, scale);
+    TORCH_CHECK(tile_m == 32 || tile_m == 64, "tile_m must be 32 or 64");
+    TORCH_CHECK(queries < INT32_MAX - tile_m, "queries exceed execution-tile indexing range");
+    return at::empty({q.size(0), q.size(1), (q.size(2) + tile_m - 1) / tile_m * tile_m, q.size(3)},
+                     q.options().dtype(at::kFloat));
+}
 }
 
 TORCH_LIBRARY(vc_ascend, m) {
     m.def("forward(Tensor q, Tensor k, Tensor v, Tensor q_scale, Tensor k_scale, Tensor v_scale, Tensor lut, int queries, int keys, float scale, bool expcast) -> Tensor");
+    m.def("forward_tiled(Tensor q, Tensor k, Tensor v, Tensor q_scale, Tensor k_scale, Tensor v_scale, Tensor lut, int queries, int keys, float scale, bool expcast, int tile_m) -> Tensor");
+    m.def("profile_tiled(Tensor q, Tensor k, Tensor v, Tensor q_scale, Tensor k_scale, Tensor v_scale, Tensor lut, int queries, int keys, float scale, bool expcast, int tile_m) -> (Tensor, Tensor)");
 }
-TORCH_LIBRARY_IMPL(vc_ascend, PrivateUse1, m) { m.impl("forward", TORCH_FN(Forward)); }
-TORCH_LIBRARY_IMPL(vc_ascend, Meta, m) { m.impl("forward", TORCH_FN(Meta)); }
+TORCH_LIBRARY_IMPL(vc_ascend, PrivateUse1, m) {
+    m.impl("forward", TORCH_FN(Forward));
+    m.impl("forward_tiled", TORCH_FN(ForwardTiled));
+    m.impl("profile_tiled", TORCH_FN(ProfileTiled));
+}
+TORCH_LIBRARY_IMPL(vc_ascend, Meta, m) {
+    m.impl("forward", TORCH_FN(Meta));
+    m.impl("forward_tiled", TORCH_FN(MetaTiled));
+}

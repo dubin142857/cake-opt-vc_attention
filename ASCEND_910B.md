@@ -2,13 +2,15 @@
 
 这是一版新的 **C++ / Ascend C 内核 + torch_npu 接口**，对应当前 H200 路线的 **INT8 QK + ExpCast，不启用 V 聚类/平滑**。它没有把 attention 偷换成 PyTorch SDPA。预处理使用设备上的 torch_npu 运算；QK、ExpCast、在线归一化和 PV 在自定义混合内核内执行。
 
-**当前验收状态：0.1.1 修复跨 query 任务的 V scale 缓冲区复用竞争，等待远端重新编译验收；尚未得到有效性能结果。** 前版 A3 / CANN 9.0.1 已编译并通过小形状验收，但 BF16 `[1,37741,28,128]` 的 ExpCast 输出相对量化解码参考 RMSE 为 **1.342429%**（max abs `0.0074462890625`），超过原有 1% 实现门限。这是实现一致性失败，不是相对 dense FP32 的量化损失。
+**当前状态：用户已回传 0.1.1 的有效长形状基准；0.2.0 新增 M64 计算块候选和阶段诊断，等待远端编译验收。** 0.1.1 在 A3 `Ascend910_9382` / CANN 9.0.1 上，BF16 `[1,37741,28,128]` 的同步 full API 为：VC ExpCast **2040.5450 ms**、control **1899.7418 ms**、CANN **128.0532 ms**、MindIE Laser **83.2749 ms**。VC fixed core 分别为 **2004.0513 / 1861.6662 ms**，主要耗时仍在 prepared 执行路径。上述是用户实测，不是本地 NPU 测试；不能把这些数据当成 M64 的结果。
+
+前版的小形状虽通过，长形状 ExpCast 相对量化解码参考 RMSE 曾为 **1.342429%**，超过 1% 实现门限。下面保留这次竞争修复的背景。新结果中的 dense RMSE 为 VC ExpCast **4.368437%**、control **2.979953%**，这是相对标准 attention 的误差，不能与 decoded 实现门限混用。
 
 2026-10-14 的定向诊断进一步缩小了范围：Q32/K37741 的 ExpCast 最终 BF16 输出与参考逐位一致；Q1025/K129 的 control/ExpCast 却分别出现约 3.43%/6.48% 误差，同一量化输入重复调用也出现 4.61%/3.22% 误差。重新预处理的所有字节和 scale 一致；隔离原始出错 Q32 块后恢复准确和确定性。这些结果指向多任务执行，而非长 K 累加本身。
 
-代码审查发现：任务尾部 `MTE3_V` 仅阻止下一次 Vector 写入，不能阻止下一任务 MTE2 提前覆盖 `vscale`，此时上一任务的 epilogue 可能还在读它。0.1.1 将这对事件改为通过 `FetchEventID` 分配的 `MTE3_S`，形成 `旧 V 读 scale → 输出 DMA → Scalar → 新任务 metadata DMA` 的先后关系。CrossCore 握手、量化方式和 1% decoded 门限保持原样。新增多任务、跨 head、固定输入重复执行的回归验收。本地没有 CANN、torch_npu 或 NPU，不能把代码修复当作实机通过。
+代码审查发现：任务尾部 `MTE3_V` 仅阻止下一次 Vector 写入，不能阻止下一任务 MTE2 提前覆盖 `vscale`，此时上一任务的 epilogue 可能还在读它。0.1.1 将这对事件改为通过 `FetchEventID` 分配的 `MTE3_S`，形成 `旧 V 读 scale → 输出 DMA → Scalar → 新任务 metadata DMA` 的先后关系。CrossCore 握手、量化方式和 1% decoded 门限保持原样。新增多任务、跨 head、固定输入重复执行的回归验收。0.2.0 保留这条同步链；本地没有 CANN、torch_npu 或 NPU。
 
-**这次涉及原生内核，必须重新编译**。已有一键脚本会重建 0.1.1、运行包含新回归的小形状验收，再进入原始长形状 Laser 对比；任一步失败即停止，无需重新安装 MindIE：
+**涉及原生内核，必须重新编译**。已有一键脚本会重建当前版本、运行包含回归的小形状验收，再进入默认 M32 的原始长形状 Laser 对比；任一步失败即停止，无需重新安装 MindIE：
 
 ```bash
 git pull origin master
@@ -25,6 +27,33 @@ bash scripts/run_ascend910b_accuracy.sh
 
 定向诊断脚本只复用已安装的扩展，不能代替这次重建。长形状失败时，benchmark 会先保存 dense/decoded 误差、每个 head 的误差与最差行位置，再自动隔离最差 Q32 tile，保留其原始 Q/K/V 字节、量化 scale 和 K 中心化结果，比较 K 前缀、普通 exp/ExpCast、零 Q 和常量 V。原失败仍保留，诊断不会把失败改成通过。通过定向诊断也不等于原始长形状通过。
 
+## 0.2.0：M32 / M64 与阶段诊断
+
+一键编译、验收并诊断，沿用已安装的 MindIE-SD：
+
+```bash
+git pull origin master
+bash scripts/run_ascend910b_profile.sh
+```
+
+固定默认 `python3`、逻辑 NPU 0、BF16 `[1,37741,28,128]`；已有 `PYTHON_BIN` / `NPU_DEVICE` 时保留。依次执行原 M32 回归、M64 与插桩输出验收，再测 `control_m32 / control_m64 / expcast_m32 / expcast_m64 / mindie_laser / cann_fusion_attention`。正式 API 预热 1 次、每轮 2 次、5 轮；各轮打乱顺序。输出 `results/ascend910b_profile.json` 和 `.log`，任何编译或精度失败均停止。
+
+M64 将一次 Cube 计算的 query 行数从 32 改为 64，每路 AIV 处理 32 行，减少任务、Matmul 调用和握手次数。**Q 量化仍每 32 行一个 scale，K 仍每 128 行一个 scale**；每路 AIV 使用自己的 Q32 scale。只在必要时补 dummy Q32 块，原有效 Q/K/V 的数值和量化参数不变。不启用 V 平滑，不改变 K tile 在线累加顺序，默认 `attention()` 仍使用 M32。
+
+| 资源（D128） | M32 | M64 |
+| --- | ---: | ---: |
+| 每 AIC 的 GM scratch | 40 KiB | 80 KiB |
+| 每 AIV 的固定 UB（另加 reduction scratch） | 38400 B | 75776 B |
+| 长形状 Q 任务数 | 33040 | 16520 |
+
+M64 并未减少 S/P/PV 中间结果交换的总字节数，不能预判两倍加速。native 入口的额外 padding、分配、tiling 和输出转换计入 fixed core；full API 还包括新鲜预处理。
+
+独立 profile 入口记录 Cube 的 QK、等待 P、PV、等待 PV 被消费，以及两路 AIV 的读 S、概率计算、P 写出、历史缩放、等待/读取 PV、累加。每核仅抽取首个任务的最多 4 个 K tile，完整块和尾块分别统计。计时使用 `GetSystemCycle` 的 **system ticks**，带完成边界同步；它会改变流水重叠，不能换算成生产内核百分比，跨核等待也不等于对方完整计算耗时。
+
+正常内核通过空特化移除探针状态与操作，测速表只使用未插桩入口。另测同输入的 plain/probe API 比值，报告插桩扰动。记录按独占缓存行写回；probe 输出也必须通过 0.1% 全输出一致性门限。M64 对 M32 使用相同门限，二者各自对 decoded reference 仍为 1%。长形状 decoded/dense 默认抽取 32 个 query、使用全部 keys；M64/M32、重复调用和 probe 对照检查全部输出。门限属于实现验收，不代表模型质量。
+
+本地验证记录：`results/ascend_m64_profile_local_validation.json`。主机布局测试、CPU 接口与报告测试不等于 Ascend C 编译通过；四个 native 入口仍需上述远端脚本验证。
+
 ## 与 H200 路线的差异
 
 | 环节 | 本版 A2/A3 实现 |
@@ -34,8 +63,8 @@ bash scripts/run_ascend910b_accuracy.sh
 | ExpCast | Vector 计算 E4M3 编码、查表解码；分母累加解码后的 P |
 | V | 默认每通道 E4M3 量化，再解码为 FP16；没有 token 重排、聚类或 V 平滑 |
 | PV | **FP16×FP16→FP32 Cube 计算，不是原生 FP8 矩阵乘** |
-| 分块 | Q32×K128；每个 AIC 配两路 AIV，每路处理 16 个 query |
-| 中间存储 | 每个 AIC 一份 tile scratch；D128 时 40 KiB，不分配完整 N×N 矩阵 |
+| 分块 | 默认 Q32×K128；候选 Q64×K128；每个 AIC 配两路 AIV |
+| 中间存储 | 每个 AIC 一份 tile scratch；D128 时默认 40 KiB、候选 80 KiB，不分配完整 N×N 矩阵 |
 | 范围 | 非因果 dense MHA、D=64/128、推理；不支持 GQA、mask、dropout、反向 |
 
 A2/A3 的 DAV-2201 不具备这里需要的原生 FP8 Cube 路径，因此不能把 H200 的 FP8 PV 指令直接搬过来。本版保存 ExpCast/E4M3 的数值方法，用 FP16 Cube 执行解码后的乘法。Q/K 的量化粒度和 FP32 运算顺序也与 Sage CUDA 不同；它不是逐位复现 H200 或论文完整优化实现，不能据此承诺论文加速比。
@@ -90,6 +119,8 @@ torch.npu.synchronize()
 - `v_quantize=False`：显式切换为归一化 FP16 V，是另一种数值设置，不代表默认算法。
 - `check_finite=True`：默认检查输入和 FP32 预处理范围，会同步设备。测速在对同一输入完成一次检查后显式关闭重复扫描，并记录这一点。
 - `prepare(...)` / `run_prepared(...)`：分别用于新鲜预处理、固定量化输入的内核调用；正常 API 均要求 NPU tensors。
+- `attention(..., tile_m=64)` / `run_prepared(..., tile_m=64)`：显式选择 M64 候选；省略时为原 M32。
+- `profile_prepared(payload, expcast=True, tile_m=32)`：返回 `(output, records)`；仅供阶段诊断，不用于正式性能表。
 
 ## 数值契约
 
@@ -169,7 +200,7 @@ python3 scripts/benchmark_ascend910b.py --backends mindie_laser cann_fusion_atte
 
 基准在计时前运行额外的真实 NPU 检查：FP16/BF16、D64/128、完整与不完整 256 尾块、常量 V 通道、full/prepared 输出一致性。Laser 对 dense FP32 参考使用 1% 实现检查门限，full/prepared 使用 0.1%；这些不是模型质量标准。若已加载的 Laser 执行/精度检查失败，脚本直接报错，不静默替换。
 
-JSON 记录安装版本、原生 op schema、已加载动态库、上游包装文件路径/SHA256、实际输入/补齐形状及精度设置。`inspected_commit` 只是编写适配器时检查的源码版本，**不代表远端安装包就是该提交**。当前没有本地 NPU/MindIE 运行或性能数据；新增 CPU 测试只验证适配器传参与失败处理。
+JSON 记录安装版本、原生 op schema、已加载动态库、上游包装文件路径/SHA256、实际输入/补齐形状及精度设置。`inspected_commit` 只是编写适配器时检查的源码版本，**不代表远端安装包就是该提交**。上述远端基准来自用户的 MindIE-SD 3.1.0；本地 CPU 测试只验证适配器传参与失败处理。
 
 ## 同步审查与未完成的实机确认
 
@@ -185,6 +216,8 @@ JSON 记录安装版本、原生 op schema、已加载动态库、上游包装�
 事件方向和参数依据 [CANN 9.0 SetFlag/WaitFlag 文档](https://www.hiascend.com/doc_center/source/en/CANNCommunityEdition/900/API/ascendcopapi/atlasascendc_api_07_0270.html)。本次没有调整跨核 flag 或删除 barrier。
 
 目前仍有 **SYNC-07 红线候选：Matmul API 与自定义 CrossCore flag 的潜在冲突**，以及两条 SYNC-09 barrier 数量性能提示。此报告没有将红线候选标为通过。数据流扫描使用 regex 前端，未检出问题不构成硬件正确性证明。
+
+0.2.0 扫描同时保留探针的新增候选：SYNC-08 提前返回、两条 SYNC-05 模板事件方向，以及两条 SYNC-09 `PIPE_ALL` 提示。人工复核：`MarkEvent` 提前返回会同时跳过紧邻的 Set/Wait，不留下单边等待；模板 `Event` 的调用仅为 `V_S/MTE2_S/MTE3_S`，并非未知方向；`PIPE_ALL` 用于诊断完成边界，刻意改变插桩流水，未加入正常入口。原始扫描结果和这些判定均保存在 0.2.0 本地记录中，未修改审查工具来消除告警。
 
 代码选择本地 Cube `MatmulImpl`，没有 KFC 客户端或 `REGIST_MATMUL_OBJ`；显式 mode-2 flags 为 8/9/10/15，避开技能文档列出的 Matmul 0..7 和 SyncAll 11..14。AIC/AIV 的实际握手为：
 
