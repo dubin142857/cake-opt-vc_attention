@@ -1,0 +1,13 @@
+This experimental Ascend-only component was developed with reference to
+hicann/cannbot-skills, commit dbf4019cae5d757820f03c9cd21e0f0b277e1701.
+Upstream template/example notices identify:
+Copyright (c) 2026 Huawei Technologies Co., Ltd.
+
+The upstream CANN Open Software License Agreement Version 2.0 is included
+in LICENSE-CANN.txt. Consult ../SOURCES.json in the source checkout for
+the specific API, build and cross-core synchronization references.
+
+Changes for this project include INT8 QK tiling, VC ExpCast and online
+normalization, decoded E4M3/FP16 PV, torch_npu registration, packaging,
+validation and benchmarking. No upstream performance or hardware
+validation claim is transferred to this implementation.

@@ -1,0 +1,5 @@
+include CMakeLists.txt
+include SOURCES.json
+include vc_attention_ascend/NOTICE
+include vc_attention_ascend/LICENSE-CANN.txt
+recursive-include csrc *.cpp *.h

@@ -1,0 +1,78 @@
+{
+  "date": "2026-10-14",
+  "status": "cpu_contract_passed_native_unverified",
+  "environment": {
+    "os": "Windows",
+    "python": "3.10.16",
+    "torch": "2.3.1+cu121",
+    "CANN_available": false,
+    "NPU_available": false
+  },
+  "cpu_contract_tests": {
+    "command": "python -m pytest -q tests/test_ascend910b_reference.py",
+    "passed": 24,
+    "failed": 0,
+    "torch_num_threads": 2
+  },
+  "syntax": {
+    "python_files": 8,
+    "python": "passed",
+    "bash_n": "passed",
+    "source_manifest_json": "passed"
+  },
+  "skill_commit": "dbf4019cae5d757820f03c9cd21e0f0b277e1701",
+  "sync_audit": {
+    "tool": "ops/ascendc-sync-audit/scripts/sync_audit.py",
+    "exit_code": 1,
+    "findings": [
+      {
+        "code": "SYNC-07",
+        "severity": "红线",
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "line": 79,
+        "message": "CrossCoreSetFlag/WaitFlag 与 Matmul 高阶 API 混用（flagId 冲突风险）",
+        "detail": "高阶 API 内部已用 CrossCoreSetFlag，混用有 flagId 冲突；应删除手写 CrossCore | 历史 case: cann/ops-transformer PR#3921 (flag_pair) | 修复提示: 补齐缺失的 SetFlag 或 WaitFlag，确保所有路径都触发 SetFlag | diff证据: @@ -595,6 +595,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::VectorBufferInit() {\n     // ..."
+      },
+      {
+        "code": "SYNC-09",
+        "severity": "性能",
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "line": 141,
+        "message": "同一函数连续 PipeBarrier 过多: 19 个 in __aicore__ inline void RunVector",
+        "detail": "行: [141, 152, 154, 166, 168, 170, 178, 182, 184, 186, 188, 190, 193, 198, 200, 208, 210, 225, 235]；分析是否可合并"
+      },
+      {
+        "code": "SYNC-09",
+        "severity": "性能",
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "line": 141,
+        "message": "同一文件 PipeBarrier<PIPE_V> 过多: 19 个",
+        "detail": "行: [141, 152, 154, 166, 168, 170, 178, 182, 184, 186, 188, 190, 193, 198, 200, 208, 210, 225, 235]；分析是否可合并"
+      }
+    ],
+    "status": "not_cleared; verify target CANN MatmulImpl internal flags and mixed-core execution"
+  },
+  "flow_audit": {
+    "tool": "ops/ascendc-sync-audit/scripts/ascendc_flow_analyzer.py",
+    "frontends": {
+      "ascend/csrc/vc_kernel.cpp": "regex",
+      "ascend/csrc/vc_tiling.h": "regex"
+    },
+    "findings": [],
+    "scope": "regex scan only; no proof of NPU ordering or resource correctness"
+  },
+  "native": {
+    "compile": "not_run",
+    "validation": "not_run",
+    "performance": "not_measured"
+  },
+  "source_sha256": {
+    "ascend/csrc/vc_kernel.cpp": "a35abe2382eab6b57c9e9f602cc56c9cbb67ef355c2074641d9f4aeed6716e61",
+    "ascend/csrc/vc_torch.cpp": "ebef35f411547a7f8549189a66cfefea680c2f6492ea4d5a56c9f7e837e058f6",
+    "ascend/csrc/vc_tiling.h": "48928197c7e977c40453b930f032523a55da3819da46ec6f31e054655627ddbb",
+    "ascend/vc_attention_ascend/__init__.py": "87e98194e2611deb13ea581e277df8b23143981bdeda366431ce578159846997",
+    "ascend/vc_attention_ascend/api.py": "3c68cda17d2de45c58f8b3f1d8f886a45f3f2d5d6058ce934c93b7224a9449b2",
+    "ascend/vc_attention_ascend/reference.py": "491f5c24511799d671f296bf1ab5ef2ae6289a5b415b6813efe13fe4f579263e"
+  },
+  "limitation": "No statement of native correctness, speedup, paper bitwise equivalence or model quality follows from these CPU tests."
+}

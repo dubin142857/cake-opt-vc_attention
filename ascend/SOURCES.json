@@ -1,0 +1,27 @@
+{
+  "component": "vc-attention-ascend",
+  "status": "experimental; native build and NPU execution unverified",
+  "target": "Ascend 910B (user device label 910B_23); runtime SoC detection",
+  "skill_repository": {
+    "url": "https://github.com/hicann/cannbot-skills",
+    "commit": "dbf4019cae5d757820f03c9cd21e0f0b277e1701",
+    "license": "CANN Open Software License Agreement Version 2.0",
+    "skills": ["ops/npu-arch", "ops/ascendc-direct-invoke-template", "ops/torch-ascendc-op-extension", "ops/ascendc-tiling-design", "ops/ascendc-api-best-practices", "ops/ascendc-env-check", "ops/ascendc-sync-audit"],
+    "additional_references": ["ops/catlass-op-develop/references/patterns/fa-kernel-recipes.md", "plugins-community/ascendc-port-orchestrator/examples/a3_mix_fa_min"],
+    "usage": "Hardware/API guidance, packaging and mixed-core handshake patterns. A3 handshake example is a reference, not evidence of this kernel running on 910B. VC numerical kernels were written for this port."
+  },
+  "official_api_sources": {
+    "fp8_product_support": "https://www.hiascend.com/document/detail/en/CANNCommunityEdition/910/API/pyptoapi/docs/en/api/operation/pypto-matmul.md",
+    "cast_rint": "https://www.hiascend.com/doc_center/source/en/CANNCommunityEdition/900/API/ascendcopapi/atlasascendc_api_07_0073.html",
+    "gather_byte_offsets": "https://www.hiascend.com/doc_center/source/en/CANNCommunityEdition/900/API/ascendcopapi/atlasascendc_api_07_0092.html",
+    "cross_core": "https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/81RC1alpha002/apiref/ascendcopapi/atlasascendc_api_07_0273.html",
+    "reduce_max_scratch": "https://www.hiascend.com/document/detail/en/canncommercial/850/API/ascendcopapi/atlasascendc_api_07_10147.html",
+    "reduce_sum_scratch": "https://www.hiascend.com/doc_center/source/en/CANNCommunityEdition/900/API/ascendcopapi/atlasascendc_api_07_10160.html",
+    "int8_matmul": "https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/80RC3alpha003/apiref/ascendcopapi/atlasascendc_api_07_0530.html",
+    "matmul_config": "https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/82RC1alpha003/API/ascendcopapi/atlasascendc_api_07_0625.html",
+    "cmake_kernel_launch": "https://www.hiascend.com/document/detail/en/canncommercial/850/opdevg/Ascendcopdevg/atlas_ascendc_10_0056.html",
+    "torch_npu_baseline": "https://www.hiascend.com/document/detail/zh/Pytorch/60RC2/apiref/apilist/ptaoplist_000460.html",
+    "torch_npu_nd_format": "https://www.hiascend.com/doc_center/source/zh/CANNCommunityEdition/80RC1alpha003/apiref/fmkadptapi/ptaoplist_000663.html"
+  },
+  "numerical_scope": "INT8 QK, per-block Q32/K128 scales, two-round FP32 ExpCast, channel E4M3 V decoded to FP16, FP16 PV with FP32 accumulation; no V smoothing; no claim of bitwise CUDA or complete paper reproduction"
+}
