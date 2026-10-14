@@ -18,10 +18,10 @@ while (($#)); do
 done
 mkdir -p results
 "$PYTHON_BIN" scripts/check_ascend910b.py --device "$NPU_DEVICE" "${laser_args[@]}" --output results/ascend910b_environment.json
-if [[ -z "${SOC_VERSION:-}" ]]; then
-  SOC_VERSION="$("$PYTHON_BIN" -c 'import json; print(json.load(open("results/ascend910b_environment.json"))["compiler_soc"])')"
-fi
+# Preflight is authoritative: an inherited value can name a different SKU.
+SOC_VERSION="$("$PYTHON_BIN" -c 'import json; print(json.load(open("results/ascend910b_environment.json"))["compiler_soc"])')"
 export SOC_VERSION
+echo "Building for selected device: SOC_VERSION=${SOC_VERSION}"
 if (( !skip_build )); then
   "$PYTHON_BIN" -m pip install ./ascend --no-build-isolation --no-deps -v 2>&1 | tee results/ascend910b_build.log
 fi

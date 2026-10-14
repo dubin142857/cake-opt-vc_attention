@@ -1,12 +1,12 @@
-# VC Attention：Ascend 910B 实验移植
+# VC Attention：Ascend A2 / A3（DAV-2201）实验移植
 
 这是一版新的 **C++ / Ascend C 内核 + torch_npu 接口**，对应当前 H200 路线的 **INT8 QK + ExpCast，不启用 V 聚类/平滑**。它没有把 attention 偷换成 PyTorch SDPA。预处理使用设备上的 torch_npu 运算；QK、ExpCast、在线归一化和 PV 在自定义混合内核内执行。
 
-**当前验收状态：本地 CPU 数值契约测试通过；尚未在 910B 上编译或运行，不是已验收的生产算子。** 本地没有 CANN、torch_npu 或 NPU。CANN 版本兼容、混合内核同步、实际精度和性能都需要目标机验证；同步审查的待核对项见下文。
+**当前验收状态：本地 CPU 数值契约测试通过；尚未在 A2/A3 上完成 native 编译或运行，不是已验收的生产算子。** 远端反馈的实际 SoC 是 `Ascend910_9382`（A3），原有 910B 前缀检查在编译前将它拦住；本次修复型号识别和构建目标选择。本地没有 CANN、torch_npu 或 NPU。CANN 版本兼容、混合内核同步、实际精度和性能都需要目标机验证；同步审查的待核对项见下文。
 
 ## 与 H200 路线的差异
 
-| 环节 | 本版 910B 实现 |
+| 环节 | 本版 A2/A3 实现 |
 | --- | --- |
 | 输入/输出 | FP16、BF16；NHD `[B,N,H,D]` 或 HND `[B,H,N,D]` |
 | QK | FP32 K 中心化，Q 每 32 行、K 每 128 行对称 INT8 量化；Cube INT8×INT8→INT32 |
@@ -17,7 +17,7 @@
 | 中间存储 | 每个 AIC 一份 tile scratch；D128 时 40 KiB，不分配完整 N×N 矩阵 |
 | 范围 | 非因果 dense MHA、D=64/128、推理；不支持 GQA、mask、dropout、反向 |
 
-910B/A2 不具备这里需要的原生 FP8 Cube 路径，因此不能把 H200 的 FP8 PV 指令直接搬过来。本版保存 ExpCast/E4M3 的数值方法，用 FP16 Cube 执行解码后的乘法。Q/K 的量化粒度和 FP32 运算顺序也与 Sage CUDA 不同；它不是逐位复现 H200 或论文完整优化实现，不能据此承诺论文加速比。
+A2/A3 的 DAV-2201 不具备这里需要的原生 FP8 Cube 路径，因此不能把 H200 的 FP8 PV 指令直接搬过来。本版保存 ExpCast/E4M3 的数值方法，用 FP16 Cube 执行解码后的乘法。Q/K 的量化粒度和 FP32 运算顺序也与 Sage CUDA 不同；它不是逐位复现 H200 或论文完整优化实现，不能据此承诺论文加速比。
 
 ## 在 910B_23 机器上启动
 
@@ -31,7 +31,9 @@ bash scripts/run_ascend910b.sh
 
 `set_env.sh` 路径以实际安装为准。脚本依次做：读取环境和 SoC → `pip install ./ascend` 编译 → 小形状验收 → 同卡性能对比。任一步失败就停止，日志和 JSON 位于 `results/ascend910b_*`。
 
-**不把设备标签 `910B_23` 直接传给编译器，也不猜它等于 B2/B3。** 预检从 `aclrtGetSocName` 读取 SoC，记录 CANN platform 配置证据，再传入 `SOC_VERSION`。若 Toolkit 编译配置采用不同名称，应依据该机器 Toolkit 的实际配置设置 `SOC_VERSION`；不能任意换成别的芯片。
+**不把设备标签 `910B_23` 直接传给编译器，也不猜它等于 B2/B3。** 预检在选定设备后从 `aclrtGetSocName` 读取准确 SoC，并匹配 CANN platform ini 内的 `SoC_version` 字段。A2 的 `Ascend910B1~B4/B2C` 与 A3 的 `Ascend910_93xx` 同属 DAV-2201，但编译仍传入准确 SKU，不将 A3 改名为 910B。架构依据见 [CANNBot 产品映射表](https://github.com/hicann/cannbot-skills/blob/dbf4019cae5d757820f03c9cd21e0f0b277e1701/ops/npu-arch/references/npu-hardware-params.md)。
+
+例如运行时为 `Ascend910_9382`、继承环境为 `SOC_VERSION=ascend910_9391` 时，脚本会记录警告并将本次构建目标改为 **`Ascend910_9382`**，无需手工清理环境变量。构建目录按 SKU 隔离，native 入口还会检查实际设备与编译目标一致、AIV 数量满足每 AIC 两路的要求。发现 Toolkit 配置与目标架构冲突则停止；没有暴露 ini 时记录警告，由 CANN 编译器继续验证准确目标。保留原脚本名和 `results/ascend910b_*` 路径以兼容已有命令。
 
 验收通过后测原来的长形状：
 
@@ -110,6 +112,8 @@ bash scripts/run_ascend910b_laser.sh
 ```
 
 这个固定入口不需要参数：默认 `python3`、逻辑 NPU 0、BF16 `[1,37741,28,128]`，预热 2 次、每轮 3 次、共 5 轮，检查 32 个 query 和全部 keys。比较四个后端，结果写入 `results/ascend910b_vs_laser.json`。每次都会先检查环境、编译安装 VC、完成小形状精度验收，再进入长形状对比；失败即停止。MindIE-SD 仍需预先安装。
+
+脚本按实际设备识别 A2/A3。`torch` 版本带 `+cpu` 不代表 NPU 运算没有启用，预检会通过 `torch_npu` 在所选设备上执行一次运算。测速仍应选择空闲逻辑设备；`npu-smi` 的板卡编号、芯片 Phy-ID 和可见设备映射后的逻辑编号不可混用。
 
 若没有已激活的 CANN 环境，脚本会尝试系统或用户目录下的标准 `set_env.sh`。非标准安装仍需先激活对应环境。已有 `PYTHON_BIN` / `NPU_DEVICE` 环境变量时会保留选择，否则使用上述默认值。
 

@@ -1,4 +1,4 @@
-// Ascend 910B/DAV-2201. Original VC adaptation using documented Ascend C APIs.
+// Ascend A2/A3 DAV-2201. Original VC adaptation using documented Ascend C APIs.
 // Design sources and API versions are recorded in ../SOURCES.json.
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"

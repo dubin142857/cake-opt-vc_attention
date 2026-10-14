@@ -82,16 +82,23 @@ at::Tensor Forward(const at::Tensor& q, const at::Tensor& k, const at::Tensor& v
     TORCH_CHECK(q.is_privateuseone(), "NPU payload required");
     c10::OptionalDeviceGuard guard(q.device());
     const char* soc = aclrtGetSocName();
-    TORCH_CHECK(soc && std::string(soc).find("Ascend910B") == 0,
-                "This experimental backend supports 910B only; runtime SoC: ", soc ? soc : "unknown");
+    TORCH_CHECK(soc && std::string(soc) == VC_ASCEND_SOC_VERSION,
+                "Native extension built for ", VC_ASCEND_SOC_VERSION,
+                "; runtime SoC: ", soc ? soc : "unknown",
+                ". Rebuild on the selected device with scripts/run_ascend910b.sh");
     auto platform = platform_ascendc::PlatformAscendCManager::GetInstance();
     TORCH_CHECK(platform, "PlatformAscendC unavailable");
+    // A2 910B and A3 910_93xx both map to this CANN platform enum.
+    TORCH_CHECK(platform->GetSocVersion() == platform_ascendc::SocVersion::ASCEND910B,
+                "This kernel requires the A2/A3 DAV-2201 platform");
     uint64_t ub = 0, l1 = 0, l0c = 0;
     platform->GetCoreMemSize(platform_ascendc::CoreMemType::UB, ub);
     platform->GetCoreMemSize(platform_ascendc::CoreMemType::L1, l1);
     platform->GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, l0c);
     auto core_count = platform->GetCoreNumAic();
     TORCH_CHECK(core_count > 0 && ub > 0 && l1 > 0 && l0c > 0, "Cannot query device resources");
+    TORCH_CHECK(platform->GetCoreNumAiv() >= 2 * core_count,
+                "This mixed kernel requires two AIV cores per AIC; check the device partition");
     uint32_t max_tmp = 0, min_tmp = 0, sum_tmp = 0;
     ge::Shape shape({ROWS, N});
     AscendC::GetReduceMaxMaxMinTmpSize(shape, ge::DT_FLOAT, AscendC::ReducePattern::AR,

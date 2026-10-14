@@ -1,5 +1,6 @@
 """Build using CANN and the target machine's existing torch/torch_npu."""
 import os
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -13,7 +14,6 @@ class NativeBuild(build_py):
             raise RuntimeError("Build on Linux with the Ascend C Toolkit and torch_npu installed")
         super().run()
         source = Path(__file__).resolve().parent
-        native_build = source / "build" / "native"
         destination = Path(self.build_lib).resolve() / "vc_attention_ascend"
         cann = os.environ.get("ASCEND_HOME_PATH")
         if not cann:
@@ -21,6 +21,10 @@ class NativeBuild(build_py):
         soc = os.environ.get("SOC_VERSION")
         if not soc:
             raise RuntimeError("Set exact SOC_VERSION from preflight, or use scripts/run_ascend910b.sh")
+        if not re.fullmatch(r"Ascend910(?:B(?:[1-4]|2C)|_93[0-9]{2})", soc):
+            raise RuntimeError(f"Expected exact A2/A3 compiler SoC from preflight; got {soc!r}")
+        # Never reuse device objects generated for a different SKU.
+        native_build = source / "build" / f"native-{soc}"
         subprocess.run(["cmake", "-S", str(source), "-B", str(native_build),
                         f"-DASCEND_CANN_PACKAGE_PATH={cann}",
                         f"-DSOC_VERSION={soc}",
@@ -39,4 +43,4 @@ class BinaryDistribution(Distribution):
 setup(name="vc-attention-ascend", version="0.1.0", packages=["vc_attention_ascend"],
       python_requires=">=3.9", cmdclass={"build_py": NativeBuild}, distclass=BinaryDistribution,
       package_data={"vc_attention_ascend": ["*.so", "NOTICE", "LICENSE-CANN.txt"]},
-      description="Experimental Ascend 910B INT8 QK and ExpCast attention")
+      description="Experimental Ascend A2/A3 INT8 QK and ExpCast attention")
