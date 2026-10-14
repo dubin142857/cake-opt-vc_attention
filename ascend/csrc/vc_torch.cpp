@@ -10,7 +10,7 @@
 #include <cstring>
 #include <limits>
 #include <string>
-#include "vc_tiling.h"
+#include "vc_tiling_host.h"
 
 extern "C" uint32_t aclrtlaunch_vc910_forward(uint32_t, void*, void*, void*, void*,
     void*, void*, void*, void*, void*, void*, void*, void*, void*);
@@ -113,12 +113,13 @@ at::Tensor Forward(const at::Tensor& q, const at::Tensor& k, const at::Tensor& v
     Tiling t{uint32_t(q.size(0)), uint32_t(q.size(1)), uint32_t(queries), uint32_t(keys),
              uint32_t(q.size(2)), uint32_t(k.size(2)), uint32_t(q.size(3)), cores,
              reduce_bytes, uint32_t(expcast), float(scale), 0, tasks};
+    t.workspace_bytes = uint32_t(WorkspaceBytes(t.dim));  // D=64/128 checked above
     auto qt = CubeTiling(platform, true, t.dim, l1, l0c, q.options());
     auto vt = CubeTiling(platform, false, t.dim, l1, l0c, q.options());
     auto meta_cpu = at::empty({int64_t(sizeof(t))}, at::TensorOptions().dtype(at::kByte).device(at::kCPU));
     std::memcpy(meta_cpu.data_ptr(), &t, sizeof(t));
     auto meta = meta_cpu.to(q.device());
-    auto workspace = at::empty({int64_t(cores * WorkspaceBytes(t.dim))}, q.options().dtype(at::kByte));
+    auto workspace = at::empty({int64_t(uint64_t(cores) * t.workspace_bytes)}, q.options().dtype(at::kByte));
     auto out = at::empty(q.sizes(), q.options().dtype(at::kFloat));
     // Drain PTA's host queue before direct launch, including all .to() above.
     auto stream = c10_npu::getCurrentNPUStream(q.device().index()).stream(true);

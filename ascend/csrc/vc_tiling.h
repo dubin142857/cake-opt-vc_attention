@@ -14,18 +14,9 @@ struct Tiling {
     uint32_t batch, heads, queries, keys, qpad, kpad, dim, cores;
     uint32_t reduce_bytes, expcast;
     float scale;
-    uint32_t reserved;
+    // Per-AIC GM stride, computed on host and shared by both AIV halves.
+    uint32_t workspace_bytes;
     uint64_t tasks;
 };
-
-constexpr uint64_t WorkspaceBytes(uint32_t dim) {
-    return uint64_t(M) * N * (sizeof(int32_t) + sizeof(uint16_t))
-         + uint64_t(M) * dim * sizeof(float);
-}
-constexpr uint32_t VectorBytes(uint32_t reduce_bytes) {
-    // int32 scores/indices, FP32 scores, FP16 P, accumulator, PV output,
-    // channel scales, eight state/metadata vectors, LUT, reduction scratch.
-    return ROWS * N * (4 + 4 + 2) + 2 * ROWS * MAX_D * 4
-         + MAX_D * 4 + 8 * ROWS * 4 + 128 * 4 + reduce_bytes;
-}
+static_assert(sizeof(Tiling) == 56, "Host/device control layout must match");
 }

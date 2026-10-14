@@ -46,7 +46,7 @@ public:
         kg.SetGlobalBuffer(reinterpret_cast<__gm__ int8_t*>(k));
         vg.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(v));
         const uint32_t core = GetBlockIdx();
-        auto localWs = ws + core * WorkspaceBytes(t.dim);
+        auto localWs = ws + uint64_t(core) * t.workspace_bytes;
         sg.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(localWs), M * N);
         pg.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(localWs + M * N * 4), M * N);
         og.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(localWs + M * N * 6), M * t.dim);
@@ -114,7 +114,7 @@ public:
         out.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(output));
         const uint32_t core = GetBlockIdx() / GetSubBlockNum();
         const uint32_t sub = GetSubBlockIdx();
-        auto localWs = ws + core * WorkspaceBytes(t.dim);
+        auto localWs = ws + uint64_t(core) * t.workspace_bytes;
         GlobalTensor<int32_t> sg;
         GlobalTensor<half> pg;
         GlobalTensor<float> og;
