@@ -2,7 +2,18 @@
 
 这是一版新的 **C++ / Ascend C 内核 + torch_npu 接口**，对应当前 H200 路线的 **INT8 QK + ExpCast，不启用 V 聚类/平滑**。它没有把 attention 偷换成 PyTorch SDPA。预处理使用设备上的 torch_npu 运算；QK、ExpCast、在线归一化和 PV 在自定义混合内核内执行。
 
-**当前验收状态：本地 CPU 数值契约测试通过；尚未在 A2/A3 上完成 native 编译或运行，不是已验收的生产算子。** 远端 `Ascend910_9382`（A3）已通过型号预检，CANN 9.0.1 在设备编译时发现 `WorkspaceBytes` 是主机函数。本次将 workspace 大小计算保留在主机侧，通过 tiling 数据传给 AIC/AIV，待重新编译验证。本地没有 CANN、torch_npu 或 NPU。CANN 版本兼容、混合内核同步、实际精度和性能都需要目标机验证；同步审查的待核对项见下文。
+**当前验收状态：远端 A3 / CANN 9.0.1 已编译并通过现有小形状原生验收；长形状精度未通过，尚未得到有效性能结果。** 用户反馈 BF16 `[1,37741,28,128]` 的 ExpCast 输出相对量化解码参考 RMSE 为 **1.342429%**（max abs `0.0074462890625`），超过原有 1% 实现门限。该误差不是相对 dense FP32 的量化损失，不能据此宣布可用。现有证据尚不足以确定是长 K 循环、任务复用、预处理差异还是数值操作偏差。本地没有 CANN、torch_npu 或 NPU；同步审查的待核对项见下文。
+
+已编译成功的机器可直接执行以下定向诊断，无需重新安装算子或 MindIE：
+
+```bash
+git pull origin master
+bash scripts/run_ascend910b_accuracy.sh
+```
+
+结果在 `results/ascend910b_accuracy_diagnosis.json` 和同名 `.log`。固定 BF16、D128、H2，分别测试 Q32/K37741 的长 K 循环、Q1025/K129 的多 query 任务，以及两者组合；短对照为 K513/K4097。比较 native FP32 原始输出、最终 BF16 输出、相同量化输入重复运行和新鲜预处理。门限仍为 decoded 1%、重复/预处理一致性 0.1%；诊断完成后若有失败会非零退出，不输出速度结论。
+
+若上述小范围测试通过，再重跑原 `bash scripts/run_ascend910b_laser.sh`。长形状失败时，benchmark 会先保存 dense/decoded 误差、每个 head 的误差与最差行位置，再自动隔离最差 Q32 tile，保留其原始 Q/K/V 字节、量化 scale 和 K 中心化结果，比较 K 前缀、普通 exp/ExpCast、零 Q 和常量 V。原失败仍保留，诊断不会把失败改成通过。通过定向诊断也不等于原始长形状通过。
 
 ## 与 H200 路线的差异
 

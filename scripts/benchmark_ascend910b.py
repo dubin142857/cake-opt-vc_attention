@@ -11,6 +11,7 @@ import time
 import torch
 from validate_ascend910b import error, to_cpu
 from mindie_laser_backend import load_mindie_laser, validate_laser, distribution_version
+from ascend_accuracy_diagnostics import row_errors, diagnose_failure, payload_difference
 
 BACKENDS = ("vc_expcast", "vc_control", "cann_fusion_attention", "mindie_laser")
 
@@ -115,8 +116,6 @@ def main():
             print("Warmup", name, flush=True)
             try:
                 out = fn()
-                for _ in range(args.warmup):
-                    out = fn()
                 torch.npu.synchronize()
             except Exception as exc:
                 if name != "cann_fusion_attention":
@@ -131,11 +130,29 @@ def main():
                 raise AssertionError(f"{name} returned wrong shape/dtype/device")
             cpu_out = out.cpu()
             metrics = {"dense_fp32": error(cpu_out.index_select(2, ids), dense)}
+            report["accuracy"][name] = metrics
             if name in refs:
                 decoded = error(cpu_out.index_select(2, ids), refs[name])
-                if decoded["relative_rmse"] > .01:
-                    raise AssertionError(f"{name} failed decoded-reference gate: {decoded}")
                 metrics["decoded_reference"] = decoded
+                metrics["rows"] = row_errors(cpu_out.index_select(2, ids), refs[name], ids, args.queries)
+                save()  # retain evidence even when the gate rejects this output
+                if decoded["relative_rmse"] > .01:
+                    print(f"{name}: decoded-reference gate FAILED; collecting untimed diagnostics", flush=True)
+                    def save_diagnosis(detail):
+                        metrics["failure_diagnosis"] = detail
+                        save()
+                    try:
+                        fresh = vc.prepare(q, k, v, layout="HND", check_finite=False)
+                        metrics["fresh_preprocessing"] = payload_difference(p, fresh)
+                        del fresh
+                        save()
+                        diagnose_failure(vc, p, cpu_out.index_select(2, ids), refs[name], ids,
+                                         name == "vc_expcast", save_diagnosis,
+                                         original_scope="full_api_fresh_preprocessing")
+                    except Exception as diag_exc:
+                        metrics["diagnostic_error"] = repr(diag_exc)
+                        save()
+                    raise AssertionError(f"{name} failed decoded-reference gate: {decoded}")
             if name == "mindie_laser" and metrics["dense_fp32"]["relative_rmse"] > .01:
                 raise AssertionError(f"Laser dense-reference implementation gate failed: {metrics}")
             if name in core:
@@ -148,6 +165,10 @@ def main():
                 metrics["full_vs_prepared_all_rows"] = consistency
             report["accuracy"][name] = metrics
             save()
+            # Validate the first output before expensive long-shape warmups.
+            for _ in range(args.warmup):
+                fn()
+            torch.npu.synchronize()
         if not full:
             raise RuntimeError("No requested backend is available; see skipped in the JSON report")
         calls = [("full", n, f) for n, f in full.items()] + [("core", n, f) for n, f in core.items()]

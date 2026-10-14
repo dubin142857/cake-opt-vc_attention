@@ -1,6 +1,6 @@
 {
   "component": "vc-attention-ascend",
-  "status": "experimental; native build and NPU execution unverified",
+  "status": "experimental; user reports A3/CANN 9.0.1 native build and small-shape acceptance passed; BF16 [1,37741,28,128] ExpCast decoded-reference RMSE 1.342429% fails 1% gate; root cause and valid performance pending",
   "target": "DAV-2201: A2 Ascend910B1-B4/B2C and A3 Ascend910_93xx; exact selected runtime SoC, including reported Ascend910_9382",
   "skill_repository": {
     "url": "https://github.com/hicann/cannbot-skills",
