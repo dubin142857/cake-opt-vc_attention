@@ -1,6 +1,7 @@
 """Read-only target-machine preflight. Writes evidence even on failure."""
 import argparse
 import ctypes
+import importlib.metadata
 import json
 import os
 from pathlib import Path
@@ -10,9 +11,13 @@ import subprocess
 import sys
 
 
-def inspect(device=0):
+def inspect(device=0, require_laser=False):
     report = {"python": sys.version, "platform": platform.platform(), "device_index": device,
-              "target_label": "910B_23", "native_fp8_matmul": False, "errors": []}
+              "target_label": "910B_23", "native_fp8_matmul": False, "require_laser": require_laser, "errors": []}
+    try:
+        report["mindiesd_installed_version"] = importlib.metadata.version("mindiesd")
+    except importlib.metadata.PackageNotFoundError:
+        report["mindiesd_installed_version"] = None
     cann = Path(os.environ.get("ASCEND_HOME_PATH", "/nonexistent"))
     report["cann_root"] = str(cann)
     report["cmake"] = shutil.which("cmake")
@@ -36,6 +41,10 @@ def inspect(device=0):
         import torch
         import torch_npu
         report.update(torch=torch.__version__, torch_npu=torch_npu.__version__)
+        if require_laser:
+            from mindie_laser_backend import load_mindie_laser
+            adapter = load_mindie_laser()
+            report["mindie_laser"] = {**adapter.metadata, "status": "registered; native execution still requires benchmark validation"}
         torch.npu.set_device(device)
         report["device_name"] = torch.npu.get_device_name(device)
         acl = ctypes.CDLL("libascendcl.so")
@@ -75,9 +84,10 @@ def inspect(device=0):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--device", type=int, default=0)
+    parser.add_argument("--require-laser", action="store_true")
     parser.add_argument("--output", default="results/ascend910b_environment.json")
     args = parser.parse_args()
-    report = inspect(args.device)
+    report = inspect(args.device, require_laser=args.require_laser)
     target = Path(args.output)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")

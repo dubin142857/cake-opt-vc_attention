@@ -23,5 +23,16 @@
     "torch_npu_baseline": "https://www.hiascend.com/document/detail/zh/Pytorch/60RC2/apiref/apilist/ptaoplist_000460.html",
     "torch_npu_nd_format": "https://www.hiascend.com/doc_center/source/zh/CANNCommunityEdition/80RC1alpha003/apiref/fmkadptapi/ptaoplist_000663.html"
   },
-  "numerical_scope": "INT8 QK, per-block Q32/K128 scales, two-round FP32 ExpCast, channel E4M3 V decoded to FP16, FP16 PV with FP32 accumulation; no V smoothing; no claim of bitwise CUDA or complete paper reproduction"
+  "numerical_scope": "INT8 QK, per-block Q32/K128 scales, two-round FP32 ExpCast, channel E4M3 V decoded to FP16, FP16 PV with FP32 accumulation; no V smoothing; no claim of bitwise CUDA or complete paper reproduction",
+  "mindie_laser_baseline": {
+    "repository": "https://github.com/Ascend/MindIE-SD",
+    "inspected_commit": "71098c20ff90838d1fd1ca0a40515c751a3869b0",
+    "python_package": "mindiesd",
+    "native_operator": "mindiesd::la",
+    "references": ["mindiesd/layers/flash_attn/ascend_laser_attention.py", "mindiesd/layers/flash_attn/attention_forward.py", "mindiesd/layers/_custom_ops.py", "csrc/plugin/register_ops.cpp", "csrc/plugin/la.cpp", "csrc/ops/laser_attention/op_host/laser_attention_tiling.cpp", "docs/zh/installation.md"],
+    "integration": "Calls installed preprocessing/postprocessing and registered native operator; no upstream implementation vendored; no automatic attention dispatch",
+    "mindie_llm_repository_checked": "https://github.com/Ascend/MindIE-LLM",
+    "mindie_llm_commit_checked": "9446ed407f817b2bd937ca1e4e63907b2f2eea7f",
+    "mindie_llm_search_result": "No laser_attention / LaserAttention matches found; baseline implementation located in MindIE-SD instead"
+  }
 }

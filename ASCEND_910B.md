@@ -92,11 +92,56 @@ output = (o / l) * v_scale
 
 验收覆盖 FP16/BF16、D64/128、完整块/尾块、跨多个 K tile、两路 AIV、零输入、常量 V、不同 B/H、非默认 stream。小测试比较全部输出；长序列基准默认检查 32 个 query 和全部 keys，可用 `--check-queries` 调整。
 
-基准输出三组：`vc_expcast`、`vc_control`、`cann_fusion_attention`。CANN 基准调用 `torch_npu.npu_fusion_attention`，如果当前版本/shape 不支持，会保存错误原因，不填造性能数字。
+基准默认请求四组：`vc_expcast`、`vc_control`、`cann_fusion_attention`、`mindie_laser`。CANN 基准调用 `torch_npu.npu_fusion_attention`；MindIE Laser 使用下述显式接口。未安装的可选基准会打印 SKIP 并保存原因，`--require-laser` 可要求 Laser 必须可用。
 
 - **full API**：新鲜 K 中心化和 Q/K/V 量化、attention、输出类型/布局转换。
 - **fixed core**：复用量化输入，仍包括 host tiling、分配、dispatch、输出转换。
 - 都是同步 API 墙钟毫秒，**不是纯 NPU kernel 时间**。只在同一张 NPU 上比较；不与 H200 的 CUPTI 数字混算。
+
+## 与 MindIE Laser Attention 对比
+
+**安装对象是 [MindIE-SD](https://github.com/Ascend/MindIE-SD)，Python 包名 `mindiesd`。** 在检查的 MindIE-LLM commit `9446ed407f817b2bd937ca1e4e63907b2f2eea7f` 中没有找到 Laser Attention；不能只安装 MindIE-LLM 然后期待这个算子存在。请按目标机 CANN / PyTorch / torch_npu 版本选择配套的 MindIE-SD，参见[官方安装说明](https://github.com/Ascend/MindIE-SD/blob/71098c20ff90838d1fd1ca0a40515c751a3869b0/docs/zh/installation.md)。此仓库的脚本不会替你升级基础环境或安装 MindIE。
+
+安装好后，在 VC 仓库内运行：
+
+```bash
+git pull origin master
+source /usr/local/Ascend/ascend-toolkit/set_env.sh
+bash scripts/run_ascend910b.sh --with-laser
+```
+
+`--with-laser` 增加 MindIE 包/原生 op 检查，并把首次性能测试设置为 `[1,4096,2,128]`，仍先执行 VC 小形状验收。VC 已编译时可加 `--skip-build`。
+
+测原来的 BF16 `[1,37741,28,128]`：
+
+```bash
+bash scripts/run_ascend910b.sh --with-laser --skip-build --long-shape -- --trials 5 --output results/ascend910b_vs_laser.json
+```
+
+如果先安装好了 MindIE，还没编译 VC，可以独立测两个基准，不依赖我们的 native `.so`：
+
+```bash
+python3 scripts/benchmark_ascend910b.py --backends mindie_laser cann_fusion_attention --require-laser --queries 4096 --keys 4096 --heads 2 --dim 128 --output results/ascend910b_laser_baselines.json
+```
+
+对比口径如下：
+
+| 项目 | MindIE Laser 行 |
+| --- | --- |
+| 实际调用 | `torch.ops.mindiesd.la.default`，检查原生 schema；取第二个返回 tensor |
+| 预处理/后处理 | 使用安装版本的 `AscendLaserAttention.la_preprocess_input` / `la_postprocess_output`，再返回 contiguous HND |
+| 固定设置 | dense、非因果、无 mask/dropout，`is_highPrecision=True` |
+| 输入 | 同一份原始 Q/K/V；包装层将 BF16 转为 FP16，序列补齐到 256，D 补齐到 128 |
+| 缩放和尾块 | 用原始 D 的 `1/sqrt(D)`；按上游约定传 K 的尾部 padding 长度 |
+| full API | 每次重新转换/补齐 Q/K/V，原生 attention，输出类型转换/裁剪/连续化 |
+| fixed core | 复用转换/补齐后的输入，包含原生分配/调用及输出后处理；没有声称和 VC 使用相同量化输入 |
+| 比值 | `Laser/API = Laser full API / 当前行 full API`，大于 1 表示当前行更快 |
+
+这里测的是 **Laser 后端及其预处理/后处理**，不包含模型、服务调度或 MindIE 通用 attention 的自动选型。通用 `attention_forward` 在短序列下即使指定 Laser，也可能回退为其他算子；环境变量也能覆盖选择。因此本适配器显式调用注册的 `mindiesd::la`，不把 Fused Attention 混报为 Laser。
+
+基准在计时前运行额外的真实 NPU 检查：FP16/BF16、D64/128、完整与不完整 256 尾块、常量 V 通道、full/prepared 输出一致性。Laser 对 dense FP32 参考使用 1% 实现检查门限，full/prepared 使用 0.1%；这些不是模型质量标准。若已加载的 Laser 执行/精度检查失败，脚本直接报错，不静默替换。
+
+JSON 记录安装版本、原生 op schema、已加载动态库、上游包装文件路径/SHA256、实际输入/补齐形状及精度设置。`inspected_commit` 只是编写适配器时检查的源码版本，**不代表远端安装包就是该提交**。当前没有本地 NPU/MindIE 运行或性能数据；新增 CPU 测试只验证适配器传参与失败处理。
 
 ## 同步审查与未完成的实机确认
 
