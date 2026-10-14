@@ -1,0 +1,32 @@
+{
+  "date": "2026-10-14",
+  "scope": "Windows CPU/source checks only; no CANN compilation or NPU execution",
+  "upstream": {
+    "url": "https://gitcode.com/cann/ops-transformer.git",
+    "tag": "v9.0.1",
+    "commit": "8038339a99bae113a7ae07f4547306d6d15bbddf",
+    "opbase_commit": "929902e577bb809a377a6ab17cb7b00a4dfddc1a"
+  },
+  "checks": {
+    "cpu_pytest": {
+      "files": ["tests/test_cann_fas_source.py", "tests/test_cann_fas_benchmark.py"],
+      "passed": 31,
+      "failed": 0
+    },
+    "shell_syntax": "passed: bash -n scripts/run_cann_fas_local.sh",
+    "benchmark_cli": "passed",
+    "actual_pinned_checkout_preparation": "passed",
+    "offline_repeat_preparation": "passed",
+    "actual_manifest_to_benchmark_integration": "passed",
+    "upstream_device_source_unchanged": true,
+    "kernel_tree_sha256": "7a5b23890f4062ba8f90297361f1cfa77b9c5d0b4258aa15b5061df30f75f134"
+  },
+  "pending_remote": [
+    "Official source package compilation against installed CANN",
+    "Project-local package installation",
+    "Custom API and tiling dispatch markers and mapped-library evidence",
+    "NPU correctness and system/custom full API performance"
+  ],
+  "proof_limit": "Host markers and device artifact hashes do not alone prove the executed device binary's identity.",
+  "performance_claim": null
+}

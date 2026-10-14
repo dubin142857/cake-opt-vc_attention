@@ -2,7 +2,9 @@
 
 这是一版新的 **C++ / Ascend C 内核 + torch_npu 接口**，对应当前 H200 路线的 **INT8 QK + ExpCast，不启用 V 聚类/平滑**。它没有把 attention 偷换成 PyTorch SDPA。预处理使用设备上的 torch_npu 运算；QK、ExpCast、在线归一化和 PV 在自定义混合内核内执行。
 
-**当前状态：用户已回传 0.1.1 的有效长形状基准；0.2.0 新增 M64 计算块候选和阶段诊断，等待远端编译验收。** 0.1.1 在 A3 `Ascend910_9382` / CANN 9.0.1 上，BF16 `[1,37741,28,128]` 的同步 full API 为：VC ExpCast **2040.5450 ms**、control **1899.7418 ms**、CANN **128.0532 ms**、MindIE Laser **83.2749 ms**。VC fixed core 分别为 **2004.0513 / 1861.6662 ms**，主要耗时仍在 prepared 执行路径。上述是用户实测，不是本地 NPU 测试；不能把这些数据当成 M64 的结果。
+**当前路线：先复现官方 CANN FlashAttentionScore，再接入 VC。** 用户已回传 M64 的长形状结果：control **1169.2007 ms**、ExpCast **1290.1728 ms**，同轮 CANN **128.7198 ms**、Laser **83.9254 ms**，均为同步 full API。M64 仍未接近现成融合算子，因此新增固定官方 v9.0.1 源码的独立编译对照，运行 `bash scripts/run_cann_fas_local.sh`；完整说明见 [CANN_FAS_REPRO.md](CANN_FAS_REPRO.md)。新入口保留官方普通 softmax，远端构建和性能尚待验证。
+
+历史 0.1.1 在 A3 `Ascend910_9382` / CANN 9.0.1 上，BF16 `[1,37741,28,128]` 的同步 full API 为：VC ExpCast **2040.5450 ms**、control **1899.7418 ms**、CANN **128.0532 ms**、MindIE Laser **83.2749 ms**。VC fixed core 分别为 **2004.0513 / 1861.6662 ms**，主要耗时仍在 prepared 执行路径。上述均是用户实测，不是本地 NPU 测试；不同轮次不用于计算严格加速比。
 
 前版的小形状虽通过，长形状 ExpCast 相对量化解码参考 RMSE 曾为 **1.342429%**，超过 1% 实现门限。下面保留这次竞争修复的背景。新结果中的 dense RMSE 为 VC ExpCast **4.368437%**、control **2.979953%**，这是相对标准 attention 的误差，不能与 decoded 实现门限混用。
 
