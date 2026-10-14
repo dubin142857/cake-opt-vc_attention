@@ -106,11 +106,14 @@ output = (o / l) * v_scale
 
 ```bash
 git pull origin master
-source /usr/local/Ascend/ascend-toolkit/set_env.sh
-bash scripts/run_ascend910b.sh --with-laser
+bash scripts/run_ascend910b_laser.sh
 ```
 
-`--with-laser` 增加 MindIE 包/原生 op 检查，并把首次性能测试设置为 `[1,4096,2,128]`，仍先执行 VC 小形状验收。VC 已编译时可加 `--skip-build`。
+这个固定入口不需要参数：默认 `python3`、逻辑 NPU 0、BF16 `[1,37741,28,128]`，预热 2 次、每轮 3 次、共 5 轮，检查 32 个 query 和全部 keys。比较四个后端，结果写入 `results/ascend910b_vs_laser.json`。每次都会先检查环境、编译安装 VC、完成小形状精度验收，再进入长形状对比；失败即停止。MindIE-SD 仍需预先安装。
+
+若没有已激活的 CANN 环境，脚本会尝试系统或用户目录下的标准 `set_env.sh`。非标准安装仍需先激活对应环境。已有 `PYTHON_BIN` / `NPU_DEVICE` 环境变量时会保留选择，否则使用上述默认值。
+
+需要自选参数时仍可用通用入口：`bash scripts/run_ascend910b.sh --with-laser` 首测 `[1,4096,2,128]`。VC 已编译时可加 `--skip-build`。
 
 测原来的 BF16 `[1,37741,28,128]`：
 
