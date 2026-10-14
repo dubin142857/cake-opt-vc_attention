@@ -1,6 +1,6 @@
 {
   "component": "vc-attention-ascend",
-  "status": "experimental; user reports A3/CANN 9.0.1 native build and small-shape acceptance passed; BF16 [1,37741,28,128] ExpCast decoded-reference RMSE 1.342429% fails 1% gate; root cause and valid performance pending",
+  "status": "experimental; 0.1.1 fixes cross-query-task vscale UB reuse ordering with MTE3_S; remote rebuild and validation pending, no valid performance claim. User diagnostics: Q32/K37741 passed, Q1025/K129 failed and repeated identical payloads were nondeterministic; isolated failing Q32 tiles passed",
   "target": "DAV-2201: A2 Ascend910B1-B4/B2C and A3 Ascend910_93xx; exact selected runtime SoC, including reported Ascend910_9382",
   "skill_repository": {
     "url": "https://github.com/hicann/cannbot-skills",
@@ -15,6 +15,7 @@
     "cast_rint": "https://www.hiascend.com/doc_center/source/en/CANNCommunityEdition/900/API/ascendcopapi/atlasascendc_api_07_0073.html",
     "gather_byte_offsets": "https://www.hiascend.com/doc_center/source/en/CANNCommunityEdition/900/API/ascendcopapi/atlasascendc_api_07_0092.html",
     "cross_core": "https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/81RC1alpha002/apiref/ascendcopapi/atlasascendc_api_07_0273.html",
+    "intra_core_events": "https://www.hiascend.com/doc_center/source/en/CANNCommunityEdition/900/API/ascendcopapi/atlasascendc_api_07_0270.html",
     "reduce_max_scratch": "https://www.hiascend.com/document/detail/en/canncommercial/850/API/ascendcopapi/atlasascendc_api_07_10147.html",
     "reduce_sum_scratch": "https://www.hiascend.com/doc_center/source/en/CANNCommunityEdition/900/API/ascendcopapi/atlasascendc_api_07_10160.html",
     "int8_matmul": "https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/80RC3alpha003/apiref/ascendcopapi/atlasascendc_api_07_0530.html",

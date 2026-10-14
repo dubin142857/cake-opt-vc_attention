@@ -149,7 +149,7 @@ def diagnose_failure(vc, payload, actual_sample, expected_sample, query_ids, exp
             variant["v"] = torch.ones_like(first["v"])
             variant["v_scale"] = torch.ones_like(first["v_scale"])
         for cast in (False, True):
-            print(f"Long-key invariant: {mode}, expcast={cast}", flush=True)
+            print(f"Fixed-payload invariant: {mode}, expcast={cast}", flush=True)
             row, _ = check_payload(vc, variant, cast)
             report["invariants"].append({"mode": mode, **row})
             print_check(row)

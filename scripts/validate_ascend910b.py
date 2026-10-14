@@ -19,11 +19,134 @@ def to_cpu(payload):
     return {k: v.cpu() if isinstance(v, torch.Tensor) else v for k, v in payload.items()}
 
 
+def reuse_errors(actual, expected):
+    """Keep sparse row/head corruption visible despite very different V scales."""
+    a, b = actual.detach().float().cpu(), expected.detach().float().cpu()
+    metric = error(a, b)
+    per_row = ((a - b).square().mean(-1).sqrt()
+               / b.square().mean(-1).sqrt().clamp_min(1e-12))
+    flat = int(per_row.argmax())
+    heads, queries = a.shape[1:3]
+    batch, head, query = flat // (heads * queries), flat // queries % heads, flat % queries
+    metric["per_head"] = [{"batch": bi, "head": hi, **error(a[bi, hi], b[bi, hi])}
+                          for bi in range(a.shape[0]) for hi in range(heads)]
+    metric["worst_row"] = {
+        "batch": batch, "head": head, "query": query, "query_block": query // 32,
+        "aiv_half": query % 32 // 16,
+        "task": (batch * heads + head) * ((queries + 31) // 32) + query // 32,
+        **error(a[batch, head, query], b[batch, head, query]),
+    }
+    return metric
+
+
+def require_reuse_accuracy(metric, label):
+    if (metric["relative_rmse"] > .01
+            or any(head["relative_rmse"] > .01 for head in metric["per_head"])
+            or metric["worst_row"]["relative_rmse"] > .01):
+        raise AssertionError(f"{label} RMSE exceeds 1% (global, per-head or per-row): {metric}")
+
+
+@torch.no_grad()
+def check_reuse_payload(forward, payload, expcast, case, results, save, *, repeats=5, constant_v=None):
+    """Validate every repeat of one immutable payload, including raw FP32 bits.
+
+    ``forward(payload, expcast)`` returns native padded HND FP32 output. Tests
+    may inject a CPU fake; doing so tests this checker, never the NPU kernel.
+    """
+    from vc_attention_ascend.reference import payload_reference
+    if repeats < 2:
+        raise ValueError("Core reuse validation requires at least two repeats")
+    case = {**case, "expcast": bool(expcast), "repeats": repeats}
+    save(results, {**case, "phase": "decoded_reference"})
+    reference = payload_reference(to_cpu(payload), expcast=expcast)
+    cast_reference = reference.to(payload["dtype"])
+    baseline = None
+    for repeat in range(1, repeats + 1):
+        row = {**case, "repeat": repeat, "status": "running"}
+        save(results, row)
+        try:
+            out = forward(payload, expcast)
+            if out.dtype != torch.float32:
+                raise AssertionError(f"Expected native FP32 output, got {out.dtype}")
+            out = out[:, :, :payload["queries"]]
+            if out.shape != reference.shape:
+                raise AssertionError(f"Native output shape {out.shape} != reference {reference.shape}")
+            # Cast on the NPU exactly as run_prepared does; compare raw bits on
+            # CPU after synchronization, excluding uninitialized padded rows.
+            cast = out.to(payload["dtype"]).cpu()
+            raw = out.detach().cpu().contiguous()
+            row["raw_fp32_vs_decoded"] = error(raw, reference)
+            row["decoded_reference"] = reuse_errors(cast, cast_reference)
+            if baseline is None:
+                baseline = raw.clone()
+            changed = raw.view(torch.int32) != baseline.view(torch.int32)
+            row["determinism"] = {
+                "baseline_repeat": 1, "bitwise_equal": not bool(changed.any()),
+                "different_elements": int(changed.sum()), **error(raw, baseline),
+                "first_changed_indices": changed.nonzero()[:8].tolist(),
+            }
+            if constant_v is not None:
+                constant = constant_v.float().cpu().expand_as(reference)
+                row["constant_v_invariant"] = reuse_errors(raw, constant)
+            require_reuse_accuracy(row["decoded_reference"], "Decoded-reference implementation")
+            if constant_v is not None:
+                require_reuse_accuracy(row["constant_v_invariant"], "Constant-V invariant")
+            if not row["determinism"]["bitwise_equal"]:
+                raise AssertionError(f"Fixed-payload native FP32 output is not bitwise deterministic: {row['determinism']}")
+            row["status"] = "passed"
+        except Exception as exc:
+            row.update(status="failed", error_type=type(exc).__name__, error=str(exc))
+            results.append(row)
+            save(results, row)
+            raise
+        results.append(row)
+        save(results, None)
+
+
+def reuse_inputs(heads, queries, keys, dim, dtype, generator):
+    """Random scores, constant V along K, and sharply differing head scales."""
+    q, k = [torch.randn((1, heads, n, dim), generator=generator).to(dtype)
+            for n in (queries, keys)]
+    head_gain = torch.pow(2.0, torch.linspace(-5, 5, heads)).reshape(1, heads, 1, 1)
+    channel = torch.arange(dim)
+    channel_gain = torch.pow(2.0, (channel % 5 - 2).float()) * (1 - 2 * (channel % 2))
+    v = (head_gain * channel_gain).expand(1, heads, keys, dim).to(dtype).contiguous()
+    return q, k, v
+
+
+@torch.no_grad()
+def validate_core_reuse(device, save, results, native, prepare):
+    # 16 cases, five launches each. Q1025/H2 reproduces the observed failure;
+    # H65/Q33 gives 130 tasks and forces multiple tasks per core on A2/A3.
+    # Every task transition across heads loads substantially different V scales.
+    generator = torch.Generator().manual_seed(91024)
+
+    def forward(p, cast):
+        return native.forward(p["q"], p["k"], p["v"], p["q_scale"], p["k_scale"],
+                              p["v_scale"], p["lut"], p["queries"], p["keys"],
+                              p["scale"], bool(cast))
+
+    for dtype in (torch.float16, torch.bfloat16):
+        for dim in (64, 128):
+            for heads, queries in ((2, 1025), (65, 33)):
+                q, k, v = reuse_inputs(heads, queries, 129, dim, dtype, generator)
+                constant_v = v[:, :, :1].clone()
+                payload = prepare(*(x.to(device) for x in (q, k, v)), layout="HND")
+                for cast in (False, True):
+                    case = {"suite": "core_reuse", "dtype": str(dtype), "dim": dim,
+                            "batch": 1, "heads": heads, "queries": queries, "keys": 129,
+                            "tasks": heads * ((queries + 31) // 32), "expcast": cast,
+                            "v_pattern": "constant_keys_head_scales_2^-5_to_2^5"}
+                    print("Checking 910B core reuse:", json.dumps(case), flush=True)
+                    check_reuse_payload(forward, payload, cast, case, results, save,
+                                        constant_v=constant_v)
+
+
 @torch.no_grad()
 def validate(device, save):
     from vc_attention_ascend import prepare, run_prepared, attention, load_native
     from vc_attention_ascend.reference import payload_reference, dense_reference
-    load_native()
+    native_ops = load_native()
     results = []
     generator = torch.Generator().manual_seed(91023)
     # Covers both AIV halves, whole/tail query tiles and several online K updates.
@@ -55,6 +178,7 @@ def validate(device, save):
                     row = {**case, "decoded_reference": metric, "dense_fp32": error(native, dense)}
                     results.append(row)
                     save(results, None)
+    validate_core_reuse(device, save, results, native_ops, prepare)
     # Uniform attention, zero Q/K/V and independently chosen B/H dimensions.
     for value in (0.0, 2.0):
         q = torch.zeros((2, 33, 3, 64), device=device, dtype=torch.float16)
@@ -84,9 +208,12 @@ def main():
     parser.add_argument("--output", default="results/ascend910b_validation.json")
     args = parser.parse_args()
     import torch_npu  # noqa: F401
+    import vc_attention_ascend as vc
+    torch.set_num_threads(min(torch.get_num_threads(), 4))
     torch.npu.set_device(args.device)
     report = {"status": "running", "implementation_gate": .01, "model_quality_claim": False,
-              "device": torch.npu.get_device_name(args.device)}
+              "device": torch.npu.get_device_name(args.device), "vc_version": vc.__version__}
+    print("910B validation:", json.dumps(report), flush=True)
     path = Path(args.output)
     path.parent.mkdir(parents=True, exist_ok=True)
 

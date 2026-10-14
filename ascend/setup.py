@@ -40,7 +40,7 @@ class BinaryDistribution(Distribution):
         return True
 
 
-setup(name="vc-attention-ascend", version="0.1.0", packages=["vc_attention_ascend"],
+setup(name="vc-attention-ascend", version="0.1.1", packages=["vc_attention_ascend"],
       python_requires=">=3.9", cmdclass={"build_py": NativeBuild}, distclass=BinaryDistribution,
       package_data={"vc_attention_ascend": ["*.so", "NOTICE", "LICENSE-CANN.txt"]},
       description="Experimental Ascend A2/A3 INT8 QK and ExpCast attention")

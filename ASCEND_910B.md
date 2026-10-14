@@ -2,18 +2,28 @@
 
 这是一版新的 **C++ / Ascend C 内核 + torch_npu 接口**，对应当前 H200 路线的 **INT8 QK + ExpCast，不启用 V 聚类/平滑**。它没有把 attention 偷换成 PyTorch SDPA。预处理使用设备上的 torch_npu 运算；QK、ExpCast、在线归一化和 PV 在自定义混合内核内执行。
 
-**当前验收状态：远端 A3 / CANN 9.0.1 已编译并通过现有小形状原生验收；长形状精度未通过，尚未得到有效性能结果。** 用户反馈 BF16 `[1,37741,28,128]` 的 ExpCast 输出相对量化解码参考 RMSE 为 **1.342429%**（max abs `0.0074462890625`），超过原有 1% 实现门限。该误差不是相对 dense FP32 的量化损失，不能据此宣布可用。现有证据尚不足以确定是长 K 循环、任务复用、预处理差异还是数值操作偏差。本地没有 CANN、torch_npu 或 NPU；同步审查的待核对项见下文。
+**当前验收状态：0.1.1 修复跨 query 任务的 V scale 缓冲区复用竞争，等待远端重新编译验收；尚未得到有效性能结果。** 前版 A3 / CANN 9.0.1 已编译并通过小形状验收，但 BF16 `[1,37741,28,128]` 的 ExpCast 输出相对量化解码参考 RMSE 为 **1.342429%**（max abs `0.0074462890625`），超过原有 1% 实现门限。这是实现一致性失败，不是相对 dense FP32 的量化损失。
 
-已编译成功的机器可直接执行以下定向诊断，无需重新安装算子或 MindIE：
+2026-10-14 的定向诊断进一步缩小了范围：Q32/K37741 的 ExpCast 最终 BF16 输出与参考逐位一致；Q1025/K129 的 control/ExpCast 却分别出现约 3.43%/6.48% 误差，同一量化输入重复调用也出现 4.61%/3.22% 误差。重新预处理的所有字节和 scale 一致；隔离原始出错 Q32 块后恢复准确和确定性。这些结果指向多任务执行，而非长 K 累加本身。
+
+代码审查发现：任务尾部 `MTE3_V` 仅阻止下一次 Vector 写入，不能阻止下一任务 MTE2 提前覆盖 `vscale`，此时上一任务的 epilogue 可能还在读它。0.1.1 将这对事件改为通过 `FetchEventID` 分配的 `MTE3_S`，形成 `旧 V 读 scale → 输出 DMA → Scalar → 新任务 metadata DMA` 的先后关系。CrossCore 握手、量化方式和 1% decoded 门限保持原样。新增多任务、跨 head、固定输入重复执行的回归验收。本地没有 CANN、torch_npu 或 NPU，不能把代码修复当作实机通过。
+
+**这次涉及原生内核，必须重新编译**。已有一键脚本会重建 0.1.1、运行包含新回归的小形状验收，再进入原始长形状 Laser 对比；任一步失败即停止，无需重新安装 MindIE：
 
 ```bash
 git pull origin master
+bash scripts/run_ascend910b_laser.sh
+```
+
+需要在重建后单独复查上述定向诊断时，运行：
+
+```bash
 bash scripts/run_ascend910b_accuracy.sh
 ```
 
 结果在 `results/ascend910b_accuracy_diagnosis.json` 和同名 `.log`。固定 BF16、D128、H2，分别测试 Q32/K37741 的长 K 循环、Q1025/K129 的多 query 任务，以及两者组合；短对照为 K513/K4097。比较 native FP32 原始输出、最终 BF16 输出、相同量化输入重复运行和新鲜预处理。门限仍为 decoded 1%、重复/预处理一致性 0.1%；诊断完成后若有失败会非零退出，不输出速度结论。
 
-若上述小范围测试通过，再重跑原 `bash scripts/run_ascend910b_laser.sh`。长形状失败时，benchmark 会先保存 dense/decoded 误差、每个 head 的误差与最差行位置，再自动隔离最差 Q32 tile，保留其原始 Q/K/V 字节、量化 scale 和 K 中心化结果，比较 K 前缀、普通 exp/ExpCast、零 Q 和常量 V。原失败仍保留，诊断不会把失败改成通过。通过定向诊断也不等于原始长形状通过。
+定向诊断脚本只复用已安装的扩展，不能代替这次重建。长形状失败时，benchmark 会先保存 dense/decoded 误差、每个 head 的误差与最差行位置，再自动隔离最差 Q32 tile，保留其原始 Q/K/V 字节、量化 scale 和 K 中心化结果，比较 K 前缀、普通 exp/ExpCast、零 Q 和常量 V。原失败仍保留，诊断不会把失败改成通过。通过定向诊断也不等于原始长形状通过。
 
 ## 与 H200 路线的差异
 
@@ -164,6 +174,15 @@ JSON 记录安装版本、原生 op schema、已加载动态库、上游包装�
 ## 同步审查与未完成的实机确认
 
 已运行 CANNBot `sync_audit.py` 和 `ascendc_flow_analyzer.py`。结构化结果保存在 `results/ascend910b_local_validation.json`。
+
+0.1.1 的本地复核记录见 `results/ascend_task_reuse_fix_local_validation.json`。新增修复对应的缓冲区生命周期如下；这条跨循环 WAR 竞争由人工审查发现，regex 数据流扫描未检出。
+
+| 缓冲区 | 前一任务最后访问 | 后一任务覆盖 | 0.1.1 同步链 |
+| --- | --- | --- | --- |
+| `vsBuf / vscale` | Vector `Mul(acc, acc, vscale)` 读取 | MTE2 `DataCopy(vscale, vsg[head*D], D)` | V_MTE3 → 输出 DataCopy → MTE3_S → Scalar 才能发出下一 DMA |
+| `accBuf / acc` | MTE3 写出结果时读取 | Vector `Duplicate(acc, 0)` | 输出 DataCopy → MTE3_S → Scalar 才能发出下一 Vector 写入 |
+
+事件方向和参数依据 [CANN 9.0 SetFlag/WaitFlag 文档](https://www.hiascend.com/doc_center/source/en/CANNCommunityEdition/900/API/ascendcopapi/atlasascendc_api_07_0270.html)。本次没有调整跨核 flag 或删除 barrier。
 
 目前仍有 **SYNC-07 红线候选：Matmul API 与自定义 CrossCore flag 的潜在冲突**，以及两条 SYNC-09 barrier 数量性能提示。此报告没有将红线候选标为通过。数据流扫描使用 regex 前端，未检出问题不构成硬件正确性证明。
 

@@ -1,0 +1,235 @@
+{
+  "date": "2026-10-14",
+  "vc_ascend_version": "0.1.1",
+  "status": "source_sync_fix_with_cpu_tests; remote_native_rebuild_and_validation_pending",
+  "remote_evidence": {
+    "source": "user-provided diagnostic log; not local NPU execution",
+    "cases": [
+      {
+        "queries": 32,
+        "keys": 37741,
+        "expcast": false,
+        "raw_fp32_vs_decoded": {
+          "relative_rmse": 2.5134745555988047e-06,
+          "max_abs": 2.7997884899377823e-07
+        },
+        "cast_vs_decoded": {
+          "relative_rmse": 4.489132697926834e-05,
+          "max_abs": 3.0517578125e-05
+        },
+        "repeat_all_rows": {
+          "relative_rmse": 0.0,
+          "max_abs": 0.0
+        },
+        "passed": true
+      },
+      {
+        "queries": 32,
+        "keys": 37741,
+        "expcast": true,
+        "raw_fp32_vs_decoded": {
+          "relative_rmse": 7.347087915832162e-08,
+          "max_abs": 6.51925802230835e-09
+        },
+        "cast_vs_decoded": {
+          "relative_rmse": 0.0,
+          "max_abs": 0.0
+        },
+        "repeat_all_rows": {
+          "relative_rmse": 0.0,
+          "max_abs": 0.0
+        },
+        "passed": true
+      },
+      {
+        "queries": 1025,
+        "keys": 129,
+        "expcast": false,
+        "raw_fp32_vs_decoded": {
+          "relative_rmse": 0.03435863181948662,
+          "max_abs": 0.13558277487754822
+        },
+        "cast_vs_decoded": {
+          "relative_rmse": 0.03430499881505966,
+          "max_abs": 0.13671875
+        },
+        "repeat_all_rows": {
+          "relative_rmse": 0.0461459644138813,
+          "max_abs": 0.2768336534500122
+        },
+        "passed": false
+      },
+      {
+        "queries": 1025,
+        "keys": 129,
+        "expcast": true,
+        "raw_fp32_vs_decoded": {
+          "relative_rmse": 0.06474941223859787,
+          "max_abs": 0.21231360733509064
+        },
+        "cast_vs_decoded": {
+          "relative_rmse": 0.06477846205234528,
+          "max_abs": 0.2119140625
+        },
+        "repeat_all_rows": {
+          "relative_rmse": 0.032192785292863846,
+          "max_abs": 0.2569149136543274
+        },
+        "passed": false
+      },
+      {
+        "queries": 1025,
+        "keys": 37741,
+        "expcast": false,
+        "raw_fp32_vs_decoded": {
+          "relative_rmse": 0.029917623847723007,
+          "max_abs": 0.004258684813976288
+        },
+        "cast_vs_decoded": {
+          "relative_rmse": 0.029962090775370598,
+          "max_abs": 0.0042724609375
+        },
+        "repeat_all_rows": {
+          "relative_rmse": 0.013228003866970539,
+          "max_abs": 0.005984202027320862
+        },
+        "passed": false
+      },
+      {
+        "queries": 1025,
+        "keys": 37741,
+        "expcast": true,
+        "raw_fp32_vs_decoded": {
+          "relative_rmse": 0.031180942431092262,
+          "max_abs": 0.004323497414588928
+        },
+        "cast_vs_decoded": {
+          "relative_rmse": 0.031184198334813118,
+          "max_abs": 0.00439453125
+        },
+        "repeat_all_rows": {
+          "relative_rmse": 0.012566665187478065,
+          "max_abs": 0.005735788494348526
+        },
+        "passed": false
+      }
+    ],
+    "additional_observation": "All fresh payload tensors/scales identical. Isolated original failing Q32 tiles passed with bitwise-equal BF16 outputs and zero repeat drift."
+  },
+  "fix": {
+    "buffer": "vsBuf / vscale",
+    "hazard": "Previous task Vector epilogue reads vscale while next task MTE2 may overwrite it. MTE3_V does not gate next metadata DMA.",
+    "ordering": "previous V -> V_MTE3 -> output DMA -> MTE3_S -> Scalar may issue next metadata DMA and Vector reset",
+    "scope": "Task-end event only; inner-K ph protection, CrossCore flags, arithmetic and decoded global 1% threshold unchanged",
+    "diff": "diff --git a/ascend/csrc/vc_kernel.cpp b/ascend/csrc/vc_kernel.cpp\nindex ad51df7..054c9bf 100644\n--- a/ascend/csrc/vc_kernel.cpp\n+++ b/ascend/csrc/vc_kernel.cpp\n@@ -94,6 +94,7 @@ public:\n         pipe.InitBuffer(stateBuf, 8 * ROWS * 4);\n         pipe.InitBuffer(lutBuf, 128 * 4);\n         pipe.InitBuffer(tmpBuf, t.reduce_bytes);\n+        const int32_t taskDoneEvent = static_cast<int32_t>(pipe.FetchEventID(HardEvent::MTE3_S));\n         auto raw = rawBuf.Get<int32_t>();\n         auto score = scoreBuf.Get<float>();\n         auto ph = pBuf.Get<half>();\n@@ -238,8 +239,12 @@ public:\n             SetFlag<HardEvent::V_MTE3>(EVENT_ID0);\n             WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);\n             DataCopy(out[head * t.qpad * t.dim + uint64_t(qr) * t.dim], acc, ROWS * t.dim);\n-            SetFlag<HardEvent::MTE3_V>(EVENT_ID0);\n-            WaitFlag<HardEvent::MTE3_V>(EVENT_ID0);\n+            // Drain this task before Scalar can issue the next task's metadata\n+            // DMA. MTE3_V only gates Vector: MTE2 could overwrite vsBuf while\n+            // the epilogue above still reads the previous head's V scale.\n+            // V -> MTE3 -> S orders both the next MTE2 load and Vector reset.\n+            SetFlag<HardEvent::MTE3_S>(taskDoneEvent);\n+            WaitFlag<HardEvent::MTE3_S>(taskDoneEvent);\n         }\n     }\n private:\n"
+  },
+  "cpu_tests": {
+    "passed": 74,
+    "failed": 0,
+    "torch_threads": 2,
+    "files": [
+      "tests/test_ascend_accuracy_diagnostics.py",
+      "tests/test_ascend_soc_preflight.py",
+      "tests/test_ascend910b_reference.py",
+      "tests/test_mindie_laser_backend.py",
+      "tests/test_ascend_reuse_validation.py"
+    ],
+    "scope": "Reference, diagnostics, adapter contracts and fake-native regression gates. Not native kernel validation."
+  },
+  "new_remote_acceptance": {
+    "cases": 16,
+    "repeats_per_fixed_payload": 5,
+    "shapes_hnd": [
+      [
+        1,
+        2,
+        1025,
+        64
+      ],
+      [
+        1,
+        2,
+        1025,
+        128
+      ],
+      [
+        1,
+        65,
+        33,
+        64
+      ],
+      [
+        1,
+        65,
+        33,
+        128
+      ]
+    ],
+    "keys": 129,
+    "dtypes": [
+      "float16",
+      "bfloat16"
+    ],
+    "expcast": [
+      false,
+      true
+    ],
+    "checks": [
+      "1% decoded RMSE globally, per head and per row",
+      "constant-key V with head scales from 2^-5 to 2^5",
+      "FP32 bitwise repeat equality on all valid output rows"
+    ]
+  },
+  "syntax": {
+    "python_json": "passed",
+    "bash_n_scripts": 3,
+    "git_diff_check": "passed"
+  },
+  "sync_audit": {
+    "exit_code": 1,
+    "findings": [
+      {
+        "code": "SYNC-07",
+        "severity": "红线",
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "line": 79,
+        "message": "CrossCoreSetFlag/WaitFlag 与 Matmul 高阶 API 混用（flagId 冲突风险）",
+        "detail": "高阶 API 内部已用 CrossCoreSetFlag，混用有 flagId 冲突；应删除手写 CrossCore | 历史 case: cann/ops-transformer PR#3921 (flag_pair) | 修复提示: 补齐缺失的 SetFlag 或 WaitFlag，确保所有路径都触发 SetFlag | diff证据: @@ -595,6 +595,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::VectorBufferInit() {\n     // ..."
+      },
+      {
+        "code": "SYNC-09",
+        "severity": "性能",
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "line": 142,
+        "message": "同一函数连续 PipeBarrier 过多: 19 个 in __aicore__ inline void RunVector",
+        "detail": "行: [142, 153, 155, 167, 169, 171, 179, 183, 185, 187, 189, 191, 194, 199, 201, 209, 211, 226, 236]；分析是否可合并"
+      },
+      {
+        "code": "SYNC-09",
+        "severity": "性能",
+        "file": "ascend/csrc/vc_kernel.cpp",
+        "line": 142,
+        "message": "同一文件 PipeBarrier<PIPE_V> 过多: 19 个",
+        "detail": "行: [142, 153, 155, 167, 169, 171, 179, 183, 185, 187, 189, 191, 194, 199, 201, 209, 211, 226, 236]；分析是否可合并"
+      }
+    ],
+    "status": "SYNC-07 remains open; target CANN MatmulImpl headers unavailable locally. No claim of cleared hardware synchronization."
+  },
+  "flow_audit": {
+    "exit_code": 0,
+    "findings": [],
+    "scope": "regex scan; did not detect this cross-task WAR. Source review supplied the missing buffer-lifetime edge."
+  },
+  "native_this_revision": {
+    "compile": "not_run_locally",
+    "validation": "pending_remote",
+    "performance": "not_measured"
+  },
+  "sha256_normalized_lf": {
+    "ascend/csrc/vc_kernel.cpp": "7b1f886f3c7604bc0d4f6cbe1591d6269864b44956dee51ce98c77bb39b84bf9",
+    "scripts/validate_ascend910b.py": "c456495a8f2873f258deb5375e4cb03fba466a92ca7283c6911555b096b2d2e6",
+    "tests/test_ascend_reuse_validation.py": "803322030b26c689453468d24f5c9dc418364957b780f902f907e05c1768068d",
+    "ascend/setup.py": "bc40feac8d4237a30a8e56dd4178d49d7f39ac85e0cabd9ff9957e8f3c10bffd",
+    "ascend/vc_attention_ascend/__init__.py": "bc8c96f94c645a7ccda653d6f936717e67b8725689f5a09686d061e8d50163b2"
+  }
+}

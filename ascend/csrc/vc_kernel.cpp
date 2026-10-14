@@ -94,6 +94,7 @@ public:
         pipe.InitBuffer(stateBuf, 8 * ROWS * 4);
         pipe.InitBuffer(lutBuf, 128 * 4);
         pipe.InitBuffer(tmpBuf, t.reduce_bytes);
+        const int32_t taskDoneEvent = static_cast<int32_t>(pipe.FetchEventID(HardEvent::MTE3_S));
         auto raw = rawBuf.Get<int32_t>();
         auto score = scoreBuf.Get<float>();
         auto ph = pBuf.Get<half>();
@@ -238,8 +239,12 @@ public:
             SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
             WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
             DataCopy(out[head * t.qpad * t.dim + uint64_t(qr) * t.dim], acc, ROWS * t.dim);
-            SetFlag<HardEvent::MTE3_V>(EVENT_ID0);
-            WaitFlag<HardEvent::MTE3_V>(EVENT_ID0);
+            // Drain this task before Scalar can issue the next task's metadata
+            // DMA. MTE3_V only gates Vector: MTE2 could overwrite vsBuf while
+            // the epilogue above still reads the previous head's V scale.
+            // V -> MTE3 -> S orders both the next MTE2 load and Vector reset.
+            SetFlag<HardEvent::MTE3_S>(taskDoneEvent);
+            WaitFlag<HardEvent::MTE3_S>(taskDoneEvent);
         }
     }
 private:

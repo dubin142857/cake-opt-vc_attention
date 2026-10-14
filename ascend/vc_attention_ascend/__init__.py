@@ -2,5 +2,5 @@
 
 from .api import attention, prepare, run_prepared, load_native
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 __all__ = ["attention", "prepare", "run_prepared", "load_native"]
