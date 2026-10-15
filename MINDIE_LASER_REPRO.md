@@ -19,6 +19,14 @@ bash scripts/run_mindie_laser_local.sh
 
 需要已有 Git、CMake、G++、Make 及 CANN 编译工具。首次准备会获取固定版本的官方源码，离线环境需要预先提供对应 checkout；这不是首次无网络安装器。后续运行复用构建目录，工具链不匹配会明确报错，不会静默清空缓存。4 个任务是外层构建和上游 prepare 子步骤的并发上限，不是编译时长承诺。
 
+### 首轮 host 成功、设备二进制缺失的修复
+
+首轮远端日志中，`.run` 打包和 host 库安装成功，但 `ops_kernel` 没有实际编译任务，最后报 `No installed Laser device binary was produced`。这是构建入口漏传 `CHECK_COMPATIBLE=TRUE`：上游 CMake 未引用该参数的空值，导致 `prepare.sh` 把后面的 SoC 选项当成它的值，丢失了芯片型号与算子名。准备阶段因此还编译了无关算子的 host 定义。
+
+入口现已补齐参数，并在配置完成后检查指定 SoC 的 Laser 编译脚本和对应设备任务。脚本已生成但 CMake 任务仍缺失的旧缓存，也会原地重新配置；保留主构建目录已有 host 对象。配置后的设备任务仍为空时，会提前停止，不再继续打包。原有最终设备二进制检查继续保留。
+
+遇到上述首轮失败，拉取修复后重跑同一个一键入口即可，无需手动删除 `build`。这次修复已通过 CPU 参数传递复现和缓存恢复回归；修复后的真实设备编译仍需远端确认。
+
 ## 源码与构建范围
 
 真正的 Laser 实现在 [Ascend/MindIE-SD](https://github.com/Ascend/MindIE-SD/tree/dev/csrc/ops/laser_attention)，不是此前查找的 MindIE-LLM。固定提交为 `71098c20ff90838d1fd1ca0a40515c751a3869b0`。

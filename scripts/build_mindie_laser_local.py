@@ -36,7 +36,35 @@ def definitions(source: Path, cann: Path, soc: str, install: Path) -> dict:
         "CMAKE_BUILD_TYPE": "Release", "CMAKE_INSTALL_PREFIX": str(install),
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON", "ENABLE_CCACHE": "OFF",
         "Python3_EXECUTABLE": sys.executable,
+        # Upstream config.cmake passes this unquoted to prepare.sh. An empty
+        # value consumes --ascend-compute_unit and loses both SoC and op name.
+        "CHECK_COMPATIBLE": "TRUE",
     }
+
+
+def kernel_build_graph(build_dir: Path, soc: str) -> dict:
+    """Check configure-time kernel discovery, not just a successful host build.
+
+    Upstream globs these scripts during configure. Scripts generated later by
+    make cannot repair an already empty ops_kernel target without reconfigure.
+    """
+    op = "vc_laser_attention"
+    prefix = f"{OP_TYPE}-{op}-"
+    gen = build_dir / "binary" / soc / "gen"
+    scripts = sorted(path for path in gen.glob(prefix + "*.sh")
+                     if path.is_file() and path.stat().st_size
+                     and path.stem.removeprefix(prefix).isdigit())
+    target_file = build_dir / "CMakeFiles/TargetDirectories.txt"
+    targets = set()
+    if target_file.is_file():
+        for line in target_file.read_text(encoding="utf-8").splitlines():
+            targets.add(line.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1].removesuffix(".dir"))
+    required = {"ops_kernel", op, f"{op}_{soc}"}
+    required.update(f"{op}_{soc}_{path.stem.removeprefix(prefix)}" for path in scripts)
+    missing = sorted(required - targets)
+    return {"complete": bool(scripts) and not missing,
+            "compile_scripts": [str(path.resolve()) for path in scripts],
+            "target_file": str(target_file.resolve()), "missing_targets": missing}
 
 
 def validate_cache(cache: dict, source: Path, wanted: dict) -> None:
@@ -148,9 +176,14 @@ def build(source, cann, soc, jobs, install_dir, output, *,
         # Upstream nested prepare and generated kernel scripts also resolve
         # python3 through PATH; keep them in the driver interpreter environment.
         env["PATH"] = os.pathsep.join((str(Path(sys.executable).parent), env.get("PATH", "")))
+        graph = kernel_build_graph(build_dir, soc)
+        report["device_graph_before"] = graph
         configure = (not cache or any(key not in cache for key in wanted)
-                     or not all((build_dir / name).is_file() for name in GENERATED_FILES))
+                     or not all((build_dir / name).is_file() for name in GENERATED_FILES)
+                     or not graph["complete"])
         report["configure_required"] = configure
+        if cache and not graph["complete"]:
+            print("Incomplete Laser device build graph; reconfiguring in place, preserving host objects.", flush=True)
         commands = []
         if configure:
             commands.append(("configure", ["cmake", "-S", str(source / "csrc/ops"), "-B", str(build_dir),
@@ -163,6 +196,15 @@ def build(source, cann, soc, jobs, install_dir, output, *,
             report["steps"].append(step)
             save()
             step["elapsed_seconds"] = runner(command, source, env, phase)
+            if phase == "configure":
+                graph = kernel_build_graph(build_dir, soc)
+                report["device_graph_after_configure"] = graph
+                save()
+                if not graph["complete"]:
+                    raise ValueError(
+                        "Laser device build graph is empty/incomplete after configure: "
+                        f"{len(graph['compile_scripts'])} compile scripts; missing targets {graph['missing_targets']}. "
+                        "Host-only packaging is stopped. Check prepare.sh SoC/operator arguments and configure log.")
             step["status"] = "passed"
             save()
         report.update(collect_artifacts(build_dir, install, soc))

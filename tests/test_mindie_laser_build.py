@@ -43,6 +43,13 @@ def fake_runner(environment, calls, *, missing_binary=False):
                 path = build / name
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text("generated")
+            gen = build / "binary/ascend910_93/gen"
+            gen.mkdir(parents=True, exist_ok=True)
+            (gen / "VcLaserAttention-vc_laser_attention-0.sh").write_text("# compile Laser\n")
+            (build / "CMakeFiles/TargetDirectories.txt").write_text("\n".join(
+                str(build / "CMakeFiles" / (name + ".dir")) for name in (
+                    "ops_kernel", "vc_laser_attention", "vc_laser_attention_ascend910_93",
+                    "vc_laser_attention_ascend910_93_0")), encoding="utf-8")
         if phase == "build_package":
             (build / "CANN-custom_ops-test-linux.aarch64.run").write_bytes(b"package")
         if phase == "install_workspace":
@@ -74,6 +81,8 @@ def test_build_scopes_to_one_operator_and_installs_only_workspace(environment):
     assert report["definitions"]["ASCEND_OP_NAME"] == "vc_laser_attention"
     assert report["definitions"]["VENDOR_NAME"] == "vc_laser"
     assert report["definitions"]["CMAKE_BUILD_TYPE"] == "Release"
+    assert report["definitions"]["CHECK_COMPATIBLE"] == "TRUE"
+    assert report["device_graph_after_configure"]["complete"] is True
     assert all(item[2]["BUILD_JOB_NUM"] == "2" for item in calls)
     assert all(item[2]["CMAKE_BUILD_PARALLEL_LEVEL"] == "2" for item in calls)
     assert len(report["device_binaries"]) == 1
@@ -95,6 +104,59 @@ def test_complete_cache_resumes_without_reconfigure_or_cleanup(environment):
     assert [item[0] for item in calls] == ["build_package", "install_workspace"]
     assert report["resume_existing_cache"] is True
     assert sentinel.read_bytes() == b"partial object"
+
+
+@pytest.mark.parametrize("missing_parameter", [True, False])
+def test_host_only_cache_reconfigures_even_if_compile_scripts_appeared_late(environment, missing_parameter):
+    calls = []
+    runner = fake_runner(environment, calls)
+    call_build(environment, runner)
+    build = environment[0] / "build/build"
+    # Reproduce the failed remote state: scripts exist after make, but the
+    # configure-time graph has only a host build and an empty ops_kernel.
+    (build / "CMakeFiles/TargetDirectories.txt").write_text(
+        str(build / "CMakeFiles/ops_kernel.dir"), encoding="utf-8")
+    if missing_parameter:
+        cache = build / "CMakeCache.txt"
+        cache.write_text("\n".join(line for line in cache.read_text(encoding="utf-8").splitlines()
+                                   if not line.startswith("CHECK_COMPATIBLE:")), encoding="utf-8")
+    sentinel = build / "existing_host.o"
+    sentinel.write_bytes(b"already compiled host")
+    calls.clear()
+    report = call_build(environment, runner)
+    assert [item[0] for item in calls] == ["configure", "build_package", "install_workspace"]
+    assert report["device_graph_before"]["compile_scripts"]
+    assert not report["device_graph_before"]["complete"]
+    assert report["device_graph_after_configure"]["complete"]
+    assert sentinel.read_bytes() == b"already compiled host"
+
+
+@pytest.mark.parametrize("broken", ["no_scripts", "missing_target"])
+def test_empty_device_graph_stops_before_packaging(environment, broken):
+    calls = []
+    runner = fake_runner(environment, calls)
+    build = environment[0] / "build/build"
+
+    def bad_configure(command, cwd, env, phase):
+        result = runner(command, cwd, env, phase)
+        if phase == "configure":
+            if broken == "no_scripts":
+                (build / "binary/ascend910_93/gen/VcLaserAttention-vc_laser_attention-0.sh").unlink()
+            else:
+                # Even the parent target is insufficient without actual index targets.
+                target_file = build / "CMakeFiles/TargetDirectories.txt"
+                text = target_file.read_text(encoding="utf-8")
+                target_file.write_text("\n".join(line for line in text.splitlines()
+                                                if not line.endswith("ascend910_93_0.dir")), encoding="utf-8")
+        return result
+
+    with pytest.raises(ValueError, match="device build graph"):
+        call_build(environment, bad_configure)
+    assert [item[0] for item in calls] == ["configure"]
+    report = json.loads(environment[3].read_text())
+    assert report["status"] == "failed"
+    assert report["steps"][-1]["status"] == "failed"
+    assert report["device_graph_after_configure"]["complete"] is False
 
 
 @pytest.mark.parametrize("key,value", [
