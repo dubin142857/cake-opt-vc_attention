@@ -27,10 +27,14 @@ ROOT = Path(__file__).resolve().parents[1]
 GENERATED_FILES = ("Makefile", "CMakeFiles/Makefile.cmake", "cmake_install.cmake", "CPackConfig.cmake")
 
 
-def definitions(source: Path, cann: Path, soc: str, install: Path) -> dict:
+DEFAULT_IDENTITY = dict(op_name="vc_laser_attention", vendor="vc_laser", op_type=OP_TYPE, native_api=NATIVE_API)
+
+
+def definitions(source: Path, cann: Path, soc: str, install: Path, identity=None) -> dict:
+    identity = identity or DEFAULT_IDENTITY
     return {
-        "BUILD_OPEN_PROJECT": "ON", "ASCEND_OP_NAME": "vc_laser_attention",
-        "VENDOR_NAME": "vc_laser", "ASCEND_COMPUTE_UNIT": soc,
+        "BUILD_OPEN_PROJECT": "ON", "ASCEND_OP_NAME": identity["op_name"],
+        "VENDOR_NAME": identity["vendor"], "ASCEND_COMPUTE_UNIT": soc,
         "CUSTOM_ASCEND_CANN_PACKAGE_PATH": str(cann),
         "ENABLE_OPS_HOST": "ON", "ENABLE_OPS_KERNEL": "ON", "PREPARE_BUILD": "OFF",
         "CMAKE_BUILD_TYPE": "Release", "CMAKE_INSTALL_PREFIX": str(install),
@@ -42,14 +46,15 @@ def definitions(source: Path, cann: Path, soc: str, install: Path) -> dict:
     }
 
 
-def kernel_build_graph(build_dir: Path, soc: str) -> dict:
+def kernel_build_graph(build_dir: Path, soc: str, identity=None) -> dict:
     """Check configure-time kernel discovery, not just a successful host build.
 
     Upstream globs these scripts during configure. Scripts generated later by
     make cannot repair an already empty ops_kernel target without reconfigure.
     """
-    op = "vc_laser_attention"
-    prefix = f"{OP_TYPE}-{op}-"
+    identity = identity or DEFAULT_IDENTITY
+    op = identity["op_name"]
+    prefix = f"{identity['op_type']}-{op}-"
     gen = build_dir / "binary" / soc / "gen"
     scripts = sorted(path for path in gen.glob(prefix + "*.sh")
                      if path.is_file() and path.stat().st_size
@@ -114,14 +119,14 @@ def fingerprint(path: Path) -> dict:
             "size_bytes": path.stat().st_size}
 
 
-def refresh_device_source_stamps(source: Path, build_dir: Path, soc: str) -> dict:
+def refresh_device_source_stamps(source: Path, build_dir: Path, soc: str, identity=None) -> dict:
     """Invalidate only this operator's stale source-copy/kernel completion stamps.
 
     Pinned upstream CMake custom commands do not DEPEND on kernel headers.
     Updating the prepared header alone otherwise leaves binary/.../src stale.
     Keep host objects, cache, libraries and all unrelated operator files intact.
     """
-    op = "vc_laser_attention"
+    op = (identity or DEFAULT_IDENTITY)["op_name"]
     original = source / "csrc/ops" / op / "op_kernel"
     staged = build_dir / "binary" / soc / "src" / op
     gen = build_dir / "binary" / soc / "gen"
@@ -159,16 +164,17 @@ def refresh_device_source_stamps(source: Path, build_dir: Path, soc: str) -> dic
     return result
 
 
-def collect_artifacts(build_dir: Path, install: Path, soc: str) -> dict:
+def collect_artifacts(build_dir: Path, install: Path, soc: str, identity=None) -> dict:
+    identity = identity or DEFAULT_IDENTITY
     packages = sorted(build_dir.glob("CANN-custom_ops-*.run"))
     if len(packages) != 1:
         raise ValueError(f"Expected one generated CANN custom operator package; found {len(packages)}")
-    vendor = install / "packages/vendors/vc_laser"
+    vendor = install / "packages/vendors" / identity["vendor"]
     api = vendor / "op_api/lib/libcust_opapi.so"
     tiling = sorted((vendor / "op_impl/ai_core/tbe/op_tiling/lib").rglob("libcust_opmaster_rt2.0.so"))
     if len(tiling) != 1:
         raise ValueError("Expected one installed Laser host tiling library")
-    device_dir = vendor / "op_impl/ai_core/tbe/kernel" / soc / "vc_laser_attention"
+    device_dir = vendor / "op_impl/ai_core/tbe/kernel" / soc / identity["op_name"]
     device = sorted(path for path in device_dir.rglob("*")
                     if path.is_file() and path.suffix in (".o", ".bin"))
     if not device:
@@ -179,20 +185,22 @@ def collect_artifacts(build_dir: Path, install: Path, soc: str) -> dict:
 
 
 def build(source, cann, soc, jobs, install_dir, output, *,
-          source_manifest=None, runner=run_visible):
+          source_manifest=None, runner=run_visible, identity=None, source_validator=None):
+    identity = identity or DEFAULT_IDENTITY
+    source_validator = source_validator or validate_prepared_source
     source, cann = Path(source).resolve(), Path(cann).resolve()
     install, output = Path(install_dir).resolve(), Path(output).resolve()
     manifest_path = Path(source_manifest or default_manifest(source)).resolve()
     build_dir = source / "build/build"
     cache = read_cache(build_dir / "CMakeCache.txt")
-    wanted = definitions(source, cann, soc, install)
+    wanted = definitions(source, cann, soc, install, identity)
     report = {
         "schema_version": 1, "status": "running", "source_dir": str(source),
         "build_dir": str(build_dir), "install_dir": str(install), "soc": soc, "jobs": jobs,
-        "native_api": NATIVE_API, "op_type": OP_TYPE,
+        "native_api": identity["native_api"], "op_type": identity["op_type"],
         "definitions": wanted, "steps": [], "resume_existing_cache": bool(cache),
         "deletes_build_directory": False,
-        "scope": "Only vc_laser_attention host/device custom operator; no MindIE wheel, plugin or TIK build",
+        "scope": f"Only {identity['op_name']} host/device custom operator; no MindIE wheel, plugin or TIK build",
         "installation_mode": "CMake staging inside workspace; no package installer or system installation",
     }
 
@@ -213,7 +221,7 @@ def build(source, cann, soc, jobs, install_dir, output, *,
         if install == cann or install.is_relative_to(cann) or cann.is_relative_to(install):
             raise ValueError("Install directory must not overlap the CANN Toolkit")
         validate_cache(cache, source, wanted)
-        manifest = validate_prepared_source(source, manifest_path)
+        manifest = source_validator(source, manifest_path)
         report["source_manifest"] = fingerprint(manifest_path)
         report["upstream"] = manifest["upstream"]
         env = build_environment(os.environ, cann)
@@ -221,7 +229,7 @@ def build(source, cann, soc, jobs, install_dir, output, *,
         # Upstream nested prepare and generated kernel scripts also resolve
         # python3 through PATH; keep them in the driver interpreter environment.
         env["PATH"] = os.pathsep.join((str(Path(sys.executable).parent), env.get("PATH", "")))
-        graph = kernel_build_graph(build_dir, soc)
+        graph = kernel_build_graph(build_dir, soc, identity)
         report["device_graph_before"] = graph
         configure = (not cache or any(key not in cache for key in wanted)
                      or not all((build_dir / name).is_file() for name in GENERATED_FILES)
@@ -238,13 +246,13 @@ def build(source, cann, soc, jobs, install_dir, output, *,
         commands.append(("install_workspace", ["cmake", "--install", str(build_dir), "--prefix", str(install)]))
         for phase, command in commands:
             if phase == "build_package":
-                report["device_source_refresh"] = refresh_device_source_stamps(source, build_dir, soc)
+                report["device_source_refresh"] = refresh_device_source_stamps(source, build_dir, soc, identity)
             step = {"phase": phase, "command": command, "status": "running"}
             report["steps"].append(step)
             save()
             step["elapsed_seconds"] = runner(command, source, env, phase)
             if phase == "configure":
-                graph = kernel_build_graph(build_dir, soc)
+                graph = kernel_build_graph(build_dir, soc, identity)
                 report["device_graph_after_configure"] = graph
                 save()
                 if not graph["complete"]:
@@ -254,7 +262,7 @@ def build(source, cann, soc, jobs, install_dir, output, *,
                         "Host-only packaging is stopped. Check prepare.sh SoC/operator arguments and configure log.")
             step["status"] = "passed"
             save()
-        report.update(collect_artifacts(build_dir, install, soc))
+        report.update(collect_artifacts(build_dir, install, soc, identity))
         report["status"] = "passed"
         save()
         return report

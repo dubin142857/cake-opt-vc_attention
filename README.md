@@ -1,6 +1,6 @@
 # MiniMax-H3 / A5 VC-Attention 实验
 
-**当前 Ascend 路线：已复现 MindIE Laser，开始独立 ExpCast 实验。** 执行 `bash scripts/run_mindie_laser_expcast.sh`，对比已安装 Laser、原源码基线和仅替换概率计算的 ExpCast；保留 FP16 QK/PV，不加 V 平滑。新实验尚待远端编译和测速，见 [Laser ExpCast 实验](MINDIE_LASER_EXPCAST.md)。原入口 `bash scripts/run_mindie_laser_local.sh` 继续提供[不改算法的源码基线](MINDIE_LASER_REPRO.md)。此前 CANN FAS 构建保留为历史实验。
+**当前 Ascend 路线：在已复现的 MindIE Laser 上，先量化 Q/K/V，再加入 ExpCast。** 执行 `bash scripts/run_mindie_laser_quant.sh`，依次比较原版、真实 INT8 QK、再加 E4M3 V 数值量化、再加 ExpCast。A2/A3 这一版的 V 会解码为 FP16 执行 PV，不宣称原生 FP8 加速；没有 V 重排或平滑。新量化内核待远端 CANN 编译和 NPU 验证，见 [Laser 量化实验](ascend/laser_quant/README.md)。原入口 `bash scripts/run_mindie_laser_local.sh` 继续提供[不改算法的源码基线](MINDIE_LASER_REPRO.md)，[仅替换概率计算的旧 ExpCast 实验](MINDIE_LASER_EXPCAST.md)和此前 CANN FAS 构建均保留。
 
 **当前 H200 主路线（2026-10-13）：`sageattn_vc`，INT8 QK + FP8 PV。**
 新候选 `bash scripts/run_tensor_mass_h200.sh`：针对概率分母求和，用无损解码后的 FP16 输入、FP32 累加的 Tensor Core 归约替代逐值升 FP32/相加。D128 编码/求和常规分支的本地静态指令从 325 降到 239，寄存器仍为 168；85 项检查通过，H200 整核性能待测。对比同次 scale-prefetch、installed、Sage、FA4，见 [CUDA 实验说明](SAGE_CUDA_EXPCAST.md)。
