@@ -53,17 +53,22 @@ INSTALL_DIR="$ROOT/build/cann_fas_install"
 VENDOR_ROOT="$INSTALL_DIR/vendors/vc_fas_transformer"
 "$PYTHON_BIN" scripts/prepare_cann_fas_source.py --source-dir "$SOURCE_DIR" --manifest "$SOURCE_MANIFEST" \
   2>&1 | tee results/cann_fas_prepare.log
-echo "Compile official single-op custom package for $BUILD_SOC"
+echo "Build/resume official single-op custom package for $BUILD_SOC; preserving build directory"
 (
-  source "$ROOT/scripts/cann_fas_build_compat.sh"
-  cd "$SOURCE_DIR"
-  bash build.sh --pkg --soc="$BUILD_SOC" --ops=flash_attention_score \
-    --vendor_name=vc_fas --cann_3rd_lib_path="$SOURCE_DIR/third_party" \
-    --build-type=Release --disable_asan -j"$CANN_FAS_JOBS" -O3
-) 2>&1 | tee results/cann_fas_build.log
+  # Match upstream's compiler environment, but bypass build.sh's unconditional clean.
+  if [[ -f "$ASCEND_HOME_PATH/bin/setenv.bash" ]]; then
+    set +u
+    source "$ASCEND_HOME_PATH/bin/setenv.bash"
+    set -u
+  fi
+  "$PYTHON_BIN" -u scripts/build_cann_fas_local.py --source-dir "$SOURCE_DIR" \
+    --cann-root "$ASCEND_HOME_PATH" --soc "$BUILD_SOC" --jobs "$CANN_FAS_JOBS" \
+    --output results/cann_fas_build_steps.json
+) 2>&1 | tee -a results/cann_fas_build.log
 
 shopt -s nullglob
-packages=("$SOURCE_DIR"/build_out/cann-ops-transformer-vc_fas_linux*.run)
+# Read CPack's primary output rather than a copy left in build_out.
+packages=("$SOURCE_DIR"/build/cann-ops-transformer-vc_fas_linux*.run)
 if ((${#packages[@]} != 1)); then
   echo "Expected exactly one vc_fas package; found ${#packages[@]}. See results/cann_fas_build.log" >&2
   exit 1
@@ -93,6 +98,7 @@ d['build']={'soc_family':sys.argv[4], 'package':str(package), 'package_sha256':s
             'vendor_root':str(vendor), 'device_binary_count':len(bins),
             'device_binaries_sha256':{str(p.relative_to(vendor)):sha(p) for p in bins},
             'environment':json.loads(Path('results/cann_fas_environment.json').read_text()),
+            'build_steps':json.loads(Path('results/cann_fas_build_steps.json').read_text()),
             'scope':'Host API/tiling source markers; unchanged device source. Binary presence alone does not prove runtime kernel selection.'}
 manifest.write_text(json.dumps(d,indent=2)+'\n')
 Path('results/cann_fas_build_manifest.json').write_text(json.dumps(d,indent=2)+'\n')

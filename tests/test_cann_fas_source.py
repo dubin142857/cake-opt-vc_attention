@@ -69,9 +69,11 @@ def test_offline_preparation_is_idempotent_and_audits_every_source(checkout):
     source, manifest_path, _ = checkout
     first = run_prepare(checkout)
     first_bytes = manifest_path.read_bytes()
+    mtimes = {name: (source / name).stat().st_mtime_ns for name in first["modified_host_files"]}
     second = run_prepare(checkout)
     assert first == second
     assert manifest_path.read_bytes() == first_bytes
+    assert mtimes == {name: (source / name).stat().st_mtime_ns for name in first["modified_host_files"]}
     assert first["marker_token"] == "vc_cann_fas_v901"
     assert first["kernel_source_unchanged"] is True
     assert len(first["modified_host_files"]) == 3

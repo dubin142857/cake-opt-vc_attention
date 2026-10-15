@@ -27,13 +27,19 @@ bash scripts/run_cann_fas_local.sh
 
 默认 `python3`、逻辑 NPU 0、8 个编译任务，使用 Release / `-O3`。沿用已经安装的 CANN、驱动、torch 和 torch_npu，不自动安装或升级这些基础环境。需要现成的 Git、CMake、G++、Make 和上游要求的编译依赖。首次构建会下载官方源码、固定版本的 opbase 及第三方依赖；离线机器必须提前缓存它们，脚本不承诺首次离线构建。
 
-`gawk` 可选：固定版本的上游 `build.sh` 仅用它为日志加时间戳。没有 `gawk` 时，构建子进程中的兼容函数只接受这一条日志过滤表达式，直接输出原始日志，保留编译退出码。系统有 `gawk` 时沿用原程序。此处理不修改锁定的上游源码，也不会安装系统工具。
+2026-10-15 起，入口直接调用官方 CMake 构建目标，沿用之前的 Release / `-O3` 和单算子配置，绕过上游 `build.sh` 的无条件清理步骤。`gawk` 不再位于当前构建调用链。工具链环境仍读取 CANN 的 `bin/setenv.bash`。
+
+如果前一轮已经中断或被 kill，**拉取后重跑同一条命令即可尝试续编**，不要手动删除 `build/cann_fas_source/build`。脚本检查已有缓存的源码目录、SoC、算子、vendor、CANN 路径和构建类型；发现不匹配时保留目录并报错，不静默清空重来。首次加入新配置或上次配置未完成时会重新 configure；后续配置完整时直接执行 `cmake --build ... --target package`，由构建系统复用已有产物。
+
+新的 `CMAKE_PROJECT_INCLUDE` 模块只将自定义包中未被 ACLNN 链接、也未安装的 ONNX OBJECT 目标移出默认 ALL。Protobuf/Abseil 外部目标在上游已经排除于 ALL；没有其他目标需要它们时便不会被连带构建。显式依赖仍保留，设备内核、ACLNN、proto 和 tiling 目标不裁剪。这不改变 attention 数学，也不证明推理速度有任何提升。
+
+**续编仍有边界：** 首次切换配置会触发官方 prepare 子构建；它会重建嵌套的 `build/prepare_build`，不等于主构建目录被清空。该子构建可能长时间不输出日志，其并行策略由上游控制。主构建每 30 秒打印 heartbeat，表示进程仍在运行而不是完成百分比。构建步骤与失败状态写入 `results/cann_fas_build_steps.json`；构建日志采用追加模式，保留上一轮信息。已经完成的依赖和对象能否复用还取决于对应目标的依赖和时间戳，不能承诺恢复到某个固定百分比。
 
 脚本依次执行：
 
 1. 预检设备与环境；A3 使用官方构建族名 `ascend910_93`，A2 使用 `ascend910b`。
 2. 在 `build/cann_fas_source` 准备固定源码，检查未知改动和设备源码完整性。
-3. 仅构建 `flash_attention_score` 自定义包，vendor 为 `vc_fas`。
+3. 首次配置或复用已有 CMake 缓存，构建 `flash_attention_score` 自定义包，vendor 为 `vc_fas`；跳过无关 ONNX 默认构建目标。
 4. 安装到项目内 `build/cann_fas_install/vendors/vc_fas_transformer`。不会替换系统 CANN 安装。
 5. 分进程运行系统版和自编译版，检查正确性与加载证据，然后比较同步 API 时间。
 
@@ -62,6 +68,7 @@ bash scripts/run_cann_fas_local.sh
 | `results/cann_fas_environment.json` | 设备、CANN 和 Python 环境 |
 | `results/cann_fas_prepare.log` | 固定源码和依赖准备 |
 | `results/cann_fas_build.log` | 官方编译输出 |
+| `results/cann_fas_build_steps.json` | 续编配置、执行步骤、耗时与失败状态 |
 | `results/cann_fas_install.log` | 项目内自定义包安装 |
 | `results/cann_fas_build_manifest.json` | 源码、依赖、host 修改与设备二进制哈希 |
 | `results/cann_fas_local_compare.json` | 正确性、时间、来源证据与失败信息 |

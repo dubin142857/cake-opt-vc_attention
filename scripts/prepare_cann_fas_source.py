@@ -288,7 +288,10 @@ def prepare_source(
     ensure_checkout(opbase_dir, opbase_lock, offline)
     check_dirty(opbase_dir, set())
     for name, prepared in patches.items():
-        (source_dir / name).write_bytes(prepared)
+        path = source_dir / name
+        # Preserve mtimes on repeat runs so an interrupted build can reuse objects.
+        if not path.exists() or path.read_bytes() != prepared:
+            path.write_bytes(prepared)
     manifest = {
         "schema_version": 1,
         "upstream": {"url": source_lock.url, "tag": source_lock.tag, "commit": source_lock.commit},
