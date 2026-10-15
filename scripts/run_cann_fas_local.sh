@@ -26,7 +26,7 @@ if [[ ! "$CANN_FAS_JOBS" =~ ^[1-9][0-9]*$ ]]; then
   echo "CANN_FAS_JOBS must be a positive integer" >&2
   exit 2
 fi
-for command_name in git cmake g++ make gawk; do
+for command_name in git cmake g++ make; do
   command -v "$command_name" >/dev/null || { echo "Missing build tool: $command_name" >&2; exit 1; }
 done
 mkdir -p results build
@@ -55,6 +55,7 @@ VENDOR_ROOT="$INSTALL_DIR/vendors/vc_fas_transformer"
   2>&1 | tee results/cann_fas_prepare.log
 echo "Compile official single-op custom package for $BUILD_SOC"
 (
+  source "$ROOT/scripts/cann_fas_build_compat.sh"
   cd "$SOURCE_DIR"
   bash build.sh --pkg --soc="$BUILD_SOC" --ops=flash_attention_score \
     --vendor_name=vc_fas --cann_3rd_lib_path="$SOURCE_DIR/third_party" \

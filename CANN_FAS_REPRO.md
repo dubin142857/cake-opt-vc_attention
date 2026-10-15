@@ -25,7 +25,9 @@ git pull origin master
 bash scripts/run_cann_fas_local.sh
 ```
 
-默认 `python3`、逻辑 NPU 0、8 个编译任务，使用 Release / `-O3`。沿用已经安装的 CANN、驱动、torch 和 torch_npu，不自动安装或升级这些基础环境。需要现成的 Git、CMake、G++、Make、gawk 和上游要求的编译依赖。首次构建会下载官方源码、固定版本的 opbase 及第三方依赖；离线机器必须提前缓存它们，脚本不承诺首次离线构建。
+默认 `python3`、逻辑 NPU 0、8 个编译任务，使用 Release / `-O3`。沿用已经安装的 CANN、驱动、torch 和 torch_npu，不自动安装或升级这些基础环境。需要现成的 Git、CMake、G++、Make 和上游要求的编译依赖。首次构建会下载官方源码、固定版本的 opbase 及第三方依赖；离线机器必须提前缓存它们，脚本不承诺首次离线构建。
+
+`gawk` 可选：固定版本的上游 `build.sh` 仅用它为日志加时间戳。没有 `gawk` 时，构建子进程中的兼容函数只接受这一条日志过滤表达式，直接输出原始日志，保留编译退出码。系统有 `gawk` 时沿用原程序。此处理不修改锁定的上游源码，也不会安装系统工具。
 
 脚本依次执行：
 
