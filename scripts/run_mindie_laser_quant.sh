@@ -10,9 +10,18 @@ ROOT="$(pwd -P)"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 NPU_DEVICE="${NPU_DEVICE:-0}"
 LASER_BUILD_JOBS="${LASER_BUILD_JOBS:-4}"
+LASER_QUANT_EXPERIMENTS="${LASER_QUANT_EXPERIMENTS-0}"
 if [[ ! "$LASER_BUILD_JOBS" =~ ^[1-9][0-9]*$ ]]; then
   echo "LASER_BUILD_JOBS must be a positive integer" >&2
   exit 2
+fi
+if [[ "$LASER_QUANT_EXPERIMENTS" != 0 && "$LASER_QUANT_EXPERIMENTS" != 1 ]]; then
+  echo "LASER_QUANT_EXPERIMENTS must be 0 or 1" >&2
+  exit 2
+fi
+VARIANTS=(installed baseline qk_int8)
+if [[ "$LASER_QUANT_EXPERIMENTS" == 1 ]]; then
+  VARIANTS+=(qkv_int8_e4m3 qkv_int8_e4m3_expcast)
 fi
 if [[ -z "${ASCEND_HOME_PATH:-}" ]]; then
   for cann_env in /usr/local/Ascend/ascend-toolkit/set_env.sh \
@@ -36,7 +45,11 @@ for tool in git cmake g++ make; do
   command -v "$tool" >/dev/null || { echo "Missing build tool: $tool" >&2; exit 1; }
 done
 mkdir -p results build
-echo "Laser quantization: original / INT8 QK / E4M3 V decoded to FP16 PV / ExpCast"
+echo "Laser quantization: ${VARIANTS[*]}"
+echo "Mainline: native INT8 QK + original Laser softmax + FP16 V/PV"
+if [[ "$LASER_QUANT_EXPERIMENTS" == 1 ]]; then
+  echo "Experiments enabled: E4M3 V decoded to FP16 PV / ExpCast"
+fi
 echo "BF16 BNSD=[1,28,37741,128]; fresh preprocessing, full API and fixed prepared timings"
 echo "A2/A3 FP16 PV; no native FP8, no V reordering, no K smoothing"
 "$PYTHON_BIN" scripts/check_ascend910b.py --device "$NPU_DEVICE" --require-laser \
@@ -108,4 +121,5 @@ fi
   --quant-build results/mindie_laser_quant_build.json \
   --bridge-manifest results/mindie_laser_bridge.json \
   --device "$NPU_DEVICE" --output results/mindie_laser_quant_compare.json \
+  --variants "${VARIANTS[@]}" \
   2>&1 | tee results/mindie_laser_quant_compare.log

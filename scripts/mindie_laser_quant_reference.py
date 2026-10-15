@@ -9,7 +9,8 @@ import dataclasses
 import torch
 
 from mindie_laser_expcast_reference import expcast_probability
-from mindie_laser_quant_backend import QK_BLOCK, prepare_quant_tensors
+from mindie_laser_quant_backend import QK_BLOCK
+from mindie_laser_quant_preprocessing import POLICY, check_preprocessing
 
 
 def cpu_payload(payload):
@@ -107,29 +108,51 @@ def validate_small(adapter, device, report, save, torch_module):
         "decoded_implementation_gate": "Every 128-key tile has zero maximum; all rows/channels except independent constant channels",
         "decoded_limit": .01, "full_prepared_limit": .001,
         "dense_scope": "Original unquantized FP32 attention diagnostic, separate from implementation correctness",
-        "native_fp8": False, "k_smoothing": False, "v_reordering": False}
+        "native_fp8": False, "k_smoothing": False, "v_reordering": False,
+        "preprocessing": dict(POLICY)}
+    report["preprocessing_rounding_probes"] = []
     save()
     for dtype in (torch.float16, torch.bfloat16):
+        # Absmax=127 gives an exact scale of 1. This independently checks
+        # round-to-nearest-even at positive/negative ties on the actual device.
+        ties = torch.zeros(1, 1, 1, 64, dtype=dtype)
+        ties[..., :7] = torch.tensor([127, .5, 1.5, 2.5, -.5, -1.5, -2.5], dtype=dtype)
+        probe_inputs = (ties, ties.clone(), torch.zeros_like(ties))
+        probe = cpu_payload(adapter.prepare(*(x.to(device) for x in probe_inputs)))
+        probe_check = check_preprocessing(probe_inputs, probe)
+        report["preprocessing_rounding_probes"].append({"dtype": str(dtype), **probe_check})
+        save()
+        if not probe_check["passed"]:
+            raise AssertionError(f"Exact-scale RNE probe failed for {dtype}: {probe_check['errors']}")
         for nq, nk, dim in shapes:
             for zero in ((False, True) if (nq, nk) == (17, 129) else (False,)):
                 label = f"{dtype} Q{nq} K{nk} D{dim} zero={zero}"
                 print("Quantized Laser structured validation: " + label, flush=True)
+                row = {"case": label, "status": "running"}
+                report["small_accuracy"].append(row)
+                save()
                 original = structured_case(dtype, dim, nq, nk, zero=zero)
                 inputs = [tensor.to(device) for tensor in original]
                 payload = adapter.prepare(*inputs)
                 host_payload = cpu_payload(payload)
-                expected_payload = prepare_quant_tensors(*original, v_quantize=adapter.v_quantize)
                 # Validate backend preprocessing separately from native output.
-                for name in ("q", "k", "v", "q_scale", "k_scale", "v_scale"):
-                    actual, expected = getattr(host_payload, name), getattr(expected_payload, name)
-                    torch.testing.assert_close(actual, expected, rtol=2e-6, atol=1e-7)
+                row["payload"] = adapter.describe_payload(payload)
+                preprocessing = check_preprocessing(original, host_payload)
+                row["preprocessing_cpu_comparison"] = preprocessing
+                if not preprocessing["passed"]:
+                    row["status"] = "failed"
+                save()
+                if not preprocessing["passed"]:
+                    raise AssertionError(f"{label}: preprocessing failed: {preprocessing['errors']}")
+                for name in ("q", "k"):
+                    count = preprocessing["fields"][name]["accepted_boundary_differences"]
+                    if count:
+                        print(f"  {name}: {count} INT8 rounding-boundary differences accepted "
+                              "within 1 FP32 ULP; details saved", flush=True)
                 prepared = adapter.run_prepared(payload).cpu()
                 full = adapter(*inputs).cpu()
                 reference = decoded_reference(host_payload, expcast=adapter.expcast, structured=True)
                 dense = common.dense_reference(*original, torch.arange(nq))
-                row = {"case": label, "payload": adapter.describe_payload(payload),
-                       "preprocessing_cpu_comparison": "passed", "status": "running"}
-                report["small_accuracy"].append(row)
                 for name, actual, target, limit in (
                     ("full_vs_prepared", full, prepared, .001),
                     ("decoded_reference_nonconstant_channels", full[..., 2:], reference[..., 2:], .01),

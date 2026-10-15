@@ -1,6 +1,6 @@
 # MiniMax-H3 / A5 VC-Attention 实验
 
-**当前 Ascend 路线：在已复现的 MindIE Laser 上，先量化 Q/K/V，再加入 ExpCast。** 执行 `bash scripts/run_mindie_laser_quant.sh`，依次比较原版、真实 INT8 QK、再加 E4M3 V 数值量化、再加 ExpCast。A2/A3 这一版的 V 会解码为 FP16 执行 PV，不宣称原生 FP8 加速；没有 V 重排或平滑。新量化内核待远端 CANN 编译和 NPU 验证，见 [Laser 量化实验](ascend/laser_quant/README.md)。原入口 `bash scripts/run_mindie_laser_local.sh` 继续提供[不改算法的源码基线](MINDIE_LASER_REPRO.md)，[仅替换概率计算的旧 ExpCast 实验](MINDIE_LASER_EXPCAST.md)和此前 CANN FAS 构建均保留。
+**当前 Ascend 主线：原生 INT8 QK + 原 Laser softmax + FP16 V/PV。** 执行 `bash scripts/run_mindie_laser_quant.sh`，默认比较 `installed`、`baseline`、`qk_int8` 三组，保留原始 V 的 FP16 转换。E4M3 V 解码和 ExpCast 保留为实验；设置 `LASER_QUANT_EXPERIMENTS=1` 才运行全部五组。A2/A3 实验中的 E4M3 V 会解码为 FP16 执行 PV，不宣称原生 FP8 加速；没有 V 重排或平滑。量化路径仍需远端 NPU 正确性与性能验证，见 [Laser 量化说明](ascend/laser_quant/README.md)。原入口 `bash scripts/run_mindie_laser_local.sh` 继续提供[不改算法的源码基线](MINDIE_LASER_REPRO.md)，[仅替换概率计算的旧 ExpCast 实验](MINDIE_LASER_EXPCAST.md)和此前 CANN FAS 构建均保留。
 
 **当前 H200 主路线（2026-10-13）：`sageattn_vc`，INT8 QK + FP8 PV。**
 新候选 `bash scripts/run_tensor_mass_h200.sh`：针对概率分母求和，用无损解码后的 FP16 输入、FP32 累加的 Tensor Core 归约替代逐值升 FP32/相加。D128 编码/求和常规分支的本地静态指令从 325 降到 239，寄存器仍为 168；85 项检查通过，H200 整核性能待测。对比同次 scale-prefetch、installed、Sage、FA4，见 [CUDA 实验说明](SAGE_CUDA_EXPCAST.md)。

@@ -53,7 +53,8 @@ if args[0].endswith('build_mindie_laser_quant.py') and os.environ.get('LASER_TES
 
     def run(extra_env=None):
         env = {key: value for key, value in os.environ.items()
-               if key not in ("BASH_ENV", "ENV", "LASER_BUILD_JOBS", "LASER_TEST_REUSE", "LASER_TEST_FAIL")}
+               if key not in ("BASH_ENV", "ENV", "LASER_BUILD_JOBS", "LASER_QUANT_EXPERIMENTS",
+                              "LASER_TEST_REUSE", "LASER_TEST_FAIL")}
         env.update(ASCEND_HOME_PATH=cann.as_posix(), PYTHON_BIN=wrapper.as_posix())
         env.update(extra_env or {})
         command = [str(bash), "--noprofile", "--norc", "-c",
@@ -75,6 +76,28 @@ def test_one_command_builds_missing_baseline_and_quant_then_benchmarks(launcher)
         "build_mindie_laser_bridge.py", "build_mindie_laser_quant.py", "benchmark_mindie_laser_quant.py"]
     assert calls[-2]["args"][calls[-2]["args"].index("--soc") + 1] == "ascend910_93"
     assert "--quant-build" in calls[-1]["args"]
+    args = calls[-1]["args"]
+    assert args[args.index("--variants") + 1:] == ["installed", "baseline", "qk_int8"]
+    assert args[args.index("--output") + 1] == "results/mindie_laser_quant_compare.json"
+
+
+@pytest.mark.parametrize("experiments,variants", [
+    ("0", ["installed", "baseline", "qk_int8"]),
+    ("1", ["installed", "baseline", "qk_int8", "qkv_int8_e4m3", "qkv_int8_e4m3_expcast"]),
+])
+def test_experiment_switch_controls_benchmark_variants(launcher, experiments, variants):
+    result, calls = launcher({"LASER_TEST_REUSE": "1", "LASER_QUANT_EXPERIMENTS": experiments})
+    assert result.returncode == 0, result.stdout + result.stderr
+    args = calls[-1]["args"]
+    assert args[args.index("--variants") + 1:] == variants
+    assert args[args.index("--output") + 1] == "results/mindie_laser_quant_compare.json"
+
+
+@pytest.mark.parametrize("experiments", ["", "2", "-1", "true"])
+def test_invalid_experiment_switch_rejected_before_preflight(launcher, experiments):
+    result, calls = launcher({"LASER_QUANT_EXPERIMENTS": experiments})
+    assert result.returncode == 2 and calls == []
+    assert "LASER_QUANT_EXPERIMENTS must be 0 or 1" in result.stderr
 
 
 def test_verified_baseline_is_reused_without_recompilation_or_extra_benchmark(launcher):

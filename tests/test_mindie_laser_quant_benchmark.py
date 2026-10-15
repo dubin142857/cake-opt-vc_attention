@@ -123,6 +123,17 @@ def test_ablation_identity_cannot_pass_with_missing_hashes():
     assert benchmark.verify_quant_payload_identity({"qk_int8": {}}) == []
 
 
+@pytest.mark.parametrize("extra,expected", [
+    ([], ["installed", "baseline", "qk_int8"]),
+    (["--variants", *benchmark.VARIANTS], list(benchmark.VARIANTS)),
+])
+def test_cli_defaults_to_qk_mainline_and_accepts_all_experiments(monkeypatch, extra, expected):
+    monkeypatch.setattr(benchmark, "parent", lambda args: args)
+    args = benchmark.main(extra)
+    assert args.variants == expected
+    assert args.output == "results/mindie_laser_quant_compare.json"
+
+
 @pytest.mark.parametrize("extra", [["--shape", "1", "2", "0", "128"], ["--trials", "1"],
                                     ["--_worker", "qk_int8"], ["--variants", "qk_int8", "qk_int8"]])
 def test_invalid_cli_fails_before_device_or_filesystem_work(extra):

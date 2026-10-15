@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Isolated original Laser / INT8 QK / decoded-E4M3 V / ExpCast comparison."""
+"""Original Laser vs INT8 QK, with optional decoded-E4M3 V and ExpCast experiments."""
 from __future__ import annotations
 
 import argparse
@@ -18,6 +18,7 @@ import benchmark_mindie_laser_local as baseline
 
 common = baseline.common
 VARIANTS = ("installed", "baseline", "qk_int8", "qkv_int8_e4m3", "qkv_int8_e4m3_expcast")
+DEFAULT_VARIANTS = VARIANTS[:3]
 QUANT_MARKER_ENV = "VC_MINDIE_LASER_QUANT_MARKER_FILE"
 QUANT_OP = "VcLaserQuantAttention"
 QUANT_API = "aclnnVcLaserQuantAttention"
@@ -144,7 +145,10 @@ def worker(args):
             from mindie_laser_quant_reference import cpu_payload, decoded_reference, validate_small
             adapter = load_quant_laser(resolved.bridge_path, v_quantize=name != "qk_int8",
                                        expcast=name.endswith("_expcast"), check_finite=False)
-            report["source_transform_validation"] = "Quantized transforms checked against CPU payloads in small cases"
+            report["source_transform_validation"] = (
+                "CPU structured checks: scales within 1 FP32 ULP; INT8 RNE boundary-aware "
+                "division check using actual scales; exact zero/padding and decoded V; "
+                "exact-scale RNE probes. Native oracle uses actual device payloads.")
         else:
             adapter, transforms = baseline.load_adapter(resolved, source)
             validate_small = baseline.validate_small
@@ -370,7 +374,8 @@ def main(argv=None):
     parser.add_argument("--quant-build", default="results/mindie_laser_quant_build.json")
     parser.add_argument("--bridge-manifest", default="results/mindie_laser_bridge.json")
     parser.add_argument("--output", default="results/mindie_laser_quant_compare.json")
-    parser.add_argument("--variants", nargs="+", choices=VARIANTS, default=list(VARIANTS))
+    parser.add_argument("--variants", nargs="+", choices=VARIANTS, default=list(DEFAULT_VARIANTS),
+                        help="Default: installed baseline qk_int8; select E4M3 V/ExpCast experiments explicitly")
     parser.add_argument("--shape", type=int, nargs=4, default=baseline.SHAPE, metavar=("B", "H", "S", "D"))
     parser.add_argument("--device", type=int, default=0)
     parser.add_argument("--warmup", type=int, default=5)
