@@ -1,5 +1,7 @@
 # 先复现 CANN FlashAttentionScore，再加入 VC
 
+**当前改走 MindIE Laser 单算子源码复现**：`bash scripts/run_mindie_laser_local.sh`，见 [新入口说明](MINDIE_LASER_REPRO.md)。以下保留 CANN FAS 构建实验及排查记录，不再是当前默认路线。
+
 当前 Ascend 自研内核的长形状性能还没有接近 CANN。用户在 A3 `Ascend910_9382` / CANN 9.0.1 上回传：M64 control **1169.2007 ms**、M64 ExpCast **1290.1728 ms**，同轮 CANN **128.7198 ms**、MindIE Laser **83.9254 ms**。这些都是同步 full API 时间。M64 改善了原 M32，但仍有约 9–10 倍的 CANN 差距，继续局部修改 ExpCast 不能解决整个执行结构的问题。
 
 新路线先构建官方 FAS 源码，保留原有分块、流水、数据类型和 softmax；确认基线后，才在这个实现上接入 ExpCast。本次没有向官方内核加入量化、V 重排或 VC 逻辑。

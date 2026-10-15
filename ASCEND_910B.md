@@ -2,7 +2,9 @@
 
 这是一版新的 **C++ / Ascend C 内核 + torch_npu 接口**，对应当前 H200 路线的 **INT8 QK + ExpCast，不启用 V 聚类/平滑**。它没有把 attention 偷换成 PyTorch SDPA。预处理使用设备上的 torch_npu 运算；QK、ExpCast、在线归一化和 PV 在自定义混合内核内执行。
 
-**当前路线：先复现官方 CANN FlashAttentionScore，再接入 VC。** 用户已回传 M64 的长形状结果：control **1169.2007 ms**、ExpCast **1290.1728 ms**，同轮 CANN **128.7198 ms**、Laser **83.9254 ms**，均为同步 full API。M64 仍未接近现成融合算子，因此新增固定官方 v9.0.1 源码的独立编译对照，运行 `bash scripts/run_cann_fas_local.sh`；完整说明见 [CANN_FAS_REPRO.md](CANN_FAS_REPRO.md)。新入口保留官方普通 softmax，远端构建和性能尚待验证。
+**当前路线：先复现 MindIE Laser，再接入 VC。** 执行 `bash scripts/run_mindie_laser_local.sh`，固定 MindIE-SD 源码，只编译独立 Laser 与调用接口，对比已安装版。完整说明见 [MINDIE_LASER_REPRO.md](MINDIE_LASER_REPRO.md)。这轮保留原 softmax，远端原生构建和性能待验证。
+
+此前 M64 长形状结果：control **1169.2007 ms**、ExpCast **1290.1728 ms**，同轮 CANN **128.7198 ms**、Laser **83.9254 ms**，均为同步 full API。M64 仍未接近现成融合算子。之后尝试的官方 CANN FAS 完整源码构建耗时过长，现保留为历史实验，见 [CANN_FAS_REPRO.md](CANN_FAS_REPRO.md)。
 
 历史 0.1.1 在 A3 `Ascend910_9382` / CANN 9.0.1 上，BF16 `[1,37741,28,128]` 的同步 full API 为：VC ExpCast **2040.5450 ms**、control **1899.7418 ms**、CANN **128.0532 ms**、MindIE Laser **83.2749 ms**。VC fixed core 分别为 **2004.0513 / 1861.6662 ms**，主要耗时仍在 prepared 执行路径。上述均是用户实测，不是本地 NPU 测试；不同轮次不用于计算严格加速比。
 

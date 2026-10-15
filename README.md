@@ -1,5 +1,7 @@
 # MiniMax-H3 / A5 VC-Attention 实验
 
+**当前 Ascend 路线：复现 MindIE Laser 源码基线。** 执行 `bash scripts/run_mindie_laser_local.sh`，只构建独立 Laser 算子与调用接口，对比已安装 MindIE Laser；暂不加入 ExpCast。见 [MindIE Laser 源码复现](MINDIE_LASER_REPRO.md)。此前 CANN FAS 构建保留为历史实验。
+
 **当前 H200 主路线（2026-10-13）：`sageattn_vc`，INT8 QK + FP8 PV。**
 新候选 `bash scripts/run_tensor_mass_h200.sh`：针对概率分母求和，用无损解码后的 FP16 输入、FP32 累加的 Tensor Core 归约替代逐值升 FP32/相加。D128 编码/求和常规分支的本地静态指令从 325 降到 239，寄存器仍为 168；85 项检查通过，H200 整核性能待测。对比同次 scale-prefetch、installed、Sage、FA4，见 [CUDA 实验说明](SAGE_CUDA_EXPCAST.md)。
 最新 scalar-prefetch 为 23.0945 ms，同轮 scale-prefetch 为 22.9710 ms，候选慢 0.1235 ms（0.54%），不采用，继续保留 K128 scale-prefetch 基线。随后回传确认两者编译资源相同、输出逐位一致，但 full/core 均仅 2/9 轮更快，配对节省中位数均为负。该轮基线相对 Sage/FA4 的 GPU 内核加速比为 1.077×/1.326×，不代表完整 API 或模型收益。`bash scripts/run_scalar_prefetch_h200.sh` 保留作实验对照，见 [CUDA 实验说明](SAGE_CUDA_EXPCAST.md)。
