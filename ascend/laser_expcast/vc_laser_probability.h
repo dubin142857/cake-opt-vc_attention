@@ -35,9 +35,9 @@ __aicore__ inline void vc_laser_expcast_probability(
         vconv_f162f32(scratch, score + offset, repeats32, 1, 1, 8, 4);
         pipe_barrier(PIPE_V);
         // Explicit two-round FP32 contract, unlike the CUDA FMA reference.
-        vmuls(scratch, scratch, GAIN, repeats32, 1, 1, 8, 8);
+        vmuls(scratch, scratch, static_cast<float>(GAIN), repeats32, 1, 1, 8, 8);
         pipe_barrier(PIPE_V);
-        vadds(scratch, scratch, BIAS, repeats32, 1, 1, 8, 8);
+        vadds(scratch, scratch, static_cast<float>(BIAS), repeats32, 1, 1, 8, 8);
         pipe_barrier(PIPE_V);
         vmaxs(scratch, scratch, 0.0f, repeats32, 1, 1, 8, 8);
         pipe_barrier(PIPE_V);

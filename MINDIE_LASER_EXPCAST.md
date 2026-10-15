@@ -76,3 +76,5 @@ probe 使用该固定版本 Vector 中未使用的 `EVENT_ID7` 做局部 `PIPE_V
 首次远端编译暴露了容量断言的 C++ 语义错误：原类的 `SIZE_FP16` 是普通对象成员，不能出现在 `static_assert` 常量表达式里。已改成 `sizeof(INPUT_T)`，并保留输入宽度和 scratch 容量检查，概率数值契约不变。增加普通 C++ 编译回归，确认旧片段失败、新片段通过；它使用声明桩，不替代 CANN 指令编译验证。
 
 此修复可在旧实验目录上直接重跑同一条命令。准备阶段仅迁移与上一版完整源码及 manifest 均匹配的生成文件，手工修改仍会拒绝。上游 CMake 的源码复制和设备完成标记没有头文件依赖，因此构建前还会比较设备源码副本；发生变化时只清除该算子的复制/设备编译 `.done` 标记，让 make 更新副本并重编设备代码，保留 host 对象、CMake 缓存和其他算子产物。相关源码迁移、增量构建、数学与 C++ 检查共 74 项通过；实际 CCE 重编译仍由远端完成。
+
+随后远端 CANN 9.0.1 在 `vmuls`、`vadds` 的第三个实参上报 `the 3rd parameter maybe need a type 'float'`。报错实参是 `constexpr float` 的 `GAIN`、`BIAS`；现改为调用处的 `static_cast<float>(GAIN)` 与 `static_cast<float>(BIAS)`，向 CCE intrinsic 提供明确的 `float` 值表达式。[官方接口原型](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/83RC1alpha003/API/cceintrinsicapi/cceapi_0015.html) 的该参数为 `float`；const 左值导致此次拒绝的解释是根据诊断作出的推断，文档没有说明这一限制。常量数值、分开的 FP32 乘加、RNE 和概率解码均不变。这个修复针对实际诊断，不能由普通 C++ 声明桩证明 CCE 已兼容，仍须远端重编确认。旧容量断言版及其修正版的已知生成头文件均可经完整来源审计后升级，继续使用上面的两条命令，无需清空 build。

@@ -218,3 +218,92 @@ def test_migration_requires_matching_historical_manifest(variants, manifest_prob
         prepare.prepare_source(source, manifest, offline=True, source_lock=lock, variant="expcast")
     assert (source / CUSTOM_VECTOR).read_bytes() == legacy
     assert (manifest.read_bytes() if manifest.exists() else None) == before
+
+
+def previous_probability_header(source, manifest_path, *, legacy_crlf=False):
+    """Recreate the released helper's two uncast CCE scalar arguments."""
+    target = source / HEADER
+    current = target.read_bytes()
+    assert current.count(b"static_cast<float>(GAIN)") == 1
+    assert current.count(b"static_cast<float>(BIAS)") == 1
+    legacy = current.replace(b"static_cast<float>(GAIN)", b"GAIN", 1)
+    legacy = legacy.replace(b"static_cast<float>(BIAS)", b"BIAS", 1)
+    legacy = legacy.replace(b"\r\n", b"\n")
+    assert prepare.sha256(legacy) == "90bef085a1d516568e0916306234ddfad46bac3bdc96261e8950c30792f7655f"
+    if legacy_crlf:
+        legacy = legacy.replace(b"\n", b"\r\n")
+    target.write_bytes(legacy)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    for group in ("source_files", "generated_files"):
+        manifest[group][HEADER]["prepared_sha256"] = prepare.sha256(legacy)
+    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return current, legacy
+
+
+@pytest.mark.parametrize("variant", ["expcast", "expcast_probe"])
+@pytest.mark.parametrize("vector_revision", ["v1", "v2"])
+@pytest.mark.parametrize("legacy_crlf", [False, True], ids=["lf", "crlf"])
+def test_known_v1_v2_helper_upgrade_preserves_other_sources_and_cache(variants, tmp_path, variant, vector_revision, legacy_crlf):
+    baseline, _, _, source, manifest, _, lock = variants
+    if variant.endswith("_probe"):
+        source, manifest = tmp_path / variant, tmp_path / f"{variant}_manifest.json"
+        prepare.prepare_source(source, manifest, offline=True, reference_dir=baseline,
+                               source_lock=lock, variant=variant)
+    wanted_vector = (source / CUSTOM_VECTOR).read_bytes()
+    if vector_revision == "v1":
+        previous_probability_version(source, manifest)
+    wanted_header, _ = previous_probability_header(source, manifest, legacy_crlf=legacy_crlf)
+    sentinel = source / "build/build/cached-device.o"
+    sentinel.parent.mkdir(parents=True)
+    sentinel.write_bytes(b"partial device object")
+    changed = {source / HEADER}
+    if vector_revision == "v1":
+        changed.add(source / CUSTOM_VECTOR)
+    mtimes = {path: path.stat().st_mtime_ns for path in source.rglob("*")
+              if path.is_file() and ".git" not in path.relative_to(source).parts and path not in changed}
+    upgraded = prepare.prepare_source(source, manifest, offline=True, source_lock=lock, variant=variant)
+    assert (source / HEADER).read_bytes() == wanted_header
+    assert (source / CUSTOM_VECTOR).read_bytes() == wanted_vector
+    assert all(path.stat().st_mtime_ns == mtime for path, mtime in mtimes.items())
+    assert sentinel.read_bytes() == b"partial device object"
+    assert prepare.validate_prepared_source(source, manifest) == upgraded
+    first_manifest = manifest.read_bytes()
+    first_mtimes = {(source / name): (source / name).stat().st_mtime_ns for name in upgraded["generated_files"]}
+    assert prepare.prepare_source(source, manifest, offline=True, source_lock=lock, variant=variant) == upgraded
+    assert manifest.read_bytes() == first_manifest
+    assert all(path.stat().st_mtime_ns == mtime for path, mtime in first_mtimes.items())
+
+
+@pytest.mark.parametrize("edit", ["manual", "partial_fix"])
+def test_header_upgrade_rejects_unreleased_or_manual_bytes_with_forged_manifest(variants, edit):
+    _, _, _, source, manifest, _, lock = variants
+    _, legacy_vector = previous_probability_version(source, manifest)
+    _, legacy_header = previous_probability_header(source, manifest)
+    changed = (legacy_header + b"// manual edit\n" if edit == "manual" else
+               legacy_header.replace(b"scratch, scratch, GAIN,", b"scratch, scratch, static_cast<float>(GAIN),", 1))
+    (source / HEADER).write_bytes(changed)
+    forged = json.loads(manifest.read_text(encoding="utf-8"))
+    for group in ("source_files", "generated_files"):
+        forged[group][HEADER]["prepared_sha256"] = prepare.sha256(changed)
+    manifest.write_text(json.dumps(forged), encoding="utf-8")
+    before = manifest.read_bytes()
+    with pytest.raises(prepare.PreparationError):
+        prepare.prepare_source(source, manifest, offline=True, source_lock=lock, variant="expcast")
+    assert (source / HEADER).read_bytes() == changed
+    assert (source / CUSTOM_VECTOR).read_bytes() == legacy_vector
+    assert manifest.read_bytes() == before
+
+
+def test_header_upgrade_requires_its_matching_manifest_before_any_write(variants):
+    _, _, _, source, manifest, _, lock = variants
+    _, legacy_header = previous_probability_header(source, manifest)
+    original_vector = (source / CUSTOM_VECTOR).read_bytes()
+    forged = json.loads(manifest.read_text(encoding="utf-8"))
+    forged["source_files"][HEADER]["prepared_sha256"] = "f" * 64
+    manifest.write_text(json.dumps(forged), encoding="utf-8")
+    before = manifest.read_bytes()
+    with pytest.raises(prepare.PreparationError):
+        prepare.prepare_source(source, manifest, offline=True, source_lock=lock, variant="expcast")
+    assert (source / HEADER).read_bytes() == legacy_header
+    assert (source / CUSTOM_VECTOR).read_bytes() == original_vector
+    assert manifest.read_bytes() == before

@@ -37,6 +37,8 @@ CUSTOM_OP_ROOT = "csrc/ops/vc_laser_attention"
 TILING_FILE = f"{OP_ROOT}/op_host/laser_attention_tiling.cpp"
 PREPARE_SCRIPT = "csrc/ops/cmake/scripts/prepare.sh"
 MARKER_FILE = f"{CUSTOM_OP_ROOT}/op_host/vc_source_marker.h"
+# Released helper bytes from Git (LF) before the two CCE scalar argument casts.
+LEGACY_PROBABILITY_HEADER_SHA256 = "90bef085a1d516568e0916306234ddfad46bac3bdc96261e8950c30792f7655f"
 VARIANTS = ("baseline", "expcast", "baseline_probe", "expcast_probe")
 RENAMES = ((b"LaserAttention", b"VcLaserAttention"),
            (b"laser_attention", b"vc_laser_attention"))
@@ -159,41 +161,63 @@ def variant_files(variant: str, generated: dict) -> dict:
 
 def audit_variant_files(source_dir: Path, patches: dict, previous: dict | None,
                         source_lock: RepositoryLock, variant: str) -> dict:
-    """Accept one reconstructed historical Vector revision, never arbitrary hashes.
+    """Accept enumerated historical Vector/helper bytes, never arbitrary hashes.
 
     The historical file is derived from the pinned/current transformation,
     including probe brackets when present. Audit the entire old tree before
     any write, then record the new bytes which prepare_source will install.
     """
     vector = f"{CUSTOM_OP_ROOT}/op_kernel/VectorForward.h"
-    current_path = source_dir / vector
+    header = f"{CUSTOM_OP_ROOT}/op_kernel/vc_laser_probability.h"
     audit_patches = patches
-    migrating = (variant.startswith("expcast") and current_path.is_file()
-                 and current_path.read_bytes() != patches[vector])
+    migrating = {}
+    if variant.startswith("expcast"):
+        for name in (vector, header):
+            path = source_dir / name
+            if path.is_file() and path.read_bytes() != patches[name]:
+                migrating[name] = path.read_bytes()
     if migrating:
-        try:
-            from scripts.mindie_laser_expcast_patch import (
-                EXPERIMENTAL_PROBABILITY, LEGACY_EXPERIMENTAL_PROBABILITY,
-            )
-        except ModuleNotFoundError:
-            from mindie_laser_expcast_patch import (
-                EXPERIMENTAL_PROBABILITY, LEGACY_EXPERIMENTAL_PROBABILITY,
-            )
-        expected = patches[vector]
-        newline = b"\r\n" if b"\r\n" in expected else b"\n"
-        legacy = replace_once(expected, EXPERIMENTAL_PROBABILITY.replace(b"\n", newline),
-                              LEGACY_EXPERIMENTAL_PROBABILITY.replace(b"\n", newline),
-                              "historical ExpCast constexpr revision")
-        if current_path.read_bytes() != legacy:
-            raise PreparationError(f"Unknown generated Vector contents; preserving {current_path}")
+        audit_patches = dict(patches)
+        if vector in migrating:
+            try:
+                from scripts.mindie_laser_expcast_patch import (
+                    EXPERIMENTAL_PROBABILITY, LEGACY_EXPERIMENTAL_PROBABILITY,
+                )
+            except ModuleNotFoundError:
+                from mindie_laser_expcast_patch import (
+                    EXPERIMENTAL_PROBABILITY, LEGACY_EXPERIMENTAL_PROBABILITY,
+                )
+            expected = patches[vector]
+            newline = b"\r\n" if b"\r\n" in expected else b"\n"
+            audit_patches[vector] = replace_once(
+                expected, EXPERIMENTAL_PROBABILITY.replace(b"\n", newline),
+                LEGACY_EXPERIMENTAL_PROBABILITY.replace(b"\n", newline),
+                "historical ExpCast constexpr revision")
+        if header in migrating:
+            legacy_header = patches[header]
+            for intrinsic, scalar in (("vmuls", "GAIN"), ("vadds", "BIAS")):
+                old = f"{intrinsic}(scratch, scratch, {scalar}, repeats32, 1, 1, 8, 8);".encode()
+                new = old.replace(scalar.encode(), f"static_cast<float>({scalar})".encode(), 1)
+                legacy_header = replace_once(legacy_header, new, old, "historical CCE scalar argument")
+            legacy_lf = legacy_header.replace(b"\r\n", b"\n")
+            if sha256(legacy_lf) != LEGACY_PROBABILITY_HEADER_SHA256:
+                raise PreparationError("Historical probability helper reconstruction no longer matches its fixed hash")
+            # The helper is copied from the workspace, where Git autocrlf can
+            # give the same historical file CRLF. Audit its actual old bytes
+            # against its manifest, accepting only uniform LF or uniform CRLF.
+            if migrating[header] not in (legacy_lf, legacy_lf.replace(b"\n", b"\r\n")):
+                raise PreparationError(f"Unknown generated source contents; preserving {source_dir / header}")
+            audit_patches[header] = migrating[header]
+        for name, contents in migrating.items():
+            if contents != audit_patches[name]:
+                raise PreparationError(f"Unknown generated source contents; preserving {source_dir / name}")
         identity = {
             "source_dir": str(source_dir), "variant": variant,
             "native_api": NATIVE_API, "op_type": OP_TYPE, "marker_token": MARKER_TOKEN,
             "upstream": {"url": source_lock.url, "commit": source_lock.commit, "tag": source_lock.tag},
         }
         if previous is None or any(previous.get(key) != value for key, value in identity.items()):
-            raise PreparationError("Known historical Vector requires its matching source manifest")
-        audit_patches = {**patches, vector: legacy}
+            raise PreparationError("Known historical generated sources require their matching source manifest")
     records, _ = audit_files(source_dir, audit_patches)
     if migrating:
         generated = set(patches) - {PREPARE_SCRIPT}
@@ -202,7 +226,8 @@ def audit_variant_files(source_dir: Path, patches: dict, previous: dict | None,
                 or any(previous["generated_files"][name].get("prepared_sha256") !=
                        records[name]["prepared_sha256"] for name in generated)):
             raise PreparationError("Historical source manifest differs from reconstructed audited sources")
-        records[vector]["prepared_sha256"] = sha256(patches[vector])
+        for name in migrating:
+            records[name]["prepared_sha256"] = sha256(patches[name])
     return records
 
 
