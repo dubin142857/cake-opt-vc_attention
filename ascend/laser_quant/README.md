@@ -23,6 +23,8 @@ bash scripts/run_mindie_laser_quant.sh
 
 `qk_int8` 保留多次 PyTorch NPU 调用的量化预处理作为对照；`qk_int8_fused` 融合 Q/K 的转换、padding、block absmax、scale 和 INT8 舍入输出。两组都保留原 softmax 和 FP16 PV，不执行单位 V scale 乘法。构建融合库使用预检报告中的完整运行时 SoC（如 `Ascend910_9382`），Laser attention 包继续使用原有构建族（如 `ascend910_93`），不会因此清空或重建原 attention 缓存。
 
+CANN 9.0.1 的 legacy `extract_host_stub.py` 不接受 `__global__ __aicore__` 后再插入 `__vector__`，会在生成主机调用接口时抛出 `FuncNameNotFound`。融合量化入口采用标准 `__global__ __aicore__ void` 声明，并显式选择 `KERNEL_TYPE_AIV_ONLY`。若此前卡在该错误，`git pull` 后重新执行同一个脚本即可沿用构建缓存。此修复有同版本解析器规则的离线回归检查；完整 CANN 编译及 NPU 运行仍需远端验证。
+
 以下两组仅在显式启用实验时追加，组成六组对照：
 
 | 实验变体 | QK | V 输入和 PV | 概率计算 |

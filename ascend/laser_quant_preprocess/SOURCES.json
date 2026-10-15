@@ -3,6 +3,17 @@
   "contract_version": 1,
   "status": "Experimental. Local CPU/static checks only; remote CANN compilation, numerical validation and latency must pass.",
   "architecture": "Ascend A2/A3 DAV-2201; exact runtime SoC",
+  "legacy_build_compatibility": {
+    "repository": "https://gitcode.com/cann/asc-devkit",
+    "tag": "v9.0.1",
+    "commit": "c3e271c396ca036aa76be5745b4b4c242eeb06a2",
+    "parser": "cmake/asc/legacy_modules/util/extract_host_stub.py",
+    "signature_patterns": "cmake/asc/legacy_modules/util/constants.py",
+    "task_type_macro": "impl/basic_api/utils/kernel_utils_macros.h:365-388; enabled for DAV-2201 preprocessing, no extra include required",
+    "entry": "extern C __global__ __aicore__ void; KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY)",
+    "reason": "The extra __vector__ attribute is misparsed as the function name by the legacy host-stub generator. Select pure AIV through its explicit task-type marker instead.",
+    "regression_fixture": "tests/cann901_host_stub_fixture.py; signature grammar only, not a CCE compiler or device simulation"
+  },
   "skill_template": {
     "repository": "https://github.com/hicann/cannbot-skills",
     "commit": "dbf4019cae5d757820f03c9cd21e0f0b277e1701",

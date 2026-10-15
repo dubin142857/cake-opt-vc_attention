@@ -140,16 +140,21 @@ private:
     TBuf<TPosition::VECCALC> outputBuffer_, reductionBuffer_, scaleBuffer_;
 };
 
-extern "C" __global__ __aicore__ __vector__ void vc_laser_quantize_fp16(
+// CANN 9.0.1's legacy host-stub parser expects the return type immediately
+// after __aicore__. An extra __vector__ attribute causes FuncNameNotFound.
+// Select AIV through the task-type marker, which that same parser supports.
+extern "C" __global__ __aicore__ void vc_laser_quantize_fp16(
     GM_ADDR input, GM_ADDR output, GM_ADDR scales, uint32_t sequence,
     uint32_t dimension, uint32_t paddedSequence, uint64_t tasks, uint32_t cores) {
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
     KernelBlockQuantize<half> op;
     op.Run(input, output, scales, sequence, dimension, paddedSequence, tasks, cores);
 }
 
-extern "C" __global__ __aicore__ __vector__ void vc_laser_quantize_bf16(
+extern "C" __global__ __aicore__ void vc_laser_quantize_bf16(
     GM_ADDR input, GM_ADDR output, GM_ADDR scales, uint32_t sequence,
     uint32_t dimension, uint32_t paddedSequence, uint64_t tasks, uint32_t cores) {
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
     KernelBlockQuantize<bfloat16_t> op;
     op.Run(input, output, scales, sequence, dimension, paddedSequence, tasks, cores);
 }

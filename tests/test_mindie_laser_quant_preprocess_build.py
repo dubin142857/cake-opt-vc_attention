@@ -1,12 +1,14 @@
 """Host checks only: no claim of CANN compilation or device timing."""
 import json
 from pathlib import Path
+import re
 
 import pytest
 
 from scripts import build_mindie_laser_quant_preprocess as builder
 from scripts.mindie_laser_quant_fused import validate_preprocess_manifest
 from tests.test_mindie_laser_expcast_cpp import cpp_compiler, compile_syntax
+from tests import cann901_host_stub_fixture as cann_stub
 
 
 def runtime(tmp_path):
@@ -122,9 +124,10 @@ struct half { uint16_t bits; explicit half(float); };
 struct bfloat16_t { uint16_t bits; };
 #define __aicore__
 #define __global__
-#define __vector__
 #define __gm__
 #define GM_ADDR uint8_t*
+#define KERNEL_TASK_TYPE_DEFAULT(type) static_assert(type == 1, "Pure AIV required")
+#define KERNEL_TYPE_AIV_ONLY 1
 namespace AscendC {
 enum class TPosition { VECCALC };
 enum class RoundMode { CAST_NONE, CAST_RINT };
@@ -174,3 +177,47 @@ def test_actual_kernel_instantiates_both_dtypes_with_host_cpp_declarations(cpp_c
                          if not line.startswith(("#include", "#pragma")))
     code, diagnostic = compile_syntax(cpp_compiler, tmp_path, STUBS + stripped)
     assert code == 0, diagnostic
+
+
+def legacy_signature_input(source):
+    # Model only the entry tokens seen by legacy extract_host_stub.py. Do not
+    # erase attributes as the host C++ semantic check does: that hid this bug.
+    source = re.sub(r"//[^\n]*|/\*.*?\*/", "", source, flags=re.DOTALL)
+    for token, expansion in {
+        "__global__": "__attribute__((cce_kernel))",
+        "__aicore__": "[aicore]",
+        "__vector__": "__attribute__((cce_vector))",
+    }.items():
+        source = source.replace(token, expansion)
+    return source
+
+
+def test_cann901_parser_reads_both_actual_entry_names_and_full_launch_abi():
+    source = (builder.SOURCE / "quantize_kernel.cpp").read_text()
+    signatures = cann_stub.FUNC_SIGNATURE.findall(legacy_signature_input(source))
+    parsed = [cann_stub.parse_func_signature_parts(signature) for _, signature in signatures]
+    assert {name for _, name, _ in parsed} == {
+        "vc_laser_quantize_fp16", "vc_laser_quantize_bf16"}
+    assert len(parsed) == 2
+    expected = ["GM_ADDR input", "GM_ADDR output", "GM_ADDR scales", "uint32_t sequence",
+                "uint32_t dimension", "uint32_t paddedSequence", "uint64_t tasks", "uint32_t cores"]
+    for result_type, _, params in parsed:
+        assert result_type == "void"
+        assert [" ".join(param.split()) for param in params.split(",")] == expected
+    # Both entry bodies must request AIV explicitly; do not depend on inference
+    # for two kernels in one translation unit or silently launch a mixed task.
+    entries = re.findall(r"void vc_laser_quantize_\w+\([^)]*\)\s*\{([^}]*)\}", source)
+    assert len(entries) == 2
+    for body in entries:
+        assert re.search(r"KERNEL_TASK_TYPE_DEFAULT\(KERNEL_TYPE_AIV_ONLY\)\s*;", body)
+
+
+def test_cann901_parser_reproduces_reported_failure_for_old_vector_attribute():
+    source = (builder.SOURCE / "quantize_kernel.cpp").read_text()
+    old_source = source.replace('__global__ __aicore__ void vc_laser_quantize_',
+                                '__global__ __aicore__ __vector__ void vc_laser_quantize_')
+    signatures = cann_stub.FUNC_SIGNATURE.findall(legacy_signature_input(old_source))
+    assert len(signatures) == 2
+    for _, signature in signatures:
+        with pytest.raises(cann_stub.FuncNameNotFound):
+            cann_stub.parse_func_signature_parts(signature)
