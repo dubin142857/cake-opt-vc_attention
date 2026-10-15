@@ -75,12 +75,16 @@ Laser 使用独立的 `VcLaserAttention`，额外库被加载本身不代表 Las
 
 ## 输出与当前验证边界
 
+2026-10-15 用户远端复现结果：已安装版 full / prepared core 为 **86.3775 / 83.4513 ms**，自编译版为 **86.4317 / 83.5724 ms**，两者 dense 相对 RMSE 均为 **0.190947%**。源码版/安装版的抽样相对 RMSE 打印为 `0.000000%`；只覆盖 32 个 query 行，不能据此声称全输出逐位相等。当前形状下的性能差约 0.1%，基线已建立。
+
+后续改造放在独立的 [Laser ExpCast 实验](MINDIE_LASER_EXPCAST.md) 中，本页入口保持原算法。
+
 - `results/mindie_laser_build.log`：算子构建日志。
 - `results/mindie_laser_bridge.log`：调用接口构建日志。
 - `results/mindie_laser_build.json`、`mindie_laser_bridge.json`：构建配置与产物记录。
 - `results/mindie_laser_local_compare.json`：最终验收、误差和性能对照。
 - 同目录中的独立 worker 目录：输出抽样、进程库映射、tiling 标记和逐轮日志。
 
-本地仅具备 Windows/CPU 环境，检查覆盖源码变换、构建计划、预后处理等价性、隔离与失败检测、脚本语法。CANN 原生编译和 NPU 正确性/速度需要在远端执行上述一键脚本后确认。
+本地仅具备 Windows/CPU 环境，检查覆盖源码变换、构建计划、预后处理等价性、隔离与失败检测、脚本语法。原始 Laser 的 CANN 编译及 NPU 对照已由用户远端结果确认；新实验的编译、正确性和速度仍需单独验收。
 
-这次调整优先解决构建范围与基线可复现性：沿用原版调度、隔离算子名、限制嵌套构建并发，再以实测决定是否进入 ExpCast 改造。
+本基线沿用原版调度，隔离算子名并限制嵌套构建并发；它是后续 ExpCast 改造的对照。

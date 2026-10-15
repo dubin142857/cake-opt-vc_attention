@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Prepare an isolated, pinned MindIE Laser custom operator with provenance.
 
-Only operator identifiers are changed in device code. Original Laser sources and
-copyright notices remain intact. The two audited host/build changes add an
-optional provenance marker and bound the preparation subprocess parallelism.
+The default baseline only renames device identifiers. Explicit experimental
+variants add an audited probability transform or diagnostic probe in separate
+checkouts. Original Laser sources and copyright notices remain intact.
 """
 from __future__ import annotations
 
@@ -37,6 +37,7 @@ CUSTOM_OP_ROOT = "csrc/ops/vc_laser_attention"
 TILING_FILE = f"{OP_ROOT}/op_host/laser_attention_tiling.cpp"
 PREPARE_SCRIPT = "csrc/ops/cmake/scripts/prepare.sh"
 MARKER_FILE = f"{CUSTOM_OP_ROOT}/op_host/vc_source_marker.h"
+VARIANTS = ("baseline", "expcast", "baseline_probe", "expcast_probe")
 RENAMES = ((b"LaserAttention", b"VcLaserAttention"),
            (b"laser_attention", b"vc_laser_attention"))
 
@@ -129,12 +130,45 @@ def default_manifest(source: Path) -> Path:
     return source.parent / f"{source.name}_manifest.json"
 
 
+def variant_files(variant: str, generated: dict) -> dict:
+    """Explicit experimental delta, independently rebuilt during verification."""
+    if variant not in VARIANTS:
+        raise PreparationError(f"Unknown Laser variant: {variant}")
+    result = dict(generated)
+    if variant.startswith("expcast"):
+        try:
+            from scripts.mindie_laser_expcast_patch import patch_vector
+        except ModuleNotFoundError:
+            from mindie_laser_expcast_patch import patch_vector
+        vector = f"{CUSTOM_OP_ROOT}/op_kernel/VectorForward.h"
+        if vector not in result:
+            raise PreparationError("ExpCast requires the pinned VectorForward.h")
+        result[vector] = patch_vector(result[vector])
+        result[f"{CUSTOM_OP_ROOT}/op_kernel/vc_laser_probability.h"] = (
+            ROOT / "ascend/laser_expcast/vc_laser_probability.h").read_bytes()
+    if variant.endswith("_probe"):
+        try:
+            from scripts.mindie_laser_probe_patch import patch_vector, HEADER_NAME, HEADER
+        except ModuleNotFoundError:
+            from mindie_laser_probe_patch import patch_vector, HEADER_NAME, HEADER
+        vector = f"{CUSTOM_OP_ROOT}/op_kernel/VectorForward.h"
+        result[vector] = patch_vector(result[vector])
+        result[f"{CUSTOM_OP_ROOT}/op_kernel/{HEADER_NAME}"] = HEADER
+    return result
+
+
 def prepare_source(source_dir: Path, manifest_path: Path, offline: bool = False, *,
                    reference_dir: Path | None = None,
-                   source_lock: RepositoryLock = SOURCE_LOCK) -> dict:
+                   source_lock: RepositoryLock = SOURCE_LOCK, variant: str = "baseline") -> dict:
     source_dir, manifest_path = Path(source_dir).resolve(), Path(manifest_path).resolve()
     if reference_dir is not None and source_dir == Path(reference_dir).resolve():
         raise PreparationError("Source and reference must be separate checkouts")
+    if variant not in VARIANTS:
+        raise PreparationError(f"Unknown Laser variant: {variant}")
+    if manifest_path.exists():
+        previous = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if previous.get("variant", "baseline") != variant:
+            raise PreparationError("Use a separate checkout/manifest for each Laser variant; existing build preserved")
     seed_checkout(source_dir, reference_dir, source_lock)
     ensure_checkout(source_dir, source_lock, offline)
     names = git(source_dir, "ls-tree", "-r", "--name-only", "HEAD", "--", OP_ROOT).decode().splitlines()
@@ -165,6 +199,15 @@ def prepare_source(source_dir: Path, manifest_path: Path, offline: bool = False,
         "original_path": None, "original_sha256": None,
         "prepared_sha256": sha256(MARKER_HEADER), "inverse_rename_equivalent": False,
     }
+    generated = variant_files(variant, generated)
+    for name, data in generated.items():
+        record = generated_records.setdefault(name, {
+            "original_path": None, "original_sha256": None,
+            "inverse_rename_equivalent": False,
+        })
+        if record.get("prepared_sha256") != sha256(data):
+            record["inverse_rename_equivalent"] = False
+        record["prepared_sha256"] = sha256(data)
     patched_prepare = parallelism_patch(git(source_dir, "show", f"HEAD:{PREPARE_SCRIPT}"))
     patches = {PREPARE_SCRIPT: patched_prepare, **generated}
     check_dirty(source_dir, set(patches))
@@ -186,7 +229,12 @@ def prepare_source(source_dir: Path, manifest_path: Path, offline: bool = False,
         "source_dir": str(source_dir), "original_operator": OP_ROOT,
         "custom_operator": CUSTOM_OP_ROOT, "native_api": NATIVE_API, "op_type": OP_TYPE,
         "marker_token": MARKER_TOKEN, "marker_environment": "VC_MINDIE_LASER_MARKER_FILE",
-        "kernel_inverse_rename_equivalent": True,
+        "variant": variant,
+        "kernel_inverse_rename_equivalent": variant == "baseline",
+        "diagnostic_instrumentation": variant.endswith("_probe"),
+        "algorithm_scope": ("Original Laser" if variant.startswith("baseline") else
+            "Only bulk probability ExpCast; FP32 separate multiply/add then RNE; "
+            "E4M3 decoded /256 as FP16; original FP16 QK/PV and history update; no V smoothing"),
         "kernel_tree_sha256": kernel_hash.hexdigest(),
         "kernel_tree_hash_format": "sha256 of sorted original Laser path + NUL + original file sha256 + newline",
         "identifier_renames": {old.decode(): new.decode() for old, new in RENAMES},
@@ -215,12 +263,19 @@ def validate_prepared_source(source: Path, manifest_path: Path) -> dict:
     ensure_checkout(source, SOURCE_LOCK, offline=True)
     if manifest.get("source_dir") != str(source):
         raise PreparationError("Source manifest belongs to another checkout")
+    variant = manifest.get("variant", "baseline")
+    if variant not in VARIANTS:
+        raise PreparationError("Unknown source variant")
     if (manifest.get("native_api") != NATIVE_API or manifest.get("op_type") != OP_TYPE
             or manifest.get("marker_token") != MARKER_TOKEN
-            or manifest.get("kernel_inverse_rename_equivalent") is not True):
+            or manifest.get("kernel_inverse_rename_equivalent") is not (variant == "baseline")):
         raise PreparationError("Source manifest identity/inverse-rename evidence is incomplete")
     expected_names = git(source, "ls-tree", "-r", "--name-only", "HEAD", "--", OP_ROOT).decode().splitlines()
     expected_generated = {custom_path(name) for name in expected_names} | {MARKER_FILE}
+    if variant.startswith("expcast"):
+        expected_generated.add(f"{CUSTOM_OP_ROOT}/op_kernel/vc_laser_probability.h")
+    if variant.endswith("_probe"):
+        expected_generated.add(f"{CUSTOM_OP_ROOT}/op_kernel/vc_laser_probability_probe.h")
     if set(manifest.get("generated_files", {})) != expected_generated:
         raise PreparationError("Source manifest omits or adds generated operator files")
     patches = {PREPARE_SCRIPT: parallelism_patch(git(source, "show", f"HEAD:{PREPARE_SCRIPT}")),
@@ -228,6 +283,7 @@ def validate_prepared_source(source: Path, manifest_path: Path) -> dict:
     for name in expected_names:
         data = rename(git(source, "show", f"HEAD:{name}"))
         patches[custom_path(name)] = marker_patch(data) if name == TILING_FILE else data
+    patches = variant_files(variant, patches)
     check_dirty(source, set(patches))
     actual, _ = audit_files(source, patches)
     if actual != manifest.get("source_files"):
@@ -235,6 +291,8 @@ def validate_prepared_source(source: Path, manifest_path: Path) -> dict:
     for name, expected in patches.items():
         if (source / name).read_bytes() != expected:
             raise PreparationError(f"Prepared source missing or stale: {name}")
+        if name in expected_generated and manifest["generated_files"][name].get("prepared_sha256") != sha256(expected):
+            raise PreparationError(f"Generated source hash differs from manifest: {name}")
     return manifest
 
 
@@ -244,15 +302,17 @@ def main() -> int:
     parser.add_argument("--reference-dir", type=Path, default=ROOT / "build/mindie-sd-reference")
     parser.add_argument("--manifest", type=Path)
     parser.add_argument("--offline", action="store_true")
+    parser.add_argument("--variant", choices=VARIANTS, default="baseline")
     args = parser.parse_args()
     manifest_path = args.manifest or default_manifest(args.source_dir)
     try:
-        result = prepare_source(args.source_dir, manifest_path, args.offline, reference_dir=args.reference_dir)
+        result = prepare_source(args.source_dir, manifest_path, args.offline,
+                                reference_dir=args.reference_dir, variant=args.variant)
     except (PreparationError, OSError, ValueError) as error:
         print(f"MindIE Laser preparation failed: {error}", file=sys.stderr)
         return 1
     print(f"Prepared {result['op_type']} from {result['upstream']['commit']}")
-    print(f"Device sources preserve the original algorithm after inverse identifier rename.")
+    print(f"Variant: {args.variant}; {result['algorithm_scope']}")
     print(f"Manifest: {manifest_path.resolve()}")
     return 0
 

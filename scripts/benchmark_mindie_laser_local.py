@@ -155,7 +155,7 @@ def checked_files(items, root, label):
     return checked
 
 
-def provenance(args):
+def provenance(args, *, expected_variant="baseline"):
     source_path, build_path = Path(args.source_manifest), Path(args.build_manifest)
     source = json.loads(source_path.read_text(encoding="utf-8"))
     build = json.loads(build_path.read_text(encoding="utf-8"))
@@ -163,8 +163,10 @@ def provenance(args):
         raise ValueError("Source manifest must pin the inspected MindIE-SD commit")
     if build.get("status") != "passed":
         raise ValueError("Build manifest does not report a successful build")
-    if source.get("marker_token") != MARKER_TOKEN or source.get("kernel_inverse_rename_equivalent") is not True:
-        raise ValueError("Source manifest must attest marker token and inverse-rename kernel equivalence")
+    if (source.get("marker_token") != MARKER_TOKEN
+            or source.get("variant", "baseline") != expected_variant
+            or source.get("kernel_inverse_rename_equivalent") is not (expected_variant == "baseline")):
+        raise ValueError("Source manifest must attest the expected variant and inverse-rename kernel equivalence")
     for manifest in (source, build):
         if manifest.get("native_api") != NATIVE_API or manifest.get("op_type") != OP_TYPE:
             raise ValueError("Source/build manifest does not use unique VcLaserAttention symbols")
@@ -272,7 +274,7 @@ def validate_small(adapter, device, report, save, torch):
             save()
 
 
-def run_worker(args):
+def run_worker(args, *, small_validator=None, dense_limit=.01, after_long=None):
     mode, directory = args._worker, Path(args._run_dir) / args._worker
     directory.mkdir(parents=True, exist_ok=True)
     report = {"status": "running", "mode": mode, "pid": os.getpid(), "proof_scope": PROOF_SCOPE}
@@ -301,7 +303,7 @@ def run_worker(args):
         save()
         with torch.no_grad():
             print(f"{mode}: FP16/BF16 small aligned/tail correctness gates", flush=True)
-            validate_small(adapter, device, report, save, torch)
+            (small_validator or validate_small)(adapter, device, report, save, torch)
             generator = torch.Generator().manual_seed(0)
             original = [torch.randn(SHAPE, generator=generator).to(torch.bfloat16) for _ in range(3)]
             fingerprints = [common.tensor_sha256(tensor) for tensor in original]
@@ -337,8 +339,15 @@ def run_worker(args):
                 report[f"{name}_sample"] = str(path)
             print(f"{mode}: CPU FP32 reference, 32 query rows and all {SHAPE[2]} keys", flush=True)
             reference = common.dense_reference(*original, ids)
-            record_gate(report, "long_dense_fp32", sample, reference, .01, save)
+            if dense_limit is None:
+                report["long_dense_fp32"] = common.error_metrics(sample, reference)
+                report["long_dense_fp32"]["scope"] = "Approximate algorithm quality diagnostic; no model-quality pass/fail gate"
+                save()
+            else:
+                record_gate(report, "long_dense_fp32", sample, reference, dense_limit, save)
             report["query_ids"], report["all_keys"] = ids.tolist(), SHAPE[2]
+            if after_long is not None:
+                after_long(adapter, payload, report, save, torch)
             del original, sample, core_sample, reference
             calls = {"full": lambda: adapter(*inputs), "prepared_core": lambda: adapter.run_prepared(payload)}
             report["timing_ms"] = {name: {"trials": []} for name in calls}
