@@ -12,6 +12,7 @@ import time
 import traceback
 
 import benchmark_cann_fas_local as common
+from mindie_laser_provider_checks import inspect_batch_invariant
 from prepare_mindie_laser_source import MARKER_TOKEN, NATIVE_API, OP_TYPE, SOURCE_LOCK
 
 
@@ -189,7 +190,7 @@ def provenance(args):
     return result
 
 
-def inspect_provider(mode, vendor, bridge, report, directory):
+def inspect_provider(mode, vendor, bridge, report, directory, *, cann_root=None, soc=None):
     maps_text = Path("/proc/self/maps").read_text(encoding="utf-8")
     (directory / "proc_self_maps.txt").write_text(maps_text, encoding="utf-8")
     paths = common.mapped_libraries(maps_text)
@@ -197,7 +198,17 @@ def inspect_provider(mode, vendor, bridge, report, directory):
     if mode == "local":
         if any(name == "mindiesd" or name.startswith("mindiesd.") for name in sys.modules):
             raise RuntimeError("Local worker imported mindiesd; provider isolation is invalid")
-        relevant = common.verify_libraries(paths, "custom", vendor)
+        # Other registered tiling libraries can be loaded during NPU startup.
+        # A narrowly checked background provider does not establish a Laser
+        # dispatch conflict. Keep FAS's same-name-provider rules unchanged.
+        report["provider_check_context"] = {"cann_root": str(cann_root) if cann_root else None,
+                                             "soc": soc}
+        background = (inspect_batch_invariant(paths, cann_root, soc) if cann_root and soc
+                      else {"libraries": [], "metadata": {}})
+        report["ambient_registered_provider"] = background["metadata"]
+        filtered = [path for path in paths if path not in background["libraries"]]
+        relevant = common.verify_libraries(filtered, "custom", vendor)
+        relevant.extend(background["libraries"])
         if str(Path(bridge).resolve()) not in paths:
             raise RuntimeError("Local bridge is absent from process library mappings")
         relevant.append(str(Path(bridge).resolve()))
@@ -273,6 +284,9 @@ def run_worker(args):
         import torch_npu
         torch.set_num_threads(min(torch.get_num_threads(), args.cpu_threads))
         source = json.loads(Path(args.source_manifest).read_text(encoding="utf-8"))
+        build = json.loads(Path(args.build_manifest).read_text(encoding="utf-8"))
+        provider_context = {"cann_root": build["definitions"]["CUSTOM_ASCEND_CANN_PACKAGE_PATH"],
+                            "soc": build["soc"]}
         adapter, transforms = load_adapter(args, source)  # Installed registration before first NPU workload.
         report["adapter"], report["source_transform_validation"] = adapter.metadata, transforms
         torch.npu.set_option({"ACL_OP_COMPILER_CACHE_MODE": "disable",
@@ -306,7 +320,7 @@ def run_worker(args):
                 (directory / "long_shape_markers.jsonl").write_text(fresh, encoding="utf-8")
                 report["host_markers"] = parse_markers(fresh, os.getpid())
                 report["tiling_keys"] = sorted({record["tiling_key"] for record in report["host_markers"]})
-            inspect_provider(mode, args.vendor_root, args.bridge_path, report, directory)
+            inspect_provider(mode, args.vendor_root, args.bridge_path, report, directory, **provider_context)
             report["provider_evidence_passed"] = True
             os.environ.pop(MARKER_ENV, None)
             marker_size = marker.stat().st_size if marker.exists() else 0
@@ -347,7 +361,7 @@ def run_worker(args):
                     print(f"{mode} {name}: trial {trial + 1}/{args.trials}: {elapsed:.4f} ms", flush=True)
             if (marker.stat().st_size if marker.exists() else 0) != marker_size:
                 raise AssertionError("Marker writes continued after instrumentation was disabled")
-            inspect_provider(mode, args.vendor_root, args.bridge_path, report, directory)
+            inspect_provider(mode, args.vendor_root, args.bridge_path, report, directory, **provider_context)
         report["status"] = "passed"
         save()
         return 0

@@ -25,7 +25,15 @@ bash scripts/run_mindie_laser_local.sh
 
 入口现已补齐参数，并在配置完成后检查指定 SoC 的 Laser 编译脚本和对应设备任务。脚本已生成但 CMake 任务仍缺失的旧缓存，也会原地重新配置；保留主构建目录已有 host 对象。配置后的设备任务仍为空时，会提前停止，不再继续打包。原有最终设备二进制检查继续保留。
 
-遇到上述首轮失败，拉取修复后重跑同一个一键入口即可，无需手动删除 `build`。这次修复已通过 CPU 参数传递复现和缓存恢复回归；修复后的真实设备编译仍需远端确认。
+遇到上述首轮失败，拉取修复后重跑同一个一键入口即可，无需手动删除 `build`。这次修复已通过 CPU 参数传递复现和缓存恢复回归；后续远端已完成设备和接口编译，进展见下。
+
+### 已有 batch_invariant 库触发来源检查
+
+后续远端已完成算子与 bridge 编译，原版 full API / fixed core 中位数为 **85.8195 / 83.2261 ms**。自编译版的小形状验收与首次长形状调用已完成，但来源检查把 CANN 目录下额外映射的 `batch_invariant` tiling 库判为污染，尚未输出自编译版计时和长形状精度对照。上述原版延迟不能作为自编译版的结果。
+
+Laser 使用独立的 `VcLaserAttention`，额外库被加载本身不代表 Laser 被替换。新的 Laser 专用检查只识别实际构建所选 CANN 根目录下 `batch_invariant` 的指定 tiling 库，核验对应 SoC 的 `ops-info` 注册清单不含 Laser，记录库和配置哈希后允许共存。缺失配置、Laser 注册冲突、同名库出现在其他位置、其他未知 vendor 仍会停止；本地 Laser API/tiling/bridge 映射、成功 tiling 标记及正确性门限继续保留。原 CANN FAS 的同名算子检查不作放宽。
+
+`batch_invariant` 有 [vLLM-Ascend 附加算子包安装流程](https://github.com/vllm-project/vllm-ascend/blob/main/docs/source/user_guide/feature_guide/batch_invariance.md)，不能仅凭安装在 CANN 目录就称其为原厂内置组件。本次只调整测速来源核验，不卸载已有包，不修改系统 OPP。拉取代码后重跑原一键入口，复用已有编译产物。
 
 ## 源码与构建范围
 

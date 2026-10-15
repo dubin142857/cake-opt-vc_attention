@@ -191,6 +191,39 @@ def test_provider_proof_requires_local_libraries_and_rejects_installed_contamina
         benchmark.inspect_provider("local", args.vendor_root, args.bridge_path, {}, tmp_path)
 
 
+def test_verified_background_tiling_does_not_replace_required_local_laser_evidence(monkeypatch, tmp_path):
+    args, files, _, _ = make_provenance(tmp_path)
+    cann = tmp_path / "cann"
+    ambient = cann / "opp/vendors/batch_invariant"
+    tiling = ambient / "op_impl/ai_core/tbe/op_tiling/lib/linux/aarch64/libcust_opmaster_rt2.0.so"
+    config = ambient / "op_impl/ai_core/tbe/config/ascend910_93/aic-ascend910_93-ops-info.json"
+    tiling.parent.mkdir(parents=True)
+    config.parent.mkdir(parents=True)
+    tiling.write_bytes(b"background tiling library")
+    config.write_text(json.dumps({"MatmulBatchInvariant": {"opFile": {"value": "matmul_batch_invariant"}}}),
+                      encoding="utf-8")
+    paths = [str(path.resolve()) for path in files[:2]] + [str(Path(args.bridge_path).resolve()), str(tiling.resolve())]
+    original_read = Path.read_text
+    monkeypatch.setattr(Path, "read_text", lambda path, *a, **kw:
+                        "mapped libraries" if path.as_posix() == "/proc/self/maps" else original_read(path, *a, **kw))
+    monkeypatch.setattr(benchmark.common, "mapped_libraries", lambda text: paths)
+    report = {}
+    benchmark.inspect_provider("local", args.vendor_root, args.bridge_path, report, tmp_path,
+                               cann_root=cann, soc="ascend910_93")
+    assert str(tiling.resolve()) in report["loaded_library_sha256"]
+    assert report["ambient_registered_provider"]
+    # A background library is never a substitute for the local Laser tiling.
+    paths.remove(str(files[1].resolve()))
+    with pytest.raises(RuntimeError, match="requires vendor"):
+        benchmark.inspect_provider("local", args.vendor_root, args.bridge_path, {}, tmp_path,
+                                   cann_root=cann, soc="ascend910_93")
+    paths.append(str(files[1].resolve()))
+    paths.append(str(cann / "opp/vendors/another/op_tiling/libforeign.so"))
+    with pytest.raises(RuntimeError, match="contamination"):
+        benchmark.inspect_provider("local", args.vendor_root, args.bridge_path, {}, tmp_path,
+                                   cann_root=cann, soc="ascend910_93")
+
+
 def test_gate_records_failure_before_raising():
     report, snapshots = {}, []
     with pytest.raises(AssertionError, match="0.1%"):
