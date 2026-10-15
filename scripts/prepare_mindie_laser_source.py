@@ -157,6 +157,55 @@ def variant_files(variant: str, generated: dict) -> dict:
     return result
 
 
+def audit_variant_files(source_dir: Path, patches: dict, previous: dict | None,
+                        source_lock: RepositoryLock, variant: str) -> dict:
+    """Accept one reconstructed historical Vector revision, never arbitrary hashes.
+
+    The historical file is derived from the pinned/current transformation,
+    including probe brackets when present. Audit the entire old tree before
+    any write, then record the new bytes which prepare_source will install.
+    """
+    vector = f"{CUSTOM_OP_ROOT}/op_kernel/VectorForward.h"
+    current_path = source_dir / vector
+    audit_patches = patches
+    migrating = (variant.startswith("expcast") and current_path.is_file()
+                 and current_path.read_bytes() != patches[vector])
+    if migrating:
+        try:
+            from scripts.mindie_laser_expcast_patch import (
+                EXPERIMENTAL_PROBABILITY, LEGACY_EXPERIMENTAL_PROBABILITY,
+            )
+        except ModuleNotFoundError:
+            from mindie_laser_expcast_patch import (
+                EXPERIMENTAL_PROBABILITY, LEGACY_EXPERIMENTAL_PROBABILITY,
+            )
+        expected = patches[vector]
+        newline = b"\r\n" if b"\r\n" in expected else b"\n"
+        legacy = replace_once(expected, EXPERIMENTAL_PROBABILITY.replace(b"\n", newline),
+                              LEGACY_EXPERIMENTAL_PROBABILITY.replace(b"\n", newline),
+                              "historical ExpCast constexpr revision")
+        if current_path.read_bytes() != legacy:
+            raise PreparationError(f"Unknown generated Vector contents; preserving {current_path}")
+        identity = {
+            "source_dir": str(source_dir), "variant": variant,
+            "native_api": NATIVE_API, "op_type": OP_TYPE, "marker_token": MARKER_TOKEN,
+            "upstream": {"url": source_lock.url, "commit": source_lock.commit, "tag": source_lock.tag},
+        }
+        if previous is None or any(previous.get(key) != value for key, value in identity.items()):
+            raise PreparationError("Known historical Vector requires its matching source manifest")
+        audit_patches = {**patches, vector: legacy}
+    records, _ = audit_files(source_dir, audit_patches)
+    if migrating:
+        generated = set(patches) - {PREPARE_SCRIPT}
+        if (previous.get("source_files") != records
+                or set(previous.get("generated_files", {})) != generated
+                or any(previous["generated_files"][name].get("prepared_sha256") !=
+                       records[name]["prepared_sha256"] for name in generated)):
+            raise PreparationError("Historical source manifest differs from reconstructed audited sources")
+        records[vector]["prepared_sha256"] = sha256(patches[vector])
+    return records
+
+
 def prepare_source(source_dir: Path, manifest_path: Path, offline: bool = False, *,
                    reference_dir: Path | None = None,
                    source_lock: RepositoryLock = SOURCE_LOCK, variant: str = "baseline") -> dict:
@@ -165,6 +214,7 @@ def prepare_source(source_dir: Path, manifest_path: Path, offline: bool = False,
         raise PreparationError("Source and reference must be separate checkouts")
     if variant not in VARIANTS:
         raise PreparationError(f"Unknown Laser variant: {variant}")
+    previous = None
     if manifest_path.exists():
         previous = json.loads(manifest_path.read_text(encoding="utf-8"))
         if previous.get("variant", "baseline") != variant:
@@ -217,7 +267,7 @@ def prepare_source(source_dir: Path, manifest_path: Path, offline: bool = False,
             if path.is_symlink() or (path.is_file() and path.relative_to(source_dir).as_posix() not in generated):
                 raise PreparationError(f"Unknown generated subtree entry: {path}")
     # Audit all original sources, including helpers/CMake; reject manual edits.
-    source_files, _ = audit_files(source_dir, patches)
+    source_files = audit_variant_files(source_dir, patches, previous, source_lock, variant)
     for name, data in patches.items():
         target = source_dir / name
         target.parent.mkdir(parents=True, exist_ok=True)

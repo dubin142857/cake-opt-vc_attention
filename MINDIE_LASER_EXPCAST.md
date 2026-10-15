@@ -72,3 +72,7 @@ probe 使用该固定版本 Vector 中未使用的 `EVENT_ID7` 做局部 `PIPE_V
 本实验已采用 CANNBot [ascendc-perf-optimize](build/cannbot-skills/ops/ascendc-perf-optimize/SKILL.md) 的分层分析方法：先审查既有 tiling、buffer 与同步，再采集局部流水证据。它是单卡计算算子，卡间通信步骤不适用；Cube/AIV 的核间依赖依然存在，因此本次保留 tiling 和全部核间握手。该技能当前核间优化参考尚未收录，不能据此把核间成本视为零；真实瓶颈及后续 tiling 修改仍等待远端 trace/profiling。当前 probe 提供单核概率区域的局部证据，并未完成整个流水的性能归因。
 
 2026-10-15 本地检查：138 项 Laser 相关 CPU 测试通过；使用固定提交的真实 Git 对象准备 baseline、expcast、baseline_probe、expcast_probe，逐一重新核验来源并确认重复准备不改文件时间。Bash 编排测试覆盖隔离目录、离线复用、失败中止和可选探针。此次优先建立可区分算法的数值验收，再保留同一套 Laser 流水做性能对照；下一步以远端正式版本实测决定是否保留变换。以上没有替代 CANN 编译或真实 NPU 验证。
+
+首次远端编译暴露了容量断言的 C++ 语义错误：原类的 `SIZE_FP16` 是普通对象成员，不能出现在 `static_assert` 常量表达式里。已改成 `sizeof(INPUT_T)`，并保留输入宽度和 scratch 容量检查，概率数值契约不变。增加普通 C++ 编译回归，确认旧片段失败、新片段通过；它使用声明桩，不替代 CANN 指令编译验证。
+
+此修复可在旧实验目录上直接重跑同一条命令。准备阶段仅迁移与上一版完整源码及 manifest 均匹配的生成文件，手工修改仍会拒绝。上游 CMake 的源码复制和设备完成标记没有头文件依赖，因此构建前还会比较设备源码副本；发生变化时只清除该算子的复制/设备编译 `.done` 标记，让 make 更新副本并重编设备代码，保留 host 对象、CMake 缓存和其他算子产物。相关源码迁移、增量构建、数学与 C++ 检查共 74 项通过；实际 CCE 重编译仍由远端完成。

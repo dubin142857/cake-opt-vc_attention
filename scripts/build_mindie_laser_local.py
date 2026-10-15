@@ -114,6 +114,51 @@ def fingerprint(path: Path) -> dict:
             "size_bytes": path.stat().st_size}
 
 
+def refresh_device_source_stamps(source: Path, build_dir: Path, soc: str) -> dict:
+    """Invalidate only this operator's stale source-copy/kernel completion stamps.
+
+    Pinned upstream CMake custom commands do not DEPEND on kernel headers.
+    Updating the prepared header alone otherwise leaves binary/.../src stale.
+    Keep host objects, cache, libraries and all unrelated operator files intact.
+    """
+    op = "vc_laser_attention"
+    original = source / "csrc/ops" / op / "op_kernel"
+    staged = build_dir / "binary" / soc / "src" / op
+    gen = build_dir / "binary" / soc / "gen"
+    for directory in (staged, gen):
+        if not directory.resolve().is_relative_to(build_dir.resolve()):
+            raise ValueError(f"Device build path escapes the build directory: {directory}")
+    changed = []
+    for path in sorted(original.rglob("*")):
+        if not path.is_file():
+            continue
+        destination = staged / path.relative_to(original)
+        if destination.is_symlink():
+            raise ValueError(f"Unexpected symlink in staged device sources: {destination}")
+        if not destination.is_file() or destination.read_bytes() != path.read_bytes():
+            changed.append(path.relative_to(original).as_posix())
+    result = {"changed_source_files": changed, "invalidated_stamps": []}
+    if not changed:
+        return result
+    prefix = f"{op}_{soc}"
+    stamps = [staged / f"{prefix}_src_copy.done"]
+    stamps.extend(path for path in sorted(gen.glob(f"{prefix}_*.done"))
+                  if path.stem.removeprefix(prefix + "_").isdigit())
+    # Check every deletion target before performing any mutations.
+    for path in stamps:
+        if path.is_symlink() or not path.resolve().is_relative_to(build_dir.resolve()):
+            raise ValueError(f"Unsafe device completion stamp: {path}")
+        if path.exists() and not path.is_file():
+            raise ValueError(f"Device completion stamp is not a file: {path}")
+    for path in stamps:
+        if path.is_file():
+            path.unlink()
+            result["invalidated_stamps"].append(str(path.resolve()))
+    if result["invalidated_stamps"]:
+        print(f"Updated Laser kernel sources: {', '.join(changed)}; refreshing source copy/device targets, keeping host cache.", flush=True)
+    return result
+
+
 def collect_artifacts(build_dir: Path, install: Path, soc: str) -> dict:
     packages = sorted(build_dir.glob("CANN-custom_ops-*.run"))
     if len(packages) != 1:
@@ -192,6 +237,8 @@ def build(source, cann, soc, jobs, install_dir, output, *,
                                            "--parallel", str(jobs)]))
         commands.append(("install_workspace", ["cmake", "--install", str(build_dir), "--prefix", str(install)]))
         for phase, command in commands:
+            if phase == "build_package":
+                report["device_source_refresh"] = refresh_device_source_stamps(source, build_dir, soc)
             step = {"phase": phase, "command": command, "status": "running"}
             report["steps"].append(step)
             save()

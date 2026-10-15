@@ -12,7 +12,7 @@ BULK_VEXP = b"""    vexp(cur_buf_for_attn_score_fp16, cur_buf_for_attn_score_fp1
         BASE_BLOCK_SIDE_LEN / BLOCK_NUM_8 / data_num_per_blk,   // 5 * 128 * 8   / 64    5 * 2 * 8
         1, 1, 8, 8);
     pipe_barrier(PIPE_V);"""
-EXPERIMENTAL_PROBABILITY = b"""    // ExpCast only: reuse completed max-reduction scratch, then rebuild it for row sum.
+LEGACY_EXPERIMENTAL_PROBABILITY = b"""    // ExpCast only: reuse completed max-reduction scratch, then rebuild it for row sum.
     static_assert(MAX_LENG_PER_UB_PROC * SIZE_FP16 >= 8192 * sizeof(float),
                   "ExpCast needs 32 KiB of existing row-max scratch");
     static_assert(BASE_BLOCK_SIDE_LEN == 128, "ExpCast chunks require 128-element blocks");
@@ -20,6 +20,14 @@ EXPERIMENTAL_PROBABILITY = b"""    // ExpCast only: reuse completed max-reductio
         reinterpret_cast<__ubuf__ half *>(cur_buf_for_attn_score_fp16),
         reinterpret_cast<__ubuf__ float *>(ub_attn.buf_for_cacl_rowmax_fp16),
         param.section_block_num * rowPerTime * BASE_BLOCK_SIDE_LEN);"""
+# SIZE_FP16 is an upstream instance member, not a constant expression. Keep
+# the original allocation and use the instantiated element type for this check.
+# Retain the exact v1 bytes solely to recognize and migrate generated sources.
+EXPERIMENTAL_PROBABILITY = LEGACY_EXPERIMENTAL_PROBABILITY.replace(
+    b"    static_assert(MAX_LENG_PER_UB_PROC * SIZE_FP16 >= 8192 * sizeof(float),",
+    b"    static_assert(sizeof(INPUT_T) == 2, \"ExpCast requires 16-bit Laser input\");\n"
+    b"    static_assert(MAX_LENG_PER_UB_PROC * sizeof(INPUT_T) >= 8192 * sizeof(float),",
+)
 
 
 def _anchors(source: bytes):

@@ -206,3 +206,89 @@ def test_install_outside_workspace_is_rejected(environment, tmp_path):
         driver.build(source, cann, "ascend910_93", 2, tmp_path / "system", output,
                      runner=fake_runner(environment, calls))
     assert calls == []
+
+
+def device_cache(source, *, stale=True):
+    build = source / "build/build"
+    original = source / "csrc/ops/vc_laser_attention/op_kernel"
+    staged = build / "binary/ascend910_93/src/vc_laser_attention"
+    gen = build / "binary/ascend910_93/gen"
+    for directory in (original, staged, gen):
+        directory.mkdir(parents=True, exist_ok=True)
+    (original / "VectorForward.h").write_bytes(b"corrected constant expression")
+    (staged / "VectorForward.h").write_bytes(b"old instance-member assertion" if stale else
+                                             b"corrected constant expression")
+    for directory in (original, staged):
+        (directory / "CubeForward.h").write_bytes(b"unchanged cube")
+    stamps = [staged / "vc_laser_attention_ascend910_93_src_copy.done",
+              gen / "vc_laser_attention_ascend910_93_0.done",
+              gen / "vc_laser_attention_ascend910_93_1.done"]
+    protected = [gen / "other_op_ascend910_93_0.done",
+                 gen / "vc_laser_attention_ascend910_93_py_copy.done",
+                 build / "keep_host.o"]
+    for path in stamps + protected:
+        path.write_bytes(b"preserve unless this exact target is stale")
+    return build, original, staged, stamps, protected
+
+
+def test_stale_device_copy_invalidates_only_its_copy_and_compile_stamps(tmp_path):
+    source = tmp_path / "source"
+    build, original, staged, stamps, protected = device_cache(source)
+    keep = {path: (path.read_bytes(), path.stat().st_mtime_ns) for path in protected}
+    result = driver.refresh_device_source_stamps(source, build, "ascend910_93")
+    assert result["changed_source_files"] == ["VectorForward.h"]
+    assert set(result["invalidated_stamps"]) == {str(path.resolve()) for path in stamps}
+    assert all(not path.exists() for path in stamps)
+    assert all((path.read_bytes(), path.stat().st_mtime_ns) == value for path, value in keep.items())
+    assert (staged / "VectorForward.h").read_bytes() == b"old instance-member assertion"
+    assert (original / "VectorForward.h").read_bytes() == b"corrected constant expression"
+
+
+def test_current_device_copy_retains_all_build_completion_stamps(tmp_path):
+    source = tmp_path / "source"
+    build, _, _, stamps, protected = device_cache(source, stale=False)
+    times = {path: path.stat().st_mtime_ns for path in stamps + protected}
+    result = driver.refresh_device_source_stamps(source, build, "ascend910_93")
+    assert result == {"changed_source_files": [], "invalidated_stamps": []}
+    assert times == {path: path.stat().st_mtime_ns for path in times}
+
+
+def test_new_header_also_requires_source_copy_and_kernel_rebuild(tmp_path):
+    source = tmp_path / "source"
+    build, original, _, stamps, _ = device_cache(source, stale=False)
+    (original / "new_helper.h").write_bytes(b"new helper")
+    result = driver.refresh_device_source_stamps(source, build, "ascend910_93")
+    assert result["changed_source_files"] == ["new_helper.h"]
+    assert all(not path.exists() for path in stamps)
+
+
+def test_invalid_completion_target_is_rejected_before_deleting_other_stamps(tmp_path):
+    source = tmp_path / "source"
+    build, _, _, stamps, _ = device_cache(source)
+    stamps[-1].unlink()
+    stamps[-1].mkdir()
+    with pytest.raises(ValueError, match="not a file"):
+        driver.refresh_device_source_stamps(source, build, "ascend910_93")
+    assert all(path.exists() for path in stamps)
+
+
+def test_resumed_build_refreshes_changed_device_sources_before_make(environment):
+    calls = []
+    runner = fake_runner(environment, calls)
+    call_build(environment, runner)
+    source = environment[0]
+    build, _, _, stamps, protected = device_cache(source)
+    cache_before = (build / "CMakeCache.txt").read_bytes()
+    calls.clear()
+
+    def resumed(command, cwd, env, phase):
+        if phase == "build_package":
+            assert all(not path.exists() for path in stamps)
+            assert all(path.is_file() for path in protected)
+        return runner(command, cwd, env, phase)
+
+    result = call_build(environment, resumed)
+    assert [phase for phase, *_ in calls] == ["build_package", "install_workspace"]
+    assert result["device_source_refresh"]["changed_source_files"] == ["VectorForward.h"]
+    assert result["status"] == "passed"
+    assert (build / "CMakeCache.txt").read_bytes() == cache_before
