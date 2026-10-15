@@ -17,8 +17,9 @@ from types import SimpleNamespace
 import benchmark_mindie_laser_local as baseline
 
 common = baseline.common
-VARIANTS = ("installed", "baseline", "qk_int8", "qkv_int8_e4m3", "qkv_int8_e4m3_expcast")
-DEFAULT_VARIANTS = VARIANTS[:3]
+VARIANTS = ("installed", "baseline", "qk_int8", "qk_int8_fused",
+            "qkv_int8_e4m3", "qkv_int8_e4m3_expcast")
+DEFAULT_VARIANTS = VARIANTS[:4]
 QUANT_MARKER_ENV = "VC_MINDIE_LASER_QUANT_MARKER_FILE"
 QUANT_OP = "VcLaserQuantAttention"
 QUANT_API = "aclnnVcLaserQuantAttention"
@@ -43,6 +44,7 @@ def build_arguments(args, name):
         vendor_root=build["vendor_root"], build_manifest=str(path),
         source_manifest=source["path"] if isinstance(source, dict) else source,
         bridge_path=bridge, bridge_manifest=bridge_manifest,
+        preprocess_build=str(Path(args.preprocess_build).resolve()) if name == "qk_int8_fused" else None,
         device=args.device, warmup=args.warmup, repeats=args.repeats,
         trials=args.trials, cpu_threads=args.cpu_threads,
         _worker="installed" if name == "installed" else "local",
@@ -80,6 +82,18 @@ def quant_provenance(args):
             "proof_scope": baseline.PROOF_SCOPE}
 
 
+def inspect_fused_preprocessor(args, report):
+    """Require the independently built quantizer to be mapped in this worker."""
+    from mindie_laser_quant_fused import validate_preprocess_manifest
+    evidence = validate_preprocess_manifest(args.preprocess_build)
+    build = json.loads(Path(args.preprocess_build).read_text(encoding="utf-8"))
+    library = str(Path(build["library_path"]).resolve())
+    if library not in report.get("mapped_library_paths", []):
+        raise RuntimeError("Fused quantizer library is absent from process library mappings")
+    report["preprocessor_provider_evidence"] = {"manifest": evidence, "mapped_library": library}
+    report["loaded_library_sha256"][library] = common.sha256_file(library)
+
+
 def worker_environment(args, name, run_dir):
     resolved = build_arguments(args, name)
     env = baseline.worker_environment(os.environ, resolved._worker, resolved.vendor_root, resolved._run_dir)
@@ -102,8 +116,9 @@ def parse_quant_markers(text, pid, token):
     return records
 
 
-def benchmark_calls(calls, args, torch, report, save):
-    report["timing_ms"] = {name: {"trials": []} for name in calls}
+def benchmark_calls(calls, args, torch, report, save, *, timing_key="timing_ms"):
+    timings = report.setdefault(timing_key, {})
+    timings.update({name: {"trials": []} for name in calls})
     for call in calls.values():
         for _ in range(args.warmup):
             call()
@@ -116,11 +131,33 @@ def benchmark_calls(calls, args, torch, report, save):
                 call()
             torch.npu.synchronize()
             elapsed = 1000 * (time.perf_counter() - started) / args.repeats
-            row = report["timing_ms"][name]
+            row = timings[name]
             row["trials"].append(elapsed)
             row.update(median=statistics.median(row["trials"]), min=min(row["trials"]), max=max(row["trials"]))
             save()
             print(f"{report['mode']} {name} trial {trial + 1}: {elapsed:.4f} ms", flush=True)
+
+
+def benchmark_quant_components(adapter, inputs, payload, args, torch, report, save):
+    """Time independent calls after primary timings, without retaining another large output."""
+    report["component_timing_scope"] = {
+        "qk_quantize": ("fresh Q/K quantization, padding and scale/output allocation; fused input ND "
+                        "conversion included; final payload format normalization excluded"),
+        "native_api": "fixed quantized payload, native dispatch/allocation, padded FP32 output; no output postprocess",
+        "output_postprocess": "one retained padded FP32 output, V scale/cast/trim/contiguous only",
+        "limits": ("Separate synchronized wall-time calls after primary timings; not kernel durations, "
+                   "not additive. The retained raw output exists only during output_postprocess timing.")}
+    save()
+    benchmark_calls({"qk_quantize": lambda: adapter.quantize_qk(inputs[0], inputs[1]),
+                     "native_api": lambda: adapter.run_native(payload)},
+                    args, torch, report, save, timing_key="component_timing_ms")
+    raw = adapter.run_native(payload)
+    torch.npu.synchronize()
+    try:
+        benchmark_calls({"output_postprocess": lambda: adapter.postprocess(raw, payload)},
+                        args, torch, report, save, timing_key="component_timing_ms")
+    finally:
+        del raw
 
 
 def worker(args):
@@ -143,8 +180,11 @@ def worker(args):
         if quantized:
             from mindie_laser_quant_backend import load_quant_laser
             from mindie_laser_quant_reference import cpu_payload, decoded_reference, validate_small
-            adapter = load_quant_laser(resolved.bridge_path, v_quantize=name != "qk_int8",
-                                       expcast=name.endswith("_expcast"), check_finite=False)
+            adapter = load_quant_laser(
+                resolved.bridge_path, v_quantize=name not in ("qk_int8", "qk_int8_fused"),
+                expcast=name.endswith("_expcast"), check_finite=False,
+                preprocessing="fused" if name == "qk_int8_fused" else "torch",
+                preprocess_build=resolved.preprocess_build)
             report["source_transform_validation"] = (
                 "CPU structured checks: scales within 1 FP32 ULP; INT8 RNE boundary-aware "
                 "division check using actual scales; exact zero/padding and decoded V; "
@@ -193,6 +233,8 @@ def worker(args):
                 report["tiling_keys"] = sorted({item["tiling_key"] for item in report["host_markers"]})
             baseline.inspect_provider(resolved._worker, resolved.vendor_root, resolved.bridge_path,
                                       report, directory, **provider)
+            if name == "qk_int8_fused":
+                inspect_fused_preprocessor(resolved, report)
             report["provider_evidence_passed"] = True
             os.environ.pop(baseline.MARKER_ENV, None)
             os.environ.pop(QUANT_MARKER_ENV, None)
@@ -233,10 +275,14 @@ def worker(args):
             benchmark_calls({"preprocessing": lambda: adapter.prepare(*inputs),
                              "full": lambda: adapter(*inputs),
                              "prepared_core": lambda: adapter.run_prepared(payload)}, args, torch, report, save)
+            if quantized:
+                benchmark_quant_components(adapter, inputs, payload, args, torch, report, save)
             if (marker.stat().st_size if marker.exists() else 0) != marker_size:
                 raise AssertionError("Marker writes continued during timing")
             baseline.inspect_provider(resolved._worker, resolved.vendor_root, resolved.bridge_path,
                                       report, directory, **provider)
+            if name == "qk_int8_fused":
+                inspect_fused_preprocessor(resolved, report)
         report["status"] = "passed"
         save()
         return 0
@@ -285,8 +331,19 @@ def table(report):
         lines.append(f"{name:<28} {timing['preprocessing']['median']:>13.4f} {full:>13.4f}"
                      f" {timing['prepared_core']['median']:>11.4f} {reference / full:>16.4f}x"
                      f" {100 * row['long_dense_fp32']['relative_rmse']:>15.6f}")
+    component_rows = [name for name in report["process_order"]
+                      if report["workers"][name].get("component_timing_ms")]
+    if component_rows:
+        lines += ["", "Independent component API wall times (ms; measured after primary timings):",
+                  "variant                      QK quantize     native API    output postprocess"]
+        for name in component_rows:
+            timing = report["workers"][name]["component_timing_ms"]
+            lines.append(f"{name:<28} {timing['qk_quantize']['median']:>11.4f}"
+                         f" {timing['native_api']['median']:>14.4f}"
+                         f" {timing['output_postprocess']['median']:>21.4f}")
+        lines.append("Component calls are not additive or kernel-only times; native API includes allocation/dispatch.")
     lines += [QUANT_SCOPE,
-              "Prepared includes output V scale and conversion/trim; full freshly quantizes every call.",
+              "Prepared includes output V scale where needed and conversion/trim; full freshly quantizes every call.",
               "Preprocessing measured separately; full minus prepared is not used as its estimate.",
               "Process-grouped synchronized wall timings, not paired/interleaved or kernel-only measurements.",
               "Accuracy samples cover at most 32 query rows, all keys, heads and features; no model-quality claim."]
@@ -311,6 +368,9 @@ def parent(args):
             resolved = build_arguments(args, name)
             report["provenance"][name] = (baseline.provenance(resolved) if name in ("installed", "baseline")
                                           else quant_provenance(resolved))
+            if name == "qk_int8_fused":
+                from mindie_laser_quant_fused import validate_preprocess_manifest
+                report["provenance"][name]["preprocessing"] = validate_preprocess_manifest(resolved.preprocess_build)
         save()
         for name in args.variants:
             resolved = build_arguments(args, name)
@@ -321,7 +381,7 @@ def parent(args):
                 Path(env[key]).mkdir(parents=True, exist_ok=True)
             command = [sys.executable, str(Path(__file__).resolve()), "--_worker", name,
                        "--_run-dir", args._run_dir]
-            for key in ("baseline_build", "quant_build", "bridge_manifest", "device", "warmup", "repeats", "trials", "cpu_threads"):
+            for key in ("baseline_build", "quant_build", "preprocess_build", "bridge_manifest", "device", "warmup", "repeats", "trials", "cpu_threads"):
                 command += ["--" + key.replace("_", "-"), str(getattr(args, key))]
             command += ["--shape", *map(str, args.shape)]
             print(f"Starting isolated {name}: {directory}", flush=True)
@@ -356,6 +416,20 @@ def parent(args):
                 if name in ("installed", "baseline", reference):
                     continue
                 report.setdefault("algorithm_vs_" + reference, {}).setdefault(name, {})[scope] = compare_algorithm_samples(sample(reference), sample(name))
+        if "qk_int8" in args.variants and "qk_int8_fused" in args.variants:
+            comparison = {"scope": ("Same original input, independently prepared quantized operands; "
+                                    "FP32 division may change INT8 codes near RNE boundaries. "
+                                    "Output comparisons use sampled query rows and all keys; "
+                                    "not an all-output identity or model-quality gate.")}
+            for scope in ("full", "prepared_core"):
+                first = report["workers"]["qk_int8"]
+                second = report["workers"]["qk_int8_fused"]
+                error = compare_algorithm_samples(first[scope + "_sample"], second[scope + "_sample"])
+                error["scope"] = comparison["scope"]
+                comparison[scope] = error
+                comparison[scope + "_old_over_fused"] = (first["timing_ms"][scope]["median"] /
+                                                          second["timing_ms"][scope]["median"])
+            report["fused_preprocessing_comparison"] = comparison
         report["status"] = "passed"
         save()
         print(table(report), flush=True)
@@ -372,10 +446,11 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--baseline-build", default="results/mindie_laser_build.json")
     parser.add_argument("--quant-build", default="results/mindie_laser_quant_build.json")
+    parser.add_argument("--preprocess-build", default="results/mindie_laser_quant_preprocess_build.json")
     parser.add_argument("--bridge-manifest", default="results/mindie_laser_bridge.json")
     parser.add_argument("--output", default="results/mindie_laser_quant_compare.json")
     parser.add_argument("--variants", nargs="+", choices=VARIANTS, default=list(DEFAULT_VARIANTS),
-                        help="Default: installed baseline qk_int8; select E4M3 V/ExpCast experiments explicitly")
+                        help="Default: installed baseline qk_int8 qk_int8_fused; select E4M3 V/ExpCast experiments explicitly")
     parser.add_argument("--shape", type=int, nargs=4, default=baseline.SHAPE, metavar=("B", "H", "S", "D"))
     parser.add_argument("--device", type=int, default=0)
     parser.add_argument("--warmup", type=int, default=5)

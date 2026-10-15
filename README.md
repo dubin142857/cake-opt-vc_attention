@@ -1,6 +1,6 @@
 # MiniMax-H3 / A5 VC-Attention 实验
 
-**当前 Ascend 主线：原生 INT8 QK + 原 Laser softmax + FP16 V/PV。** 执行 `bash scripts/run_mindie_laser_quant.sh`，默认比较 `installed`、`baseline`、`qk_int8` 三组，保留原始 V 的 FP16 转换。E4M3 V 解码和 ExpCast 保留为实验；设置 `LASER_QUANT_EXPERIMENTS=1` 才运行全部五组。A2/A3 实验中的 E4M3 V 会解码为 FP16 执行 PV，不宣称原生 FP8 加速；没有 V 重排或平滑。量化路径仍需远端 NPU 正确性与性能验证，见 [Laser 量化说明](ascend/laser_quant/README.md)。原入口 `bash scripts/run_mindie_laser_local.sh` 继续提供[不改算法的源码基线](MINDIE_LASER_REPRO.md)，[仅替换概率计算的旧 ExpCast 实验](MINDIE_LASER_EXPCAST.md)和此前 CANN FAS 构建均保留。
+**当前 Ascend 主线：原生 INT8 QK + 原 Laser softmax + FP16 V/PV。** 执行 `bash scripts/run_mindie_laser_quant.sh`，默认比较 `installed`、`baseline`、`qk_int8`、`qk_int8_fused` 四组。后两组分别使用原有多算子 Q/K 量化和新融合 Ascend C 预处理，采用相同的 attention 内核；V 保留 FP16 转换，不做重排或平滑。融合候选需远端 CANN 编译及 NPU 正确性、性能验证。E4M3 V 解码和 ExpCast 保留为实验；设置 `LASER_QUANT_EXPERIMENTS=1` 追加两组。A2/A3 实验中的 E4M3 V 会解码为 FP16 执行 PV，不宣称原生 FP8 加速。分阶段同步调用计时用于定位开销，不能相加或解读为内核耗时占比，详见 [Laser 量化说明](ascend/laser_quant/README.md)。原入口 `bash scripts/run_mindie_laser_local.sh` 继续提供[不改算法的源码基线](MINDIE_LASER_REPRO.md)，[仅替换概率计算的旧 ExpCast 实验](MINDIE_LASER_EXPCAST.md)和此前 CANN FAS 构建均保留。
 
 **当前 H200 主路线（2026-10-13）：`sageattn_vc`，INT8 QK + FP8 PV。**
 新候选 `bash scripts/run_tensor_mass_h200.sh`：针对概率分母求和，用无损解码后的 FP16 输入、FP32 累加的 Tensor Core 归约替代逐值升 FP32/相加。D128 编码/求和常规分支的本地静态指令从 325 降到 239，寄存器仍为 168；85 项检查通过，H200 整核性能待测。对比同次 scale-prefetch、installed、Sage、FA4，见 [CUDA 实验说明](SAGE_CUDA_EXPCAST.md)。

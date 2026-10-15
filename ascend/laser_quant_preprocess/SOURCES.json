@@ -1,0 +1,22 @@
+{
+  "component": "vc_laser_quant_preprocess",
+  "contract_version": 1,
+  "status": "Experimental. Local CPU/static checks only; remote CANN compilation, numerical validation and latency must pass.",
+  "architecture": "Ascend A2/A3 DAV-2201; exact runtime SoC",
+  "skill_template": {
+    "repository": "https://github.com/hicann/cannbot-skills",
+    "commit": "dbf4019cae5d757820f03c9cd21e0f0b277e1701",
+    "path": "ops/ascendc-direct-invoke-template/references/add_custom/op_kernel/add_custom_kernel.asc",
+    "license": "CANN Open Software License Agreement Version 2.0",
+    "adaptation": "Direct Vector kernel with TPipe-local buffers and torch dispatch; replaced add with per-block quantization and explicit synchronization. No DAV-3510 MicroAPI templates used."
+  },
+  "official_apis": {
+    "cast": "https://www.hiascend.com/doc_center/source/en/CANNCommunityEdition/900/API/ascendcopapi/atlasascendc_api_07_0073.html",
+    "whole_reduce_max": "https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900/API/ascendcopapi/atlasascendc_api_07_0080.html",
+    "sync": "https://www.hiascend.com/doc_center/source/en/CANNCommunityEdition/900/API/ascendcopapi/atlasascendc_api_07_0270.html",
+    "vector_kernel_qualifier": "https://www.hiascend.com/document/detail/en/CANNCommunityEdition/900/programug/Ascendcopdevg/atlas_ascendc_10_10053.html",
+    "allocator_record_stream": "https://raw.githubusercontent.com/Ascend/pytorch/v2.10.0/torch_npu/csrc/core/npu/NPUCachingAllocator.h"
+  },
+  "ub_bytes": 181344,
+  "contract": "Per batch/head/128 tokens absmax FP32, scale=max(abs(x))/127 clamped to FP32 tiny, scale=1 for all zero, FP32 Div then INT32 RNE and exact narrowing. Pad D128 and S256 with exact zeros. No native FP8."
+}

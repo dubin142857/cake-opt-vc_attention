@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Original Laser vs native INT8 QK with optional decoded E4M3 V and ExpCast.
+# Original Laser vs native INT8 QK with multi-op or fused Q/K preprocessing.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 if (($#)); then
@@ -19,7 +19,7 @@ if [[ "$LASER_QUANT_EXPERIMENTS" != 0 && "$LASER_QUANT_EXPERIMENTS" != 1 ]]; the
   echo "LASER_QUANT_EXPERIMENTS must be 0 or 1" >&2
   exit 2
 fi
-VARIANTS=(installed baseline qk_int8)
+VARIANTS=(installed baseline qk_int8 qk_int8_fused)
 if [[ "$LASER_QUANT_EXPERIMENTS" == 1 ]]; then
   VARIANTS+=(qkv_int8_e4m3 qkv_int8_e4m3_expcast)
 fi
@@ -47,6 +47,7 @@ done
 mkdir -p results build
 echo "Laser quantization: ${VARIANTS[*]}"
 echo "Mainline: native INT8 QK + original Laser softmax + FP16 V/PV"
+echo "Compare multi-op Q/K preprocessing with the fused Ascend C candidate"
 if [[ "$LASER_QUANT_EXPERIMENTS" == 1 ]]; then
   echo "Experiments enabled: E4M3 V decoded to FP16 PV / ExpCast"
 fi
@@ -54,6 +55,12 @@ echo "BF16 BNSD=[1,28,37741,128]; fresh preprocessing, full API and fixed prepar
 echo "A2/A3 FP16 PV; no native FP8, no V reordering, no K smoothing"
 "$PYTHON_BIN" scripts/check_ascend910b.py --device "$NPU_DEVICE" --require-laser \
   --output results/mindie_laser_quant_environment.json
+RUNTIME_SOC="$("$PYTHON_BIN" - <<'PY'
+import json
+with open('results/mindie_laser_quant_environment.json', encoding='utf-8') as stream:
+    print(json.load(stream)['runtime_soc'])
+PY
+)"
 BUILD_SOC="$("$PYTHON_BIN" - <<'PY'
 import json
 with open('results/mindie_laser_quant_environment.json', encoding='utf-8') as stream:
@@ -116,9 +123,14 @@ fi
   --cann-root "$ASCEND_HOME_PATH" --soc "$BUILD_SOC" --jobs "$LASER_BUILD_JOBS" \
   --output results/mindie_laser_quant_build.json \
   2>&1 | tee results/mindie_laser_quant_build.log
+"$PYTHON_BIN" -u scripts/build_mindie_laser_quant_preprocess.py \
+  --cann-root "$ASCEND_HOME_PATH" --soc "$RUNTIME_SOC" --jobs "$LASER_BUILD_JOBS" \
+  --output results/mindie_laser_quant_preprocess_build.json \
+  2>&1 | tee results/mindie_laser_quant_preprocess_build.log
 "$PYTHON_BIN" -u scripts/benchmark_mindie_laser_quant.py \
   --baseline-build results/mindie_laser_build.json \
   --quant-build results/mindie_laser_quant_build.json \
+  --preprocess-build results/mindie_laser_quant_preprocess_build.json \
   --bridge-manifest results/mindie_laser_bridge.json \
   --device "$NPU_DEVICE" --output results/mindie_laser_quant_compare.json \
   --variants "${VARIANTS[@]}" \

@@ -129,3 +129,68 @@ def test_e4m3_rne_boundaries_subnormals_signed_values_and_saturation():
     expected = values.clamp(-448, 448).to(torch.float8_e4m3fn).float()
     actual = backend.quantize_e4m3_decoded(values)
     torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+
+
+@pytest.mark.parametrize("v_quantize", [False, True])
+def test_native_and_output_component_split_preserves_prepared_call(monkeypatch, v_quantize):
+    monkeypatch.setattr(backend, "_require_npu", lambda tensor: None)
+    inputs = reference.structured_case(torch.bfloat16, 64, 17, 129)
+    payload = backend.prepare_quant_tensors(*inputs, v_quantize=v_quantize)
+    generator = torch.Generator().manual_seed(1901)
+    raw = torch.randn(payload.q.shape, generator=generator)
+    adapter = backend.MindIEQuantLaser(lambda *args: raw, v_quantize=v_quantize)
+    expected = raw[:, :, :17, :64] * payload.v_scale[:, :, None, :64]
+    expected = expected.half().bfloat16().contiguous()
+    assert adapter.run_native(payload) is raw
+    torch.testing.assert_close(adapter.postprocess(raw, payload), expected, rtol=0, atol=0)
+    torch.testing.assert_close(adapter.run_prepared(payload), expected, rtol=0, atol=0)
+    assert adapter.describe_payload(payload)["output_v_scale_multiply"] == v_quantize
+
+
+def test_supplied_quantizer_is_used_for_both_full_prepare_and_component_timing(monkeypatch):
+    monkeypatch.setattr(backend, "_require_npu", lambda tensor: None)
+    inputs = reference.structured_case(torch.float16, 64, 17, 129)
+    calls = []
+
+    def alternate_quantizer(x):
+        calls.append(x)
+        return backend.quantize_blocks(x)
+
+    adapter = backend.MindIEQuantLaser(None, v_quantize=False, quantizer=alternate_quantizer)
+    payload = adapter.prepare(*inputs)
+    assert calls[0] is inputs[0] and calls[1] is inputs[1]
+    result = adapter.quantize_qk(*inputs[:2])
+    assert calls[2] is inputs[0] and calls[3] is inputs[1]
+    for actual, expected in zip(result, (payload.q, payload.q_scale, payload.k, payload.k_scale)):
+        torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+
+
+def test_fused_request_without_build_or_unknown_mode_cannot_fall_back():
+    with pytest.raises(ValueError, match="build manifest"):
+        backend.load_quant_laser("unused.so", preprocessing="fused")
+    with pytest.raises(ValueError, match="must be torch or fused"):
+        backend.load_quant_laser("unused.so", preprocessing="auto")
+
+
+def test_reuse_validation_detects_stale_preprocessing_outputs(monkeypatch):
+    monkeypatch.setattr(backend, "_require_npu", lambda tensor: None)
+    adapter = backend.MindIEQuantLaser(None, v_quantize=False,
+                                      metadata={"qk_preprocessing": "fused_ascendc"})
+    report, snapshots = {}, []
+    reference.validate_fused_reuse(adapter, "cpu", report,
+                                  lambda: snapshots.append(len(report["fused_preprocessing_reuse"])))
+    assert snapshots == list(range(1, 9))
+    assert all(row["preprocessing"]["passed"] for row in report["fused_preprocessing_reuse"])
+    original_prepare = adapter.prepare
+    retained = []
+
+    def stale_prepare(*inputs):
+        if not retained:
+            retained.append(original_prepare(*inputs))
+        return retained[0]
+
+    adapter.prepare = stale_prepare
+    with pytest.raises(AssertionError, match="reuse/stride check failed"):
+        reference.validate_fused_reuse(adapter, "cpu", report, lambda: None)
+    assert len(report["fused_preprocessing_reuse"]) == 2
+    assert not report["fused_preprocessing_reuse"][-1]["preprocessing"]["passed"]

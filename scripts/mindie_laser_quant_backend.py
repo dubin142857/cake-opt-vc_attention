@@ -70,7 +70,7 @@ def quantize_blocks(x):
 
 
 @torch.no_grad()
-def prepare_quant_tensors(q, k, v, *, v_quantize=True, check_finite=True):
+def prepare_quant_tensors(q, k, v, *, v_quantize=True, check_finite=True, quantizer=None):
     """Fresh tensor preprocessing, also exposed explicitly to CPU reference tests.
 
     check_finite=False requires finite, representable input from the caller. The
@@ -79,8 +79,9 @@ def prepare_quant_tensors(q, k, v, *, v_quantize=True, check_finite=True):
     _validate_inputs(q, k, v)
     if check_finite and not all(bool(torch.isfinite(x).all().item()) for x in (q, k, v)):
         raise ValueError("Finite Q/K/V required")
-    qi, qs = quantize_blocks(q)
-    ki, ks = quantize_blocks(k)
+    quantizer = quantize_blocks if quantizer is None else quantizer
+    qi, qs = quantizer(q)
+    ki, ks = quantizer(k)
     if v_quantize:
         vf = v.float()
         maximum = vf.abs().amax(dim=2, keepdim=True)
@@ -106,8 +107,10 @@ def prepare_quant_tensors(q, k, v, *, v_quantize=True, check_finite=True):
 
 
 class MindIEQuantLaser:
-    def __init__(self, native, *, v_quantize=True, expcast=False, check_finite=True, metadata=None):
+    def __init__(self, native, *, v_quantize=True, expcast=False, check_finite=True, metadata=None,
+                 quantizer=None):
         self.native = native
+        self.quantizer = quantize_blocks if quantizer is None else quantizer
         self.v_quantize = bool(v_quantize)
         self.expcast = bool(expcast)
         self.check_finite = bool(check_finite)
@@ -118,20 +121,34 @@ class MindIEQuantLaser:
     def prepare(self, q, k, v):
         _require_npu(q)
         return prepare_quant_tensors(q, k, v, v_quantize=self.v_quantize,
-                                     check_finite=self.check_finite)
+                                     check_finite=self.check_finite, quantizer=self.quantizer)
 
-    def run_prepared(self, payload):
+    def quantize_qk(self, q, k):
+        """Separate component timing: includes fresh Q/K outputs and scale allocation."""
+        qi, qs = self.quantizer(q)
+        ki, ks = self.quantizer(k)
+        return qi, qs, ki, ks
+
+    def run_native(self, payload):
+        """Raw native API, including allocation/dispatch; not a kernel-only timer."""
         _require_npu(payload.q)
         out = self.native(payload.q, payload.k, payload.v, payload.q_scale,
                           payload.k_scale, payload.scale, payload.keys, self.expcast)
         if (not isinstance(out, torch.Tensor) or out.shape != payload.q.shape
                 or out.dtype != torch.float32 or out.device != payload.q.device):
             raise RuntimeError("Quantized Laser must return one padded FP32 BNSD tensor")
+        return out
+
+    def postprocess(self, out, payload):
         # Native PV used normalized decoded V. Dequantization is part of BOTH
         # prepared and full timing; output follows the baseline FP16 round-trip.
         out = out[:, :, :payload.shape[2], :payload.shape[3]]
-        out = out * payload.v_scale[:, :, None, :payload.shape[3]]
+        if payload.v_quantize:
+            out = out * payload.v_scale[:, :, None, :payload.shape[3]]
         return out.half().to(payload.dtype).contiguous()
+
+    def run_prepared(self, payload):
+        return self.postprocess(self.run_native(payload), payload)
 
     def __call__(self, q, k, v):
         return self.run_prepared(self.prepare(q, k, v))
@@ -148,10 +165,16 @@ class MindIEQuantLaser:
                 "v_contract": "per-channel E4M3 numerics decoded before FP16 PV" if payload.v_quantize else "plain FP16 V",
                 "native_fp8": False, "v_reordering": False, "k_smoothing": False,
                 "check_finite_in_preprocessing": self.check_finite,
-                "prepared_scope": "fixed quantized Q/K and decoded V + native allocation/dispatch + V output scale + FP16 round-trip/cast/trim/contiguous"}
+                "qk_preprocessing": self.metadata.get("qk_preprocessing", "torch"),
+                "output_v_scale_multiply": payload.v_quantize,
+                "prepared_scope": "fixed quantized Q/K and decoded V + native allocation/dispatch + optional V output scale + FP16 round-trip/cast/trim/contiguous"}
 
 
-def load_quant_laser(bridge_path, **options):
+def load_quant_laser(bridge_path, *, preprocessing="torch", preprocess_build=None, **options):
+    if preprocessing not in ("torch", "fused"):
+        raise ValueError("preprocessing must be torch or fused")
+    if preprocessing == "fused" and preprocess_build is None:
+        raise ValueError("Fused preprocessing requires its build manifest")
     import torch_npu  # noqa: F401
     torch.ops.load_library(str(bridge_path))
     native = torch.ops.vc_laser_quant.la.default
@@ -160,5 +183,10 @@ def load_quant_laser(bridge_path, **options):
     if types != ["Tensor"] * 5 + ["float", "int", "bool"] or len(schema.returns) != 1:
         raise RuntimeError(f"Unrecognized vc_laser_quant::la schema: {schema}")
     metadata = {"dispatch": "torch.ops.vc_laser_quant.la.default", "bridge_path": str(bridge_path),
-                "native_schema": str(schema)}
-    return MindIEQuantLaser(native, metadata=metadata, **options)
+                "native_schema": str(schema), "qk_preprocessing": "torch"}
+    quantizer = None
+    if preprocessing == "fused":
+        from mindie_laser_quant_fused import load_fused_quantizer
+        quantizer, preprocessing_metadata = load_fused_quantizer(preprocess_build)
+        metadata.update(preprocessing_metadata)
+    return MindIEQuantLaser(native, metadata=metadata, quantizer=quantizer, **options)

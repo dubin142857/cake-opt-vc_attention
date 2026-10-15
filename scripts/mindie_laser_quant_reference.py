@@ -99,6 +99,34 @@ def structured_case(dtype, dim, queries, keys, *, zero=False):
     return q, k, v
 
 
+def validate_fused_reuse(adapter, device, report, save):
+    """Exercise direct-launch stream ordering, reused inputs and strided D64."""
+    if adapter.metadata.get("qk_preprocessing") != "fused_ascendc":
+        return
+    records = report["fused_preprocessing_reuse"] = []
+    generator = torch.Generator().manual_seed(91128)
+    # Six heads cross scale-group boundaries; unequal Q/K lengths include
+    # full tiles, partial tiles and wholly zero physical padding blocks.
+    for dtype in (torch.float16, torch.bfloat16):
+        storage = [torch.empty((2, 3, n, 128), dtype=dtype, device=device)
+                   for n in (137, 259, 259)]
+        inputs = [x[..., ::2] for x in storage]
+        for iteration, amplitude in enumerate((.25, 4., 0., 1.)):
+            original = [torch.randn(x.shape, generator=generator).mul_(amplitude).to(dtype)
+                        for x in inputs]
+            for destination, source in zip(inputs, original):
+                destination.copy_(source)  # Ordered NPU writes, no manual synchronize.
+            payload = adapter.prepare(*inputs)
+            comparison = check_preprocessing(original, cpu_payload(payload))
+            row = {"dtype": str(dtype), "iteration": iteration, "amplitude": amplitude,
+                   "inputs_reused": True, "input_strided": True, "preprocessing": comparison}
+            records.append(row)
+            save()
+            if not comparison["passed"]:
+                raise AssertionError(f"Fused preprocessing reuse/stride check failed: {comparison['errors']}")
+            del payload
+
+
 def validate_small(adapter, device, report, save, torch_module):
     """Native checks: zero, tails, block-scale variation, and section boundary."""
     import benchmark_cann_fas_local as common
@@ -120,6 +148,11 @@ def validate_small(adapter, device, report, save, torch_module):
         probe_inputs = (ties, ties.clone(), torch.zeros_like(ties))
         probe = cpu_payload(adapter.prepare(*(x.to(device) for x in probe_inputs)))
         probe_check = check_preprocessing(probe_inputs, probe)
+        probe_check["exact_unit_qk_scales"] = all(
+            torch.equal(x, torch.ones_like(x)) for x in (probe.q_scale, probe.k_scale))
+        if not probe_check["exact_unit_qk_scales"]:
+            probe_check["passed"] = False
+            probe_check["errors"].append("The absmax=127 RNE probe requires exact Q/K scale=1")
         report["preprocessing_rounding_probes"].append({"dtype": str(dtype), **probe_check})
         save()
         if not probe_check["passed"]:
@@ -172,4 +205,5 @@ def validate_small(adapter, device, report, save, torch_module):
                         raise AssertionError("Structured case cannot distinguish unchanged softmax from ExpCast")
                 row["constant_value_padding_check"], row["status"] = "passed", "passed"
                 save()
+    validate_fused_reuse(adapter, device, report, save)
     return report["small_accuracy"]
