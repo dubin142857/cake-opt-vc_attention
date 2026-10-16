@@ -67,6 +67,12 @@ class FakeProfiler:
         self.enter_error, self.exit_error = enter_error, exit_error
         self.options = []
         self.configs = []
+        self.schedules = []
+
+    def schedule(self, **options):
+        self.schedules.append(options)
+        assert options == {"wait": 0, "warmup": 0, "active": 1, "repeat": 1, "skip_first": 0}
+        return lambda step: "RECORD_AND_SAVE" if step == 0 else "NONE"
 
     def _ExperimentalConfig(self, **options):
         self.configs.append(options)
@@ -90,17 +96,28 @@ class FakeProfiler:
         outer = self
 
         class Context:
+            def __init__(self):
+                self.step_index = 0
+
             def __enter__(self):
                 outer.events.append("start")
                 if outer.enter_error:
                     raise RuntimeError("profiling unavailable")
                 return self
 
+            def step(self):
+                assert options["schedule"](self.step_index) == "RECORD_AND_SAVE"
+                self.step_index += 1
+                assert options["schedule"](self.step_index) == "NONE"
+                outer.events.append("step_save")
+                options["on_trace_ready"]()
+
             def __exit__(self, typ, exc, tb):
                 outer.events.append("stop")
                 if outer.exit_error:
                     raise RuntimeError("export failed")
-                options["on_trace_ready"]()
+                if typ is None:
+                    assert options["schedule"](self.step_index) == "NONE", "unfinished capture"
 
         return Context()
 
@@ -116,8 +133,10 @@ def test_capture_has_no_per_call_sync_and_keeps_host_events_out_of_summary(tmp_p
     torch, npu = fake_runtime(events)
     result = trace.capture_native_traces({"one": lambda: events.append("call")},
                                         torch=torch, torch_npu=npu, directory=tmp_path, repeats=2)
-    assert events == ["sync", "start", "call", "call", "sync", "stop"]
+    assert events == ["sync", "start", "call", "call", "sync", "step_save", "stop"]
     assert result["status"] == "captured"
+    assert result["variants"]["one"]["capture_finalized"]
+    assert result["schedule"]["unit"] == "whole callable batch"
     assert result["variants"]["one"]["device_summary"]["all_device_tasks_sum_ms_per_call"] == 140
     assert npu.profiler.options[0]["activities"] == ["cpu", "npu"]
     assert not npu.profiler.options[0]["record_shapes"]
@@ -131,6 +150,32 @@ def test_missing_api_never_invokes_native_and_reports_failed(tmp_path):
     result = trace.capture_native_traces({"bad": lambda: pytest.fail("called native")},
                                         torch=None, torch_npu=SimpleNamespace(), directory=tmp_path)
     assert result["status"] == "failed"
+
+
+def test_missing_schedule_never_falls_back_to_unfinished_record_window(tmp_path):
+    events = []
+    torch, npu = fake_runtime(events)
+    npu.profiler.schedule = None
+    result = trace.capture_native_traces({"bad": lambda: pytest.fail("called device")},
+                                        torch=torch, torch_npu=npu, directory=tmp_path)
+    assert result["status"] == "failed" and events == []
+
+
+def test_suppressed_step_error_does_not_mark_capture_finalized(tmp_path):
+    events = []
+    torch, npu = fake_runtime(events)
+    original_profile = npu.profiler.profile
+    def profile_without_callback(**kwargs):
+        context = original_profile(**kwargs)
+        context.step = lambda: None  # Models an upstream-suppressed step error.
+        return context
+    npu.profiler.profile = profile_without_callback
+    result = trace.capture_native_traces({"native": lambda: events.append("call")},
+                                        torch=torch, torch_npu=npu, directory=tmp_path)
+    assert result["status"] == "failed"
+    row = result["variants"]["native"]
+    assert row["failed_stage"] == "profiler_finalize" and not row["capture_finalized"]
+    assert "on_trace_ready" in row["error"]["message"]
 
 
 def test_missing_metrics_api_does_not_claim_counters_requested(tmp_path):

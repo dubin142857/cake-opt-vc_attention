@@ -22,6 +22,7 @@ import tempfile
 SOURCES = [
     "https://gitee.com/ascend/mstt/blob/337553a74001d0a541bdcf6ff5eb72fdf407ff3a/profiler/README.md",
     "https://www.hiascend.com/doc_center/source/zh/canncommercial/70RC1/foundmodeldev/foundmodelinfer/PT_LMIMOG_0044.html",
+    "https://gitee.com/ascend/pytorch/blob/47f1f92999deda63f627141111cd6ffb736deb97/torch_npu/profiler/_profiler_action_controller.py",
 ]
 
 
@@ -137,6 +138,8 @@ def capture_native_traces(calls, *, torch, torch_npu, directory, repeats=3):
     directory.mkdir(parents=True, exist_ok=True)
     report = {"status": "running", "repeats": repeats, "directory": str(directory),
               "variants": {}, "sources": SOURCES,
+              "schedule": {"wait": 0, "warmup": 0, "active": 1, "repeat": 1,
+                           "skip_first": 0, "unit": "whole callable batch"},
               "note": "Separate profiler-active captures after API timing. Each supplied "
                       "callable defines its scope (native attention or preprocessing). "
                       "Collector adds no warmup, numerical validation or output transfer."}
@@ -148,6 +151,7 @@ def capture_native_traces(calls, *, torch, torch_npu, directory, repeats=3):
     profiler = getattr(torch_npu, "profiler", None)
     activity = getattr(profiler, "ProfilerActivity", None)
     if (profiler is None or not callable(getattr(profiler, "profile", None))
+            or not callable(getattr(profiler, "schedule", None))
             or not callable(getattr(profiler, "tensorboard_trace_handler", None))
             or not hasattr(activity, "CPU") or not hasattr(activity, "NPU")):
         report.update(status="failed", error="torch_npu CPU/NPU profiler API unavailable")
@@ -159,7 +163,8 @@ def capture_native_traces(calls, *, torch, torch_npu, directory, repeats=3):
     for index, (name, call) in enumerate(calls.items()):
         label = re.sub(r"[^A-Za-z0-9_.-]", "_", str(name))[:80]
         target = Path(tempfile.mkdtemp(prefix=f"{index:02d}_{label}_", dir=directory))
-        row = {"status": "running", "directory": str(target), "submitted_calls": 0}
+        row = {"status": "running", "directory": str(target), "submitted_calls": 0,
+               "capture_finalized": False}
         report["variants"][name] = row
         print(f"NPU trace: {name}; {repeats} calls; profiler active", flush=True)
         save()
@@ -168,9 +173,20 @@ def capture_native_traces(calls, *, torch, torch_npu, directory, repeats=3):
             torch.npu.synchronize()
             stage = "profiler_setup"
             handler = profiler.tensorboard_trace_handler(str(target))
+            callback = {"completed": False}
+            def on_trace_ready(*args, **kwargs):
+                handler(*args, **kwargs)
+                callback["completed"] = True
+            # One profiler step contains the complete batch. Explicitly finish
+            # RECORD_AND_SAVE -> NONE after its final device synchronization;
+            # exiting a default RECORD window causes incomplete-data warnings.
+            schedule = profiler.schedule(wait=0, warmup=0, active=1, repeat=1, skip_first=0)
             context = profiler.profile(
                 activities=[activity.CPU, activity.NPU], record_shapes=False,
-                profile_memory=False, with_stack=False, on_trace_ready=handler, **options)
+                profile_memory=False, with_stack=False, schedule=schedule,
+                on_trace_ready=on_trace_ready, **options)
+            if not callable(getattr(context, "step", None)):
+                raise RuntimeError("torch_npu profiler lacks step(); cannot finalize a scheduled capture")
             with context:
                 stage = "call_execution"
                 for _ in range(repeats):
@@ -179,6 +195,12 @@ def capture_native_traces(calls, *, torch, torch_npu, directory, repeats=3):
                 stage = "post_capture_synchronize"
                 torch.npu.synchronize()
                 stage = "profiler_finalize"
+                context.step()
+                # Some profiler releases suppress exceptions inside step().
+                # A returned step alone does not establish a completed export.
+                if not callback["completed"]:
+                    raise RuntimeError("Scheduled profiler step did not complete on_trace_ready")
+                row["capture_finalized"] = True
             stage = "export_summary"
             tables = list(target.rglob("kernel_details.csv"))
             traces = list(target.rglob("trace_view.json"))

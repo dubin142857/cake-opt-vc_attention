@@ -226,6 +226,9 @@ def worker(args):
                      "native_fused_payload": calls["own_native"]["fused"],
                      "fused_preprocessing": calls["preprocessing"]["fused"]},
                     torch=torch, torch_npu=torch_npu, directory=directory / "profiler", repeats=3)
+                save()
+                from summarize_mindie_laser_quant_profile import render_report
+                print(render_report(report["trace"]), flush=True)
             else:
                 report["trace"] = {"status": "disabled"}
             quant.baseline.inspect_provider("local", resolved.vendor_root, resolved.bridge_path, report, directory, **provider)

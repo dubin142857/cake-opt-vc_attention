@@ -168,4 +168,14 @@ bash scripts/run_mindie_laser_quant_profile.sh
 
 设备表按真实 task 名称/类型汇总；AIC/AIV 可能重叠，累计 device task 时间不是 API 延迟，也不是 QK/PV/softmax 各阶段归因。没有把 Python 调用事件冒充设备 kernel 时间。需要只测 wall time 时，可直接运行 `python3 scripts/profile_mindie_laser_quant.py`，省略 `--trace`。
 
+已有报告可以直接离线打印计数器，无需重新编译、初始化 NPU 或重复测速：
+
+```bash
+python3 scripts/summarize_mindie_laser_quant_profile.py
+```
+
+也可用 `--input <报告路径>` 指定主报告或单独的 `capture_report.json`。摘要保留计数器原始列名、数值、样本数和范围，不猜单位或把各 pipe 相加成总耗时；缺失计数器或失败状态会明确显示。新采集完成后也会自动打印这份摘要。
+
+早期采集器未显式设置 schedule，退出时曾出现 `Stop profiler while current state is RECORD`。这符合[官方调度状态机的未完成窗口警告](https://gitee.com/ascend/pytorch/blob/47f1f92999deda63f627141111cd6ffb736deb97/torch_npu/profiler/_profiler_action_controller.py)，不影响此前已完成的无 profiler API 测速；旧 trace 的完整性不能因此认定已验证。当前采集器使用 `wait=0,warmup=0,active=1,repeat=1,skip_first=0`，把整批 3 次调用放在一个 step 内，最后设备同步后显式 `step()` 完成保存，再退出上下文。没有给每个调用增加同步。报告记录 schedule 和 `capture_finalized`，旧报告摘要会标明缺少完成调度证据。
+
 当前源码审计发现：每个 128×128 QK tile 都读取两次 scale，包含缓存失效与 GM 标量读取，并配置 FIX 随路反量化；目标 shape padding 后有 2,453,248 个逻辑 QK tile。这里是重复次数推算，尚非瓶颈测量。下一候选是保留必要缓存一致性处理，在一个工作描述符内复用两项 Q scale，并在每个 K block 复用 K scale；保持 FP32 gain、位截断、`set_quant_pre`、FIX barrier 和 DEQF16 原样。先用本轮设备记录判断是否值得实施，不直接删除曾修复存储复用错误的缓存处理。
