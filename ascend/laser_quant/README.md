@@ -137,3 +137,35 @@ python3 -m pytest -q tests/test_mindie_laser_quant_backend.py \
   tests/test_mindie_laser_quant_benchmark.py \
   tests/test_mindie_laser_quant_orchestration.py
 ```
+
+## 融合量化通过之后：固定输入配对诊断
+
+用户回传的这轮长形状结果中，融合 Q/K 量化从 15.8247 ms 降至 1.3348 ms，完整 API 从 106.6155 ms 降至 93.0462 ms；原始 Laser 为 85.8781 ms。原生 INT8 attention 仍约 88–90 ms。此前两条量化路径在不同进程运行，不能从这两个 native 时间认定融合预处理拖慢了同一个 attention 内核。
+
+已有成功构建时直接运行：
+
+```bash
+bash scripts/run_mindie_laser_quant_profile.sh
+```
+
+该入口复用 `results/mindie_laser_quant_build.json` 和 `results/mindie_laser_quant_preprocess_build.json` 指向的产物，不编译、不安装包。默认 BF16 BNSD `[1,28,37741,128]`、设备 0、warmup 5、每轮 10 次、9 轮。仍使用原始 exp、INT8 QK、FP16 PV，关闭 V 量化、重排和平滑。可沿用 `NPU_DEVICE` 指定卡。结果为 `results/mindie_laser_quant_profile.json`，日志同名 `.log`；原始 trace 在报告记录的独立运行目录中。
+
+单个隔离进程加载同一个 `vc_laser_quant::la`，每轮随机且平衡两条调用的先后位置，记录原始顺序和耗时：
+
+| 行名 | 比较范围 | 能说明什么 |
+| --- | --- | --- |
+| `shared_native` | 两个适配器使用**同一个 fused payload 对象和同一个 native operator 对象** | 两个名称并不是不同核心；这是同输入重复计时对照 |
+| `own_native` | 相同 native 算子，各自固定的 torch/fused 量化结果 | 独立 payload 下的差异；也包含地址、缓存状态及舍入边界差异 |
+| `prepared` | 各自固定 payload + 原生 API + 输出后处理 | 固定输入的调用开销 |
+| `full` | 每次重新预处理 + 原生 API + 输出后处理 | 融合预处理对完整调用的收益 |
+| `preprocessing` | 单独重新生成 Q/K/V 和 scale | 直接测预处理，不能用 full 减 prepared 代替 |
+
+表中 `old/fused` 为两行中位数之比；`paired saved` 为同轮 torch 减 fused 的差值中位数，正值表示 fused 更快。快轮次数、差值范围和原始数据均写入 JSON。这是描述性配对数据，不是显著性检验。各 scope 独立测量，不能相加，也不能据此声称 QK/softmax/PV 的设备时间占比。两份固定 payload 在整轮中均保持存活；新结果与之前分进程结果的内存/缓存条件不同，应以本轮内部比较为准。
+
+计时前，两条预处理路径都重新跑结构化小形状和实际 payload 检查，并检查同 payload 的**全部 padded 输出**完全一致。长形状 dense FP32 误差另用至多 32 个 query、所有 key/head/feature 计算，仅作算法诊断。源码、build、桥接、库映射、SoC/CANN 以及首次长形状 tiling marker 继续检查；marker 在计时前关闭。
+
+正常 API 计时写盘之后，再用已安装的 `torch_npu.profiler` 分别采集两份固定 payload 的 native 调用及 fused 预处理。支持时请求 Level1/PipeUtilization，保留 `kernel_details.csv`、trace 和实际导出的计数器。**请求指标不等于成功采集**；不支持 profiler 或缺少可解析文件时会明确报告 trace 失败/仅有原始文件，保留已经完成的 wall-time 数据。设备调用或同步失败仍会使整个任务失败。
+
+设备表按真实 task 名称/类型汇总；AIC/AIV 可能重叠，累计 device task 时间不是 API 延迟，也不是 QK/PV/softmax 各阶段归因。没有把 Python 调用事件冒充设备 kernel 时间。需要只测 wall time 时，可直接运行 `python3 scripts/profile_mindie_laser_quant.py`，省略 `--trace`。
+
+当前源码审计发现：每个 128×128 QK tile 都读取两次 scale，包含缓存失效与 GM 标量读取，并配置 FIX 随路反量化；目标 shape padding 后有 2,453,248 个逻辑 QK tile。这里是重复次数推算，尚非瓶颈测量。下一候选是保留必要缓存一致性处理，在一个工作描述符内复用两项 Q scale，并在每个 K block 复用 K scale；保持 FP32 gain、位截断、`set_quant_pre`、FIX barrier 和 DEQF16 原样。先用本轮设备记录判断是否值得实施，不直接删除曾修复存储复用错误的缓存处理。
