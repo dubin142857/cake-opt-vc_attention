@@ -127,6 +127,10 @@ fi
   --cann-root "$ASCEND_HOME_PATH" --soc "$RUNTIME_SOC" --jobs "$LASER_BUILD_JOBS" \
   --output results/mindie_laser_quant_preprocess_build.json \
   2>&1 | tee results/mindie_laser_quant_preprocess_build.log
+"$PYTHON_BIN" -u scripts/check_mindie_laser_quant_preprocess.py \
+  --build-manifest results/mindie_laser_quant_preprocess_build.json \
+  --device "$NPU_DEVICE" --output results/mindie_laser_quant_preprocess_smoke.json \
+  2>&1 | tee results/mindie_laser_quant_preprocess_smoke.log
 "$PYTHON_BIN" -u scripts/benchmark_mindie_laser_quant.py \
   --baseline-build results/mindie_laser_build.json \
   --quant-build results/mindie_laser_quant_build.json \

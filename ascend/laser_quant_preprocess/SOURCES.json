@@ -12,6 +12,7 @@
     "task_type_macro": "impl/basic_api/utils/kernel_utils_macros.h:365-388; enabled for DAV-2201 preprocessing, no extra include required",
     "entry": "extern C __global__ __aicore__ void; KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY)",
     "reason": "The extra __vector__ attribute is misparsed as the function name by the legacy host-stub generator. Select pure AIV through its explicit task-type marker instead.",
+    "translation_units": "One global entry per cpp file, with shared quantize_kernel_impl.h. In v9.0.1 source_properties enumerates aliases with base_key+index, but generate_kernel_auto_gen_func_impl passes only base_key to gen_ktype_section. Multiple explicit-AIV entries in one source yield mismatched KTYPE metadata for the second entry.",
     "regression_fixture": "tests/cann901_host_stub_fixture.py; signature grammar only, not a CCE compiler or device simulation"
   },
   "skill_template": {

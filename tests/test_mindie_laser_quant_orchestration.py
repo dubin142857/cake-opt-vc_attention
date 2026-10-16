@@ -41,6 +41,8 @@ if args[0].endswith('build_mindie_laser_quant.py') and os.environ.get('LASER_TES
     raise SystemExit(23)
 if args[0].endswith('build_mindie_laser_quant_preprocess.py') and os.environ.get('LASER_TEST_PREPROCESS_FAIL'):
     raise SystemExit(24)
+if args[0].endswith('check_mindie_laser_quant_preprocess.py') and os.environ.get('LASER_TEST_SMOKE_FAIL'):
+    raise SystemExit(25)
 ''', encoding="utf-8")
     wrapper = tools / "mock-python"
     wrapper.write_text(f'#!/usr/bin/env bash\nexec "{Path(sys.executable).as_posix()}" "{stub.as_posix()}" "$@"\n',
@@ -56,7 +58,8 @@ if args[0].endswith('build_mindie_laser_quant_preprocess.py') and os.environ.get
     def run(extra_env=None):
         env = {key: value for key, value in os.environ.items()
                if key not in ("BASH_ENV", "ENV", "LASER_BUILD_JOBS", "LASER_QUANT_EXPERIMENTS",
-                              "LASER_TEST_REUSE", "LASER_TEST_FAIL", "LASER_TEST_PREPROCESS_FAIL", "LASER_TEST_SOC")}
+                              "LASER_TEST_REUSE", "LASER_TEST_FAIL", "LASER_TEST_PREPROCESS_FAIL",
+                              "LASER_TEST_SMOKE_FAIL", "LASER_TEST_SOC", "NPU_DEVICE")}
         env.update(ASCEND_HOME_PATH=cann.as_posix(), PYTHON_BIN=wrapper.as_posix())
         env.update(extra_env or {})
         command = [str(bash), "--noprofile", "--norc", "-c",
@@ -76,9 +79,12 @@ def test_one_command_builds_missing_baseline_and_quant_then_benchmarks(launcher)
     assert [Path(call["script"]).name for call in calls] == [
         "check_ascend910b.py", "prepare_mindie_laser_source.py", "build_mindie_laser_local.py",
         "build_mindie_laser_bridge.py", "build_mindie_laser_quant.py",
-        "build_mindie_laser_quant_preprocess.py", "benchmark_mindie_laser_quant.py"]
-    assert calls[-3]["args"][calls[-3]["args"].index("--soc") + 1] == "ascend910_93"
-    assert calls[-2]["args"][calls[-2]["args"].index("--soc") + 1] == "Ascend910_9382"
+        "build_mindie_laser_quant_preprocess.py", "check_mindie_laser_quant_preprocess.py",
+        "benchmark_mindie_laser_quant.py"]
+    assert calls[-4]["args"][calls[-4]["args"].index("--soc") + 1] == "ascend910_93"
+    assert calls[-3]["args"][calls[-3]["args"].index("--soc") + 1] == "Ascend910_9382"
+    assert calls[-2]["args"] == ["--build-manifest", "results/mindie_laser_quant_preprocess_build.json",
+                                 "--device", "0", "--output", "results/mindie_laser_quant_preprocess_smoke.json"]
     assert "--quant-build" in calls[-1]["args"]
     args = calls[-1]["args"]
     assert args[args.index("--preprocess-build") + 1] == "results/mindie_laser_quant_preprocess_build.json"
@@ -110,7 +116,7 @@ def test_verified_baseline_is_reused_without_recompilation_or_extra_benchmark(la
     assert result.returncode == 0, result.stdout + result.stderr
     assert [Path(call["script"]).name for call in calls] == [
         "check_ascend910b.py", "build_mindie_laser_quant.py", "build_mindie_laser_quant_preprocess.py",
-        "benchmark_mindie_laser_quant.py"]
+        "check_mindie_laser_quant_preprocess.py", "benchmark_mindie_laser_quant.py"]
 
 
 def test_quant_build_failure_stops_pipeline_through_tee(launcher):
@@ -124,6 +130,14 @@ def test_preprocess_build_failure_stops_without_fallback(launcher):
     result, calls = launcher({"LASER_TEST_REUSE": "1", "LASER_TEST_PREPROCESS_FAIL": "1"})
     assert result.returncode == 24
     assert Path(calls[-1]["script"]).name == "build_mindie_laser_quant_preprocess.py"
+    assert all("benchmark_" not in call["script"] for call in calls)
+
+
+def test_preprocess_smoke_failure_stops_before_any_benchmark_through_tee(launcher):
+    result, calls = launcher({"LASER_TEST_REUSE": "1", "LASER_TEST_SMOKE_FAIL": "1", "NPU_DEVICE": "3"})
+    assert result.returncode == 25
+    assert Path(calls[-1]["script"]).name == "check_mindie_laser_quant_preprocess.py"
+    assert calls[-1]["args"][calls[-1]["args"].index("--device") + 1] == "3"
     assert all("benchmark_" not in call["script"] for call in calls)
 
 

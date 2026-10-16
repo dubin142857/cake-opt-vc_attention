@@ -168,12 +168,14 @@ uint32_t GetBlockIdx();
 """
 
 
-def test_actual_kernel_instantiates_both_dtypes_with_host_cpp_declarations(cpp_compiler, tmp_path):
+@pytest.mark.parametrize("entry_file", ["quantize_kernel.cpp", "quantize_bf16_kernel.cpp"])
+def test_actual_kernel_instantiates_both_dtypes_with_host_cpp_declarations(cpp_compiler, tmp_path, entry_file):
     # Compiles the actual source, not a separately maintained imitation. Stubs
     # catch C++ typing/templates but cannot verify Ascend API availability.
     contract = (builder.SOURCE / "quantize_contract.h").read_text()
-    source = (builder.SOURCE / "quantize_kernel.cpp").read_text()
-    stripped = "\n".join(line for line in (contract + "\n" + source).splitlines()
+    implementation = (builder.SOURCE / "quantize_kernel_impl.h").read_text()
+    source = (builder.SOURCE / entry_file).read_text()
+    stripped = "\n".join(line for line in (contract + "\n" + implementation + "\n" + source).splitlines()
                          if not line.startswith(("#include", "#pragma")))
     code, diagnostic = compile_syntax(cpp_compiler, tmp_path, STUBS + stripped)
     assert code == 0, diagnostic
@@ -192,32 +194,48 @@ def legacy_signature_input(source):
     return source
 
 
-def test_cann901_parser_reads_both_actual_entry_names_and_full_launch_abi():
-    source = (builder.SOURCE / "quantize_kernel.cpp").read_text()
+@pytest.mark.parametrize("entry_file,entry_name", [
+    ("quantize_kernel.cpp", "vc_laser_quantize_fp16"),
+    ("quantize_bf16_kernel.cpp", "vc_laser_quantize_bf16"),
+])
+def test_cann901_parser_reads_single_entry_per_translation_unit(entry_file, entry_name):
+    implementation = (builder.SOURCE / "quantize_kernel_impl.h").read_text()
+    source = implementation + "\n" + (builder.SOURCE / entry_file).read_text()
     signatures = cann_stub.FUNC_SIGNATURE.findall(legacy_signature_input(source))
     parsed = [cann_stub.parse_func_signature_parts(signature) for _, signature in signatures]
-    assert {name for _, name, _ in parsed} == {
-        "vc_laser_quantize_fp16", "vc_laser_quantize_bf16"}
-    assert len(parsed) == 2
+    # Explicit-AIV metadata in the 9.0.1 generator uses the source's base key
+    # for every function, while aliases increment the key per function. A
+    # second entry in this TU would therefore point at a nonexistent symbol.
+    assert len(parsed) == 1
+    assert parsed[0][1] == entry_name
     expected = ["GM_ADDR input", "GM_ADDR output", "GM_ADDR scales", "uint32_t sequence",
                 "uint32_t dimension", "uint32_t paddedSequence", "uint64_t tasks", "uint32_t cores"]
     for result_type, _, params in parsed:
         assert result_type == "void"
         assert [" ".join(param.split()) for param in params.split(",")] == expected
-    # Both entry bodies must request AIV explicitly; do not depend on inference
-    # for two kernels in one translation unit or silently launch a mixed task.
+    # Request AIV explicitly without changing the persistent block mapping.
     entries = re.findall(r"void vc_laser_quantize_\w+\([^)]*\)\s*\{([^}]*)\}", source)
-    assert len(entries) == 2
+    assert len(entries) == 1
     for body in entries:
         assert re.search(r"KERNEL_TASK_TYPE_DEFAULT\(KERNEL_TYPE_AIV_ONLY\)\s*;", body)
 
 
-def test_cann901_parser_reproduces_reported_failure_for_old_vector_attribute():
-    source = (builder.SOURCE / "quantize_kernel.cpp").read_text()
+@pytest.mark.parametrize("entry_file", ["quantize_kernel.cpp", "quantize_bf16_kernel.cpp"])
+def test_cann901_parser_reproduces_reported_failure_for_old_vector_attribute(entry_file):
+    source = (builder.SOURCE / entry_file).read_text()
     old_source = source.replace('__global__ __aicore__ void vc_laser_quantize_',
                                 '__global__ __aicore__ __vector__ void vc_laser_quantize_')
     signatures = cann_stub.FUNC_SIGNATURE.findall(legacy_signature_input(old_source))
-    assert len(signatures) == 2
+    assert len(signatures) == 1
     for _, signature in signatures:
         with pytest.raises(cann_stub.FuncNameNotFound):
             cann_stub.parse_func_signature_parts(signature)
+
+
+def test_both_entry_units_are_separate_cmake_sources_and_manifest_includes_shared_impl():
+    cmake = (builder.SOURCE / "CMakeLists.txt").read_text()
+    sources = re.search(r"ascendc_library\(vc_quantize_kernel\s+STATIC\s+([^)]*)\)", cmake)
+    assert sources is not None
+    assert sources.group(1).split() == ["quantize_kernel.cpp", "quantize_bf16_kernel.cpp"]
+    assert set(sources.group(1).split()) <= set(builder.SOURCE_NAMES)
+    assert "quantize_kernel_impl.h" in builder.SOURCE_NAMES

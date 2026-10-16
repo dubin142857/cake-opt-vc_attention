@@ -25,6 +25,10 @@ bash scripts/run_mindie_laser_quant.sh
 
 CANN 9.0.1 的 legacy `extract_host_stub.py` 不接受 `__global__ __aicore__` 后再插入 `__vector__`，会在生成主机调用接口时抛出 `FuncNameNotFound`。融合量化入口采用标准 `__global__ __aicore__ void` 声明，并显式选择 `KERNEL_TYPE_AIV_ONLY`。若此前卡在该错误，`git pull` 后重新执行同一个脚本即可沿用构建缓存。此修复有同版本解析器规则的离线回归检查；完整 CANN 编译及 NPU 运行仍需远端验证。
 
+FP16、BF16 入口分别编译，共用 `quantize_kernel_impl.h`。同版本 legacy 生成器对同一文件的入口符号按 `base_key + index` 编号，纯 AIV 的 KTYPE 元数据却都使用 `base_key`；两个入口放在一起会造成第二个符号与元数据名称不一致。这是在 `RegisterAscendBinary aiv ret 107000`、随后启动返回 `507000` 的排查中发现的确定代码生成问题；拆分绕过该问题，实际注册与设备执行由远端检查确认。
+
+一键脚本在构建融合库后、长序列基线计时前，先单独运行 FP16/BF16 的小量化检查，验证库注册、两个入口启动、RNE 舍入和 padding。检查结果写入 `results/mindie_laser_quant_preprocess_smoke.json`，失败会立即停止，不必再等待整轮基线。已有 attention 构建缓存继续复用。
+
 以下两组仅在显式启用实验时追加，组成六组对照：
 
 | 实验变体 | QK | V 输入和 PV | 概率计算 |

@@ -26,7 +26,9 @@ find_package(Torch REQUIRED HINTS "${torch_prefix}")
 execute_process(COMMAND "${Python3_EXECUTABLE}" -c "import pathlib, torch_npu; print(pathlib.Path(torch_npu.__file__).parent)"
   OUTPUT_VARIABLE torch_npu_path OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)
 separate_arguments(torch_flags NATIVE_COMMAND "${TORCH_CXX_FLAGS}")
-ascendc_library(vc_quantize_kernel STATIC quantize_kernel.cpp)
+# CANN 9.0.1 legacy metadata uses one base key per source file. Keep each
+# explicit-AIV entry in its own translation unit so aliases and metadata agree.
+ascendc_library(vc_quantize_kernel STATIC quantize_kernel.cpp quantize_bf16_kernel.cpp)
 ascendc_include_directories(vc_quantize_kernel PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${ASCEND_CANN_PACKAGE_PATH}/include")
 add_library(vc_laser_quant_preprocess SHARED quantize_torch.cpp)
 target_compile_options(vc_laser_quant_preprocess PRIVATE ${torch_flags})

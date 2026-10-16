@@ -15,7 +15,8 @@ except ImportError:
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "ascend/laser_quant_preprocess"
-SOURCE_NAMES = ("CMakeLists.txt", "quantize_contract.h", "quantize_kernel.cpp", "quantize_torch.cpp")
+SOURCE_NAMES = ("CMakeLists.txt", "quantize_contract.h", "quantize_kernel_impl.h",
+                "quantize_kernel.cpp", "quantize_bf16_kernel.cpp", "quantize_torch.cpp")
 LIBRARY_NAME = "libvc_laser_quant_preprocess.so"
 CONTRACT_VERSION = 1
 
