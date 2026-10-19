@@ -52,22 +52,26 @@ def build_arguments(args, name):
     )
 
 
-def quant_provenance(args):
+def quant_provenance(args, *, identity=None, source_validator=None):
     from prepare_mindie_laser_quant_source import validate_prepared_source
+    identity = identity or {"native_api": QUANT_API, "op_type": QUANT_OP}
+    source_validator = source_validator or validate_prepared_source
     build_path, source_path = Path(args.build_manifest), Path(args.source_manifest)
     build = json.loads(build_path.read_text(encoding="utf-8"))
     source = json.loads(source_path.read_text(encoding="utf-8"))
     if build.get("status") != "passed":
         raise ValueError("Quantized Laser build manifest must report passed")
     for item in (source, build):
-        if item.get("native_api") != QUANT_API or item.get("op_type") != QUANT_OP:
-            raise ValueError("Quantized source/build must use unique VcLaserQuantAttention symbols")
+        if any(item.get(key) != identity[key] for key in ("native_api", "op_type")):
+            raise ValueError("Quantized source/build must use the requested unique operator symbols")
     if (source.get("upstream", {}).get("commit") != baseline.UPSTREAM_COMMIT
             or source.get("upstream", {}).get("url") != baseline.SOURCE_LOCK.url):
         raise ValueError("Quantized Laser must derive from the pinned MindIE-SD source")
     if not source.get("marker_token"):
         raise ValueError("Quantized source manifest requires its marker token")
-    validate_prepared_source(Path(source["source_dir"]), source_path)
+    if Path(build["vendor_root"]).resolve() != Path(args.vendor_root).resolve():
+        raise ValueError("Quantized build vendor_root differs from requested provider")
+    source_validator(Path(source["source_dir"]), source_path)
     digest = common.sha256_file(source_path)
     if build.get("source_manifest", {}).get("sha256") != digest:
         raise ValueError("Quantized source manifest SHA256 mismatch")

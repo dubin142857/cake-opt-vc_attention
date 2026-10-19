@@ -147,16 +147,21 @@ def reject_toolchain_overrides(values, context):
                              "use the isolated bridge's declared build configuration")
 
 
-def build_bridge(source, cann, bridge_dir, jobs, output, *, runner=None, runtime=None):
+def build_bridge(source, cann, bridge_dir, jobs, output, *, runner=None, runtime=None,
+                 identity=None, torch_namespace="vc_laser_quant", bridge_source=None,
+                 bridge_name=None):
+    identity = dict(IDENTITY if identity is None else identity)
+    bridge_source = BRIDGE_SOURCE if bridge_source is None else Path(bridge_source).resolve()
+    bridge_name = BRIDGE_NAME if bridge_name is None else bridge_name
     source, cann, bridge_dir, output = (Path(item).resolve() for item in (source, cann, bridge_dir, output))
     if jobs < 1:
         raise ValueError("jobs must be positive")
     if runner is None:
         runner = _module("build_cann_fas_local").run_visible
     report = {
-        "status": "running", "native_api": IDENTITY["native_api"], "op_type": IDENTITY["op_type"],
+        "status": "running", "native_api": identity["native_api"], "op_type": identity["op_type"],
         "bridge_dir": str(bridge_dir), "upstream_source_dir": str(source),
-        "cann_root": str(cann), "torch_namespace": "vc_laser_quant",
+        "cann_root": str(cann), "torch_namespace": torch_namespace,
         "torch_schema": "la(Tensor q, Tensor k, Tensor v, Tensor q_scale, Tensor k_scale, float scale, int keys, bool expcast) -> Tensor",
         "steps": [],
     }
@@ -169,7 +174,7 @@ def build_bridge(source, cann, bridge_dir, jobs, output, *, runner=None, runtime
         metadata = discover_runtime() if runtime is None else dict(runtime)
         adapter_dir = bridge_dir / "adapter"
         expected = {
-            "CMAKE_HOME_DIRECTORY": str(BRIDGE_SOURCE.resolve()),
+            "CMAKE_HOME_DIRECTORY": str(bridge_source.resolve()),
             "CMAKE_GENERATOR": CMAKE_GENERATOR,
             "CMAKE_BUILD_TYPE": "Release",
             "CANN_ROOT": str(cann), "TORCH_ROOT": metadata["torch_root"],
@@ -181,10 +186,10 @@ def build_bridge(source, cann, bridge_dir, jobs, output, *, runner=None, runtime
         report["runtime"] = metadata
         report["adapter"] = copy_pinned_adapter(source, adapter_dir)
         report["bridge_sources"] = [{"path": str(path), "sha256": sha256_file(path)}
-                                    for path in (BRIDGE_SOURCE / "register.cpp", BRIDGE_SOURCE / "CMakeLists.txt")]
+                                    for path in (bridge_source / "register.cpp", bridge_source / "CMakeLists.txt")]
         definitions = {key: value for key, value in expected.items()
                        if key not in ("CMAKE_HOME_DIRECTORY", "CMAKE_GENERATOR")}
-        configure = ["cmake", "-S", str(BRIDGE_SOURCE), "-B", str(bridge_dir), "-G", CMAKE_GENERATOR]
+        configure = ["cmake", "-S", str(bridge_source), "-B", str(bridge_dir), "-G", CMAKE_GENERATOR]
         configure += [f"-D{key}={value}" for key, value in definitions.items()]
         commands = [
             ("quant bridge configure", configure),
@@ -194,7 +199,7 @@ def build_bridge(source, cann, bridge_dir, jobs, output, *, runner=None, runtime
             elapsed = runner(command, ROOT, environment, phase)
             report["steps"].append({"phase": phase, "command": command, "elapsed_seconds": elapsed})
             write_json(output, report)
-        binary = bridge_dir / BRIDGE_NAME
+        binary = bridge_dir / bridge_name
         if not binary.is_file() or binary.stat().st_size == 0:
             raise RuntimeError(f"Quantized Laser bridge build did not produce {binary}")
         report.update(status="passed", bridge_path=str(binary), bridge_sha256=sha256_file(binary))
@@ -208,8 +213,11 @@ def build_bridge(source, cann, bridge_dir, jobs, output, *, runner=None, runtime
 
 def build(source, reference, source_manifest, cann, soc, jobs, install_dir, bridge_dir, output,
           *, preparer=None, source_validator=None, operator_builder=None, bridge_builder=None,
-          runner=None):
+          runner=None, identity=None, marker_token=None, marker_environment=None):
     """Compose preparation, existing operator builder and isolated bridge build."""
+    identity = dict(IDENTITY if identity is None else identity)
+    marker_token = MARKER_TOKEN if marker_token is None else marker_token
+    marker_environment = MARKER_ENVIRONMENT if marker_environment is None else marker_environment
     source, reference, source_manifest, cann, install_dir, bridge_dir, output = (
         Path(item).resolve() for item in
         (source, reference, source_manifest, cann, install_dir, bridge_dir, output))
@@ -217,13 +225,15 @@ def build(source, reference, source_manifest, cann, soc, jobs, install_dir, brid
         raise ValueError("jobs must be positive")
     operator_output = output.with_name(output.stem + "_operator.json")
     bridge_output = output.with_name(output.stem + "_bridge.json")
-    report = {"status": "running", **IDENTITY, "cann_root": str(cann), "soc": soc, "jobs": jobs,
+    report = {"status": "running", **identity, "cann_root": str(cann), "soc": soc, "jobs": jobs,
               "source_dir": str(source), "install_dir": str(install_dir),
               "source_manifest": {"path": str(source_manifest)},
               "operator_manifest": str(operator_output), "bridge_manifest": str(bridge_output),
-              "marker_token": MARKER_TOKEN, "marker_environment": MARKER_ENVIRONMENT}
+              "marker_token": marker_token, "marker_environment": marker_environment}
     write_json(output, report)
     try:
+        if identity != IDENTITY and (preparer is None or source_validator is None or bridge_builder is None):
+            raise ValueError("An independent operator requires explicit preparation, source validation and bridge builders")
         if preparer is None or source_validator is None:
             preparation = _module("prepare_mindie_laser_quant_source")
             preparer = preparation.prepare if preparer is None else preparer
@@ -236,25 +246,25 @@ def build(source, reference, source_manifest, cann, soc, jobs, install_dir, brid
         source_validator(source, source_manifest)
         report["source_manifest"]["sha256"] = sha256_file(source_manifest)
         write_json(output, report)
-        kwargs = {"source_manifest": source_manifest, "identity": dict(IDENTITY),
+        kwargs = {"source_manifest": source_manifest, "identity": identity,
                   "source_validator": source_validator}
         if runner is not None:
             kwargs["runner"] = runner
         native = operator_builder(source, cann, soc, jobs, install_dir, operator_output, **kwargs)
-        if native.get("native_api") != IDENTITY["native_api"] or native.get("op_type") != IDENTITY["op_type"]:
+        if native.get("native_api") != identity["native_api"] or native.get("op_type") != identity["op_type"]:
             raise ValueError("Native build manifest does not identify the quantized Laser operator")
         report.update(native)
         # Keep the combined report running until bridge verification succeeds.
-        report.update(status="running", **IDENTITY,
+        report.update(status="running", **identity,
                       source_manifest={"path": str(source_manifest), "sha256": sha256_file(source_manifest)},
                       operator_manifest=str(operator_output), bridge_manifest=str(bridge_output),
-                      marker_token=MARKER_TOKEN, marker_environment=MARKER_ENVIRONMENT)
+                      marker_token=marker_token, marker_environment=marker_environment)
         write_json(output, report)
         bridge_kwargs = {} if runner is None else {"runner": runner}
         bridge = bridge_builder(source, cann, bridge_dir, jobs, bridge_output, **bridge_kwargs)
         if native.get("status") != "passed" or bridge.get("status") != "passed":
             raise RuntimeError("Quantized Laser operator and bridge must both pass before publishing the combined manifest")
-        if bridge.get("native_api") != IDENTITY["native_api"] or bridge.get("op_type") != IDENTITY["op_type"]:
+        if bridge.get("native_api") != identity["native_api"] or bridge.get("op_type") != identity["op_type"]:
             raise ValueError("Quantized Laser bridge identity does not match the operator")
         binary = Path(bridge["bridge_path"]).resolve()
         actual_hash = sha256_file(binary)

@@ -4,6 +4,8 @@
 
 已有成功 Ascend 量化构建时，执行 `bash scripts/run_mindie_laser_quant_profile.sh`，复用产物做同进程、固定输入的 9 轮配对诊断，随后单独采集 NPU profiler；不重新编译。报告为 `results/mindie_laser_quant_profile.json`。它区分相同 payload 的原生调用、独立 payload 的原生调用以及完整调用，避免把跨进程波动解释成核心退化。运行范围和设备指标限制见 [Laser 量化说明](ascend/laser_quant/README.md)。
 
+新增 scale 复用候选：`bash scripts/run_mindie_laser_scale_reuse.sh`。只构建独立命名的候选，复用已有 INT8/FP16 Laser 和融合量化产物；同一进程、同一量化输入交错测试旧版与候选，并另开进程补采原始 FP16 Laser 计数器。算术不变，保留每次新 scale 读取的缓存一致性处理；先检查全输出一致性和原地更新 scale 后的连续调用。报告 `results/mindie_laser_scale_reuse.json`，设备编译和性能仍待远端验证。
+
 **当前 H200 主路线（2026-10-13）：`sageattn_vc`，INT8 QK + FP8 PV。**
 新候选 `bash scripts/run_tensor_mass_h200.sh`：针对概率分母求和，用无损解码后的 FP16 输入、FP32 累加的 Tensor Core 归约替代逐值升 FP32/相加。D128 编码/求和常规分支的本地静态指令从 325 降到 239，寄存器仍为 168；85 项检查通过，H200 整核性能待测。对比同次 scale-prefetch、installed、Sage、FA4，见 [CUDA 实验说明](SAGE_CUDA_EXPCAST.md)。
 最新 scalar-prefetch 为 23.0945 ms，同轮 scale-prefetch 为 22.9710 ms，候选慢 0.1235 ms（0.54%），不采用，继续保留 K128 scale-prefetch 基线。随后回传确认两者编译资源相同、输出逐位一致，但 full/core 均仅 2/9 轮更快，配对节省中位数均为负。该轮基线相对 Sage/FA4 的 GPU 内核加速比为 1.077×/1.326×，不代表完整 API 或模型收益。`bash scripts/run_scalar_prefetch_h200.sh` 保留作实验对照，见 [CUDA 实验说明](SAGE_CUDA_EXPCAST.md)。

@@ -93,7 +93,7 @@ def test_quant_provenance_revalidates_source_and_rejects_changed_bridge(tmp_path
     source_path.write_text(json.dumps(dict(identity, source_dir=str(tmp_path / "source"),
         marker_token="quant", upstream={"commit": benchmark.baseline.UPSTREAM_COMMIT,
                                        "url": benchmark.baseline.SOURCE_LOCK.url})))
-    build_path.write_text(json.dumps(dict(identity, status="passed", source_manifest=record(source_path),
+    build_path.write_text(json.dumps(dict(identity, status="passed", vendor_root=str(vendor), source_manifest=record(source_path),
         bridge_sha256=record(bridge)["sha256"], device_binaries=[record(device)], host_libraries=[record(host)])))
     args = SimpleNamespace(build_manifest=str(build_path), source_manifest=str(source_path),
                            vendor_root=str(vendor), bridge_path=str(bridge))

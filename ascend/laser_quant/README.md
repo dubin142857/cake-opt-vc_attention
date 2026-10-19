@@ -178,4 +178,28 @@ python3 scripts/summarize_mindie_laser_quant_profile.py
 
 早期采集器未显式设置 schedule，退出时曾出现 `Stop profiler while current state is RECORD`。这符合[官方调度状态机的未完成窗口警告](https://gitee.com/ascend/pytorch/blob/47f1f92999deda63f627141111cd6ffb736deb97/torch_npu/profiler/_profiler_action_controller.py)，不影响此前已完成的无 profiler API 测速；旧 trace 的完整性不能因此认定已验证。当前采集器使用 `wait=0,warmup=0,active=1,repeat=1,skip_first=0`，把整批 3 次调用放在一个 step 内，最后设备同步后显式 `step()` 完成保存，再退出上下文。没有给每个调用增加同步。报告记录 schedule 和 `capture_finalized`，旧报告摘要会标明缺少完成调度证据。
 
-当前源码审计发现：每个 128×128 QK tile 都读取两次 scale，包含缓存失效与 GM 标量读取，并配置 FIX 随路反量化；目标 shape padding 后有 2,453,248 个逻辑 QK tile。这里是重复次数推算，尚非瓶颈测量。下一候选是保留必要缓存一致性处理，在一个工作描述符内复用两项 Q scale，并在每个 K block 复用 K scale；保持 FP32 gain、位截断、`set_quant_pre`、FIX barrier 和 DEQF16 原样。先用本轮设备记录判断是否值得实施，不直接删除曾修复存储复用错误的缓存处理。
+当前源码审计发现：每个 128×128 QK tile 都读取两次 scale，包含缓存失效与 GM 标量读取，并配置 FIX 随路反量化；目标 shape padding 后有 2,453,248 个逻辑 QK tile。这是重复次数推算，尚非瓶颈测量。用户回传同进程配对结果显示融合预处理由 16.8814 ms 降至 2.4468 ms，full 由 106.0615 ms 降至 90.9480 ms；相同 native API、相同 payload 的重复计时约 87 ms。应继续定位 attention 核心，而不是再把两个适配器名称当成不同内核。
+
+## 独立 scale 复用候选与原始 FP16 计数器
+
+```bash
+bash scripts/run_mindie_laser_scale_reuse.sh
+```
+
+默认 BF16 BNSD `[1,28,37741,128]`，设备 0，warmup 5、每轮 10 次、9 轮。保持 **INT8 QK + 原版 exp + FP16 PV**，不加入 V 量化、重排、平滑或 ExpCast。入口先核对已有成功构建，再只构建 `VcLaserQuantReuseAttention`；源码、安装、bridge、vendor 都使用单独的 `mindie_laser_quant_reuse_*` 目录，不清空或重新构建旧基线。重跑保留候选构建缓存。
+
+候选在每个工作描述符内读取两项 Q scale，每个 K128 分块读取一次 K scale，供两个 Q128 复用。完整 `ky=2,kx=32` 描述符的源代码级读取数由 128 降至 34。保留 `ReadQuantScale` 的 DCCI、FP32 乘法、低 13 位截断、`set_quant_pre`、FIX barrier、DEQF16 和原 Cube/Vector 流水。这只是减少重复工作的假设，不能从读取数推算加速比；NPU 编译与收益待远端验证。
+
+固定输入 A/B 同时加载两个独立命名的原生算子，在相同进程中共享**同一个量化 payload 对象和 scale 地址**。表中 `baseline` 是当前 INT8 内核，`reuse` 是 scale 复用候选：
+
+| scope | 范围 |
+| --- | --- |
+| `native` | 相同 payload，原生 attention 分配和调用，不含预处理及输出后处理 |
+| `prepared` | 相同 payload，原生调用和输出后处理 |
+| `full` | 两组使用相同融合量化器，每次从原始 QKV 重新预处理、调用和后处理 |
+
+计时前跑 FP16/BF16 的短形状、尾块和 K4097 section 边界检查；新增长序列全 padded 输出逐值一致性检查。另在多 batch/head、Q257/K4097 输入上反复原地改写同一份 Q/K/V/scale 存储，并立即调用两版内核，交替顺序，验证不会读到上一轮 scale。输出不一致会在计时前失败，不放宽精度阈值来通过候选。
+
+正常计时完成并落盘后，分别采集两个 INT8 native 调用的 3-call profiler 窗口；再在隔离进程中，用同 seed/shape 的原始输入和原 FP16 Laser 采集 native 计数器。FP16 行有自己的非量化 payload，不属于相同输入字节的 INT8 A/B，也不计算跨进程配对加速比。它用于对照 MAC、Scalar、MTE、FIX、Vector 等实际导出指标；pipe 时间可能重叠，**AIV Vector 时间不等于 exp 时间**，MAC 也包含 Laser 的对角矩阵计算，不能用计数器比例直接分摊 QK/softmax/PV 耗时。
+
+报告为 `results/mindie_laser_scale_reuse.json`，日志同名 `.log`；每个 worker 的原始报告、CSV/trace 路径均保留。JSON `workers.paired` 包含配对耗时、全输出校验和 INT8 计数器，`workers.fp16` 包含原版计数器。新候选暂不替换默认主线；以同轮 `native`、`full` 的配对节省、快轮次数和正确性决定是否采用。已有候选构建时，可直接运行 `python3 scripts/profile_mindie_laser_scale_reuse.py --trace`，不触发编译。
