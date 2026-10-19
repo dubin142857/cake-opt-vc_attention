@@ -1,0 +1,32 @@
+{
+  "tool": "ascendc_flow_analyzer",
+  "returncode": 0,
+  "command": [
+    "D:\\codex\\\u7b97\u5b50\\.venv-package\\Scripts\\python.exe",
+    "-X",
+    "utf8",
+    "D:\\codex\\\u7b97\u5b50\\build\\cannbot-skills\\ops\\ascendc-sync-audit\\scripts\\ascendc_flow_analyzer.py",
+    "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\candidate\\op_host\\vc_laser_quant_probe_attention_def.cpp",
+    "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\candidate\\op_host\\vc_laser_quant_probe_attention_proto.cpp",
+    "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\candidate\\op_host\\vc_laser_quant_probe_attention_tiling.cpp",
+    "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\candidate\\op_host\\vc_laser_quant_probe_attention_tiling.h",
+    "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\candidate\\op_kernel\\AddressMappingForwardOnline.h",
+    "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\candidate\\op_kernel\\AddressMappingVectorForwardOnline.h",
+    "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\candidate\\op_kernel\\CubeForward.h",
+    "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\candidate\\op_kernel\\VectorForward.h",
+    "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\candidate\\op_kernel\\address_const.h",
+    "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\candidate\\op_kernel\\vc_laser_quant_probe_attention.cpp",
+    "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\candidate\\op_kernel\\matmul_const.h",
+    "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\candidate\\op_host\\vc_source_marker.h",
+    "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\candidate\\op_kernel\\vc_laser_probability.h",
+    "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\candidate\\op_kernel\\vc_laser_phase_probe.h",
+    "--format",
+    "json"
+  ],
+  "files": 14,
+  "tool_sha256": "b84ef0d82628bb92c313f4d7b78ff626debf0198cbeed06da5e0a194cf2e799a",
+  "findings": [],
+  "event_count": null,
+  "operation_count": 0,
+  "encoding": "UTF-8"
+}

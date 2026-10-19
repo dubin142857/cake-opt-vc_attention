@@ -1,0 +1,37 @@
+{
+  "CubeForward.h": {
+    "baseline_low_level_calls": 72,
+    "candidate_low_level_calls": 72,
+    "same_low_level_sequence": true,
+    "baseline_sha256": "52cc81b6efb0b20f59d6e643f3ca2a8fcc61e64fdb6dfabc40e4de5b9bac7b2c",
+    "candidate_sha256": "6b631e0b584da66c2c78447a7b79c171e55c797ba78d0b19a61006e09a5840dd"
+  },
+  "VectorForward.h": {
+    "baseline_low_level_calls": 91,
+    "candidate_low_level_calls": 91,
+    "same_low_level_sequence": true,
+    "baseline_sha256": "9e9652b43d2e5d1989f7b50db26b6053950f674a1b05faa477d40ca5bd51b427",
+    "candidate_sha256": "85bd8bfe21a4b74ec8a9908614f78bb2fa1eb802d25a115f7aadbb5ce3343b3c"
+  },
+  "vc_laser_probability.h": {
+    "baseline_low_level_calls": 7,
+    "candidate_low_level_calls": 7,
+    "same_low_level_sequence": true,
+    "baseline_sha256": "e754ec92c000981bc8f75eb91fdf21d3c97285744bb9c09ae587f5170cf548c9",
+    "candidate_sha256": "e754ec92c000981bc8f75eb91fdf21d3c97285744bb9c09ae587f5170cf548c9"
+  },
+  "AddressMappingForwardOnline.h": {
+    "baseline_low_level_calls": 0,
+    "candidate_low_level_calls": 0,
+    "same_low_level_sequence": true,
+    "baseline_sha256": "b1c83a6078f9a3f41f1e5a46613583991e1dbf26844f1284e04813dbb4b5264d",
+    "candidate_sha256": "b1c83a6078f9a3f41f1e5a46613583991e1dbf26844f1284e04813dbb4b5264d"
+  },
+  "AddressMappingVectorForwardOnline.h": {
+    "baseline_low_level_calls": 0,
+    "candidate_low_level_calls": 0,
+    "same_low_level_sequence": true,
+    "baseline_sha256": "27756e0a02fbe68d6827dd0f28c682a23d335510e94ab7b7691d8435e100d8b5",
+    "candidate_sha256": "27756e0a02fbe68d6827dd0f28c682a23d335510e94ab7b7691d8435e100d8b5"
+  }
+}

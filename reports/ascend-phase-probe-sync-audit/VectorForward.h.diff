@@ -1,0 +1,31 @@
+--- scale_reuse/VectorForward.h
++++ phase_probe/VectorForward.h
+@@ -17,0 +18 @@
++#include "vc_laser_phase_probe.h"
+@@ -80,0 +82,3 @@
++    __aicore__ inline void SetupProbe(__gm__ uint8_t *trace, int32_t mode) {
++        phase_probe_.Init(trace, mode, get_block_idx(), 1 + get_subblockid());
++    }
+@@ -267,0 +272 @@
++    vc_laser_probe::PhaseProbe phase_probe_;
+@@ -395,0 +401,2 @@
++        phase_probe_.SetRound(times_sync_cube, address.get_total_round());
++        phase_probe_.WaitBegin(times_sync_cube, address.get_total_round(), address.is_running(times_sync_cube));
+@@ -396,0 +404 @@
++        phase_probe_.WaitEnd();
+@@ -1037,0 +1046 @@
++    phase_probe_.Mark(16, 2); // score-load completed
+@@ -1165,0 +1175 @@
++    phase_probe_.Mark(17, 3); // scale/mask/max/online-history/broadcast completed
+@@ -1213,0 +1224 @@
++    phase_probe_.Mark(18, 4); // subtract completed
+@@ -1231,0 +1243 @@
++    phase_probe_.Mark(19, 5); // bulk probability transform completed
+@@ -1243,0 +1256 @@
++    phase_probe_.StartSum();
+@@ -1252,0 +1266,2 @@
++    phase_probe_.Mark(20, 6); // sum completed
++    phase_probe_.PhaseFinish();
+@@ -1540,0 +1556,2 @@
++        phase_probe_.PhaseBegin(sectionLoop, is_head_section, is_tail_section,
++                                section_block_nums, rowPerTime, lines);

@@ -1,0 +1,149 @@
+{
+  "baseline": {
+    "source_root": "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\baseline",
+    "files": [
+      {
+        "file": "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\baseline\\op_host\\vc_laser_quant_reuse_attention_def.cpp",
+        "relative": "op_host/vc_laser_quant_reuse_attention_def.cpp",
+        "sha256": "882964ed76a673d2fc6e89f82b7ffe5d552ca0c01041ad1641e7ea075b0904cd"
+      },
+      {
+        "file": "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\baseline\\op_host\\vc_laser_quant_reuse_attention_proto.cpp",
+        "relative": "op_host/vc_laser_quant_reuse_attention_proto.cpp",
+        "sha256": "757c157aafa5df8443dcd5c5165947e2bcd702f34ca6de61a54214dd91d077ea"
+      },
+      {
+        "file": "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\baseline\\op_host\\vc_laser_quant_reuse_attention_tiling.cpp",
+        "relative": "op_host/vc_laser_quant_reuse_attention_tiling.cpp",
+        "sha256": "bcb7bd87134228024915721803c1dc3ab700bf2abf5e1c039e2329aaa8d9d7f5"
+      },
+      {
+        "file": "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\baseline\\op_host\\vc_laser_quant_reuse_attention_tiling.h",
+        "relative": "op_host/vc_laser_quant_reuse_attention_tiling.h",
+        "sha256": "20aceb2ba1d14b77bd7650470666c13d4e4b23886ea2542057022880f93b0695"
+      },
+      {
+        "file": "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\baseline\\op_kernel\\AddressMappingForwardOnline.h",
+        "relative": "op_kernel/AddressMappingForwardOnline.h",
+        "sha256": "b1c83a6078f9a3f41f1e5a46613583991e1dbf26844f1284e04813dbb4b5264d"
+      },
+      {
+        "file": "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\baseline\\op_kernel\\AddressMappingVectorForwardOnline.h",
+        "relative": "op_kernel/AddressMappingVectorForwardOnline.h",
+        "sha256": "27756e0a02fbe68d6827dd0f28c682a23d335510e94ab7b7691d8435e100d8b5"
+      },
+      {
+        "file": "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\baseline\\op_kernel\\CubeForward.h",
+        "relative": "op_kernel/CubeForward.h",
+        "sha256": "52cc81b6efb0b20f59d6e643f3ca2a8fcc61e64fdb6dfabc40e4de5b9bac7b2c"
+      },
+      {
+        "file": "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\baseline\\op_kernel\\VectorForward.h",
+        "relative": "op_kernel/VectorForward.h",
+        "sha256": "9e9652b43d2e5d1989f7b50db26b6053950f674a1b05faa477d40ca5bd51b427"
+      },
+      {
+        "file": "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\baseline\\op_kernel\\address_const.h",
+        "relative": "op_kernel/address_const.h",
+        "sha256": "d933a953ff8deba960e90769b4b86b11c1166ae00b5edc5f64c784b329854421"
+      },
+      {
+        "file": "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\baseline\\op_kernel\\vc_laser_quant_reuse_attention.cpp",
+        "relative": "op_kernel/vc_laser_quant_reuse_attention.cpp",
+        "sha256": "15f499725d92105b47b792d33d3f13e7913330c325ecbddd5076ed3315243c61"
+      },
+      {
+        "file": "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\baseline\\op_kernel\\matmul_const.h",
+        "relative": "op_kernel/matmul_const.h",
+        "sha256": "ac6bef6c468824bab498504b9b7b32588dba2d386e8c6979f122333ff52fcf52"
+      },
+      {
+        "file": "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\baseline\\op_host\\vc_source_marker.h",
+        "relative": "op_host/vc_source_marker.h",
+        "sha256": "ec6d4bcf75e4e65db15de0ea0698a3fb2698d788f7c739d662532933c9ad143f"
+      },
+      {
+        "file": "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\baseline\\op_kernel\\vc_laser_probability.h",
+        "relative": "op_kernel/vc_laser_probability.h",
+        "sha256": "e754ec92c000981bc8f75eb91fdf21d3c97285744bb9c09ae587f5170cf548c9"
+      }
+    ],
+    "operator": "VcLaserQuantReuseAttention"
+  },
+  "candidate": {
+    "source_root": "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\candidate",
+    "files": [
+      {
+        "file": "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\candidate\\op_host\\vc_laser_quant_probe_attention_def.cpp",
+        "relative": "op_host/vc_laser_quant_probe_attention_def.cpp",
+        "sha256": "a66aadf68adb3fc385c4c26af9a1f2cdb38332402a6d8f56e6ff157190f7bde0"
+      },
+      {
+        "file": "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\candidate\\op_host\\vc_laser_quant_probe_attention_proto.cpp",
+        "relative": "op_host/vc_laser_quant_probe_attention_proto.cpp",
+        "sha256": "6cb3cac96da2bf8fa7c857fdec5855ca21f552536ceb1f0e5b2f9f282ceee67c"
+      },
+      {
+        "file": "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\candidate\\op_host\\vc_laser_quant_probe_attention_tiling.cpp",
+        "relative": "op_host/vc_laser_quant_probe_attention_tiling.cpp",
+        "sha256": "7ffeed0dc15cd2b1ccc7746ba3ff3acbf4fc20bab7a446bacba350aa7529b5b4"
+      },
+      {
+        "file": "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\candidate\\op_host\\vc_laser_quant_probe_attention_tiling.h",
+        "relative": "op_host/vc_laser_quant_probe_attention_tiling.h",
+        "sha256": "45cdbed71e840948a41403fe0d13f37bb0e17f0893cb82e98b3556a8679d3665"
+      },
+      {
+        "file": "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\candidate\\op_kernel\\AddressMappingForwardOnline.h",
+        "relative": "op_kernel/AddressMappingForwardOnline.h",
+        "sha256": "b1c83a6078f9a3f41f1e5a46613583991e1dbf26844f1284e04813dbb4b5264d"
+      },
+      {
+        "file": "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\candidate\\op_kernel\\AddressMappingVectorForwardOnline.h",
+        "relative": "op_kernel/AddressMappingVectorForwardOnline.h",
+        "sha256": "27756e0a02fbe68d6827dd0f28c682a23d335510e94ab7b7691d8435e100d8b5"
+      },
+      {
+        "file": "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\candidate\\op_kernel\\CubeForward.h",
+        "relative": "op_kernel/CubeForward.h",
+        "sha256": "6b631e0b584da66c2c78447a7b79c171e55c797ba78d0b19a61006e09a5840dd"
+      },
+      {
+        "file": "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\candidate\\op_kernel\\VectorForward.h",
+        "relative": "op_kernel/VectorForward.h",
+        "sha256": "85bd8bfe21a4b74ec8a9908614f78bb2fa1eb802d25a115f7aadbb5ce3343b3c"
+      },
+      {
+        "file": "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\candidate\\op_kernel\\address_const.h",
+        "relative": "op_kernel/address_const.h",
+        "sha256": "d933a953ff8deba960e90769b4b86b11c1166ae00b5edc5f64c784b329854421"
+      },
+      {
+        "file": "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\candidate\\op_kernel\\vc_laser_quant_probe_attention.cpp",
+        "relative": "op_kernel/vc_laser_quant_probe_attention.cpp",
+        "sha256": "ad762c6571ef0682420be48b0f5594c60cba47bdc936d258eaf1995f9c62565b"
+      },
+      {
+        "file": "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\candidate\\op_kernel\\matmul_const.h",
+        "relative": "op_kernel/matmul_const.h",
+        "sha256": "ac6bef6c468824bab498504b9b7b32588dba2d386e8c6979f122333ff52fcf52"
+      },
+      {
+        "file": "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\candidate\\op_host\\vc_source_marker.h",
+        "relative": "op_host/vc_source_marker.h",
+        "sha256": "ab5e429d26a7e8b8647b793a0c4bd39aa2284b0a3430ff370a8f95b0e594a5b8"
+      },
+      {
+        "file": "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\candidate\\op_kernel\\vc_laser_probability.h",
+        "relative": "op_kernel/vc_laser_probability.h",
+        "sha256": "e754ec92c000981bc8f75eb91fdf21d3c97285744bb9c09ae587f5170cf548c9"
+      },
+      {
+        "file": "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\candidate\\op_kernel\\vc_laser_phase_probe.h",
+        "relative": "op_kernel/vc_laser_phase_probe.h",
+        "sha256": "d0d5a2ba32b65e4e2ffeb8ddea20b82eb14f8b0f295961c3a223bf53e5a39c07"
+      }
+    ],
+    "operator": "VcLaserQuantProbeAttention"
+  }
+}

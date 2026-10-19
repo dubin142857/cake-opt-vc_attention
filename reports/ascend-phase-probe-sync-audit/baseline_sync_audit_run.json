@@ -1,0 +1,31 @@
+{
+  "tool": "sync_audit",
+  "returncode": 0,
+  "command": [
+    "D:\\codex\\\u7b97\u5b50\\.venv-package\\Scripts\\python.exe",
+    "-X",
+    "utf8",
+    "D:\\codex\\\u7b97\u5b50\\build\\cannbot-skills\\ops\\ascendc-sync-audit\\scripts\\sync_audit.py",
+    "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\baseline\\op_host\\vc_laser_quant_reuse_attention_def.cpp",
+    "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\baseline\\op_host\\vc_laser_quant_reuse_attention_proto.cpp",
+    "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\baseline\\op_host\\vc_laser_quant_reuse_attention_tiling.cpp",
+    "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\baseline\\op_host\\vc_laser_quant_reuse_attention_tiling.h",
+    "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\baseline\\op_kernel\\AddressMappingForwardOnline.h",
+    "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\baseline\\op_kernel\\AddressMappingVectorForwardOnline.h",
+    "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\baseline\\op_kernel\\CubeForward.h",
+    "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\baseline\\op_kernel\\VectorForward.h",
+    "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\baseline\\op_kernel\\address_const.h",
+    "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\baseline\\op_kernel\\vc_laser_quant_reuse_attention.cpp",
+    "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\baseline\\op_kernel\\matmul_const.h",
+    "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\baseline\\op_host\\vc_source_marker.h",
+    "D:\\codex\\\u7b97\u5b50\\build\\ascend_phase_probe_sync_audit\\baseline\\op_kernel\\vc_laser_probability.h",
+    "--format",
+    "json"
+  ],
+  "files": 13,
+  "tool_sha256": "af629036820e7765639df7379d94fde4c2b0aca63f54a295384005a015a181d4",
+  "findings": [],
+  "event_count": 0,
+  "operation_count": 0,
+  "encoding": "UTF-8"
+}

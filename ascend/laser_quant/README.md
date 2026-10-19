@@ -262,3 +262,35 @@ python3 scripts/profile_mindie_laser_scale_reuse.py --experiment score-prefetch 
 ```
 
 [同步审核记录](../../reports/ascend-score-prefetch-sync-audit/README.md)保留源码差异、工具输出与缓冲区生命周期检查。本地测试不代替远端 CANN 编译、NPU 正确性和性能验证。候选暂不替换基线；在结果返回前不宣称提速。
+
+## score 预取结果与独立阶段诊断
+
+用户回传 score ahead 的 native 配对节省为 −0.0227 ms（0/9 更快），full 为 +0.0622 ms（9/9 更快），整体差距不足 0.1%。这不足以替换 scale-reuse 基线。下一步先采样跨核交接等待，以及 Vector 的细分执行区间。
+
+```bash
+git pull origin master
+bash scripts/run_mindie_laser_phases.sh
+```
+
+默认仍是 BF16 BNSD `[1,28,37741,128]`、设备 0；warmup 5、每轮 10 次、9 轮配对校准，另采集 5 次记录。入口只要求已有 scale-reuse 与融合量化器成功构建，从本地固定 Git 对象准备和编译独立的 `VcLaserQuantProbeAttention`，不访问 GitHub，也不重编或替换现有基线。`NPU_DEVICE`、`LASER_BUILD_JOBS` 可选；普通使用直接运行上面的 bash 命令。
+
+该版本保持 INT8 QK、原版 exp、FP16 PV，不增加 V 量化、重排、平滑或 ExpCast。同一个进程、相同 payload 对象比较以下调用：
+
+| 名称 | 行为 |
+| --- | --- |
+| `reuse` | 已有 scale-reuse 原生 API |
+| `plain` / mode 0 | 编译了诊断代码，但不读计数器、不写记录 |
+| `waits` / mode 1 | 在原有 Cube 等 Vector、Vector 等 Cube 的 `wait_flag_dev` 前后读取计数器 |
+| `phases` / mode 2 | 额外记录分数读取、最大值与 online history、减最大值、主体 exp、求和的完成区间 |
+
+诊断 ABI 保留原 statistics 和 attention 输出，另分配并清零 INT64 `[4,3,8,24]` 记录区。mode 0 仍有诊断类状态、分支和 trace 分配/清零，因此不能叫“与生产完全相同的内核”。`reuse → plain` 校准整个诊断框架的开销，`plain → waits/phases` 观察新增计时的扰动。表中全部是同步 native API wall time，包含分配和调用，不含预处理、后处理或 profiler；额外 trace 清零也在范围内。校准不是加速结果。
+
+只采 core 0–3，各自 Cube、AIV0、AIV1 的稀疏样本。等待取逻辑 round 0、1、中间、末尾，重复位置只保留首次；Cube round 标识等待的 P tile，而不是提前计算的 QK tile。Vector 各取 head/steady/tail/head+tail 首个实际四行批次，记录 round、section、key block 数。长形状要求实际存在等待和 Vector 阶段记录；短形状允许未用核、子核和 section 类别为空。不是覆盖所有任务的总体采样。
+
+Vector 完成边界使用相邻 `V→S EVENT_ID0` set/wait，原有 V_S1–6 和跨核信号保持原样。`score_load` 包含标量地址准备、可能的 slot 依赖、分数 DMA 和完成等待；`max_history` 包含 scale、mask、max reduction、历史小向量 exp 和 broadcast；`subtract`、`exp`、`sum` 分开记录。sum 区间从 P 写回发起后开始，写回可能与归约重叠。阶段记录还保留空完成边界的开销，但不会自动相减或宣称得到纯指令延迟。
+
+先验证 FP16/BF16、D64/D128、短序列、尾块及 K4097/8193，并对长形状检查全部 padded 输出与 scale-reuse 精确一致；任一模式不一致则停止。无 profiler 的校准结束后再单独读取 trace；所有数值保留为原始 **system ticks**，不是 AIC/AIV 核心周期。探针增加的同步会改变重叠，等待时间也不等于另一侧的总计算时间，不能将这些片段相加或外推成生产内核百分比。
+
+结果在 `results/mindie_laser_phases.json`，终端日志为同名 `.log`。`worker.calibration` 是配对扰动，`worker.traces` 是带位置的原始记录，`worker.phase_summary` 是按角色、等待位置或 section 类别汇总的样本。来源、库映射和构建哈希继续校验；计时前关闭 tiling marker。已有诊断构建时可直接运行 `python3 scripts/profile_mindie_laser_phases.py`。
+
+[同步审计](../../reports/ascend-phase-probe-sync-audit/README.md)保留工具原始输出和人工边界检查。本地没有 CANN/NPU，普通 C++ 语法桩、Python 和 Bash 检查不能代替远端设备编译及执行；此轮不宣称获得性能收益。

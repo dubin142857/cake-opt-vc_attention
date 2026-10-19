@@ -1,0 +1,22 @@
+--- scale_reuse/CubeForward.h
++++ phase_probe/CubeForward.h
+@@ -19,0 +20 @@
++#include "vc_laser_phase_probe.h"
+@@ -52,0 +54,3 @@
++    __aicore__ inline void SetupProbe(__gm__ uint8_t *trace, int32_t mode) {
++        phase_probe_.Init(trace, mode, get_block_idx(), 0);
++    }
+@@ -57,0 +62 @@
++    vc_laser_probe::PhaseProbe phase_probe_;
+@@ -722,0 +728 @@
++                phase_probe_.WaitBegin(roundId, Z, address.is_running(roundId));
+@@ -723,0 +730 @@
++                phase_probe_.WaitEnd();
+@@ -755,0 +763 @@
++                phase_probe_.WaitBegin(roundId - 2, Z, address.is_running(roundId - 2));
+@@ -756,0 +765 @@
++                phase_probe_.WaitEnd();
+@@ -780,0 +790 @@
++                phase_probe_.WaitBegin(roundId + Z - 2, Z, address.is_running(roundId + Z - 2));
+@@ -781,0 +792 @@
++                phase_probe_.WaitEnd();
