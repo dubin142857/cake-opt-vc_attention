@@ -17,7 +17,7 @@ import mindie_laser_gain_checks as checks
 import mindie_laser_quant_backend as backend
 
 
-@pytest.mark.parametrize("kind, candidate", [("gain-precompute", "gain"), ("score-prefetch", "prefetch")])
+@pytest.mark.parametrize("kind, candidate", [("gain-precompute", "gain"), ("score-prefetch", "prefetch"), ("scale-cache", "cache")])
 def test_candidate_binds_reuse_and_own_identity_and_namespace(tmp_path, kind, candidate):
     args = SimpleNamespace(experiment=kind, reuse_build="reuse.json",
                            **{candidate+"_build": candidate+".json"})
@@ -38,7 +38,7 @@ def test_existing_scale_experiment_still_uses_original_baseline():
     assert specs["reuse"]["namespace"] == "vc_laser_quant_reuse"
 
 
-@pytest.mark.parametrize("kind, candidate", [("gain-precompute", "gain"), ("score-prefetch", "prefetch")])
+@pytest.mark.parametrize("kind, candidate", [("gain-precompute", "gain"), ("score-prefetch", "prefetch"), ("scale-cache", "cache")])
 def test_candidate_provenance_uses_each_sources_validator(monkeypatch, tmp_path, kind, candidate):
     args = SimpleNamespace(experiment=kind, reuse_build="reuse.json",
                            preprocess_build="preprocess.json", **{candidate+"_build": candidate+".json"})
@@ -100,10 +100,10 @@ def test_block_gains_checks_all_rows_and_detects_wrong_q_pair_selection(monkeypa
         checks.validate_block_gains({"baseline": Adapter(), "reuse": Adapter(True)}, "cpu", {}, lambda: None)
 
 
-@pytest.mark.parametrize("kind", ["gain-precompute", "score-prefetch"])
+@pytest.mark.parametrize("kind", ["gain-precompute", "score-prefetch", "scale-cache"])
 def test_candidate_worker_launch_forwards_experiment_and_manifests(monkeypatch, tmp_path, kind):
     args = SimpleNamespace(_run_dir=str(tmp_path), experiment=kind, quant_build="old",
-        reuse_build="reuse", gain_build="gain", prefetch_build="prefetch", preprocess_build="prep", baseline_build="fp16",
+        reuse_build="reuse", gain_build="gain", prefetch_build="prefetch", cache_build="cache", preprocess_build="prep", baseline_build="fp16",
         bridge_manifest="bridge", device=2, warmup=5, repeats=10, trials=9, cpu_threads=4, seed=2026,
         shape=[1, 28, 37741, 128], trace=True)
     seen = []
@@ -119,11 +119,12 @@ def test_candidate_worker_launch_forwards_experiment_and_manifests(monkeypatch, 
     assert command[command.index("--reuse-build")+1] == "reuse"
     assert command[command.index("--gain-build")+1] == "gain"
     assert command[command.index("--prefetch-build")+1] == "prefetch"
+    assert command[command.index("--cache-build")+1] == "cache"
     assert "--trace" in command
 
 
 @pytest.mark.parametrize("fail_stage", [None, "preflight", "build", "profile"])
-@pytest.mark.parametrize("kind, candidate", [("gain-precompute", "gain"), ("score-prefetch", "prefetch")])
+@pytest.mark.parametrize("kind, candidate", [("gain-precompute", "gain"), ("score-prefetch", "prefetch"), ("scale-cache", "cache")])
 def test_one_command_builds_only_candidate_using_local_reuse_source(tmp_path, fail_stage, kind, candidate):
     bash = Path("C:/Program Files/Git/bin/bash.exe") if os.name == "nt" else Path(shutil.which("bash") or "/missing")
     if not bash.is_file(): pytest.skip("Bash required")

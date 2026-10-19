@@ -1,0 +1,35 @@
+{
+  "CubeForward.h": {
+    "baseline_sha256": "52cc81b6efb0b20f59d6e643f3ca2a8fcc61e64fdb6dfabc40e4de5b9bac7b2c",
+    "candidate_sha256": "8044d3bd761aa3b5a7bd354c596b3e45136fc6d0b4777cc5c88f98b40edcf61a",
+    "byte_identical": false,
+    "baseline_raw_calls": 78,
+    "candidate_raw_calls": 78,
+    "raw_calls_identical": true,
+    "inverse_byte_identical": true
+  },
+  "VectorForward.h": {
+    "baseline_sha256": "9e9652b43d2e5d1989f7b50db26b6053950f674a1b05faa477d40ca5bd51b427",
+    "candidate_sha256": "9e9652b43d2e5d1989f7b50db26b6053950f674a1b05faa477d40ca5bd51b427",
+    "byte_identical": true,
+    "baseline_raw_calls": 91,
+    "candidate_raw_calls": 91,
+    "raw_calls_identical": true
+  },
+  "AddressMappingForwardOnline.h": {
+    "baseline_sha256": "b1c83a6078f9a3f41f1e5a46613583991e1dbf26844f1284e04813dbb4b5264d",
+    "candidate_sha256": "b1c83a6078f9a3f41f1e5a46613583991e1dbf26844f1284e04813dbb4b5264d",
+    "byte_identical": true,
+    "baseline_raw_calls": 0,
+    "candidate_raw_calls": 0,
+    "raw_calls_identical": true
+  },
+  "AddressMappingVectorForwardOnline.h": {
+    "baseline_sha256": "27756e0a02fbe68d6827dd0f28c682a23d335510e94ab7b7691d8435e100d8b5",
+    "candidate_sha256": "27756e0a02fbe68d6827dd0f28c682a23d335510e94ab7b7691d8435e100d8b5",
+    "byte_identical": true,
+    "baseline_raw_calls": 0,
+    "candidate_raw_calls": 0,
+    "raw_calls_identical": true
+  }
+}

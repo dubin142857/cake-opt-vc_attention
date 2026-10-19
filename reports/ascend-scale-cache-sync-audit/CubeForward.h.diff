@@ -1,0 +1,46 @@
+--- baseline/CubeForward.h
++++ candidate/CubeForward.h
+@@ -51,0 +52,4 @@
++        // The preceding quantizer may overwrite the same allocator addresses.
++        // Never carry a scalar-cache validity decision across invocations.
++        q_scale_cache_line_ = ~uint64_t(0);
++        k_scale_cache_line_ = ~uint64_t(0);
+@@ -58,4 +62,4 @@
+-    // Input scales can reuse allocator addresses across fresh API calls.
+-    // Invalidate the scalar cache line before a GM scalar read; MTE does not
+-    // keep the scalar data cache coherent with a preceding quantization op.
+-    __aicore__ inline float ReadQuantScale(__gm__ float *ptr)
++    // Q/K scales are read-only for this invocation. Keep separate last-line
++    // tags so interleaved Q and K reads can reuse each array's current line.
++    // A line revisit after another line is conservatively invalidated again.
++    __aicore__ inline float ReadQuantScale(__gm__ float *ptr, uint64_t &last_line)
+@@ -65,3 +69,9 @@
+-        AscendC::DataCacheCleanAndInvalid<float,
+-            AscendC::CacheLine::SINGLE_CACHE_LINE,
+-            AscendC::DcciDst::CACHELINE_OUT>(scale);
++        const uint64_t line = reinterpret_cast<uint64_t>(ptr) & ~uint64_t(63);
++        if (line != last_line) {
++            // SINGLE_CACHE_LINE selects the containing physical 64-byte line.
++            // Keep ptr in bounds; the aligned tag is never dereferenced.
++            AscendC::DataCacheCleanAndInvalid<float,
++                AscendC::CacheLine::SINGLE_CACHE_LINE,
++                AscendC::DcciDst::CACHELINE_OUT>(scale);
++            last_line = line;
++        }
+@@ -71,0 +82,2 @@
++    uint64_t q_scale_cache_line_;
++    uint64_t k_scale_cache_line_;
+@@ -537,2 +549,2 @@
+-        // not once per Q128/K128 result. ReadQuantScale retains the DCCI needed
+-        // when a preceding quantizer reuses allocator addresses on this stream.
++        // not once per Q128/K128 result. ReadQuantScale invalidates the current
++        // Q line once after setup or a line transition, then reuses that line.
+@@ -540 +552 @@
+-        const float q_scale_first = ReadQuantScale(q_scales_ + q_scale_base);
++        const float q_scale_first = ReadQuantScale(q_scales_ + q_scale_base, q_scale_cache_line_);
+@@ -542 +554 @@
+-            ? ReadQuantScale(q_scales_ + q_scale_base + 1) : q_scale_first;
++            ? ReadQuantScale(q_scales_ + q_scale_base + 1, q_scale_cache_line_) : q_scale_first;
+@@ -566 +578 @@
+-                const float k_scale = ReadQuantScale(k_scales_ + k_scale_index);
++                const float k_scale = ReadQuantScale(k_scales_ + k_scale_index, k_scale_cache_line_);

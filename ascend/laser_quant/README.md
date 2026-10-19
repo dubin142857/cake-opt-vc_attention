@@ -331,3 +331,32 @@ python3 scripts/profile_mindie_laser_cube_phases.py
 ```
 
 [本轮同步审计](../../reports/ascend-cube-phase-sync-audit/README.md)记录官方计时/屏障说明、完整本地头文件树审计、人工 unitFlag 生命周期核对和原始工具输出。CANNBot 的正则审计不理解全部 Laser 原始 intrinsic，同步计数为 0 不等于内核没有同步；本地 C++ 桩检查也不替代远端 CANN 编译和 NPU 执行。本轮交付用于定位下一项优化，尚无设备侧性能收益结论。
+
+## Cube 诊断结果与 scale 缓存行复用候选
+
+用户回传的同工作量中间轮样本：INT8 / FP16 的 QK issue 为 1152 / 954 ticks，QK completed 为 1244 / 983.5 ticks，PV completed 为 1335 / 1344.5 ticks。INT8 QK 的完整诊断区间约高 26.5%，PV 接近；因此先沿 QK 新增的 scale 读取和反量化输出链排查。完整 API 的 baseline→completed 配对扰动分别为 +0.0345 / +0.0578 ms，较小，但局部 drain 仍会改变重叠。这些结果不能证明差额全属于 DCCI、FIX 或 INT8 矩阵乘，也不能累加外推成生产耗时占比。
+
+```bash
+git pull origin master
+bash scripts/run_mindie_laser_scale_cache.sh
+```
+
+本候选基于已测的 scale-reuse，只改变 Q/K scale 的缓存维护方式。旧 helper 每读取一个 FP32 scale 都执行 DCCI；新 helper 分别记住 Q、K 最近访问的**绝对 64B 缓存行地址**，同一行的后续读取跳过重复刷新，切换缓存行时仍刷新。返回先前离开的行也会重新刷新，故不维护全序列缓存表。每次 kernel 的 `SetQuantScales` 重置两个地址记录，防止新调用复用内存地址却读到旧 scale。scale 本身仍按原地址逐值读取。
+
+32 个连续 K scale 共 128B，覆盖 2 个对齐缓存行或 3 个非对齐缓存行；这个局部循环的 DCCI 次数可从 32 次减少到访问行数。实际减少的指令数不等于等比例速度提升，新增判断也有开销。地址判定不依赖逻辑索引模 16，所以 descriptor/head 从行中间开始和非零 storage offset 都应正确。
+
+量化 payload、Q/K scale 值、gain FP32 乘法与低位截断、`set_quant_pre → PIPE_FIX → DEQF16`、矩阵运算及跨核信号顺序都保留。Vector、原版 exp 和 FP16 PV 不变，没有增加 V 量化、平滑、重排或 ExpCast。此版是普通候选内核，不带阶段计时探针或额外诊断输出。
+
+入口仍固定 BF16 BNSD `[1,28,37741,128]`、设备 0、warmup 5、每轮 10 次、9 轮，沿用 `NPU_DEVICE` 选卡。脚本核验已有 scale-reuse、融合量化器和 FP16 基线，只使用本地 pinned Git 对象构建独立 `VcLaserQuantCacheAttention`；其源码、vendor、bridge、安装目录和 manifest 都使用 `mindie_laser_quant_cache_*` 路径。不会访问 GitHub，也不重编旧基线。
+
+计时前除原有结构化、尾块、原地更新检查外，增加非零 scale storage offset、跨缓存行、多个 batch/head、K4097 分段、相邻 scale 不同值及同一指针连续修改的测试。逐值比较全部 padded 原生 FP32 输出，候选必须和 scale-reuse 精确一致；失败即停止并保存报告。长形状也检查全部输出，dense FP32 误差另抽最多 32 行，不能作为模型质量结论。
+
+主表 `scale reuse` 为旧基线，`scale cache` 为本候选，仍是同进程随机交错计时：`native` 和 `prepared` 使用同一个 payload，`full` 每次重新预处理。优先看 native/full 的配对节省中位数和更快轮数；各 scope 不相加。普通 API 计时保存后再采 profiler；原版 FP16 在独立进程中作参照，不输出跨进程配对加速比。
+
+结果与日志分别为 `results/mindie_laser_scale_cache.json` 和同名 `.log`。已有候选构建后可只重测：
+
+```bash
+python3 scripts/profile_mindie_laser_scale_reuse.py --experiment scale-cache --trace --output results/mindie_laser_scale_cache.json
+```
+
+[缓存一致性及同步审计](../../reports/ascend-scale-cache-sync-audit/README.md)保留官方 API 依据、源码差异、工具原始输出和人工检查。本地没有 CANN/NPU；CPU 测试、语法桩和离线源码校验不能替代远端编译、正确性与性能验证。此候选尚无实测收益，不替换已测基线。
