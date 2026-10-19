@@ -1,0 +1,41 @@
+{
+  "files_scanned": [
+    "D:\\codex\\算子\\build\\ascend_cube_phase_sync_audit\\fp16_probe\\op_host\\vc_laser_cube_fp16_probe_attention_def.cpp",
+    "D:\\codex\\算子\\build\\ascend_cube_phase_sync_audit\\fp16_probe\\op_host\\vc_laser_cube_fp16_probe_attention_proto.cpp",
+    "D:\\codex\\算子\\build\\ascend_cube_phase_sync_audit\\fp16_probe\\op_host\\vc_laser_cube_fp16_probe_attention_tiling.cpp",
+    "D:\\codex\\算子\\build\\ascend_cube_phase_sync_audit\\fp16_probe\\op_host\\vc_laser_cube_fp16_probe_attention_tiling.h",
+    "D:\\codex\\算子\\build\\ascend_cube_phase_sync_audit\\fp16_probe\\op_host\\vc_source_marker.h",
+    "D:\\codex\\算子\\build\\ascend_cube_phase_sync_audit\\fp16_probe\\op_kernel\\AddressMappingForwardOnline.h",
+    "D:\\codex\\算子\\build\\ascend_cube_phase_sync_audit\\fp16_probe\\op_kernel\\AddressMappingVectorForwardOnline.h",
+    "D:\\codex\\算子\\build\\ascend_cube_phase_sync_audit\\fp16_probe\\op_kernel\\CubeForward.h",
+    "D:\\codex\\算子\\build\\ascend_cube_phase_sync_audit\\fp16_probe\\op_kernel\\VectorForward.h",
+    "D:\\codex\\算子\\build\\ascend_cube_phase_sync_audit\\fp16_probe\\op_kernel\\address_const.h",
+    "D:\\codex\\算子\\build\\ascend_cube_phase_sync_audit\\fp16_probe\\op_kernel\\matmul_const.h",
+    "D:\\codex\\算子\\build\\ascend_cube_phase_sync_audit\\fp16_probe\\op_kernel\\vc_laser_cube_fp16_probe_attention.cpp",
+    "D:\\codex\\算子\\build\\ascend_cube_phase_sync_audit\\fp16_probe\\op_kernel\\vc_laser_cube_probe.h"
+  ],
+  "event_count": 1,
+  "findings": [
+    {
+      "code": "SYNC-09",
+      "severity": "性能",
+      "file": "D:\\codex\\算子\\build\\ascend_cube_phase_sync_audit\\fp16_probe\\op_kernel\\vc_laser_cube_probe.h",
+      "line": 71,
+      "message": "PipeBarrier<PIPE_ALL> 粒度过粗",
+      "detail": "若仅需 V 排序可用 PipeBarrier<PIPE_V>；确认无跨 PIPE 依赖后再收窄"
+    }
+  ],
+  "events": [
+    {
+      "kind": "pipebarrier",
+      "event_type": "PIPE_ALL",
+      "flag_id": "",
+      "line": 71,
+      "file": "D:\\codex\\算子\\build\\ascend_cube_phase_sync_audit\\fp16_probe\\op_kernel\\vc_laser_cube_probe.h",
+      "func": "__aicore__ inline void Complete",
+      "raw": "PipeBarrier<PIPE_ALL>(",
+      "side": "",
+      "pipe_param": ""
+    }
+  ]
+}

@@ -294,3 +294,40 @@ Vector 完成边界使用相邻 `V→S EVENT_ID0` set/wait，原有 V_S1–6 和
 结果在 `results/mindie_laser_phases.json`，终端日志为同名 `.log`。`worker.calibration` 是配对扰动，`worker.traces` 是带位置的原始记录，`worker.phase_summary` 是按角色、等待位置或 section 类别汇总的样本。来源、库映射和构建哈希继续校验；计时前关闭 tiling marker。已有诊断构建时可直接运行 `python3 scripts/profile_mindie_laser_phases.py`。
 
 [同步审计](../../reports/ascend-phase-probe-sync-audit/README.md)保留工具原始输出和人工边界检查。本地没有 CANN/NPU，普通 C++ 语法桩、Python 和 Bash 检查不能代替远端设备编译及执行；此轮不宣称获得性能收益。
+
+## Cube 的 QK/output 与 PV/history 分段诊断
+
+上一轮用户回传：scale-reuse / plain / waits / phases 的 native API 中位数分别为 87.2881 / 87.2181 / 87.2089 / 87.1877 ms；配对扰动很小，负值不能解释为探针提速。稀疏采样中，Cube 中间轮的跨核等待接近 0，AIV 中间轮仍有约 350–393 system ticks 等待。Vector 四行、32 个 K block 样本中，主体 exp 约 16 ticks，load 约 31–37 ticks。它们来自不同位置和范围，不能相加、换算占比，也不能单凭这些值断言 Cube 的某条指令是瓶颈。
+
+当前 Cube 调度会先做前两轮的 PV，再做当前轮 QK，且有异步 FIX 输出和跨核交接。因此 AIV 等待可能同时受 PV、QK、输出搬运和调度影响。下一步先区分完整的 **QK 连同 score 写出/反量化** 与 **PV 连同历史输出更新/尾段归一化**，并让原版 FP16 Laser 使用同样的采样方法。
+
+```bash
+git pull origin master
+bash scripts/run_mindie_laser_cube_phases.sh
+```
+
+固定 BF16 BNSD `[1,28,37741,128]`、设备 0、warmup 5、每轮 10 次、9 轮校准、5 次采样。可沿用 `NPU_DEVICE`、`LASER_BUILD_JOBS`。脚本先核验已有 FP16、scale-reuse、融合量化器的来源、哈希和设备/CANN 匹配，再从本地 pinned Git 对象准备两套独立探针：`VcLaserCubeInt8ProbeAttention` 和 `VcLaserCubeFp16ProbeAttention`。没有 GitHub 下载；首次需编译这两个新算子，已有生产算子不重编或替换。FP16 探针直接派生原版源码，不通过撤销量化补丁生成。
+
+每种算法分别使用自己的生产原生 API 作为 baseline，在同进程、同一个 prepared payload 上随机交错校准三个模式：
+
+| 模式 | 测量范围 |
+| --- | --- |
+| `plain` / 0 | 不读时间、不写记录，保留诊断代码、分支与 trace 分配/清零 |
+| `issue` / 1 | 完整 cube1/cube2 调用及地址映射的标量发出窗口，不添加完成等待 |
+| `completed` / 2 | 采样前排空已有工作，随后记录发出窗口与末尾完成等待，并单独记录空完成边界的开销 |
+
+模式 2 仅在完整函数边界调用 `PipeBarrier<PIPE_ALL>()`，不在 MAD 与配对 FIX copy 之间插入屏障，也不拆开历史缩放 MAD 与后续 PV 累加。保留原运算、buffer 映射、unitFlag 与跨核信号；两个版本的 Vector 代码各自与其基线逐字节一致。新增屏障会改变流水重叠，校准必须结合记录一起看。模式 1 的 `issue` 也不是纯标量计算量，其中可能有原函数内部等待。
+
+trace 是独立清零的 INT64 `[4,2,3,24]`，仅采 Cube core 0–3 的首轮、中间轮和末轮，重复位置只保留首次。记录保留 descriptor 数、K block 数、逻辑 tile 数、历史更新和尾段归一化调用数；这些不是底层 MAD 指令数。不同工作量分别汇总。`issue/tail/elapsed/predrain/empty` 都是原始 system ticks，`tail` 是尚未完成的队列工作等待，**不能叫纯 FIX 时间**；`empty` 也不会自动相减。模式 1 未测的字段显示 `--`。
+
+每种模式先检查 FP16/BF16 输入、短序列、D64/D128、K4097/8193、尾块，再检查长形状的全部 padded 原生输出与其对应 baseline 精确一致。任何不一致或损坏/缺失记录会停止，保留失败报告。长形状 dense FP32 误差另抽取 32 行、所有 keys，仅描述各算法误差；不是模型质量验证。
+
+INT8 和 FP16 使用同一组原始输入，但各自预处理、在不同进程中运行。两者的 ticks 需按相同工作量审视，不输出跨算法配对提速比。API 校准包含分配、调用和 trace 清零，不含预处理、后处理或 profiler；采样值不代表生产阶段百分比，也不相加外推内核毫秒数。
+
+结果为 `results/mindie_laser_cube_phases.json`，终端日志同名 `.log`。查看 `workers.int8` / `workers.fp16` 下的 `calibration`、`traces`、`phase_summary`；先看探针扰动，再对比 QK/PV 同类样本。若第二个 worker 失败，第一个的结果仍保留。已有探针构建后可直接重测：
+
+```bash
+python3 scripts/profile_mindie_laser_cube_phases.py
+```
+
+[本轮同步审计](../../reports/ascend-cube-phase-sync-audit/README.md)记录官方计时/屏障说明、完整本地头文件树审计、人工 unitFlag 生命周期核对和原始工具输出。CANNBot 的正则审计不理解全部 Laser 原始 intrinsic，同步计数为 0 不等于内核没有同步；本地 C++ 桩检查也不替代远端 CANN 编译和 NPU 执行。本轮交付用于定位下一项优化，尚无设备侧性能收益结论。

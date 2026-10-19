@@ -1,0 +1,34 @@
+--- int8/baseline/CubeForward.h
++++ int8/probe/CubeForward.h
+@@ -19,0 +20 @@
++#include "vc_laser_cube_probe.h"
+@@ -52,0 +54,3 @@
++    __aicore__ inline void SetupCubeProbe(__gm__ uint8_t *trace, int32_t mode) {
++        cube_probe_.Init(trace, mode, get_block_idx());
++    }
+@@ -57,0 +62 @@
++    vc_laser_cube_probe::CubeProbe cube_probe_;
+@@ -714,0 +720 @@
++                cube_probe_.Begin(0, roundId, Z);
+@@ -716,0 +723 @@
++                cube_probe_.EndQK(src, src_len);
+@@ -728,0 +736 @@
++                cube_probe_.Begin(1, roundId, Z);
+@@ -730,0 +739 @@
++                cube_probe_.EndPV(src, src_len);
+@@ -739,0 +749 @@
++                cube_probe_.Begin(0, roundId, Z);
+@@ -741,0 +752 @@
++                cube_probe_.EndQK(src, src_len);
+@@ -765,0 +777 @@
++                cube_probe_.Begin(1, roundId - 2, Z);
+@@ -767,0 +780 @@
++                cube_probe_.EndPV(src, src_len);
+@@ -772,0 +786 @@
++                cube_probe_.Begin(0, roundId, Z);
+@@ -774,0 +789 @@
++                cube_probe_.EndQK(src, src_len);
+@@ -791,0 +807 @@
++                cube_probe_.Begin(1, roundId + Z - 2, Z);
+@@ -793,0 +810 @@
++                cube_probe_.EndPV(src, src_len);

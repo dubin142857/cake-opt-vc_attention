@@ -1,0 +1,43 @@
+{
+  "command": [
+    "D:\\codex\\算子\\.venv-package\\Scripts\\python.exe",
+    "-X",
+    "utf8",
+    "D:\\codex\\算子\\build\\cannbot-skills\\ops\\ascendc-sync-audit\\scripts\\ascendc_flow_analyzer.py",
+    "D:\\codex\\算子\\build\\ascend_cube_phase_sync_audit\\fp16_probe\\op_host\\vc_laser_cube_fp16_probe_attention_def.cpp",
+    "D:\\codex\\算子\\build\\ascend_cube_phase_sync_audit\\fp16_probe\\op_host\\vc_laser_cube_fp16_probe_attention_proto.cpp",
+    "D:\\codex\\算子\\build\\ascend_cube_phase_sync_audit\\fp16_probe\\op_host\\vc_laser_cube_fp16_probe_attention_tiling.cpp",
+    "D:\\codex\\算子\\build\\ascend_cube_phase_sync_audit\\fp16_probe\\op_host\\vc_laser_cube_fp16_probe_attention_tiling.h",
+    "D:\\codex\\算子\\build\\ascend_cube_phase_sync_audit\\fp16_probe\\op_host\\vc_source_marker.h",
+    "D:\\codex\\算子\\build\\ascend_cube_phase_sync_audit\\fp16_probe\\op_kernel\\AddressMappingForwardOnline.h",
+    "D:\\codex\\算子\\build\\ascend_cube_phase_sync_audit\\fp16_probe\\op_kernel\\AddressMappingVectorForwardOnline.h",
+    "D:\\codex\\算子\\build\\ascend_cube_phase_sync_audit\\fp16_probe\\op_kernel\\CubeForward.h",
+    "D:\\codex\\算子\\build\\ascend_cube_phase_sync_audit\\fp16_probe\\op_kernel\\VectorForward.h",
+    "D:\\codex\\算子\\build\\ascend_cube_phase_sync_audit\\fp16_probe\\op_kernel\\address_const.h",
+    "D:\\codex\\算子\\build\\ascend_cube_phase_sync_audit\\fp16_probe\\op_kernel\\matmul_const.h",
+    "D:\\codex\\算子\\build\\ascend_cube_phase_sync_audit\\fp16_probe\\op_kernel\\vc_laser_cube_fp16_probe_attention.cpp",
+    "D:\\codex\\算子\\build\\ascend_cube_phase_sync_audit\\fp16_probe\\op_kernel\\vc_laser_cube_probe.h",
+    "--format",
+    "json"
+  ],
+  "returncode": 0,
+  "tool_sha256": "b84ef0d82628bb92c313f4d7b78ff626debf0198cbeed06da5e0a194cf2e799a",
+  "files": {
+    "op_host/vc_laser_cube_fp16_probe_attention_def.cpp": "ac69196d08835f66e848f21c5acb81b1cc0088a2bba41f37c4fa240d49b57c14",
+    "op_host/vc_laser_cube_fp16_probe_attention_proto.cpp": "1320913e8db33d171158c5fd804f69ff599897d7844bbded1adcef70fdaa2f74",
+    "op_host/vc_laser_cube_fp16_probe_attention_tiling.cpp": "2f38c87df18be8a1d4a11e2e65186138cc7e6b29ff487c36c3314445b3c720a6",
+    "op_host/vc_laser_cube_fp16_probe_attention_tiling.h": "b8ed51ec6f22999870a8fd6f2a3f771c691df877df4f56921928183c243b80b4",
+    "op_host/vc_source_marker.h": "b83632c377f820fa8c634e0ee0be62395c548deb6635ad8891999e6c434083cb",
+    "op_kernel/AddressMappingForwardOnline.h": "b1c83a6078f9a3f41f1e5a46613583991e1dbf26844f1284e04813dbb4b5264d",
+    "op_kernel/AddressMappingVectorForwardOnline.h": "27756e0a02fbe68d6827dd0f28c682a23d335510e94ab7b7691d8435e100d8b5",
+    "op_kernel/CubeForward.h": "4f0bf67026c0c502e6c87b8f35a1d313a1ae50f75017458225249975e8ba5300",
+    "op_kernel/VectorForward.h": "da6d68346275a061111be7c2122db8c6e711d047d7744165a3a4130fcc0d9627",
+    "op_kernel/address_const.h": "d933a953ff8deba960e90769b4b86b11c1166ae00b5edc5f64c784b329854421",
+    "op_kernel/matmul_const.h": "ac6bef6c468824bab498504b9b7b32588dba2d386e8c6979f122333ff52fcf52",
+    "op_kernel/vc_laser_cube_fp16_probe_attention.cpp": "40d045255e639f65d7e6b7f5275aa80b71f672742be9ed312e70f86179d6ae7f",
+    "op_kernel/vc_laser_cube_probe.h": "0e2ad90ecc11d2dd296891171ddd0da70a86172492e7333240efd66e5fae0b78"
+  },
+  "findings": 0,
+  "event_count": null,
+  "operation_count": 0
+}
