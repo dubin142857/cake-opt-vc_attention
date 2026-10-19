@@ -1,0 +1,30 @@
+[
+  {
+    "script": "sync_audit",
+    "command": [
+      "python3",
+      "build/cannbot-skills/ops/ascendc-sync-audit/scripts/sync_audit.py",
+      "build/mindie_laser_quant_reuse_source/csrc/ops/vc_laser_quant_reuse_attention",
+      "--format",
+      "json"
+    ],
+    "target": "build/mindie_laser_quant_reuse_source/csrc/ops/vc_laser_quant_reuse_attention",
+    "returncode": 0,
+    "stdout_bytes": 1719,
+    "stderr_bytes": 0
+  },
+  {
+    "script": "ascendc_flow_analyzer",
+    "command": [
+      "python3",
+      "build/cannbot-skills/ops/ascendc-sync-audit/scripts/ascendc_flow_analyzer.py",
+      "build/mindie_laser_quant_reuse_source/csrc/ops/vc_laser_quant_reuse_attention",
+      "--format",
+      "json"
+    ],
+    "target": "build/mindie_laser_quant_reuse_source/csrc/ops/vc_laser_quant_reuse_attention",
+    "returncode": 0,
+    "stdout_bytes": 14959,
+    "stderr_bytes": 0
+  }
+]

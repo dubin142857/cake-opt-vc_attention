@@ -170,19 +170,21 @@ class MindIEQuantLaser:
                 "prepared_scope": "fixed quantized Q/K and decoded V + native allocation/dispatch + optional V output scale + FP16 round-trip/cast/trim/contiguous"}
 
 
-def load_quant_laser(bridge_path, *, preprocessing="torch", preprocess_build=None, **options):
+def load_quant_laser(bridge_path, *, preprocessing="torch", preprocess_build=None,
+                     torch_namespace="vc_laser_quant", **options):
     if preprocessing not in ("torch", "fused"):
         raise ValueError("preprocessing must be torch or fused")
     if preprocessing == "fused" and preprocess_build is None:
         raise ValueError("Fused preprocessing requires its build manifest")
     import torch_npu  # noqa: F401
     torch.ops.load_library(str(bridge_path))
-    native = torch.ops.vc_laser_quant.la.default
+    native = getattr(torch.ops, torch_namespace).la.default
     schema = native._schema
     types = [str(argument.type) for argument in schema.arguments]
-    if types != ["Tensor"] * 5 + ["float", "int", "bool"] or len(schema.returns) != 1:
-        raise RuntimeError(f"Unrecognized vc_laser_quant::la schema: {schema}")
-    metadata = {"dispatch": "torch.ops.vc_laser_quant.la.default", "bridge_path": str(bridge_path),
+    if (types != ["Tensor"] * 5 + ["float", "int", "bool"]
+            or [str(x.type) for x in schema.returns] != ["Tensor"]):
+        raise RuntimeError(f"Unrecognized {torch_namespace}::la schema: {schema}")
+    metadata = {"dispatch": f"torch.ops.{torch_namespace}.la.default", "bridge_path": str(bridge_path),
                 "native_schema": str(schema), "qk_preprocessing": "torch"}
     quantizer = None
     if preprocessing == "fused":

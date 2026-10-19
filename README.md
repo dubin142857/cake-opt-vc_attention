@@ -4,7 +4,9 @@
 
 已有成功 Ascend 量化构建时，执行 `bash scripts/run_mindie_laser_quant_profile.sh`，复用产物做同进程、固定输入的 9 轮配对诊断，随后单独采集 NPU profiler；不重新编译。报告为 `results/mindie_laser_quant_profile.json`。它区分相同 payload 的原生调用、独立 payload 的原生调用以及完整调用，避免把跨进程波动解释成核心退化。运行范围和设备指标限制见 [Laser 量化说明](ascend/laser_quant/README.md)。
 
-新增 scale 复用候选：`bash scripts/run_mindie_laser_scale_reuse.sh`。只构建独立命名的候选，复用已有 INT8/FP16 Laser 和融合量化产物；同一进程、同一量化输入交错测试旧版与候选，并另开进程补采原始 FP16 Laser 计数器。算术不变，保留每次新 scale 读取的缓存一致性处理；先检查全输出一致性和原地更新 scale 后的连续调用。报告 `results/mindie_laser_scale_reuse.json`，设备编译和性能仍待远端验证。
+scale 复用候选入口：`bash scripts/run_mindie_laser_scale_reuse.sh`。用户回传同轮配对结果：native 89.5797 → 87.5177 ms，full 93.0581 → 89.4787 ms，两项均 9/9 轮更快；这些是该次实验结果，不是所有形状的保证。
+
+下一轮独立候选：`bash scripts/run_mindie_laser_gain_precompute.sh`，在 scale 复用版上提前准备 QK 反量化系数，保留原硬件配置与同步位置。只从本地缓存构建新候选，不联网、不重编旧基线；先验证全输出一致，再同进程配对比较，并补采原版 FP16 Laser 计数器。报告 `results/mindie_laser_gain_precompute.json`。新候选尚待远端 CANN 编译和 NPU 验证；[实验说明](ascend/laser_quant/README.md)和[同步审计材料](reports/ascend-gain-sync-audit/README.md)记录改动范围与限制。
 
 **当前 H200 主路线（2026-10-13）：`sageattn_vc`，INT8 QK + FP8 PV。**
 新候选 `bash scripts/run_tensor_mass_h200.sh`：针对概率分母求和，用无损解码后的 FP16 输入、FP32 累加的 Tensor Core 归约替代逐值升 FP32/相加。D128 编码/求和常规分支的本地静态指令从 325 降到 239，寄存器仍为 168；85 项检查通过，H200 整核性能待测。对比同次 scale-prefetch、installed、Sage、FA4，见 [CUDA 实验说明](SAGE_CUDA_EXPCAST.md)。

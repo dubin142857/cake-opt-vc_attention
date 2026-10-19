@@ -190,7 +190,7 @@ bash scripts/run_mindie_laser_scale_reuse.sh
 
 源码准备强制使用本地 Git 对象：一键入口从已校验的 INT8 build manifest 读取 `source_dir`，独立运行时也会查找已有成功构建的源码目录。无需重新下载 MindIE 或安装包。旧版网络超时留下的空 `.git` 会从本地锁定 commit 恢复；非空未提交目录、错误 HEAD 或其他 origin 不会被覆盖。没有本地锁定源码时立即说明缺失，不等待 GitHub 网络超时。安装好的二进制包供运行基线使用，修改候选内核仍使用此前构建留下的源码。
 
-候选在每个工作描述符内读取两项 Q scale，每个 K128 分块读取一次 K scale，供两个 Q128 复用。完整 `ky=2,kx=32` 描述符的源代码级读取数由 128 降至 34。保留 `ReadQuantScale` 的 DCCI、FP32 乘法、低 13 位截断、`set_quant_pre`、FIX barrier、DEQF16 和原 Cube/Vector 流水。这只是减少重复工作的假设，不能从读取数推算加速比；NPU 编译与收益待远端验证。
+候选在每个工作描述符内读取两项 Q scale，每个 K128 分块读取一次 K scale，供两个 Q128 复用。完整 `ky=2,kx=32` 描述符的源代码级读取数由 128 降至 34。保留 `ReadQuantScale` 的 DCCI、FP32 乘法、低 13 位截断、`set_quant_pre`、FIX barrier、DEQF16 和原 Cube/Vector 流水。读取数不能直接换算加速比；用户回传的设备验证和同轮配对结果见下节。
 
 固定输入 A/B 同时加载两个独立命名的原生算子，在相同进程中共享**同一个量化 payload 对象和 scale 地址**。表中 `baseline` 是当前 INT8 内核，`reuse` 是 scale 复用候选：
 
@@ -205,3 +205,33 @@ bash scripts/run_mindie_laser_scale_reuse.sh
 正常计时完成并落盘后，分别采集两个 INT8 native 调用的 3-call profiler 窗口；再在隔离进程中，用同 seed/shape 的原始输入和原 FP16 Laser 采集 native 计数器。FP16 行有自己的非量化 payload，不属于相同输入字节的 INT8 A/B，也不计算跨进程配对加速比。它用于对照 MAC、Scalar、MTE、FIX、Vector 等实际导出指标；pipe 时间可能重叠，**AIV Vector 时间不等于 exp 时间**，MAC 也包含 Laser 的对角矩阵计算，不能用计数器比例直接分摊 QK/softmax/PV 耗时。
 
 报告为 `results/mindie_laser_scale_reuse.json`，日志同名 `.log`；每个 worker 的原始报告、CSV/trace 路径均保留。JSON `workers.paired` 包含配对耗时、全输出校验和 INT8 计数器，`workers.fp16` 包含原版计数器。新候选暂不替换默认主线；以同轮 `native`、`full` 的配对节省、快轮次数和正确性决定是否采用。已有候选构建时，可直接运行 `python3 scripts/profile_mindie_laser_scale_reuse.py --trace`，不触发编译。
+
+## scale 复用实测与 gain 提前准备候选
+
+用户回传 Ascend910_9382、BF16 BNSD `[1,28,37741,128]` 的结果：
+
+| 同进程配对范围 | 旧 INT8 / ms | scale 复用 / ms | 旧/新 | 配对节省中位数 / ms | 更快轮数 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| native | 89.5797 | 87.5177 | 1.0236× | 2.0421 | 9/9 |
+| prepared | 91.5683 | 89.4735 | 1.0234× | 2.0839 | 9/9 |
+| full | 93.0581 | 89.4787 | 1.0400× | 3.5713 | 9/9 |
+
+独立 profiler 窗口中，设备 task 时间由 89.0043 降至 86.6291 ms/call；AIC scalar 活跃时间明显降低，而 FIX 活跃时间仍约 43 ms。后者是可能重叠的流水活动指标，不能解释为有 43 ms 可以直接消除。原 FP16 Laser 的 native wall time 为 80.7590 ms，来自另一个进程，不能当成与这两版交错配对的结果。full 和 prepared 接近也不能说明预处理免费。
+
+下一轮只验证一个调度变化：先算出每个 K128 tile 对应的两个 `sQ*sK`，按原规则清除低 13 位，把位模式传给 QK 输出函数。硬件 `set_quant_pre → PIPE_FIX barrier → DEQF16` 仍在原来的受保护输出位置。实际 scale 读取次数、量化输入、矩阵计算、原版 exp、FP16 PV 均保持不变；不加入 V 量化/平滑或 ExpCast。
+
+```bash
+bash scripts/run_mindie_laser_gain_precompute.sh
+```
+
+入口固定同样的 shape、设备 0、warmup 5、每轮 10 次、9 轮，沿用 `NPU_DEVICE` 和 `LASER_BUILD_JOBS` 可选环境变量。它核验已经成功的 scale-reuse、融合预处理和 FP16 构建，从 reuse build 的 `source_dir` 读取本地锁定 Git 对象，仅构建 `VcLaserQuantGainAttention`；所有新文件使用独立 `mindie_laser_quant_gain_*` 缓存，不访问 GitHub。旧 baseline/reuse 产物保持可复测。
+
+同进程表中的 `scale reuse` 是上一版，`gain ready` 是这版。JSON 为复用配对框架保留 `baseline`/`reuse` 内部键，`experiment=gain-precompute` 和 `variant_labels` 明确实际对应关系。两者同享融合量化器，native/prepared 使用同一个 payload；计时前检查短形状、尾块、全 padded 输出逐值一致、原地更新 scale，以及相邻 Q/K 分块交替采用不同 scale 的情况。任一精度检查失败就停止，不放宽门槛继续计时。
+
+结果：`results/mindie_laser_gain_precompute.json`，日志同名 `.log`；正常 API 配对之后才采集 profiler，FP16 仍是隔离进程对照。已有新构建时可只重测：
+
+```bash
+python3 scripts/profile_mindie_laser_scale_reuse.py --experiment gain-precompute --trace --output results/mindie_laser_gain_precompute.json
+```
+
+这次只提前准备普通标量计算，不宣称消除了 FIX 代价或证明了 FIX 是唯一瓶颈。编译器也可能已做类似调度，因此要看同轮 native/full 的实际收益。更激进的硬件配置前移缺少足够的寄存器生命周期依据，未在本候选实施；见[官方文档与同步审计材料](../../reports/ascend-gain-sync-audit/README.md)。本地 C++/Python 检查不替代远端 CANN 编译和设备测试。

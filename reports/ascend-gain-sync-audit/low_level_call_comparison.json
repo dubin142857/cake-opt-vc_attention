@@ -1,0 +1,1909 @@
+{
+  "method": "Lexical low-level call-sequence comparison after removing comments; not an execution or synchronization proof",
+  "instruction_names": [
+    "set_flag",
+    "wait_flag",
+    "wait_flag_dev",
+    "pipe_barrier",
+    "ffts_cross_core_sync",
+    "set_quant_pre",
+    "mad",
+    "copy_matrix_cc_to_gm",
+    "load_cbuf_to_ca",
+    "load_cbuf_to_cb",
+    "copy_gm_to_cbuf",
+    "DataCacheCleanAndInvalid"
+  ],
+  "files": {
+    "AddressMappingForwardOnline.h": {
+      "baseline_sha256": "b1c83a6078f9a3f41f1e5a46613583991e1dbf26844f1284e04813dbb4b5264d",
+      "candidate_sha256": "b1c83a6078f9a3f41f1e5a46613583991e1dbf26844f1284e04813dbb4b5264d",
+      "identical_call_sequence": true,
+      "baseline_calls": [],
+      "candidate_calls": [],
+      "identity_normalized_source_equal": true
+    },
+    "AddressMappingVectorForwardOnline.h": {
+      "baseline_sha256": "27756e0a02fbe68d6827dd0f28c682a23d335510e94ab7b7691d8435e100d8b5",
+      "candidate_sha256": "27756e0a02fbe68d6827dd0f28c682a23d335510e94ab7b7691d8435e100d8b5",
+      "identical_call_sequence": true,
+      "baseline_calls": [],
+      "candidate_calls": [],
+      "identity_normalized_source_equal": true
+    },
+    "CubeForward.h": {
+      "baseline_sha256": "52cc81b6efb0b20f59d6e643f3ca2a8fcc61e64fdb6dfabc40e4de5b9bac7b2c",
+      "candidate_sha256": "5cb7b41812e6cb0f22c52298c9fb75440ea544d2dc74ceaa3ac11562774c0b18",
+      "identical_call_sequence": true,
+      "baseline_calls": [
+        {
+          "name": "wait_flag",
+          "line": 235,
+          "expression": "wait_flag(PIPE_MTE1,PIPE_MTE2,ping_pong_flag_l1_b_)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 236,
+          "expression": "wait_flag(PIPE_MTE1,PIPE_MTE2,ping_pong_flag_l1_a_+2)"
+        },
+        {
+          "name": "set_flag",
+          "line": 279,
+          "expression": "set_flag(PIPE_MTE2,PIPE_MTE1,ping_pong_flag_l1_b_)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 280,
+          "expression": "wait_flag(PIPE_MTE2,PIPE_MTE1,ping_pong_flag_l1_b_)"
+        },
+        {
+          "name": "set_flag",
+          "line": 281,
+          "expression": "set_flag(PIPE_MTE2,PIPE_MTE1,ping_pong_flag_l1_a_+2)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 282,
+          "expression": "wait_flag(PIPE_MTE2,PIPE_MTE1,ping_pong_flag_l1_a_+2)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 287,
+          "expression": "wait_flag(PIPE_M,PIPE_MTE1,ping_pong_flag_l0_b_+2)"
+        },
+        {
+          "name": "load_cbuf_to_cb",
+          "line": 289,
+          "expression": "load_cbuf_to_cb(l0_b_buf+nn*n0_*SIZE_16,l1_b_buf+n_offset*l1_k+nn*SIZE_256,0,n0_/SIZE_16,l1_k/SIZE_16,0,0,true,inc)"
+        },
+        {
+          "name": "set_flag",
+          "line": 300,
+          "expression": "set_flag(PIPE_MTE1,PIPE_M,ping_pong_flag_l0_b_+2)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 301,
+          "expression": "wait_flag(PIPE_MTE1,PIPE_M,ping_pong_flag_l0_b_+2)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 312,
+          "expression": "wait_flag(PIPE_M,PIPE_MTE1,ping_pong_flag_l0_a_)"
+        },
+        {
+          "name": "load_cbuf_to_ca",
+          "line": 315,
+          "expression": "load_cbuf_to_ca(l0_a_buf+jj*k0_*SIZE_16,l1_a_buf+j*SIZE_128*SIZE_128+jj*SIZE_256,0,k0_/SIZE_16,l1_m/SIZE_16,0,0,false,inc)"
+        },
+        {
+          "name": "set_flag",
+          "line": 327,
+          "expression": "set_flag(PIPE_MTE1,PIPE_M,ping_pong_flag_l0_a_)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 329,
+          "expression": "wait_flag(PIPE_MTE1,PIPE_M,ping_pong_flag_l0_a_)"
+        },
+        {
+          "name": "mad",
+          "line": 330,
+          "expression": "mad(l0_c_buf,l0_a_buf,l0_b_buf,m0_,k0_,n0_,last_k?3:2,0,0,l0_c_init_flag)"
+        },
+        {
+          "name": "copy_matrix_cc_to_gm",
+          "line": 343,
+          "expression": "copy_matrix_cc_to_gm(result_gm+j*SIZE_128*n_+n_offset,l0_c_buf,0,n0_,m0_,n_,m0_,3,NoQuant,0,false,true)"
+        },
+        {
+          "name": "set_flag",
+          "line": 356,
+          "expression": "set_flag(PIPE_M,PIPE_MTE2,EVENT_ID7)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 357,
+          "expression": "wait_flag(PIPE_M,PIPE_MTE2,EVENT_ID7)"
+        },
+        {
+          "name": "set_flag",
+          "line": 360,
+          "expression": "set_flag(PIPE_M,PIPE_MTE1,ping_pong_flag_l0_a_)"
+        },
+        {
+          "name": "set_flag",
+          "line": 364,
+          "expression": "set_flag(PIPE_M,PIPE_MTE1,ping_pong_flag_l0_b_+2)"
+        },
+        {
+          "name": "set_flag",
+          "line": 367,
+          "expression": "set_flag(PIPE_MTE1,PIPE_MTE2,ping_pong_flag_l1_b_)"
+        },
+        {
+          "name": "set_flag",
+          "line": 368,
+          "expression": "set_flag(PIPE_MTE1,PIPE_MTE2,ping_pong_flag_l1_a_+2)"
+        },
+        {
+          "name": "set_flag",
+          "line": 389,
+          "expression": "set_flag(PIPE_MTE1,PIPE_MTE2,EVENT_ID7)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 390,
+          "expression": "wait_flag(PIPE_MTE1,PIPE_MTE2,EVENT_ID7)"
+        },
+        {
+          "name": "set_flag",
+          "line": 422,
+          "expression": "set_flag(PIPE_MTE2,PIPE_MTE1,EVENT_ID7)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 423,
+          "expression": "wait_flag(PIPE_MTE2,PIPE_MTE1,EVENT_ID7)"
+        },
+        {
+          "name": "set_flag",
+          "line": 424,
+          "expression": "set_flag(PIPE_M,PIPE_MTE1,EVENT_ID7)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 425,
+          "expression": "wait_flag(PIPE_M,PIPE_MTE1,EVENT_ID7)"
+        },
+        {
+          "name": "load_cbuf_to_ca",
+          "line": 428,
+          "expression": "load_cbuf_to_ca(l0a_diag+row*16*16*8,l1a_buf+row*16*8,0,16,8,0,0,false,inc)"
+        },
+        {
+          "name": "set_flag",
+          "line": 453,
+          "expression": "set_flag(PIPE_MTE1,PIPE_M,EVENT_ID7)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 454,
+          "expression": "wait_flag(PIPE_MTE1,PIPE_M,EVENT_ID7)"
+        },
+        {
+          "name": "mad",
+          "line": 456,
+          "expression": "mad(l0_c_buf,l0a_diag,l0b_out,128,128,128,copy_out?0b11:0b10,0,0,true)"
+        },
+        {
+          "name": "copy_matrix_cc_to_gm",
+          "line": 470,
+          "expression": "copy_matrix_cc_to_gm(addr.out,l0_c_buf,0,128,128,128,128,0b11,NoQuant,0,false,true)"
+        },
+        {
+          "name": "set_flag",
+          "line": 486,
+          "expression": "set_flag(PIPE_M,PIPE_MTE1,EVENT_ID7)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 487,
+          "expression": "wait_flag(PIPE_M,PIPE_MTE1,EVENT_ID7)"
+        },
+        {
+          "name": "set_flag",
+          "line": 495,
+          "expression": "set_flag(PIPE_M,PIPE_MTE2,EVENT_ID7)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 496,
+          "expression": "wait_flag(PIPE_M,PIPE_MTE2,EVENT_ID7)"
+        },
+        {
+          "name": "set_flag",
+          "line": 498,
+          "expression": "set_flag(PIPE_FIX,PIPE_MTE2,EVENT_ID7)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 499,
+          "expression": "wait_flag(PIPE_FIX,PIPE_MTE2,EVENT_ID7)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 547,
+          "expression": "wait_flag(PIPE_MTE1,PIPE_MTE2,ping_pong_flag_l1_a_+2)"
+        },
+        {
+          "name": "set_flag",
+          "line": 560,
+          "expression": "set_flag(PIPE_MTE2,PIPE_MTE1,ping_pong_flag_l1_a_+2)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 561,
+          "expression": "wait_flag(PIPE_MTE2,PIPE_MTE1,ping_pong_flag_l1_a_+2)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 570,
+          "expression": "wait_flag(PIPE_MTE1,PIPE_MTE2,ping_pong_flag_l1_b_)"
+        },
+        {
+          "name": "set_flag",
+          "line": 586,
+          "expression": "set_flag(PIPE_MTE2,PIPE_MTE1,ping_pong_flag_l1_b_)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 587,
+          "expression": "wait_flag(PIPE_MTE2,PIPE_MTE1,ping_pong_flag_l1_b_)"
+        },
+        {
+          "name": "set_flag",
+          "line": 592,
+          "expression": "set_flag(PIPE_MTE1,PIPE_MTE2,ping_pong_flag_l1_b_)"
+        },
+        {
+          "name": "set_flag",
+          "line": 598,
+          "expression": "set_flag(PIPE_MTE1,PIPE_MTE2,ping_pong_flag_l1_a_+2)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 621,
+          "expression": "wait_flag(PIPE_M,PIPE_MTE1,ping_pong_flag_l0_b_+2)"
+        },
+        {
+          "name": "load_cbuf_to_cb",
+          "line": 623,
+          "expression": "load_cbuf_to_cb(l0_b,l1_b,0,k0_*n0_/512,1,0,0,false,inc)"
+        },
+        {
+          "name": "set_flag",
+          "line": 625,
+          "expression": "set_flag(PIPE_MTE1,PIPE_M,ping_pong_flag_l0_b_+2)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 626,
+          "expression": "wait_flag(PIPE_MTE1,PIPE_M,ping_pong_flag_l0_b_+2)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 634,
+          "expression": "wait_flag(PIPE_M,PIPE_MTE1,ping_pong_flag_l0_a_)"
+        },
+        {
+          "name": "load_cbuf_to_ca",
+          "line": 637,
+          "expression": "load_cbuf_to_ca(l0_a+i*k0_*SIZE_16,l1_a+m_offset*SIZE_32+i*512,0,k0_/SIZE_32,l1_m_size_/SIZE_16,0,0,false,inc)"
+        },
+        {
+          "name": "set_flag",
+          "line": 649,
+          "expression": "set_flag(PIPE_MTE1,PIPE_M,ping_pong_flag_l0_a_)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 651,
+          "expression": "wait_flag(PIPE_MTE1,PIPE_M,ping_pong_flag_l0_a_)"
+        },
+        {
+          "name": "mad",
+          "line": 653,
+          "expression": "mad(l0_c,l0_a,l0_b,m0_,k0_,n0_,3,0,0,1)"
+        },
+        {
+          "name": "set_flag",
+          "line": 664,
+          "expression": "set_flag(PIPE_M,PIPE_MTE1,ping_pong_flag_l0_a_)"
+        },
+        {
+          "name": "set_quant_pre",
+          "line": 672,
+          "expression": "set_quant_pre(static_cast<uint64_t>(bits))"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 673,
+          "expression": "pipe_barrier(PIPE_FIX)"
+        },
+        {
+          "name": "copy_matrix_cc_to_gm",
+          "line": 674,
+          "expression": "copy_matrix_cc_to_gm(gm_out+out_offset,l0_c,0,n0_,m0_,n_,m0_,3,DEQF16,0,false,true)"
+        },
+        {
+          "name": "set_flag",
+          "line": 692,
+          "expression": "set_flag(PIPE_M,PIPE_MTE1,ping_pong_flag_l0_b_+2)"
+        },
+        {
+          "name": "ffts_cross_core_sync",
+          "line": 721,
+          "expression": "ffts_cross_core_sync(PIPE_FIX,sync_config)"
+        },
+        {
+          "name": "wait_flag_dev",
+          "line": 723,
+          "expression": "wait_flag_dev(AIV2AICFLAGID)"
+        },
+        {
+          "name": "ffts_cross_core_sync",
+          "line": 748,
+          "expression": "ffts_cross_core_sync(PIPE_FIX,sync_config)"
+        },
+        {
+          "name": "wait_flag_dev",
+          "line": 756,
+          "expression": "wait_flag_dev(AIV2AICFLAGID)"
+        },
+        {
+          "name": "ffts_cross_core_sync",
+          "line": 759,
+          "expression": "ffts_cross_core_sync(PIPE_FIX,sync_config)"
+        },
+        {
+          "name": "wait_flag_dev",
+          "line": 781,
+          "expression": "wait_flag_dev(AIV2AICFLAGID)"
+        },
+        {
+          "name": "ffts_cross_core_sync",
+          "line": 785,
+          "expression": "ffts_cross_core_sync(PIPE_FIX,sync_config)"
+        },
+        {
+          "name": "set_flag",
+          "line": 888,
+          "expression": "set_flag(PIPE_MTE1,PIPE_MTE2,EVENT_ID0)"
+        },
+        {
+          "name": "set_flag",
+          "line": 889,
+          "expression": "set_flag(PIPE_MTE1,PIPE_MTE2,EVENT_ID1)"
+        },
+        {
+          "name": "set_flag",
+          "line": 890,
+          "expression": "set_flag(PIPE_MTE1,PIPE_MTE2,EVENT_ID2)"
+        },
+        {
+          "name": "set_flag",
+          "line": 891,
+          "expression": "set_flag(PIPE_MTE1,PIPE_MTE2,EVENT_ID3)"
+        },
+        {
+          "name": "set_flag",
+          "line": 893,
+          "expression": "set_flag(PIPE_M,PIPE_MTE1,EVENT_ID0)"
+        },
+        {
+          "name": "set_flag",
+          "line": 894,
+          "expression": "set_flag(PIPE_M,PIPE_MTE1,EVENT_ID1)"
+        },
+        {
+          "name": "set_flag",
+          "line": 895,
+          "expression": "set_flag(PIPE_M,PIPE_MTE1,EVENT_ID2)"
+        },
+        {
+          "name": "set_flag",
+          "line": 896,
+          "expression": "set_flag(PIPE_M,PIPE_MTE1,EVENT_ID3)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 902,
+          "expression": "wait_flag(PIPE_MTE1,PIPE_MTE2,EVENT_ID0)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 903,
+          "expression": "wait_flag(PIPE_MTE1,PIPE_MTE2,EVENT_ID1)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 904,
+          "expression": "wait_flag(PIPE_MTE1,PIPE_MTE2,EVENT_ID2)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 905,
+          "expression": "wait_flag(PIPE_MTE1,PIPE_MTE2,EVENT_ID3)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 907,
+          "expression": "wait_flag(PIPE_M,PIPE_MTE1,EVENT_ID0)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 908,
+          "expression": "wait_flag(PIPE_M,PIPE_MTE1,EVENT_ID1)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 909,
+          "expression": "wait_flag(PIPE_M,PIPE_MTE1,EVENT_ID2)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 910,
+          "expression": "wait_flag(PIPE_M,PIPE_MTE1,EVENT_ID3)"
+        }
+      ],
+      "candidate_calls": [
+        {
+          "name": "wait_flag",
+          "line": 235,
+          "expression": "wait_flag(PIPE_MTE1,PIPE_MTE2,ping_pong_flag_l1_b_)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 236,
+          "expression": "wait_flag(PIPE_MTE1,PIPE_MTE2,ping_pong_flag_l1_a_+2)"
+        },
+        {
+          "name": "set_flag",
+          "line": 279,
+          "expression": "set_flag(PIPE_MTE2,PIPE_MTE1,ping_pong_flag_l1_b_)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 280,
+          "expression": "wait_flag(PIPE_MTE2,PIPE_MTE1,ping_pong_flag_l1_b_)"
+        },
+        {
+          "name": "set_flag",
+          "line": 281,
+          "expression": "set_flag(PIPE_MTE2,PIPE_MTE1,ping_pong_flag_l1_a_+2)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 282,
+          "expression": "wait_flag(PIPE_MTE2,PIPE_MTE1,ping_pong_flag_l1_a_+2)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 287,
+          "expression": "wait_flag(PIPE_M,PIPE_MTE1,ping_pong_flag_l0_b_+2)"
+        },
+        {
+          "name": "load_cbuf_to_cb",
+          "line": 289,
+          "expression": "load_cbuf_to_cb(l0_b_buf+nn*n0_*SIZE_16,l1_b_buf+n_offset*l1_k+nn*SIZE_256,0,n0_/SIZE_16,l1_k/SIZE_16,0,0,true,inc)"
+        },
+        {
+          "name": "set_flag",
+          "line": 300,
+          "expression": "set_flag(PIPE_MTE1,PIPE_M,ping_pong_flag_l0_b_+2)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 301,
+          "expression": "wait_flag(PIPE_MTE1,PIPE_M,ping_pong_flag_l0_b_+2)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 312,
+          "expression": "wait_flag(PIPE_M,PIPE_MTE1,ping_pong_flag_l0_a_)"
+        },
+        {
+          "name": "load_cbuf_to_ca",
+          "line": 315,
+          "expression": "load_cbuf_to_ca(l0_a_buf+jj*k0_*SIZE_16,l1_a_buf+j*SIZE_128*SIZE_128+jj*SIZE_256,0,k0_/SIZE_16,l1_m/SIZE_16,0,0,false,inc)"
+        },
+        {
+          "name": "set_flag",
+          "line": 327,
+          "expression": "set_flag(PIPE_MTE1,PIPE_M,ping_pong_flag_l0_a_)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 329,
+          "expression": "wait_flag(PIPE_MTE1,PIPE_M,ping_pong_flag_l0_a_)"
+        },
+        {
+          "name": "mad",
+          "line": 330,
+          "expression": "mad(l0_c_buf,l0_a_buf,l0_b_buf,m0_,k0_,n0_,last_k?3:2,0,0,l0_c_init_flag)"
+        },
+        {
+          "name": "copy_matrix_cc_to_gm",
+          "line": 343,
+          "expression": "copy_matrix_cc_to_gm(result_gm+j*SIZE_128*n_+n_offset,l0_c_buf,0,n0_,m0_,n_,m0_,3,NoQuant,0,false,true)"
+        },
+        {
+          "name": "set_flag",
+          "line": 356,
+          "expression": "set_flag(PIPE_M,PIPE_MTE2,EVENT_ID7)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 357,
+          "expression": "wait_flag(PIPE_M,PIPE_MTE2,EVENT_ID7)"
+        },
+        {
+          "name": "set_flag",
+          "line": 360,
+          "expression": "set_flag(PIPE_M,PIPE_MTE1,ping_pong_flag_l0_a_)"
+        },
+        {
+          "name": "set_flag",
+          "line": 364,
+          "expression": "set_flag(PIPE_M,PIPE_MTE1,ping_pong_flag_l0_b_+2)"
+        },
+        {
+          "name": "set_flag",
+          "line": 367,
+          "expression": "set_flag(PIPE_MTE1,PIPE_MTE2,ping_pong_flag_l1_b_)"
+        },
+        {
+          "name": "set_flag",
+          "line": 368,
+          "expression": "set_flag(PIPE_MTE1,PIPE_MTE2,ping_pong_flag_l1_a_+2)"
+        },
+        {
+          "name": "set_flag",
+          "line": 389,
+          "expression": "set_flag(PIPE_MTE1,PIPE_MTE2,EVENT_ID7)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 390,
+          "expression": "wait_flag(PIPE_MTE1,PIPE_MTE2,EVENT_ID7)"
+        },
+        {
+          "name": "set_flag",
+          "line": 422,
+          "expression": "set_flag(PIPE_MTE2,PIPE_MTE1,EVENT_ID7)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 423,
+          "expression": "wait_flag(PIPE_MTE2,PIPE_MTE1,EVENT_ID7)"
+        },
+        {
+          "name": "set_flag",
+          "line": 424,
+          "expression": "set_flag(PIPE_M,PIPE_MTE1,EVENT_ID7)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 425,
+          "expression": "wait_flag(PIPE_M,PIPE_MTE1,EVENT_ID7)"
+        },
+        {
+          "name": "load_cbuf_to_ca",
+          "line": 428,
+          "expression": "load_cbuf_to_ca(l0a_diag+row*16*16*8,l1a_buf+row*16*8,0,16,8,0,0,false,inc)"
+        },
+        {
+          "name": "set_flag",
+          "line": 453,
+          "expression": "set_flag(PIPE_MTE1,PIPE_M,EVENT_ID7)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 454,
+          "expression": "wait_flag(PIPE_MTE1,PIPE_M,EVENT_ID7)"
+        },
+        {
+          "name": "mad",
+          "line": 456,
+          "expression": "mad(l0_c_buf,l0a_diag,l0b_out,128,128,128,copy_out?0b11:0b10,0,0,true)"
+        },
+        {
+          "name": "copy_matrix_cc_to_gm",
+          "line": 470,
+          "expression": "copy_matrix_cc_to_gm(addr.out,l0_c_buf,0,128,128,128,128,0b11,NoQuant,0,false,true)"
+        },
+        {
+          "name": "set_flag",
+          "line": 486,
+          "expression": "set_flag(PIPE_M,PIPE_MTE1,EVENT_ID7)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 487,
+          "expression": "wait_flag(PIPE_M,PIPE_MTE1,EVENT_ID7)"
+        },
+        {
+          "name": "set_flag",
+          "line": 495,
+          "expression": "set_flag(PIPE_M,PIPE_MTE2,EVENT_ID7)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 496,
+          "expression": "wait_flag(PIPE_M,PIPE_MTE2,EVENT_ID7)"
+        },
+        {
+          "name": "set_flag",
+          "line": 498,
+          "expression": "set_flag(PIPE_FIX,PIPE_MTE2,EVENT_ID7)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 499,
+          "expression": "wait_flag(PIPE_FIX,PIPE_MTE2,EVENT_ID7)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 547,
+          "expression": "wait_flag(PIPE_MTE1,PIPE_MTE2,ping_pong_flag_l1_a_+2)"
+        },
+        {
+          "name": "set_flag",
+          "line": 560,
+          "expression": "set_flag(PIPE_MTE2,PIPE_MTE1,ping_pong_flag_l1_a_+2)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 561,
+          "expression": "wait_flag(PIPE_MTE2,PIPE_MTE1,ping_pong_flag_l1_a_+2)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 579,
+          "expression": "wait_flag(PIPE_MTE1,PIPE_MTE2,ping_pong_flag_l1_b_)"
+        },
+        {
+          "name": "set_flag",
+          "line": 595,
+          "expression": "set_flag(PIPE_MTE2,PIPE_MTE1,ping_pong_flag_l1_b_)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 596,
+          "expression": "wait_flag(PIPE_MTE2,PIPE_MTE1,ping_pong_flag_l1_b_)"
+        },
+        {
+          "name": "set_flag",
+          "line": 601,
+          "expression": "set_flag(PIPE_MTE1,PIPE_MTE2,ping_pong_flag_l1_b_)"
+        },
+        {
+          "name": "set_flag",
+          "line": 607,
+          "expression": "set_flag(PIPE_MTE1,PIPE_MTE2,ping_pong_flag_l1_a_+2)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 630,
+          "expression": "wait_flag(PIPE_M,PIPE_MTE1,ping_pong_flag_l0_b_+2)"
+        },
+        {
+          "name": "load_cbuf_to_cb",
+          "line": 632,
+          "expression": "load_cbuf_to_cb(l0_b,l1_b,0,k0_*n0_/512,1,0,0,false,inc)"
+        },
+        {
+          "name": "set_flag",
+          "line": 634,
+          "expression": "set_flag(PIPE_MTE1,PIPE_M,ping_pong_flag_l0_b_+2)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 635,
+          "expression": "wait_flag(PIPE_MTE1,PIPE_M,ping_pong_flag_l0_b_+2)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 643,
+          "expression": "wait_flag(PIPE_M,PIPE_MTE1,ping_pong_flag_l0_a_)"
+        },
+        {
+          "name": "load_cbuf_to_ca",
+          "line": 646,
+          "expression": "load_cbuf_to_ca(l0_a+i*k0_*SIZE_16,l1_a+m_offset*SIZE_32+i*512,0,k0_/SIZE_32,l1_m_size_/SIZE_16,0,0,false,inc)"
+        },
+        {
+          "name": "set_flag",
+          "line": 658,
+          "expression": "set_flag(PIPE_MTE1,PIPE_M,ping_pong_flag_l0_a_)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 660,
+          "expression": "wait_flag(PIPE_MTE1,PIPE_M,ping_pong_flag_l0_a_)"
+        },
+        {
+          "name": "mad",
+          "line": 662,
+          "expression": "mad(l0_c,l0_a,l0_b,m0_,k0_,n0_,3,0,0,1)"
+        },
+        {
+          "name": "set_flag",
+          "line": 673,
+          "expression": "set_flag(PIPE_M,PIPE_MTE1,ping_pong_flag_l0_a_)"
+        },
+        {
+          "name": "set_quant_pre",
+          "line": 680,
+          "expression": "set_quant_pre(static_cast<uint64_t>(bits))"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 681,
+          "expression": "pipe_barrier(PIPE_FIX)"
+        },
+        {
+          "name": "copy_matrix_cc_to_gm",
+          "line": 682,
+          "expression": "copy_matrix_cc_to_gm(gm_out+out_offset,l0_c,0,n0_,m0_,n_,m0_,3,DEQF16,0,false,true)"
+        },
+        {
+          "name": "set_flag",
+          "line": 700,
+          "expression": "set_flag(PIPE_M,PIPE_MTE1,ping_pong_flag_l0_b_+2)"
+        },
+        {
+          "name": "ffts_cross_core_sync",
+          "line": 729,
+          "expression": "ffts_cross_core_sync(PIPE_FIX,sync_config)"
+        },
+        {
+          "name": "wait_flag_dev",
+          "line": 731,
+          "expression": "wait_flag_dev(AIV2AICFLAGID)"
+        },
+        {
+          "name": "ffts_cross_core_sync",
+          "line": 756,
+          "expression": "ffts_cross_core_sync(PIPE_FIX,sync_config)"
+        },
+        {
+          "name": "wait_flag_dev",
+          "line": 764,
+          "expression": "wait_flag_dev(AIV2AICFLAGID)"
+        },
+        {
+          "name": "ffts_cross_core_sync",
+          "line": 767,
+          "expression": "ffts_cross_core_sync(PIPE_FIX,sync_config)"
+        },
+        {
+          "name": "wait_flag_dev",
+          "line": 789,
+          "expression": "wait_flag_dev(AIV2AICFLAGID)"
+        },
+        {
+          "name": "ffts_cross_core_sync",
+          "line": 793,
+          "expression": "ffts_cross_core_sync(PIPE_FIX,sync_config)"
+        },
+        {
+          "name": "set_flag",
+          "line": 896,
+          "expression": "set_flag(PIPE_MTE1,PIPE_MTE2,EVENT_ID0)"
+        },
+        {
+          "name": "set_flag",
+          "line": 897,
+          "expression": "set_flag(PIPE_MTE1,PIPE_MTE2,EVENT_ID1)"
+        },
+        {
+          "name": "set_flag",
+          "line": 898,
+          "expression": "set_flag(PIPE_MTE1,PIPE_MTE2,EVENT_ID2)"
+        },
+        {
+          "name": "set_flag",
+          "line": 899,
+          "expression": "set_flag(PIPE_MTE1,PIPE_MTE2,EVENT_ID3)"
+        },
+        {
+          "name": "set_flag",
+          "line": 901,
+          "expression": "set_flag(PIPE_M,PIPE_MTE1,EVENT_ID0)"
+        },
+        {
+          "name": "set_flag",
+          "line": 902,
+          "expression": "set_flag(PIPE_M,PIPE_MTE1,EVENT_ID1)"
+        },
+        {
+          "name": "set_flag",
+          "line": 903,
+          "expression": "set_flag(PIPE_M,PIPE_MTE1,EVENT_ID2)"
+        },
+        {
+          "name": "set_flag",
+          "line": 904,
+          "expression": "set_flag(PIPE_M,PIPE_MTE1,EVENT_ID3)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 910,
+          "expression": "wait_flag(PIPE_MTE1,PIPE_MTE2,EVENT_ID0)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 911,
+          "expression": "wait_flag(PIPE_MTE1,PIPE_MTE2,EVENT_ID1)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 912,
+          "expression": "wait_flag(PIPE_MTE1,PIPE_MTE2,EVENT_ID2)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 913,
+          "expression": "wait_flag(PIPE_MTE1,PIPE_MTE2,EVENT_ID3)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 915,
+          "expression": "wait_flag(PIPE_M,PIPE_MTE1,EVENT_ID0)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 916,
+          "expression": "wait_flag(PIPE_M,PIPE_MTE1,EVENT_ID1)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 917,
+          "expression": "wait_flag(PIPE_M,PIPE_MTE1,EVENT_ID2)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 918,
+          "expression": "wait_flag(PIPE_M,PIPE_MTE1,EVENT_ID3)"
+        }
+      ],
+      "identity_normalized_source_equal": false
+    },
+    "VectorForward.h": {
+      "baseline_sha256": "9e9652b43d2e5d1989f7b50db26b6053950f674a1b05faa477d40ca5bd51b427",
+      "candidate_sha256": "9e9652b43d2e5d1989f7b50db26b6053950f674a1b05faa477d40ca5bd51b427",
+      "identical_call_sequence": true,
+      "baseline_calls": [
+        {
+          "name": "wait_flag_dev",
+          "line": 396,
+          "expression": "wait_flag_dev(AIC2AIVFLAGID)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 465,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 468,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "set_flag",
+          "line": 471,
+          "expression": "set_flag(PIPE_V,PIPE_S,EVENT_ID0)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 473,
+          "expression": "wait_flag(PIPE_V,PIPE_S,EVENT_ID0)"
+        },
+        {
+          "name": "set_flag",
+          "line": 478,
+          "expression": "set_flag(PIPE_MTE3,PIPE_V,EVENT_ID0)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 479,
+          "expression": "wait_flag(PIPE_MTE3,PIPE_V,EVENT_ID0)"
+        },
+        {
+          "name": "ffts_cross_core_sync",
+          "line": 484,
+          "expression": "ffts_cross_core_sync(PIPE_MTE3,config4)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 644,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 666,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 682,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 690,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 723,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 733,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 741,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 749,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 761,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 772,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 786,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 793,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 802,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 809,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 817,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 825,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 836,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 845,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 852,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 860,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 871,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 880,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 887,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 903,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 943,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "set_flag",
+          "line": 1036,
+          "expression": "set_flag(PIPE_MTE2,PIPE_V,event_id)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 1037,
+          "expression": "wait_flag(PIPE_MTE2,PIPE_V,event_id)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1041,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1057,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1071,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1080,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1087,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1091,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1110,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1122,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1131,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1142,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "set_flag",
+          "line": 1145,
+          "expression": "set_flag(PIPE_V,PIPE_S,event_ids[rowmax_build_step])"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1149,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1156,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1160,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1165,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1186,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1196,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1206,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1211,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1229,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "set_flag",
+          "line": 1232,
+          "expression": "set_flag(PIPE_V,PIPE_MTE3,event_id)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 1233,
+          "expression": "wait_flag(PIPE_V,PIPE_MTE3,event_id)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1277,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1284,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1308,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1312,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1316,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1339,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1344,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1347,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1360,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 1373,
+          "expression": "wait_flag(PIPE_MTE3,PIPE_S,event_ids[step])"
+        },
+        {
+          "name": "set_flag",
+          "line": 1387,
+          "expression": "set_flag(PIPE_S,PIPE_MTE3,event_ids[step])"
+        },
+        {
+          "name": "wait_flag",
+          "line": 1388,
+          "expression": "wait_flag(PIPE_S,PIPE_MTE3,event_ids[step])"
+        },
+        {
+          "name": "set_flag",
+          "line": 1395,
+          "expression": "set_flag(PIPE_MTE3,PIPE_S,event_ids[step+1])"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1415,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1427,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1442,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1451,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "set_flag",
+          "line": 1495,
+          "expression": "set_flag(PIPE_MTE3,PIPE_MTE2,EVENT_ID0)"
+        },
+        {
+          "name": "set_flag",
+          "line": 1496,
+          "expression": "set_flag(PIPE_MTE3,PIPE_MTE2,EVENT_ID1)"
+        },
+        {
+          "name": "set_flag",
+          "line": 1501,
+          "expression": "set_flag(PIPE_MTE3,PIPE_S,event_ids[rowmax_build_step])"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1517,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1519,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1521,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 1540,
+          "expression": "wait_flag(PIPE_MTE3,PIPE_MTE2,event_id)"
+        },
+        {
+          "name": "set_flag",
+          "line": 1567,
+          "expression": "set_flag(PIPE_MTE3,PIPE_MTE2,event_id)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 1570,
+          "expression": "wait_flag(PIPE_V,PIPE_S,event_ids[rowmax_build_step])"
+        },
+        {
+          "name": "set_flag",
+          "line": 1575,
+          "expression": "set_flag(PIPE_S,PIPE_V,event_ids[rowmax_build_step])"
+        },
+        {
+          "name": "wait_flag",
+          "line": 1576,
+          "expression": "wait_flag(PIPE_S,PIPE_V,event_ids[rowmax_build_step])"
+        },
+        {
+          "name": "set_flag",
+          "line": 1590,
+          "expression": "set_flag(PIPE_V,PIPE_S,event_ids[rowmax_build_step])"
+        },
+        {
+          "name": "wait_flag",
+          "line": 1591,
+          "expression": "wait_flag(PIPE_V,PIPE_S,event_ids[rowmax_build_step])"
+        },
+        {
+          "name": "wait_flag",
+          "line": 1604,
+          "expression": "wait_flag(PIPE_MTE3,PIPE_S,event_ids[rowmax_build_step])"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1608,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 1621,
+          "expression": "wait_flag(PIPE_MTE3,PIPE_MTE2,EVENT_ID0)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 1622,
+          "expression": "wait_flag(PIPE_MTE3,PIPE_MTE2,EVENT_ID1)"
+        }
+      ],
+      "candidate_calls": [
+        {
+          "name": "wait_flag_dev",
+          "line": 396,
+          "expression": "wait_flag_dev(AIC2AIVFLAGID)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 465,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 468,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "set_flag",
+          "line": 471,
+          "expression": "set_flag(PIPE_V,PIPE_S,EVENT_ID0)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 473,
+          "expression": "wait_flag(PIPE_V,PIPE_S,EVENT_ID0)"
+        },
+        {
+          "name": "set_flag",
+          "line": 478,
+          "expression": "set_flag(PIPE_MTE3,PIPE_V,EVENT_ID0)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 479,
+          "expression": "wait_flag(PIPE_MTE3,PIPE_V,EVENT_ID0)"
+        },
+        {
+          "name": "ffts_cross_core_sync",
+          "line": 484,
+          "expression": "ffts_cross_core_sync(PIPE_MTE3,config4)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 644,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 666,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 682,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 690,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 723,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 733,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 741,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 749,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 761,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 772,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 786,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 793,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 802,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 809,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 817,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 825,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 836,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 845,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 852,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 860,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 871,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 880,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 887,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 903,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 943,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "set_flag",
+          "line": 1036,
+          "expression": "set_flag(PIPE_MTE2,PIPE_V,event_id)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 1037,
+          "expression": "wait_flag(PIPE_MTE2,PIPE_V,event_id)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1041,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1057,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1071,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1080,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1087,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1091,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1110,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1122,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1131,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1142,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "set_flag",
+          "line": 1145,
+          "expression": "set_flag(PIPE_V,PIPE_S,event_ids[rowmax_build_step])"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1149,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1156,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1160,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1165,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1186,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1196,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1206,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1211,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1229,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "set_flag",
+          "line": 1232,
+          "expression": "set_flag(PIPE_V,PIPE_MTE3,event_id)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 1233,
+          "expression": "wait_flag(PIPE_V,PIPE_MTE3,event_id)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1277,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1284,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1308,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1312,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1316,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1339,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1344,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1347,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1360,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 1373,
+          "expression": "wait_flag(PIPE_MTE3,PIPE_S,event_ids[step])"
+        },
+        {
+          "name": "set_flag",
+          "line": 1387,
+          "expression": "set_flag(PIPE_S,PIPE_MTE3,event_ids[step])"
+        },
+        {
+          "name": "wait_flag",
+          "line": 1388,
+          "expression": "wait_flag(PIPE_S,PIPE_MTE3,event_ids[step])"
+        },
+        {
+          "name": "set_flag",
+          "line": 1395,
+          "expression": "set_flag(PIPE_MTE3,PIPE_S,event_ids[step+1])"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1415,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1427,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1442,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1451,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "set_flag",
+          "line": 1495,
+          "expression": "set_flag(PIPE_MTE3,PIPE_MTE2,EVENT_ID0)"
+        },
+        {
+          "name": "set_flag",
+          "line": 1496,
+          "expression": "set_flag(PIPE_MTE3,PIPE_MTE2,EVENT_ID1)"
+        },
+        {
+          "name": "set_flag",
+          "line": 1501,
+          "expression": "set_flag(PIPE_MTE3,PIPE_S,event_ids[rowmax_build_step])"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1517,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1519,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1521,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 1540,
+          "expression": "wait_flag(PIPE_MTE3,PIPE_MTE2,event_id)"
+        },
+        {
+          "name": "set_flag",
+          "line": 1567,
+          "expression": "set_flag(PIPE_MTE3,PIPE_MTE2,event_id)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 1570,
+          "expression": "wait_flag(PIPE_V,PIPE_S,event_ids[rowmax_build_step])"
+        },
+        {
+          "name": "set_flag",
+          "line": 1575,
+          "expression": "set_flag(PIPE_S,PIPE_V,event_ids[rowmax_build_step])"
+        },
+        {
+          "name": "wait_flag",
+          "line": 1576,
+          "expression": "wait_flag(PIPE_S,PIPE_V,event_ids[rowmax_build_step])"
+        },
+        {
+          "name": "set_flag",
+          "line": 1590,
+          "expression": "set_flag(PIPE_V,PIPE_S,event_ids[rowmax_build_step])"
+        },
+        {
+          "name": "wait_flag",
+          "line": 1591,
+          "expression": "wait_flag(PIPE_V,PIPE_S,event_ids[rowmax_build_step])"
+        },
+        {
+          "name": "wait_flag",
+          "line": 1604,
+          "expression": "wait_flag(PIPE_MTE3,PIPE_S,event_ids[rowmax_build_step])"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 1608,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 1621,
+          "expression": "wait_flag(PIPE_MTE3,PIPE_MTE2,EVENT_ID0)"
+        },
+        {
+          "name": "wait_flag",
+          "line": 1622,
+          "expression": "wait_flag(PIPE_MTE3,PIPE_MTE2,EVENT_ID1)"
+        }
+      ],
+      "identity_normalized_source_equal": true
+    },
+    "address_const.h": {
+      "baseline_sha256": "d933a953ff8deba960e90769b4b86b11c1166ae00b5edc5f64c784b329854421",
+      "candidate_sha256": "d933a953ff8deba960e90769b4b86b11c1166ae00b5edc5f64c784b329854421",
+      "identical_call_sequence": true,
+      "baseline_calls": [],
+      "candidate_calls": [],
+      "identity_normalized_source_equal": true
+    },
+    "matmul_const.h": {
+      "baseline_sha256": "ac6bef6c468824bab498504b9b7b32588dba2d386e8c6979f122333ff52fcf52",
+      "candidate_sha256": "ac6bef6c468824bab498504b9b7b32588dba2d386e8c6979f122333ff52fcf52",
+      "identical_call_sequence": true,
+      "baseline_calls": [],
+      "candidate_calls": [],
+      "identity_normalized_source_equal": true
+    },
+    "vc_laser_probability.h": {
+      "baseline_sha256": "e754ec92c000981bc8f75eb91fdf21d3c97285744bb9c09ae587f5170cf548c9",
+      "candidate_sha256": "e754ec92c000981bc8f75eb91fdf21d3c97285744bb9c09ae587f5170cf548c9",
+      "identical_call_sequence": true,
+      "baseline_calls": [
+        {
+          "name": "pipe_barrier",
+          "line": 36,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 39,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 41,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 43,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 45,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 47,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 56,
+          "expression": "pipe_barrier(PIPE_V)"
+        }
+      ],
+      "candidate_calls": [
+        {
+          "name": "pipe_barrier",
+          "line": 36,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 39,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 41,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 43,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 45,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 47,
+          "expression": "pipe_barrier(PIPE_V)"
+        },
+        {
+          "name": "pipe_barrier",
+          "line": 56,
+          "expression": "pipe_barrier(PIPE_V)"
+        }
+      ],
+      "identity_normalized_source_equal": true
+    },
+    "vc_laser_quant_reuse_attention.cpp": {
+      "baseline_sha256": "15f499725d92105b47b792d33d3f13e7913330c325ecbddd5076ed3315243c61",
+      "candidate_sha256": "9e78a666f978f4671c7a938982c16560d69b5b655f9971b6d08d8135c358455b",
+      "identical_call_sequence": true,
+      "baseline_calls": [],
+      "candidate_calls": [],
+      "identity_normalized_source_equal": true
+    }
+  }
+}

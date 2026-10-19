@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Paired INT8 scale-read reuse experiment, plus isolated original FP16 counters."""
+"""Paired INT8 scale scheduling experiments, plus isolated original FP16 counters."""
 from __future__ import annotations
 
 import argparse
@@ -26,57 +26,75 @@ SCOPES = {
 }
 
 
+def experiment(args):
+    """Keep each candidate's identity and source validator bound together."""
+    from importlib import import_module
+    kind = getattr(args, "experiment", "scale-reuse")
+    if kind == "scale-reuse":
+        names = ("quant", "quant_reuse")
+        paths = (args.quant_build, args.reuse_build)
+        labels = ("baseline", "scale reuse")
+    elif kind == "gain-precompute":
+        names = ("quant_reuse", "quant_gain")
+        paths = (args.reuse_build, args.gain_build)
+        labels = ("scale reuse", "gain ready")
+    else:
+        raise ValueError(f"Unknown paired experiment: {kind}")
+    return {key: dict(source=import_module("prepare_mindie_laser_"+name+"_source"),
+                     path=path, namespace="vc_laser_"+name, label=label)
+            for key, name, path, label in zip(("baseline", "reuse"), names, paths, labels)}
+
+
 def resolve_providers(args):
-    from prepare_mindie_laser_quant_source import MARKER_ENV, MARKER_TOKEN
-    from prepare_mindie_laser_quant_reuse_source import MARKER_ENV as REUSE_ENV, MARKER_TOKEN as REUSE_TOKEN
     providers = {}
-    for name, path, marker_env, token in (
-        ("baseline", args.quant_build, MARKER_ENV, MARKER_TOKEN),
-        ("reuse", args.reuse_build, REUSE_ENV, REUSE_TOKEN),
-    ):
+    for name, spec in experiment(args).items():
         options = SimpleNamespace(**vars(args))
-        options.quant_build = path
+        options.quant_build = spec["path"]
         provider = quant.build_arguments(options, "qk_int8_fused")
-        provider.marker_env, provider.marker_token = marker_env, token
+        provider.marker_env, provider.marker_token = spec["source"].MARKER_ENV, spec["source"].MARKER_TOKEN
         providers[name] = provider
     if Path(providers["baseline"].vendor_root).resolve() == Path(providers["reuse"].vendor_root).resolve():
-        raise ValueError("Baseline and scale-reuse candidate must have independent vendor roots")
+        raise ValueError("Baseline and candidate must have independent vendor roots")
     return providers
 
 
 def verify_builds(args):
-    from prepare_mindie_laser_quant_reuse_source import IDENTITY, validate_prepared_source
     from mindie_laser_quant_fused import validate_preprocess_manifest
     providers = resolve_providers(args)
+    specs = experiment(args)
     return {
-        "baseline": quant.quant_provenance(providers["baseline"]),
-        "reuse": quant.quant_provenance(providers["reuse"], identity=IDENTITY,
-                                       source_validator=validate_prepared_source),
+        **{name: quant.quant_provenance(provider, identity=specs[name]["source"].IDENTITY,
+            source_validator=specs[name]["source"].validate_prepared_source)
+           for name, provider in providers.items()},
         "preprocessor": validate_preprocess_manifest(args.preprocess_build),
         "fp16": quant.baseline.provenance(quant.build_arguments(args, "baseline")),
     }
 
 
 def table(report):
+    labels = report.get("variant_labels", {"baseline": "baseline", "reuse": "scale reuse"})
     lines = ["Same-process paired wall ms/API; no profiler active:",
-             f"{'scope':<15} {'baseline':>12} {'scale reuse':>12} {'old/new':>10} {'saved ms':>12} {'faster':>8}"]
+             f"{'scope':<15} {labels['baseline']:>12} {labels['reuse']:>12} {'old/new':>10} {'saved ms':>12} {'faster':>8}"]
     for scope, timing in report.get("timings", {}).items():
         old, new = (timing["rows"][name]["median_ms"] for name in ("baseline", "reuse"))
         pair = report["comparisons"][scope]
         lines.append(f"{scope:<15} {old:12.4f} {new:12.4f} {old/new:9.4f}x "
                      f"{pair['median_saved_ms']:+12.4f} {pair['faster_trials']:3}/{pair['trials']}")
     lines += ["native/prepared reuse identical payload objects; full freshly preprocesses every call.",
-              "Positive paired saved means reuse is faster. Scopes are not additive or kernel-only times."]
+              "Positive paired saved means candidate is faster. Scopes are not additive or kernel-only times."]
     return "\n".join(lines)
 
 
 def worker(args):
     from profile_mindie_laser_quant import compare_all_rows, payload_evidence, verify_runtime_target
     providers = resolve_providers(args)
+    specs = experiment(args)
     directory = Path(args._run_dir) / "paired" / "local"
     directory.mkdir(parents=True, exist_ok=True)
     report = dict(status="running", stage="load", pid=os.getpid(), shape_bnsd=args.shape,
                   dtype="bfloat16", seed=0, scopes=SCOPES, timings={}, comparisons={},
+                  experiment=args.experiment,
+                  variant_labels={name: spec["label"] for name, spec in specs.items()},
                   contract="INT8 QK, original exp, FP16 PV; no V quantization/reorder/smoothing")
     save = lambda: common.write_json(directory / "report.json", report)
     save()
@@ -87,15 +105,17 @@ def worker(args):
         from mindie_laser_quant_reference import validate_small
         torch.set_num_threads(min(args.cpu_threads, torch.get_num_threads()))
         old = load_quant_laser(providers["baseline"].bridge_path, preprocessing="fused",
-            preprocess_build=args.preprocess_build, v_quantize=False, expcast=False, check_finite=False)
+            preprocess_build=args.preprocess_build, torch_namespace=specs["baseline"]["namespace"],
+            v_quantize=False, expcast=False, check_finite=False)
         torch.ops.load_library(providers["reuse"].bridge_path)
-        native = torch.ops.vc_laser_quant_reuse.la.default
+        namespace = specs["reuse"]["namespace"]
+        native = getattr(torch.ops, namespace).la.default
         if ([str(x.type) for x in native._schema.arguments] != ["Tensor"]*5+["float", "int", "bool"]
                 or [str(x.type) for x in native._schema.returns] != ["Tensor"]):
-            raise RuntimeError(f"Unexpected scale-reuse schema: {native._schema}")
+            raise RuntimeError(f"Unexpected candidate schema: {native._schema}")
         adapters = {"baseline": old, "reuse": MindIEQuantLaser(native,
             quantizer=old.quantizer, v_quantize=False, expcast=False, check_finite=False,
-            metadata=dict(old.metadata, dispatch="torch.ops.vc_laser_quant_reuse.la.default",
+            metadata=dict(old.metadata, dispatch=f"torch.ops.{namespace}.la.default",
                           bridge_path=providers["reuse"].bridge_path, native_schema=str(native._schema)))}
         torch.npu.set_option({"ACL_OP_COMPILER_CACHE_MODE": "disable",
                               "ACL_OP_COMPILER_CACHE_DIR": os.environ["ACL_OP_COMPILER_CACHE_DIR"]})
@@ -123,6 +143,9 @@ def worker(args):
                 report["validation"][name] = {}
                 validate_small(adapter, device, report["validation"][name], save, torch)
             validate_scale_reuse(adapters, device, report, save)
+            if args.experiment == "gain-precompute":
+                from mindie_laser_gain_checks import validate_block_gains
+                validate_block_gains(adapters, device, report, save)
             report["stage"] = "long_shape_validation"
             save()
             generator = torch.Generator().manual_seed(0)
@@ -153,7 +176,7 @@ def worker(args):
             report["same_payload_all_output"] = compare_all_rows(raw["reuse"], raw["baseline"])
             save()
             if not report["same_payload_all_output"]["exact_match"]:
-                raise AssertionError("Scale-read reuse must preserve ALL native output elements exactly")
+                raise AssertionError("Candidate must preserve ALL native output elements exactly")
             ids = torch.linspace(0, args.shape[2]-1, min(32, args.shape[2])).long().unique()
             dense = common.dense_reference(*original, ids)
             report["dense_fp32_samples"] = {name: common.error_metrics(
@@ -207,7 +230,7 @@ def launch(args, mode, env, directory):
         Path(env[key]).mkdir(parents=True, exist_ok=True)
     command = [sys.executable, "-u", str(Path(__file__).resolve()), "--_worker", mode,
                "--_run-dir", args._run_dir]
-    for key in ("quant_build", "reuse_build", "preprocess_build", "baseline_build", "bridge_manifest",
+    for key in ("quant_build", "reuse_build", "gain_build", "experiment", "preprocess_build", "baseline_build", "bridge_manifest",
                 "device", "warmup", "repeats", "trials", "cpu_threads", "seed"):
         command += ["--"+key.replace("_", "-"), str(getattr(args, key))]
     command += ["--shape", *map(str, args.shape)]
@@ -230,8 +253,10 @@ def launch(args, mode, env, directory):
 def parent(args):
     output = Path(args.output).resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
-    args._run_dir = tempfile.mkdtemp(prefix="mindie_laser_scale_reuse_", dir=output.parent)
+    kind = getattr(args, "experiment", "scale-reuse")
+    args._run_dir = tempfile.mkdtemp(prefix="mindie_laser_"+kind.replace("-", "_")+"_", dir=output.parent)
     report = dict(status="running", run_dir=args._run_dir, workers={},
+        experiment=kind,
         scope="Paired identical-payload INT8 kernel A/B; original FP16 counters in a separate process, not paired speedup")
     save = lambda: common.write_json(output, report)
     save()
@@ -245,7 +270,7 @@ def parent(args):
         save()
         if (report["workers"]["paired"].get("returncode")
                 or report["workers"]["paired"].get("status") != "passed"):
-            raise RuntimeError("Paired scale-reuse worker failed; see its worker_log in report")
+            raise RuntimeError("Paired candidate worker failed; see its worker_log in report")
         fp16 = quant.build_arguments(args, "baseline")
         env = quant.baseline.worker_environment(os.environ, "local", fp16.vendor_root, fp16._run_dir)
         for key in list(env):
@@ -272,12 +297,14 @@ def main(argv=None):
     for name, default in (
         ("quant-build", "results/mindie_laser_quant_build.json"),
         ("reuse-build", "results/mindie_laser_quant_reuse_build.json"),
+        ("gain-build", "results/mindie_laser_quant_gain_build.json"),
         ("preprocess-build", "results/mindie_laser_quant_preprocess_build.json"),
         ("baseline-build", "results/mindie_laser_build.json"),
         ("bridge-manifest", "results/mindie_laser_bridge.json"),
         ("output", "results/mindie_laser_scale_reuse.json"),
     ):
         parser.add_argument("--"+name, default=default)
+    parser.add_argument("--experiment", choices=("scale-reuse", "gain-precompute"), default="scale-reuse")
     parser.add_argument("--shape", type=int, nargs=4, default=list(quant.baseline.SHAPE))
     parser.add_argument("--device", type=int, default=0)
     parser.add_argument("--warmup", type=int, default=5)
