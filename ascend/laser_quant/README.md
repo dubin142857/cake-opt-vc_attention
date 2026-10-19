@@ -188,6 +188,8 @@ bash scripts/run_mindie_laser_scale_reuse.sh
 
 默认 BF16 BNSD `[1,28,37741,128]`，设备 0，warmup 5、每轮 10 次、9 轮。保持 **INT8 QK + 原版 exp + FP16 PV**，不加入 V 量化、重排、平滑或 ExpCast。入口先核对已有成功构建，再只构建 `VcLaserQuantReuseAttention`；源码、安装、bridge、vendor 都使用单独的 `mindie_laser_quant_reuse_*` 目录，不清空或重新构建旧基线。重跑保留候选构建缓存。
 
+源码准备强制使用本地 Git 对象：一键入口从已校验的 INT8 build manifest 读取 `source_dir`，独立运行时也会查找已有成功构建的源码目录。无需重新下载 MindIE 或安装包。旧版网络超时留下的空 `.git` 会从本地锁定 commit 恢复；非空未提交目录、错误 HEAD 或其他 origin 不会被覆盖。没有本地锁定源码时立即说明缺失，不等待 GitHub 网络超时。安装好的二进制包供运行基线使用，修改候选内核仍使用此前构建留下的源码。
+
 候选在每个工作描述符内读取两项 Q scale，每个 K128 分块读取一次 K scale，供两个 Q128 复用。完整 `ky=2,kx=32` 描述符的源代码级读取数由 128 降至 34。保留 `ReadQuantScale` 的 DCCI、FP32 乘法、低 13 位截断、`set_quant_pre`、FIX barrier、DEQF16 和原 Cube/Vector 流水。这只是减少重复工作的假设，不能从读取数推算加速比；NPU 编译与收益待远端验证。
 
 固定输入 A/B 同时加载两个独立命名的原生算子，在相同进程中共享**同一个量化 payload 对象和 scale 地址**。表中 `baseline` 是当前 INT8 内核，`reuse` 是 scale 复用候选：

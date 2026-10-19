@@ -71,8 +71,11 @@ for manifest in (args.quant_build, args.baseline_build):
 print('Verified existing INT8, FP16 and fused-preprocessing builds for', soc, flush=True)
 PY
 BUILD_SOC="$("$PYTHON_BIN" -c 'import json; print(json.load(open("results/mindie_laser_quant_build.json"))["soc"])')"
+SOURCE_REFERENCE="$("$PYTHON_BIN" -c 'import json; print(json.load(open("results/mindie_laser_quant_build.json"))["source_dir"])')"
 echo "Only build the separate scale-reuse candidate; existing FP16/INT8/quantizer are reused"
+echo "Reuse verified source checkout: $SOURCE_REFERENCE (no upstream download)"
 "$PYTHON_BIN" -u scripts/build_mindie_laser_quant_reuse.py \
+  --reference-dir "$SOURCE_REFERENCE" \
   --cann-root "$ASCEND_HOME_PATH" --soc "$BUILD_SOC" --jobs "$LASER_BUILD_JOBS" \
   --output results/mindie_laser_quant_reuse_build.json \
   2>&1 | tee results/mindie_laser_quant_reuse_build.log

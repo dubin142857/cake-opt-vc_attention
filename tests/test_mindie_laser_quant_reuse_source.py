@@ -202,3 +202,30 @@ void instantiate(CubeForward<half,false,half>& op,
 """
     code, log = compile_syntax(cpp_compiler, tmp_path, preamble + methods + invoke)
     assert code == 0, log
+
+
+def test_source_reuse_cannot_enable_network_with_legacy_offline_false(prepared, monkeypatch):
+    reference, source, manifest, _ = prepared
+    original = prepare.ensure_checkout
+    seen = []
+    def verify(path, lock, offline):
+        seen.append(offline)
+        assert offline is True
+        return original(path, lock, offline)
+    monkeypatch.setattr(prepare, "ensure_checkout", verify)
+    prepare.prepare(source, reference, manifest, offline=False)
+    assert seen == [True]
+
+
+def test_cache_discovery_reads_existing_successful_build_paths(tmp_path, monkeypatch):
+    monkeypatch.setattr(prepare, "ROOT", tmp_path)
+    (tmp_path / "results").mkdir()
+    source = tmp_path / "custom local source"
+    (tmp_path / "results/mindie_laser_quant_build.json").write_text(
+        json.dumps(dict(status="passed", source_dir=str(source))), encoding="utf-8")
+    (tmp_path / "results/mindie_laser_build.json").write_text(
+        json.dumps(dict(status="failed", source_dir="must not reuse")), encoding="utf-8")
+    missing = tmp_path / "missing reference"
+    candidates = prepare.cached_references(missing)
+    assert candidates[:2] == [missing, source]
+    assert Path("must not reuse") not in candidates

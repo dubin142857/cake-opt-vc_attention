@@ -130,7 +130,7 @@ def test_one_command_only_builds_candidate_and_stops_on_failure(tmp_path, fail_s
     stub.write_text("import json,sys\nfrom pathlib import Path\n"
         "a=sys.argv[1:]\ns='preflight' if a[0]=='-' else 'soc' if a[0]=='-c' else 'build' if 'build_' in a[1] else 'profile'\n"
         "with Path('calls.jsonl').open('a') as f:f.write(json.dumps({'stage':s,'args':a})+'\\n')\n"
-        "if s=='soc':print('ascend910_93')\n"
+        "if s=='soc':print('cached quant source' if 'source_dir' in a[-1] else 'ascend910_93')\n"
         f"raise SystemExit(23 if s=={fail_stage!r} else 0)\n", encoding="utf-8")
     wrapper = root / "mock-python"
     wrapper.write_text(f'#!/usr/bin/env bash\nexec "{Path(sys.executable).as_posix()}" "{stub.as_posix()}" "$@"\n', encoding="utf-8", newline="\n")
@@ -146,6 +146,7 @@ def test_one_command_only_builds_candidate_and_stops_on_failure(tmp_path, fail_s
     if any(c["stage"] == "build" for c in calls):
         build = next(c["args"] for c in calls if c["stage"] == "build")
         assert build[:2] == ["-u", "scripts/build_mindie_laser_quant_reuse.py"]
+        assert build[build.index("--reference-dir")+1] == "cached quant source"
     if any(c["stage"] == "profile" for c in calls):
         command = calls[-1]["args"]
         assert command[command.index("--shape")+1:command.index("--shape")+5] == ["1", "28", "37741", "128"]

@@ -13,7 +13,8 @@ if str(ROOT) not in sys.path:
 
 from scripts import prepare_mindie_laser_quant_source as baseline
 from scripts.mindie_laser_quant_reuse_patch import apply
-from scripts.prepare_mindie_laser_source import SOURCE_LOCK, OP_ROOT, PREPARE_SCRIPT, seed_checkout, default_manifest
+from scripts.prepare_mindie_laser_source import SOURCE_LOCK, OP_ROOT, PREPARE_SCRIPT, default_manifest
+from scripts.mindie_laser_offline_cache import local_objects_only, seed_local_checkout
 from scripts.prepare_cann_fas_source import PreparationError, ensure_checkout, check_dirty, audit_files, sha256
 
 OP_NAME = "vc_laser_quant_reuse_attention"
@@ -78,12 +79,29 @@ def _identity(source):
     }
 
 
-def prepare(source_dir, reference_dir, manifest, *, offline=False):
+def cached_references(reference):
+    """Prefer the requested checkout; also discover the already-built sources."""
+    result = [reference]
+    for name in ("mindie_laser_quant_build.json", "mindie_laser_build.json"):
+        path = ROOT / "results" / name
+        if path.is_file():
+            build = json.loads(path.read_text(encoding="utf-8"))
+            if build.get("status") == "passed" and build.get("source_dir"):
+                result.append(Path(build["source_dir"]))
+    result.extend(ROOT / "build" / name for name in
+                  ("mindie_laser_quant_source", "mindie_laser_source", "mindie-sd-reference"))
+    return result
+
+
+@local_objects_only()
+def prepare(source_dir, reference_dir, manifest, *, offline=True):
+    # `offline` is retained for compatibility. This incremental candidate NEVER
+    # downloads upstream, including when an older caller passes offline=False.
     source, reference, destination = map(lambda x: Path(x).resolve(), (source_dir, reference_dir, manifest))
     if source == reference or source.is_relative_to(reference) or reference.is_relative_to(source):
         raise PreparationError("Scale-reuse source must be separate from the reference checkout")
-    seed_checkout(source, reference, SOURCE_LOCK)
-    ensure_checkout(source, SOURCE_LOCK, offline=offline)
+    seed_local_checkout(source, cached_references(reference), SOURCE_LOCK)
+    ensure_checkout(source, SOURCE_LOCK, offline=True)
     patches, generated = expected_files(source)
     records = _audit(source, patches)
     report = {
@@ -106,6 +124,7 @@ def prepare(source_dir, reference_dir, manifest, *, offline=False):
     return report
 
 
+@local_objects_only()
 def validate_prepared_source(source, manifest_path):
     source = Path(source).resolve()
     manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
@@ -127,7 +146,7 @@ if __name__ == "__main__":
     parser.add_argument("--source-dir", type=Path, default=ROOT / "build/mindie_laser_quant_reuse_source")
     parser.add_argument("--reference-dir", type=Path, default=ROOT / "build/mindie-sd-reference")
     parser.add_argument("--manifest", type=Path)
-    parser.add_argument("--offline", action="store_true")
+    parser.add_argument("--offline", action="store_true", help="Compatibility flag; source preparation is always local-only")
     args = parser.parse_args()
     prepare(args.source_dir, args.reference_dir, args.manifest or default_manifest(args.source_dir), offline=args.offline)
     print(f"Prepared {OP_TYPE}: QK scale reads reused within each descriptor; arithmetic unchanged")
