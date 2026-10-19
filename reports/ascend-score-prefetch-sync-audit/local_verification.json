@@ -1,0 +1,19 @@
+{
+  "tests": [
+    "tests/test_mindie_laser_quant_prefetch_patch.py",
+    "tests/test_mindie_laser_quant_prefetch_build.py",
+    "tests/test_mindie_laser_prefetch_checks.py",
+    "tests/test_mindie_laser_gain_profile.py",
+    "tests/test_mindie_laser_scale_reuse_profile.py",
+    "tests/test_mindie_laser_offline_cache.py",
+    "tests/test_mindie_laser_quant_gain_source.py",
+    "tests/test_mindie_laser_quant_gain_build.py"
+  ],
+  "result": "123 passed",
+  "elapsed_seconds": 82.33,
+  "interpreter": ".venv-package/Scripts/python.exe",
+  "pytest_environment": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1; --assert=plain; existing D:/ana/Lib/site-packages appended for pytest",
+  "shell_syntax": "bash -n scripts/run_mindie_laser_score_prefetch.sh passed",
+  "prepared_source": "Local-only generation and strict validation passed",
+  "limits": "CPU/host checks only; no local CANN or NPU compilation, execution or performance measurement"
+}

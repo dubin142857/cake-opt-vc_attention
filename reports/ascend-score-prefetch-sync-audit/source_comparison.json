@@ -1,0 +1,123 @@
+{
+  "contract": {
+    "scope": "AIV score DMA one four-row batch ahead within one dense section",
+    "guard": "qk_triangle == 0; !sparse_flag; rowPerTime == 4; vector lines == 64; key blocks in [1,32]",
+    "prologue": "initialize V-to-MTE2 free tokens for both slots; consume V and MTE3 free tokens for slot 0; load batch 0; set ready 0",
+    "loop": "wait current ready; consume opposite V and MTE3 free tokens and load next score batch if present; original arithmetic and P store; release both current-slot dependencies",
+    "drain": "last iteration enqueues no next read; consume both slots' final V-to-MTE2 and MTE3-to-MTE2 free tokens",
+    "storage": "existing two disjoint 32 KiB score slots; no added UB; numeric IDs 0/1 also used in previously unused V-to-MTE2 direction",
+    "padding": "unchanged is_tail_section/windowLen score masking, including non-aligned K",
+    "masks": "mask DMAs never prefetched; triangular and sparse paths retain serialized loads",
+    "unchanged": "Cube, QK scales, DEQF16, GM layout, Vector math order, original exp, FP16 PV, cross-core flags",
+    "performance": "scheduling hypothesis requiring paired device measurements; no local NPU speedup claim"
+  },
+  "files": [
+    {
+      "baseline": "csrc/ops/vc_laser_quant_reuse_attention/op_host/CMakeLists.txt",
+      "candidate": "csrc/ops/vc_laser_quant_prefetch_attention/op_host/CMakeLists.txt",
+      "baseline_sha256": "eb08a6e9cb0bc6699424dc01bb346a7dcacc96b5eae6c7943a7bcdbe50864ff4",
+      "candidate_sha256": "1e9b1c71228247a2eb4eaac431ee5c3daa53c9ff666aacfec92604499cb6f2aa",
+      "identical_after_identity_normalization": true
+    },
+    {
+      "baseline": "csrc/ops/vc_laser_quant_reuse_attention/op_host/vc_laser_quant_reuse_attention_def.cpp",
+      "candidate": "csrc/ops/vc_laser_quant_prefetch_attention/op_host/vc_laser_quant_prefetch_attention_def.cpp",
+      "baseline_sha256": "882964ed76a673d2fc6e89f82b7ffe5d552ca0c01041ad1641e7ea075b0904cd",
+      "candidate_sha256": "0048a07a074ee742cf80442ae1f5f84996c600243950c7df48d372c63e09dff5",
+      "identical_after_identity_normalization": true
+    },
+    {
+      "baseline": "csrc/ops/vc_laser_quant_reuse_attention/op_host/vc_laser_quant_reuse_attention_proto.cpp",
+      "candidate": "csrc/ops/vc_laser_quant_prefetch_attention/op_host/vc_laser_quant_prefetch_attention_proto.cpp",
+      "baseline_sha256": "757c157aafa5df8443dcd5c5165947e2bcd702f34ca6de61a54214dd91d077ea",
+      "candidate_sha256": "623a9ad7bc2bd91ae083ca4b75ded7d850d82a671548dfb204cf57ce9d0ddb92",
+      "identical_after_identity_normalization": true
+    },
+    {
+      "baseline": "csrc/ops/vc_laser_quant_reuse_attention/op_host/vc_laser_quant_reuse_attention_tiling.cpp",
+      "candidate": "csrc/ops/vc_laser_quant_prefetch_attention/op_host/vc_laser_quant_prefetch_attention_tiling.cpp",
+      "baseline_sha256": "bcb7bd87134228024915721803c1dc3ab700bf2abf5e1c039e2329aaa8d9d7f5",
+      "candidate_sha256": "bb3fe9a779801e6a06db0535de2ab80808869d73cde9b7a4907793573d4108ef",
+      "identical_after_identity_normalization": true
+    },
+    {
+      "baseline": "csrc/ops/vc_laser_quant_reuse_attention/op_host/vc_laser_quant_reuse_attention_tiling.h",
+      "candidate": "csrc/ops/vc_laser_quant_prefetch_attention/op_host/vc_laser_quant_prefetch_attention_tiling.h",
+      "baseline_sha256": "20aceb2ba1d14b77bd7650470666c13d4e4b23886ea2542057022880f93b0695",
+      "candidate_sha256": "8f1bdead959f917c135f8b6f5d4838a097e4619ece6662f9a153dbb9a930a2b6",
+      "identical_after_identity_normalization": true
+    },
+    {
+      "baseline": "csrc/ops/vc_laser_quant_reuse_attention/op_kernel/AddressMappingForwardOnline.h",
+      "candidate": "csrc/ops/vc_laser_quant_prefetch_attention/op_kernel/AddressMappingForwardOnline.h",
+      "baseline_sha256": "b1c83a6078f9a3f41f1e5a46613583991e1dbf26844f1284e04813dbb4b5264d",
+      "candidate_sha256": "b1c83a6078f9a3f41f1e5a46613583991e1dbf26844f1284e04813dbb4b5264d",
+      "identical_after_identity_normalization": true
+    },
+    {
+      "baseline": "csrc/ops/vc_laser_quant_reuse_attention/op_kernel/AddressMappingVectorForwardOnline.h",
+      "candidate": "csrc/ops/vc_laser_quant_prefetch_attention/op_kernel/AddressMappingVectorForwardOnline.h",
+      "baseline_sha256": "27756e0a02fbe68d6827dd0f28c682a23d335510e94ab7b7691d8435e100d8b5",
+      "candidate_sha256": "27756e0a02fbe68d6827dd0f28c682a23d335510e94ab7b7691d8435e100d8b5",
+      "identical_after_identity_normalization": true
+    },
+    {
+      "baseline": "csrc/ops/vc_laser_quant_reuse_attention/op_kernel/CubeForward.h",
+      "candidate": "csrc/ops/vc_laser_quant_prefetch_attention/op_kernel/CubeForward.h",
+      "baseline_sha256": "52cc81b6efb0b20f59d6e643f3ca2a8fcc61e64fdb6dfabc40e4de5b9bac7b2c",
+      "candidate_sha256": "52cc81b6efb0b20f59d6e643f3ca2a8fcc61e64fdb6dfabc40e4de5b9bac7b2c",
+      "identical_after_identity_normalization": true
+    },
+    {
+      "baseline": "csrc/ops/vc_laser_quant_reuse_attention/op_kernel/VectorForward.h",
+      "candidate": "csrc/ops/vc_laser_quant_prefetch_attention/op_kernel/VectorForward.h",
+      "baseline_sha256": "9e9652b43d2e5d1989f7b50db26b6053950f674a1b05faa477d40ca5bd51b427",
+      "candidate_sha256": "0885b4ec11d632c2736365869be5cbb77ae564d4adf1bf2409b8c98961b0042b",
+      "identical_after_identity_normalization": false,
+      "inverse_prefetch_patch_exact": true
+    },
+    {
+      "baseline": "csrc/ops/vc_laser_quant_reuse_attention/op_kernel/address_const.h",
+      "candidate": "csrc/ops/vc_laser_quant_prefetch_attention/op_kernel/address_const.h",
+      "baseline_sha256": "d933a953ff8deba960e90769b4b86b11c1166ae00b5edc5f64c784b329854421",
+      "candidate_sha256": "d933a953ff8deba960e90769b4b86b11c1166ae00b5edc5f64c784b329854421",
+      "identical_after_identity_normalization": true
+    },
+    {
+      "baseline": "csrc/ops/vc_laser_quant_reuse_attention/op_kernel/vc_laser_quant_reuse_attention.cpp",
+      "candidate": "csrc/ops/vc_laser_quant_prefetch_attention/op_kernel/vc_laser_quant_prefetch_attention.cpp",
+      "baseline_sha256": "15f499725d92105b47b792d33d3f13e7913330c325ecbddd5076ed3315243c61",
+      "candidate_sha256": "6e6a02b0fd8579ac43887258eb951380301ea8c2b7547d42df0b47463aa77f13",
+      "identical_after_identity_normalization": true
+    },
+    {
+      "baseline": "csrc/ops/vc_laser_quant_reuse_attention/op_kernel/matmul_const.h",
+      "candidate": "csrc/ops/vc_laser_quant_prefetch_attention/op_kernel/matmul_const.h",
+      "baseline_sha256": "ac6bef6c468824bab498504b9b7b32588dba2d386e8c6979f122333ff52fcf52",
+      "candidate_sha256": "ac6bef6c468824bab498504b9b7b32588dba2d386e8c6979f122333ff52fcf52",
+      "identical_after_identity_normalization": true
+    },
+    {
+      "baseline": "csrc/ops/vc_laser_quant_reuse_attention/op_host/vc_source_marker.h",
+      "candidate": "csrc/ops/vc_laser_quant_prefetch_attention/op_host/vc_source_marker.h",
+      "baseline_sha256": "ec6d4bcf75e4e65db15de0ea0698a3fb2698d788f7c739d662532933c9ad143f",
+      "candidate_sha256": "ba998970de17c6b41139609226b3ff420958333c99a56bb40dfbd237cb4fe9d9",
+      "identical_after_identity_normalization": true
+    },
+    {
+      "baseline": "csrc/ops/vc_laser_quant_reuse_attention/op_kernel/vc_laser_probability.h",
+      "candidate": "csrc/ops/vc_laser_quant_prefetch_attention/op_kernel/vc_laser_probability.h",
+      "baseline_sha256": "e754ec92c000981bc8f75eb91fdf21d3c97285744bb9c09ae587f5170cf548c9",
+      "candidate_sha256": "e754ec92c000981bc8f75eb91fdf21d3c97285744bb9c09ae587f5170cf548c9",
+      "identical_after_identity_normalization": true
+    },
+    {
+      "baseline": "csrc/ops/cmake/scripts/prepare.sh",
+      "candidate": "csrc/ops/cmake/scripts/prepare.sh",
+      "baseline_sha256": "b2889c91404b8616c871f6671c3d1aed9a85fbdcbd36553e7646876c64a13a8d",
+      "candidate_sha256": "b2889c91404b8616c871f6671c3d1aed9a85fbdcbd36553e7646876c64a13a8d",
+      "identical_after_identity_normalization": true
+    }
+  ],
+  "scope": "Pinned preparation bytes; after unique operator/marker normalization only VectorForward changes. Inverse equality is a source check, not device execution proof."
+}

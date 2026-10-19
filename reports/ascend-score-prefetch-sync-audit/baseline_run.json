@@ -1,0 +1,50 @@
+[
+  {
+    "tool": "sync_audit",
+    "returncode": 0,
+    "command": [
+      "D:\\codex\\算子\\.venv-package\\Scripts\\python.exe",
+      "D:\\codex\\算子\\build\\cannbot-skills\\ops\\ascendc-sync-audit\\scripts\\sync_audit.py",
+      "D:\\codex\\算子\\build\\mindie_laser_quant_reuse_source\\csrc\\ops\\vc_laser_quant_reuse_attention\\op_host\\vc_laser_quant_reuse_attention_def.cpp",
+      "D:\\codex\\算子\\build\\mindie_laser_quant_reuse_source\\csrc\\ops\\vc_laser_quant_reuse_attention\\op_host\\vc_laser_quant_reuse_attention_proto.cpp",
+      "D:\\codex\\算子\\build\\mindie_laser_quant_reuse_source\\csrc\\ops\\vc_laser_quant_reuse_attention\\op_host\\vc_laser_quant_reuse_attention_tiling.cpp",
+      "D:\\codex\\算子\\build\\mindie_laser_quant_reuse_source\\csrc\\ops\\vc_laser_quant_reuse_attention\\op_host\\vc_laser_quant_reuse_attention_tiling.h",
+      "D:\\codex\\算子\\build\\mindie_laser_quant_reuse_source\\csrc\\ops\\vc_laser_quant_reuse_attention\\op_host\\vc_source_marker.h",
+      "D:\\codex\\算子\\build\\mindie_laser_quant_reuse_source\\csrc\\ops\\vc_laser_quant_reuse_attention\\op_kernel\\AddressMappingForwardOnline.h",
+      "D:\\codex\\算子\\build\\mindie_laser_quant_reuse_source\\csrc\\ops\\vc_laser_quant_reuse_attention\\op_kernel\\AddressMappingVectorForwardOnline.h",
+      "D:\\codex\\算子\\build\\mindie_laser_quant_reuse_source\\csrc\\ops\\vc_laser_quant_reuse_attention\\op_kernel\\CubeForward.h",
+      "D:\\codex\\算子\\build\\mindie_laser_quant_reuse_source\\csrc\\ops\\vc_laser_quant_reuse_attention\\op_kernel\\VectorForward.h",
+      "D:\\codex\\算子\\build\\mindie_laser_quant_reuse_source\\csrc\\ops\\vc_laser_quant_reuse_attention\\op_kernel\\address_const.h",
+      "D:\\codex\\算子\\build\\mindie_laser_quant_reuse_source\\csrc\\ops\\vc_laser_quant_reuse_attention\\op_kernel\\matmul_const.h",
+      "D:\\codex\\算子\\build\\mindie_laser_quant_reuse_source\\csrc\\ops\\vc_laser_quant_reuse_attention\\op_kernel\\vc_laser_probability.h",
+      "D:\\codex\\算子\\build\\mindie_laser_quant_reuse_source\\csrc\\ops\\vc_laser_quant_reuse_attention\\op_kernel\\vc_laser_quant_reuse_attention.cpp",
+      "--format",
+      "json"
+    ],
+    "files": 13
+  },
+  {
+    "tool": "ascendc_flow_analyzer",
+    "returncode": 0,
+    "command": [
+      "D:\\codex\\算子\\.venv-package\\Scripts\\python.exe",
+      "D:\\codex\\算子\\build\\cannbot-skills\\ops\\ascendc-sync-audit\\scripts\\ascendc_flow_analyzer.py",
+      "D:\\codex\\算子\\build\\mindie_laser_quant_reuse_source\\csrc\\ops\\vc_laser_quant_reuse_attention\\op_host\\vc_laser_quant_reuse_attention_def.cpp",
+      "D:\\codex\\算子\\build\\mindie_laser_quant_reuse_source\\csrc\\ops\\vc_laser_quant_reuse_attention\\op_host\\vc_laser_quant_reuse_attention_proto.cpp",
+      "D:\\codex\\算子\\build\\mindie_laser_quant_reuse_source\\csrc\\ops\\vc_laser_quant_reuse_attention\\op_host\\vc_laser_quant_reuse_attention_tiling.cpp",
+      "D:\\codex\\算子\\build\\mindie_laser_quant_reuse_source\\csrc\\ops\\vc_laser_quant_reuse_attention\\op_host\\vc_laser_quant_reuse_attention_tiling.h",
+      "D:\\codex\\算子\\build\\mindie_laser_quant_reuse_source\\csrc\\ops\\vc_laser_quant_reuse_attention\\op_host\\vc_source_marker.h",
+      "D:\\codex\\算子\\build\\mindie_laser_quant_reuse_source\\csrc\\ops\\vc_laser_quant_reuse_attention\\op_kernel\\AddressMappingForwardOnline.h",
+      "D:\\codex\\算子\\build\\mindie_laser_quant_reuse_source\\csrc\\ops\\vc_laser_quant_reuse_attention\\op_kernel\\AddressMappingVectorForwardOnline.h",
+      "D:\\codex\\算子\\build\\mindie_laser_quant_reuse_source\\csrc\\ops\\vc_laser_quant_reuse_attention\\op_kernel\\CubeForward.h",
+      "D:\\codex\\算子\\build\\mindie_laser_quant_reuse_source\\csrc\\ops\\vc_laser_quant_reuse_attention\\op_kernel\\VectorForward.h",
+      "D:\\codex\\算子\\build\\mindie_laser_quant_reuse_source\\csrc\\ops\\vc_laser_quant_reuse_attention\\op_kernel\\address_const.h",
+      "D:\\codex\\算子\\build\\mindie_laser_quant_reuse_source\\csrc\\ops\\vc_laser_quant_reuse_attention\\op_kernel\\matmul_const.h",
+      "D:\\codex\\算子\\build\\mindie_laser_quant_reuse_source\\csrc\\ops\\vc_laser_quant_reuse_attention\\op_kernel\\vc_laser_probability.h",
+      "D:\\codex\\算子\\build\\mindie_laser_quant_reuse_source\\csrc\\ops\\vc_laser_quant_reuse_attention\\op_kernel\\vc_laser_quant_reuse_attention.cpp",
+      "--format",
+      "json"
+    ],
+    "files": 13
+  }
+]

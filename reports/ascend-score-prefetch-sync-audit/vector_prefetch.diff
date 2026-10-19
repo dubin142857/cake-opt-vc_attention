@@ -1,0 +1,83 @@
+--- scale_reuse/VectorForward.h
++++ score_prefetch/VectorForward.h
+@@ -210,0 +211,16 @@
++    // The caller enables lookahead only for the audited dense four-row path.
++    // MTE3->MTE2 protects the P store; V->MTE2 protects the later row-sum
++    // reads. Both must finish before slot reuse. MTE2->V owns load completion.
++    // Numeric event IDs 0/1 are independent in these event directions.
++    __aicore__ __inline__ void vc_prefetch_score_batch(
++        __ubuf__ INPUT_T *dst, __gm__ WORKSPACE_T *src,
++        int32_t key_blocks, event_t event_id)
++    {
++        wait_flag(PIPE_MTE3, PIPE_MTE2, event_id);
++        wait_flag(PIPE_V, PIPE_MTE2, event_id);
++        copy_gm_to_ubuf(dst, src, 0, key_blocks,
++            BASE_BLOCK_SIDE_LEN * rowPerTime / 16,
++            (BASE_BLOCK_DATA_NUM - rowPerTime * BASE_BLOCK_SIDE_LEN) / 16, 0);
++        set_flag(PIPE_MTE2, PIPE_V, event_id);
++    }
++
+@@ -216 +232 @@
+-        __ubuf__ INPUT_T* subMaxValueResultVectorUbAddr, int rowsPerDiag, int rowmax_build_step);
++        __ubuf__ INPUT_T* subMaxValueResultVectorUbAddr, int rowsPerDiag, int rowmax_build_step, bool score_preloaded);
+@@ -959 +975 @@
+-    int rowmax_build_step)
++    int rowmax_build_step, bool score_preloaded)
+@@ -994,0 +1011 @@
++    if (!score_preloaded) {
+@@ -1002,0 +1020 @@
++    }
+@@ -1036,2 +1054,6 @@
+-    set_flag(PIPE_MTE2, PIPE_V, event_id);
+-    wait_flag(PIPE_MTE2, PIPE_V, event_id);
++    // Prefetched scores were waited for by the section driver. The guarded
++    // path has no mask DMA; fallback retains the original score/mask fence.
++    if (!score_preloaded) {
++        set_flag(PIPE_MTE2, PIPE_V, event_id);
++        wait_flag(PIPE_MTE2, PIPE_V, event_id);
++    }
+@@ -1522,0 +1545,14 @@
++    // Padding via windowLen is applied to each loaded score batch below;
++    // it is independent of triangular/sparse mask DMA and remains enabled.
++    // Mask scratch slots overlap in the pinned kernel, so never prefetch masks.
++    const bool vc_score_prefetch = qk_triangle == 0 && !sparse_flag &&
++        rowPerTime == 4 && each_vector_proc_line_num == 64 &&
++        section_block_nums > 0 && section_block_nums <= 32;
++    if (vc_score_prefetch) {
++        set_flag(PIPE_V, PIPE_MTE2, EVENT_ID0);
++        set_flag(PIPE_V, PIPE_MTE2, EVENT_ID1);
++        vc_prefetch_score_batch(ub_attn.pp_buf_for_attn_score_fp16[0],
++            attn_score_gm + param_ping_pong[0].section_start_line_offset,
++            section_block_nums, EVENT_ID0);
++    }
++
+@@ -1540 +1576,15 @@
+-        wait_flag(PIPE_MTE3, PIPE_MTE2, event_id);
++        if (vc_score_prefetch) {
++            wait_flag(PIPE_MTE2, PIPE_V, event_id);
++            if (lines + rowPerTime < each_vector_proc_line_num) {
++                const int32_t next_slot = 1 - ping_pong_flag;
++                const auto next_event = next_slot == 0 ? EVENT_ID0 : EVENT_ID1;
++                // Opposite-slot params already identify the next four rows:
++                // each consumed slot advances by eight rows at loop end.
++                // Its source rows differ from the current in-place P store.
++                vc_prefetch_score_batch(ub_attn.pp_buf_for_attn_score_fp16[next_slot],
++                    attn_score_gm + param_ping_pong[next_slot].section_start_line_offset,
++                    section_block_nums, next_event);
++            }
++        } else {
++            wait_flag(PIPE_MTE3, PIPE_MTE2, event_id);
++        }
+@@ -1554 +1604 @@
+-                                                rowmax_build_step);
++                                                rowmax_build_step, vc_score_prefetch);
+@@ -1566,0 +1617,4 @@
++        if (vc_score_prefetch) {
++            // process_calc_sum runs after the P DMA and still reads this slot.
++            set_flag(PIPE_V, PIPE_MTE2, event_id);
++        }
+@@ -1620,0 +1675,4 @@
++    if (vc_score_prefetch) {
++        wait_flag(PIPE_V, PIPE_MTE2, EVENT_ID0);
++        wait_flag(PIPE_V, PIPE_MTE2, EVENT_ID1);
++    }

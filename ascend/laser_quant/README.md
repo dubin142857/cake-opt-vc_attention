@@ -235,3 +235,30 @@ python3 scripts/profile_mindie_laser_scale_reuse.py --experiment gain-precompute
 ```
 
 这次只提前准备普通标量计算，不宣称消除了 FIX 代价或证明了 FIX 是唯一瓶颈。编译器也可能已做类似调度，因此要看同轮 native/full 的实际收益。更激进的硬件配置前移缺少足够的寄存器生命周期依据，未在本候选实施；见[官方文档与同步审计材料](../../reports/ascend-gain-sync-audit/README.md)。本地 C++/Python 检查不替代远端 CANN 编译和设备测试。
+
+
+## gain 结果与下一批 score 提前搬入实验
+
+用户回传的 gain-precompute 同轮配对结果没有显示收益：native/prepared/full 的配对节省中位数分别为 −0.0221/−0.0501/−0.0545 ms，仅 2/9、3/9、3/9 轮更快。保留 scale-reuse 基线，不把 profiler 下约 0.1% 的变化解释为有效加速。
+
+```bash
+bash scripts/run_mindie_laser_score_prefetch.sh
+```
+
+这版只改 Vector 的分数搬入调度：原来每批四行先搬入、等待，再做 max/exp/sum；新候选利用原有两个独立 32 KiB score 缓冲区，提前发起下一批四行的 GM→UB 传输，尝试与当前计算重叠。它不是重复计算 gain 的标量微调，也不减少 attention 的数学运算量。源码上存在串行等待不等于已经测得它占主要耗时，收益必须由本轮配对结果决定。
+
+候选仅用于无三角/稀疏 mask、每个 Vector section 64 行、每批 4 行、1–32 个 K128 block 的路径。目标 K37741 的 padding 仍走原有 tail/windowLen 处理；其他路径保留串行执行。mask 缓冲区存在重叠，所以没有提前搬入 mask。每次复用 score slot 前，同时等待该 slot 的 P 写回和 Vector 行求和读取结束。Cube、INT8 QK/scale、FIX DEQF16、原版 exp、FP16 PV、跨核交接顺序均保留；不增加 UB 容量，不加入 V 量化/平滑或 ExpCast。
+
+入口核对已有 scale-reuse、融合量化和 FP16 构建，读取本地固定 commit 的 Git 对象，只编译独立的 `VcLaserQuantPrefetchAttention`。vendor、bridge、安装路径和源码使用独立 `mindie_laser_quant_prefetch_*` 缓存，不访问 GitHub、不清空或重编旧基线。固定 BF16 BNSD `[1,28,37741,128]`，设备 0，warmup 5、每轮 10 次、9 轮。可沿用 `NPU_DEVICE` 选卡。
+
+计时前检查 FP16/BF16、K4096/4097/8193、Q 尾块、zero/constant/outlier、同一 payload 反复调用及原地更新，逐值比较全部 padded 原生 FP32 输出；长形状也要求全部原生输出精确一致。dense FP32 参考仍抽取最多 32 行，仅用于算法误差诊断。
+
+表中 `scale reuse` 为已有基线，`score ahead` 为新候选；JSON 为复用框架保留 `baseline`/`reuse` 内部键，实际身份看 `experiment=score-prefetch` 与 `variant_labels`。native/prepared 使用同一个 payload；full 每次重新预处理。主要判断 native/full 的配对节省和快轮次数，各 scope 不相加。API 测速落盘后再采 profiler，FP16 是独立进程参照，不能当成相同 payload 的配对结果，也不从各 pipe 活跃时间推算 QK/softmax/PV 百分比。
+
+报告 `results/mindie_laser_score_prefetch.json`，日志同名 `.log`。已有候选构建时可只重测：
+
+```bash
+python3 scripts/profile_mindie_laser_scale_reuse.py --experiment score-prefetch --trace --output results/mindie_laser_score_prefetch.json
+```
+
+[同步审核记录](../../reports/ascend-score-prefetch-sync-audit/README.md)保留源码差异、工具输出与缓冲区生命周期检查。本地测试不代替远端 CANN 编译、NPU 正确性和性能验证。候选暂不替换基线；在结果返回前不宣称提速。
