@@ -442,3 +442,44 @@ bash scripts/run_mindie_laser_vector_scale.sh
 同进程 `Q resident` / `Vector scale` 随机交错配对比较 native、prepared 和 full。FP16 Laser 在独立进程报告，profiler 时间也单列，不能把它们混成同一配对加速比。只有实机通过精度门限且稳定改善 native/full 才考虑保留；本地 CPU/源码检查不代表已完成 CANN 编译或 NPU 验证。
 
 实现、缓冲区生命周期与 CANNBot 检查见[Vector 反量化审计](../../reports/ascend-vector-scale-sync-audit/README.md)。
+
+## Vector scale 实机收益与原版 Laser 基线
+
+2026-10-20 用户回传：Vector scale 已在远端通过编译和脚本检查。同进程、同输入随机交错的 Q-resident → Vector-scale 结果如下；native/prepared 复用相同量化 payload，full 每次重新预处理。
+
+| 范围 | Q resident ms | Vector scale ms | 中位数之比 | 配对节省 ms | 更快轮数 |
+|---|---:|---:|---:|---:|---:|
+| native | 86.7829 | 79.2512 | 1.0950× | +7.5238 | 9/9 |
+| prepared | 88.9755 | 81.0111 | 1.0983× | +7.9796 | 9/9 |
+| full | 89.3135 | 82.8106 | 1.0785× | +6.4887 | 9/9 |
+
+全部 padded native 输出相对旧版漂移为 0.118562% RMSE，max abs 为 0.0004175640642642975；这是两种舍入路径之间的差异，不是相对 dense FP32 的误差或模型质量指标。各 scope 独立计时，配对节省也不是两列中位数之差。
+
+同次报告的原版 FP16 Laser 为 full 85.0981 ms、prepared 82.1948 ms、native 80.5880 ms。相对于它，Vector scale 的 full 中位数约为 1.0276×；原版与 INT8 分进程运行，不能由此宣布稳定领先。后续以原版 FP16 Laser 为主基线，同进程交错测量三种实现的完整 API，并单独报告各自 prepared/native 范围。原版指前面已经复现、源码反向重命名等价且带 provider 证据的 pinned Laser 构建，不走自动 attention 分发。
+
+profiler 导出的 AIC scalar/Fixpipe 活动下降、AIV scalar/Vector 活动增加，支持继续检查系数准备开销。计数器存在流水重叠，不能相加成 kernel 时间，也不能解释为 QK、softmax、PV 的阶段百分比。
+
+## 批量准备 Vector 系数，以原版 Laser 为主基线
+
+```bash
+git pull origin master
+bash scripts/run_mindie_laser_vector_scale_bulk.sh
+```
+
+默认 BF16 BNSD `[1,28,37741,128]`、设备 0、warmup 5、每轮 10 次、9 轮。脚本只构建独立 `VcLaserQuantVscaleBulkAttention`，复用已通过的 Vector-scale、原版 FP16 Laser、融合量化器及本地固定 Git objects，不下载上游源码。`NPU_DEVICE` 可选。报告为 `results/mindie_laser_vector_scale_bulk.json`，完整日志为同名 `.log`。
+
+新候选在 8～32 个 K128 block 的 section 中，将逐 block 的系数广播改为四条 `vbrcb` 批量广播；1～7 个 block 保留旧路径。系数计算、FP16 舍入、慢路径选择和最终乘法都保持一致，额外占用 64 B UB，并为标量写入与 Vector 读取增加明确的同步。QK、普通 softmax、FP16 PV 及输入量化不变，仍关闭 V 平滑、重排和 ExpCast。这减少的是系数展开指令，新增同步与调度变化可能抵消收益，需要实测。
+
+计时前执行原版 FP16 正确性检查、INT8 结构化数值参考、同地址 scale 更新和边界检查；旧/新 Vector-scale 的 native 输出必须**全部精确一致**，包括长形状的补齐区域。追加的精确比较在连续入队检查完成后执行，避免 CPU 同步干扰原址更新场景。相对 dense FP32 的误差另按最多 32 个 query、全部 key/head/feature 采样报告。
+
+主表同进程随机交错比较三行：
+
+| 行名 | 实现 |
+|---|---|
+| `original_laser` | 已复现的 pinned 原版 FP16 Laser，普通 softmax |
+| `vector_scale` | 当前通过实测的 INT8 QK、Vector 反量化版本 |
+| `vector_scale_bulk` | 相同数值计算，批量展开系数的新候选 |
+
+**以 full API 为主要指标**：每次重新预处理输入，`Laser/full > 1` 表示比原版完整调用更快；同时看配对节省和更快轮数。prepared/native 各自独立测量，不相加、不混用。两种 INT8 的固定输入使用同一 payload 对象；原版使用相同原始输入生成自己的 FP16 payload。原版是固定源码复现，不能冒称与安装包二进制相同。来源、实际加载库哈希和首次长形状调用的 provider 标记均在计时前检查；profiler 在主计时之后单独运行。
+
+本地只完成源码生成、主机模型和脚本验证，尚无本候选的 CANN 编译及 NPU 加速结论。[批量系数同步审计](../../reports/ascend-vector-scale-bulk-audit/README.md)记录缓冲区、事件生命周期和工具覆盖限制。

@@ -1,0 +1,54 @@
+{
+  "candidate": "vector_scale_bulk",
+  "local_only": true,
+  "device_validation": false,
+  "source_hashes": {
+    "build/mindie_laser_quant_vscale_bulk_source/csrc/ops/vc_laser_quant_vscale_bulk_attention/op_kernel/address_const.h": "8f16f692febd91fe3b8b3a4b7ac31a1351597823563a39aa269cc7a2e028b60c",
+    "build/mindie_laser_quant_vscale_bulk_source/csrc/ops/vc_laser_quant_vscale_bulk_attention/op_kernel/AddressMappingForwardOnline.h": "b1c83a6078f9a3f41f1e5a46613583991e1dbf26844f1284e04813dbb4b5264d",
+    "build/mindie_laser_quant_vscale_bulk_source/csrc/ops/vc_laser_quant_vscale_bulk_attention/op_kernel/AddressMappingVectorForwardOnline.h": "4d1c1b6df298172052db28e1b24ae4fa265268d5032c5e4fabee8553dc0d0360",
+    "build/mindie_laser_quant_vscale_bulk_source/csrc/ops/vc_laser_quant_vscale_bulk_attention/op_kernel/CubeForward.h": "ce829cc6f5a2c09aa4157d2608c0b4f15bfe701ff1e6a45a665cd668ad436a5c",
+    "build/mindie_laser_quant_vscale_bulk_source/csrc/ops/vc_laser_quant_vscale_bulk_attention/op_kernel/matmul_const.h": "ac6bef6c468824bab498504b9b7b32588dba2d386e8c6979f122333ff52fcf52",
+    "build/mindie_laser_quant_vscale_bulk_source/csrc/ops/vc_laser_quant_vscale_bulk_attention/op_kernel/vc_laser_probability.h": "e754ec92c000981bc8f75eb91fdf21d3c97285744bb9c09ae587f5170cf548c9",
+    "build/mindie_laser_quant_vscale_bulk_source/csrc/ops/vc_laser_quant_vscale_bulk_attention/op_kernel/vc_laser_quant_vscale_bulk_attention.cpp": "6511b1dfc8bdc9bc5289e7034e9ef2350fa367b3c22f1024ef13f205f9440cec",
+    "build/mindie_laser_quant_vscale_bulk_source/csrc/ops/vc_laser_quant_vscale_bulk_attention/op_kernel/VectorForward.h": "db5bf3ae0ed0f55e0189cafc1360e6a6f9b2da25e34bad8ee8f2e006eb1e15ff"
+  },
+  "patch_sha256": "e5076e2d2f4415e47196564a95b867c72b97dbdc32cf8b81c20be2595df70a0b",
+  "runs": [
+    {
+      "tool": "sync_audit.py",
+      "tool_sha256": "af629036820e7765639df7379d94fde4c2b0aca63f54a295384005a015a181d4",
+      "returncode": 0,
+      "files": 8,
+      "raw_output": "sync_audit.json",
+      "top_level_keys": [
+        "files_scanned",
+        "event_count",
+        "findings",
+        "events"
+      ]
+    },
+    {
+      "tool": "ascendc_flow_analyzer.py",
+      "tool_sha256": "b84ef0d82628bb92c313f4d7b78ff626debf0198cbeed06da5e0a194cf2e799a",
+      "returncode": 0,
+      "files": 8,
+      "raw_output": "ascendc_flow_analyzer.json",
+      "top_level_keys": [
+        "files_scanned",
+        "frontends",
+        "operations",
+        "buffer_accesses",
+        "buffer_dependencies",
+        "sync_edges",
+        "sync_coverages",
+        "aliases",
+        "findings"
+      ]
+    }
+  ],
+  "host_tests": {
+    "command": "tests/test_mindie_laser_quant_vscale_bulk_patch.py",
+    "passed": 7,
+    "compiler": "MSVC host C++17; no CCE lowering"
+  }
+}
