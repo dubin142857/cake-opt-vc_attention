@@ -1,0 +1,38 @@
+{
+  "CubeForward.h": {
+    "baseline_sha256": "8044d3bd761aa3b5a7bd354c596b3e45136fc6d0b4777cc5c88f98b40edcf61a",
+    "candidate_sha256": "45bed94845f3b015fa911eaf7f23d488324374964e170bc01105e0acdf5024c4",
+    "byte_identical": false,
+    "baseline_raw_static_calls": 78,
+    "candidate_raw_static_calls": 80,
+    "raw_static_calls_identical": false,
+    "inverse_byte_identical": true,
+    "base_matmul_and_all_following_bytes_identical": true,
+    "prefix_including_all_pv_bytes_identical": true,
+    "static_count_note": "Prologue duplicates K DMA publication sites; dynamic per-tile event counts are unchanged. Not a raw static sequence equivalence claim."
+  },
+  "VectorForward.h": {
+    "baseline_sha256": "9e9652b43d2e5d1989f7b50db26b6053950f674a1b05faa477d40ca5bd51b427",
+    "candidate_sha256": "9e9652b43d2e5d1989f7b50db26b6053950f674a1b05faa477d40ca5bd51b427",
+    "byte_identical": true,
+    "baseline_raw_static_calls": 91,
+    "candidate_raw_static_calls": 91,
+    "raw_static_calls_identical": true
+  },
+  "AddressMappingForwardOnline.h": {
+    "baseline_sha256": "b1c83a6078f9a3f41f1e5a46613583991e1dbf26844f1284e04813dbb4b5264d",
+    "candidate_sha256": "b1c83a6078f9a3f41f1e5a46613583991e1dbf26844f1284e04813dbb4b5264d",
+    "byte_identical": true,
+    "baseline_raw_static_calls": 0,
+    "candidate_raw_static_calls": 0,
+    "raw_static_calls_identical": true
+  },
+  "AddressMappingVectorForwardOnline.h": {
+    "baseline_sha256": "27756e0a02fbe68d6827dd0f28c682a23d335510e94ab7b7691d8435e100d8b5",
+    "candidate_sha256": "27756e0a02fbe68d6827dd0f28c682a23d335510e94ab7b7691d8435e100d8b5",
+    "byte_identical": true,
+    "baseline_raw_static_calls": 0,
+    "candidate_raw_static_calls": 0,
+    "raw_static_calls_identical": true
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "files_scanned": [
+    "D:\\codex\\算子\\build\\ascend_k_prefetch_sync_audit\\baseline\\op_host\\vc_laser_quant_cache_attention_def.cpp",
+    "D:\\codex\\算子\\build\\ascend_k_prefetch_sync_audit\\baseline\\op_host\\vc_laser_quant_cache_attention_proto.cpp",
+    "D:\\codex\\算子\\build\\ascend_k_prefetch_sync_audit\\baseline\\op_host\\vc_laser_quant_cache_attention_tiling.cpp",
+    "D:\\codex\\算子\\build\\ascend_k_prefetch_sync_audit\\baseline\\op_host\\vc_laser_quant_cache_attention_tiling.h",
+    "D:\\codex\\算子\\build\\ascend_k_prefetch_sync_audit\\baseline\\op_host\\vc_source_marker.h",
+    "D:\\codex\\算子\\build\\ascend_k_prefetch_sync_audit\\baseline\\op_kernel\\AddressMappingForwardOnline.h",
+    "D:\\codex\\算子\\build\\ascend_k_prefetch_sync_audit\\baseline\\op_kernel\\AddressMappingVectorForwardOnline.h",
+    "D:\\codex\\算子\\build\\ascend_k_prefetch_sync_audit\\baseline\\op_kernel\\CubeForward.h",
+    "D:\\codex\\算子\\build\\ascend_k_prefetch_sync_audit\\baseline\\op_kernel\\VectorForward.h",
+    "D:\\codex\\算子\\build\\ascend_k_prefetch_sync_audit\\baseline\\op_kernel\\address_const.h",
+    "D:\\codex\\算子\\build\\ascend_k_prefetch_sync_audit\\baseline\\op_kernel\\matmul_const.h",
+    "D:\\codex\\算子\\build\\ascend_k_prefetch_sync_audit\\baseline\\op_kernel\\vc_laser_probability.h",
+    "D:\\codex\\算子\\build\\ascend_k_prefetch_sync_audit\\baseline\\op_kernel\\vc_laser_quant_cache_attention.cpp"
+  ],
+  "event_count": 0,
+  "findings": [],
+  "events": []
+}

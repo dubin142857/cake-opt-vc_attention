@@ -359,4 +359,31 @@ bash scripts/run_mindie_laser_scale_cache.sh
 python3 scripts/profile_mindie_laser_scale_reuse.py --experiment scale-cache --trace --output results/mindie_laser_scale_cache.json
 ```
 
-[缓存一致性及同步审计](../../reports/ascend-scale-cache-sync-audit/README.md)保留官方 API 依据、源码差异、工具原始输出和人工检查。本地没有 CANN/NPU；CPU 测试、语法桩和离线源码校验不能替代远端编译、正确性与性能验证。此候选尚无实测收益，不替换已测基线。
+[缓存一致性及同步审计](../../reports/ascend-scale-cache-sync-audit/README.md)保留官方 API 依据、源码差异、工具原始输出和人工检查。本地没有 CANN/NPU；CPU 测试、语法桩和离线源码校验不能替代远端编译、正确性与性能验证。后续远端回测结果见下一节，保留独立比较路径。
+
+## scale-cache 回测与 QK 的 K 块预取
+
+2026-10-20 用户回传，scale-reuse → scale-cache 的 native 中位数为 87.7820 → 87.6747 ms，配对节省 +0.0999 ms（9/9 更快）；full 为 90.2839 → 90.2167 ms，配对节省 +0.0635 ms（8/9 更快）。这是约 0.1% 的小收益。profiler 中 `aic_scalar_time(us)` 中位数从 22227.215 降至 16424.347，但设备任务均值仅从 87.7200 降至 87.5802 ms。标量活跃计数下降没有转化成同等总耗时下降；各流水可重叠，不能把差额解释成可直接节省的独占时间。FP16 native 81.2073 ms 来自独立进程，仅作参考。
+
+接下来测试 QK 主循环的数据搬运重叠：
+
+```bash
+git pull origin master
+bash scripts/run_mindie_laser_k_prefetch.sh
+```
+
+旧版每个 K128 块在 GM→L1 搬运后立即等待，再执行 L1→L0 和 QK；新候选先搬入首块，在消费当前块时向另一个 slot 提前搬入下一块。使用原有 128 KiB / 192 KiB 位置的 L1 B 缓冲区、原有 ready/release 信号，不增加 L1/L0 容量。一个 INT8 K128×D128 块占 16 KiB。预取不跨 descriptor 或 QK/PV 调用边界，不读取末块之后的 K；descriptor 结束时保持原来的 slot 奇偶状态和 release token，供 PV 接续使用。
+
+候选在已经验证的 scale-cache 上仅改变 QK 的 K 搬运发出时序；Q/K scale、INT8 payload、MAD、DEQF16、FIX 屏障、Vector softmax、FP16 PV 和跨核交接保持原样。下一块 DMA 与当前计算存在重叠机会，但实际收益可能受 FIX、MTE 竞争或其他流水限制，不能从源码直接推算速度。
+
+脚本只编译独立 `VcLaserQuantKpipeAttention`，使用 `mindie_laser_quant_kpipe_*` 源码、vendor、bridge、安装和构建记录；复用已有 scale-cache、融合量化器和 FP16 基线，从本地 pinned Git objects 准备源码，不访问 GitHub。默认 BF16 BNSD `[1,28,37741,128]`，设备 0，warmup 5、每轮 10 次、9 轮；沿用 `NPU_DEVICE` 选卡。
+
+计时前检查 structured/decoded 参考、scale 非零偏移和同指针重写，并增加跨 K128/4096 边界、多个 batch/head、尾块及反复原地更新的 K 预取检查。native 输出包括 padding，要求与 scale-cache 全部元素精确一致。长形状也先做全输出一致性检查；任何失败立即停止并保存证据。主表 `scale cache` / `K ahead` 为同进程随机交错、相同 prepared tensor 的 native/prepared 对比，full 每次重新预处理；profiler 在普通计时之后单独运行，FP16 仍为独立进程参照。
+
+结果为 `results/mindie_laser_k_prefetch.json`，日志同名 `.log`；已有候选构建后可只重测：
+
+```bash
+python3 scripts/profile_mindie_laser_scale_reuse.py --experiment k-prefetch --trace --output results/mindie_laser_k_prefetch.json
+```
+
+[K 预取同步审计](../../reports/ascend-k-prefetch-sync-audit/README.md)保留完整工具输出、源代码差异、buffer/flag 生命周期分析和本地调度模型检查。本地未运行 CANN 编译或 NPU 执行；本轮是待远端验证的性能候选。

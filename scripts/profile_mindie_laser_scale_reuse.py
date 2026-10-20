@@ -46,6 +46,10 @@ def experiment(args):
         names = ("quant_reuse", "quant_cache")
         paths = (args.reuse_build, args.cache_build)
         labels = ("scale reuse", "scale cache")
+    elif kind == "k-prefetch":
+        names = ("quant_cache", "quant_kpipe")
+        paths = (args.cache_build, args.kpipe_build)
+        labels = ("scale cache", "K ahead")
     else:
         raise ValueError(f"Unknown paired experiment: {kind}")
     return {key: dict(source=import_module("prepare_mindie_laser_"+name+"_source"),
@@ -157,9 +161,12 @@ def worker(args):
             if args.experiment == "score-prefetch":
                 from mindie_laser_prefetch_checks import validate_score_prefetch
                 validate_score_prefetch(adapters, device, report, save)
-            if args.experiment == "scale-cache":
+            if args.experiment in ("scale-cache", "k-prefetch"):
                 from mindie_laser_cache_checks import validate_scale_cache
                 validate_scale_cache(adapters, device, report, save)
+            if args.experiment == "k-prefetch":
+                from mindie_laser_kpipe_checks import validate_k_prefetch
+                validate_k_prefetch(adapters, device, report, save)
             report["stage"] = "long_shape_validation"
             save()
             generator = torch.Generator().manual_seed(0)
@@ -251,6 +258,8 @@ def launch(args, mode, env, directory):
                   "results/mindie_laser_quant_prefetch_build.json"))]
     command += ["--cache-build", str(getattr(args, "cache_build",
                   "results/mindie_laser_quant_cache_build.json"))]
+    command += ["--kpipe-build", str(getattr(args, "kpipe_build",
+                  "results/mindie_laser_quant_kpipe_build.json"))]
     command += ["--shape", *map(str, args.shape)]
     if args.trace:
         command += ["--trace"]
@@ -318,13 +327,14 @@ def main(argv=None):
         ("gain-build", "results/mindie_laser_quant_gain_build.json"),
         ("prefetch-build", "results/mindie_laser_quant_prefetch_build.json"),
         ("cache-build", "results/mindie_laser_quant_cache_build.json"),
+        ("kpipe-build", "results/mindie_laser_quant_kpipe_build.json"),
         ("preprocess-build", "results/mindie_laser_quant_preprocess_build.json"),
         ("baseline-build", "results/mindie_laser_build.json"),
         ("bridge-manifest", "results/mindie_laser_bridge.json"),
         ("output", "results/mindie_laser_scale_reuse.json"),
     ):
         parser.add_argument("--"+name, default=default)
-    parser.add_argument("--experiment", choices=("scale-reuse", "gain-precompute", "score-prefetch", "scale-cache"), default="scale-reuse")
+    parser.add_argument("--experiment", choices=("scale-reuse", "gain-precompute", "score-prefetch", "scale-cache", "k-prefetch"), default="scale-reuse")
     parser.add_argument("--shape", type=int, nargs=4, default=list(quant.baseline.SHAPE))
     parser.add_argument("--device", type=int, default=0)
     parser.add_argument("--warmup", type=int, default=5)

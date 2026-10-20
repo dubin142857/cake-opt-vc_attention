@@ -16,15 +16,21 @@ import profile_mindie_laser_scale_reuse as profile
 import mindie_laser_gain_checks as checks
 import mindie_laser_quant_backend as backend
 
+CANDIDATES = [
+    ("gain-precompute", "gain"), ("score-prefetch", "prefetch"),
+    ("scale-cache", "cache"), ("k-prefetch", "kpipe"),
+]
 
-@pytest.mark.parametrize("kind, candidate", [("gain-precompute", "gain"), ("score-prefetch", "prefetch"), ("scale-cache", "cache")])
+
+@pytest.mark.parametrize("kind, candidate", CANDIDATES)
 def test_candidate_binds_reuse_and_own_identity_and_namespace(tmp_path, kind, candidate):
-    args = SimpleNamespace(experiment=kind, reuse_build="reuse.json",
-                           **{candidate+"_build": candidate+".json"})
+    base = "cache" if kind == "k-prefetch" else "reuse"
+    args = SimpleNamespace(experiment=kind, **{base+"_build": base+".json",
+                           candidate+"_build": candidate+".json"})
     specs = profile.experiment(args)
-    assert specs["baseline"]["namespace"] == "vc_laser_quant_reuse"
+    assert specs["baseline"]["namespace"] == "vc_laser_quant_"+base
     assert specs["reuse"]["namespace"] == "vc_laser_quant_"+candidate
-    assert specs["baseline"]["path"] == "reuse.json"
+    assert specs["baseline"]["path"] == base+".json"
     assert specs["reuse"]["path"] == candidate+".json"
     for spec in specs.values():
         assert spec["source"].IDENTITY["vendor"] == spec["namespace"]
@@ -38,10 +44,11 @@ def test_existing_scale_experiment_still_uses_original_baseline():
     assert specs["reuse"]["namespace"] == "vc_laser_quant_reuse"
 
 
-@pytest.mark.parametrize("kind, candidate", [("gain-precompute", "gain"), ("score-prefetch", "prefetch"), ("scale-cache", "cache")])
+@pytest.mark.parametrize("kind, candidate", CANDIDATES)
 def test_candidate_provenance_uses_each_sources_validator(monkeypatch, tmp_path, kind, candidate):
-    args = SimpleNamespace(experiment=kind, reuse_build="reuse.json",
-                           preprocess_build="preprocess.json", **{candidate+"_build": candidate+".json"})
+    base = "cache" if kind == "k-prefetch" else "reuse"
+    args = SimpleNamespace(experiment=kind, preprocess_build="preprocess.json",
+                           **{base+"_build": base+".json", candidate+"_build": candidate+".json"})
     seen = []
     def build_arguments(options, name):
         if name == "baseline":
@@ -60,7 +67,7 @@ def test_candidate_provenance_uses_each_sources_validator(monkeypatch, tmp_path,
     for (key, spec), (path, identity, validator) in zip(specs.items(), seen):
         assert path == spec["path"] and identity == spec["source"].IDENTITY
         assert validator is spec["source"].validate_prepared_source
-    assert result["baseline"] == {"checked": "reuse.json"}
+    assert result["baseline"] == {"checked": base+".json"}
     assert result["reuse"] == {"checked": candidate+".json"}
 
 
@@ -100,10 +107,11 @@ def test_block_gains_checks_all_rows_and_detects_wrong_q_pair_selection(monkeypa
         checks.validate_block_gains({"baseline": Adapter(), "reuse": Adapter(True)}, "cpu", {}, lambda: None)
 
 
-@pytest.mark.parametrize("kind", ["gain-precompute", "score-prefetch", "scale-cache"])
+@pytest.mark.parametrize("kind", [kind for kind, _ in CANDIDATES])
 def test_candidate_worker_launch_forwards_experiment_and_manifests(monkeypatch, tmp_path, kind):
     args = SimpleNamespace(_run_dir=str(tmp_path), experiment=kind, quant_build="old",
-        reuse_build="reuse", gain_build="gain", prefetch_build="prefetch", cache_build="cache", preprocess_build="prep", baseline_build="fp16",
+        reuse_build="reuse", gain_build="gain", prefetch_build="prefetch", cache_build="cache",
+        kpipe_build="kpipe", preprocess_build="prep", baseline_build="fp16",
         bridge_manifest="bridge", device=2, warmup=5, repeats=10, trials=9, cpu_threads=4, seed=2026,
         shape=[1, 28, 37741, 128], trace=True)
     seen = []
@@ -120,18 +128,20 @@ def test_candidate_worker_launch_forwards_experiment_and_manifests(monkeypatch, 
     assert command[command.index("--gain-build")+1] == "gain"
     assert command[command.index("--prefetch-build")+1] == "prefetch"
     assert command[command.index("--cache-build")+1] == "cache"
+    assert command[command.index("--kpipe-build")+1] == "kpipe"
     assert "--trace" in command
 
 
 @pytest.mark.parametrize("fail_stage", [None, "preflight", "build", "profile"])
-@pytest.mark.parametrize("kind, candidate", [("gain-precompute", "gain"), ("score-prefetch", "prefetch"), ("scale-cache", "cache")])
+@pytest.mark.parametrize("kind, candidate", CANDIDATES)
 def test_one_command_builds_only_candidate_using_local_reuse_source(tmp_path, fail_stage, kind, candidate):
     bash = Path("C:/Program Files/Git/bin/bash.exe") if os.name == "nt" else Path(shutil.which("bash") or "/missing")
     if not bash.is_file(): pytest.skip("Bash required")
     root = tmp_path / "space in project"
     for name in ("scripts", "results", "cann"):
         (root / name).mkdir(parents=True)
-    for name in ("mindie_laser_quant_reuse_build", "mindie_laser_quant_preprocess_build", "mindie_laser_build", "mindie_laser_bridge"):
+    base = "cache" if kind == "k-prefetch" else "reuse"
+    for name in ("mindie_laser_quant_"+base+"_build", "mindie_laser_quant_preprocess_build", "mindie_laser_build", "mindie_laser_bridge"):
         (root / "results" / (name+".json")).write_text("{}")
     script_name = "scripts/run_mindie_laser_"+kind.replace("-", "_")+".sh"
     script = root / script_name

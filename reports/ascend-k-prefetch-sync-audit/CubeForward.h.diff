@@ -1,0 +1,51 @@
+--- baseline/CubeForward.h
++++ candidate/CubeForward.h
+@@ -575,5 +575,3 @@
+-            for (int n_index = 0; n_index < n_loop; n_index++) {
+-                // One K scale serves both Q128 rows in this K128 tile.
+-                const int64_t k_scale_index = (gm_b - gm_K) / (128 * 128) + n_index;
+-                const float k_scale = ReadQuantScale(k_scales_ + k_scale_index, k_scale_cache_line_);
+-                bool upper_right_flag = (upper_right && n_index == n_loop - 1);
++            // One K tile ahead, confined to this descriptor. Reuse the original
++            // free/ready events; an empty descriptor must not acquire a slot.
++            if (n_loop > 0) {
+@@ -581 +578,0 @@
+-
+@@ -586 +583 @@
+-                    gm_b + n_index * l1_n_size_ * k_,
++                    gm_b,
+@@ -598,0 +596,9 @@
++            }
++
++            for (int n_index = 0; n_index < n_loop; n_index++) {
++                // One K scale serves both Q128 rows in this K128 tile.
++                const int64_t k_scale_index = (gm_b - gm_K) / (128 * 128) + n_index;
++                const float k_scale = ReadQuantScale(k_scales_ + k_scale_index, k_scale_cache_line_);
++                bool upper_right_flag = (upper_right && n_index == n_loop - 1);
++                auto l1_b = reinterpret_cast<__cbuf__ int8_t *>(ping_pong_flag_l1_b_ ? l1_b_pong_ : l1_b_ping_);
++
+@@ -599,0 +606,24 @@
++
++                // Current K is ready. Queue the next K in the other L1 slot
++                // before current L1->L0/MAD/FIX work; never read past the tail.
++                if (n_index + 1 < n_loop) {
++                    const uint32_t next_k_slot = 1 - ping_pong_flag_l1_b_;
++                    auto l1_b_next = reinterpret_cast<__cbuf__ int8_t *>(next_k_slot ? l1_b_pong_ : l1_b_ping_);
++                    wait_flag(PIPE_MTE1, PIPE_MTE2, next_k_slot);
++
++                    // Load B to L1
++                    copy_gm_to_cbuf_multi_nd2nz_b8(l1_b_next,
++                        gm_b + (n_index + 1) * l1_n_size_ * k_,
++                        0,           // sid
++                        1,           // ndNum
++                        l1_k_size_,  // nValue   实际拷贝的行数
++                        l1_n_size_,  // dValue   实际拷贝的列数
++                        0,           // srcNdMatrixStride, unused
++                        l1_n_size_,  // srcDValue 大矩阵的列数
++                        l1_k_size_,  // dstNzC0Stride 目标行数
++                        1,           // dstNzNStride  目标行之间间隔（1为连续）
++                        0            // dstNzMatrixStride, unused
++                    );
++
++                    set_flag(PIPE_MTE2, PIPE_MTE1, next_k_slot);
++                }
