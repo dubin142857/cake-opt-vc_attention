@@ -19,12 +19,13 @@ import mindie_laser_quant_backend as backend
 CANDIDATES = [
     ("gain-precompute", "gain"), ("score-prefetch", "prefetch"),
     ("scale-cache", "cache"), ("k-prefetch", "kpipe"),
+    ("q-resident", "qresident"),
 ]
 
 
 @pytest.mark.parametrize("kind, candidate", CANDIDATES)
 def test_candidate_binds_reuse_and_own_identity_and_namespace(tmp_path, kind, candidate):
-    base = "cache" if kind == "k-prefetch" else "reuse"
+    base = "cache" if kind in ("k-prefetch", "q-resident") else "reuse"
     args = SimpleNamespace(experiment=kind, **{base+"_build": base+".json",
                            candidate+"_build": candidate+".json"})
     specs = profile.experiment(args)
@@ -46,7 +47,7 @@ def test_existing_scale_experiment_still_uses_original_baseline():
 
 @pytest.mark.parametrize("kind, candidate", CANDIDATES)
 def test_candidate_provenance_uses_each_sources_validator(monkeypatch, tmp_path, kind, candidate):
-    base = "cache" if kind == "k-prefetch" else "reuse"
+    base = "cache" if kind in ("k-prefetch", "q-resident") else "reuse"
     args = SimpleNamespace(experiment=kind, preprocess_build="preprocess.json",
                            **{base+"_build": base+".json", candidate+"_build": candidate+".json"})
     seen = []
@@ -111,7 +112,7 @@ def test_block_gains_checks_all_rows_and_detects_wrong_q_pair_selection(monkeypa
 def test_candidate_worker_launch_forwards_experiment_and_manifests(monkeypatch, tmp_path, kind):
     args = SimpleNamespace(_run_dir=str(tmp_path), experiment=kind, quant_build="old",
         reuse_build="reuse", gain_build="gain", prefetch_build="prefetch", cache_build="cache",
-        kpipe_build="kpipe", preprocess_build="prep", baseline_build="fp16",
+        kpipe_build="kpipe", qresident_build="qresident", preprocess_build="prep", baseline_build="fp16",
         bridge_manifest="bridge", device=2, warmup=5, repeats=10, trials=9, cpu_threads=4, seed=2026,
         shape=[1, 28, 37741, 128], trace=True)
     seen = []
@@ -129,6 +130,7 @@ def test_candidate_worker_launch_forwards_experiment_and_manifests(monkeypatch, 
     assert command[command.index("--prefetch-build")+1] == "prefetch"
     assert command[command.index("--cache-build")+1] == "cache"
     assert command[command.index("--kpipe-build")+1] == "kpipe"
+    assert command[command.index("--qresident-build")+1] == "qresident"
     assert "--trace" in command
 
 
@@ -140,7 +142,7 @@ def test_one_command_builds_only_candidate_using_local_reuse_source(tmp_path, fa
     root = tmp_path / "space in project"
     for name in ("scripts", "results", "cann"):
         (root / name).mkdir(parents=True)
-    base = "cache" if kind == "k-prefetch" else "reuse"
+    base = "cache" if kind in ("k-prefetch", "q-resident") else "reuse"
     for name in ("mindie_laser_quant_"+base+"_build", "mindie_laser_quant_preprocess_build", "mindie_laser_build", "mindie_laser_bridge"):
         (root / "results" / (name+".json")).write_text("{}")
     script_name = "scripts/run_mindie_laser_"+kind.replace("-", "_")+".sh"

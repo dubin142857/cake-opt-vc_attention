@@ -387,3 +387,30 @@ python3 scripts/profile_mindie_laser_scale_reuse.py --experiment k-prefetch --tr
 ```
 
 [K 预取同步审计](../../reports/ascend-k-prefetch-sync-audit/README.md)保留完整工具输出、源代码差异、buffer/flag 生命周期分析和本地调度模型检查。本地未运行 CANN 编译或 NPU 执行；本轮是待远端验证的性能候选。
+
+## K 预取回测与 Q 在 L0A 内复用
+
+K 预取回传结果：native 88.0115 → 87.9880 ms，配对节省 +0.0249 ms（7/9 更快）；prepared 配对节省 −0.0569 ms（4/9 更快），full −0.0512 ms（3/9 更快）。没有稳定的全 API 收益，因此不将 K 预取叠加到下一版。profiler 的任务均值 88.2993 → 88.2120 ms 是另一种采集口径，不能代替上述配对结果，也不能据此断言所有 K 搬运都已被隐藏。
+
+下一版仍从已测的 scale-cache 出发，减少 QK 主循环内 **Q 的重复 L1→L0A 搬运**：
+
+```bash
+git pull origin master
+bash scripts/run_mindie_laser_q_resident.sh
+```
+
+固定 `ky=2` 的一个 descriptor 内，两块 Q128 会与每个 K128 计算。原版每次都重新搬入这两块 Q，每块需要 8 条 Load2D；`kx=32` 时一共 512 条调用。两块 INT8 Q 各占 16 KiB，已有两个 L0A 槽位分别从 0 / 32 KiB 开始。每个 K 块计算后，L0A ping/pong 翻转两次，后续 K 仍对应相同 Q 数据；这个循环内没有其他 L0A 写入者。
+
+候选仅在第一个 K 块加载 Q，后续 K 直接复用现有 L0A 内容，因此普通 `ky=2,kx=32` descriptor 降为 16 条 Q Load2D 调用。不增加片上内存。每个新 descriptor 从 `n_index=0` 重新加载，因此不会把 Q 的有效性跨过 PV 或其他 descriptor；`ky!=2` 保留逐 K 加载，原上三角尾块的 skip 语义保留。原有 L0A ready/free 信号、MAD、FIX、DEQF16、K 搬运、scale 和跨核顺序保持，唯一删减的动态工作是后续 K 对应的 Q 搬入。这是源代码级搬运量减少，不能等比例推算耗时。
+
+一键入口固定 BF16 BNSD `[1,28,37741,128]`、设备 0、warmup 5、每轮 10 次、9 轮；`NPU_DEVICE` 可选。只构建独立 `VcLaserQuantQresidentAttention`，路径使用 `mindie_laser_quant_qresident_*`；复用已有 scale-cache、融合量化器和 FP16 基线，源码来自本地固定 Git objects，不访问 GitHub。表中 `scale cache` / `Q resident` 使用同进程随机交错计时；native/prepared 使用相同 tensor，full 每次重新预处理。
+
+计时前保留 structured/decoded、scale 偏移/原地更新、长形状全输出一致性门禁，并针对 Q0/Q1 不同内容、多个 K section、切换 Q 组/batch/head、同地址刷新增加检查。全部 padded native FP32 输出必须精确一致。公开接口会将 Q pad 到 256，所以 `ky!=2` 的兼容分支另由本地实际 C++ 循环模型检查，不把它误称为已执行的 NPU 分支覆盖。
+
+结果在 `results/mindie_laser_q_resident.json`，日志同名 `.log`。已有候选构建后可只重测：
+
+```bash
+python3 scripts/profile_mindie_laser_scale_reuse.py --experiment q-resident --trace --output results/mindie_laser_q_resident.json
+```
+
+[Q 常驻同步审计](../../reports/ascend-q-resident-sync-audit/README.md)记录未变的事件/计算序列、Q 数据及 slot 生命周期、原始 CANNBot 输出与 host 模型限制。候选未在本地运行 CANN/NPU；是否能改善约 88 ms 的 native 延迟，必须以远端正确性和配对测速为准。

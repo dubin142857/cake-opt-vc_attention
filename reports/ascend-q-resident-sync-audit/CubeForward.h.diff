@@ -1,0 +1,17 @@
+--- baseline/CubeForward.h
++++ candidate/CubeForward.h
+@@ -91 +91 @@
+-        float q_scale_first, float q_scale_second, float k_scale);
++        float q_scale_first, float q_scale_second, float k_scale, bool load_q);
+@@ -602 +602 @@
+-                    q_scale_first, q_scale_second, k_scale);
++                    q_scale_first, q_scale_second, k_scale, n_index == 0 || ky != 2);
+@@ -620 +620 @@
+-    float q_scale_first, float q_scale_second, float k_scale)
++    float q_scale_first, float q_scale_second, float k_scale, bool load_q)
+@@ -647 +647,4 @@
+-            if (!l0_skip_flag) {
++            // With ky=2 the two toggles retain each Q128 tile in its L0A
++            // slot until this descriptor ends. Keep all original events even
++            // when reusing data; a new descriptor always reloads its first K.
++            if (!l0_skip_flag && load_q) {
