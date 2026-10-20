@@ -1,0 +1,96 @@
+{
+  "candidate": "quant_vector_scale",
+  "local_only": true,
+  "device_validation": false,
+  "runs": [
+    {
+      "variant": "baseline",
+      "tool": "sync_audit.py",
+      "tool_sha256": "af629036820e7765639df7379d94fde4c2b0aca63f54a295384005a015a181d4",
+      "returncode": 0,
+      "files": 8,
+      "raw_output": "baseline-sync_audit.json",
+      "top_level_keys": [
+        "files_scanned",
+        "event_count",
+        "findings",
+        "events"
+      ]
+    },
+    {
+      "variant": "baseline",
+      "tool": "ascendc_flow_analyzer.py",
+      "tool_sha256": "b84ef0d82628bb92c313f4d7b78ff626debf0198cbeed06da5e0a194cf2e799a",
+      "returncode": 0,
+      "files": 8,
+      "raw_output": "baseline-ascendc_flow_analyzer.json",
+      "top_level_keys": [
+        "files_scanned",
+        "frontends",
+        "operations",
+        "buffer_accesses",
+        "buffer_dependencies",
+        "sync_edges",
+        "sync_coverages",
+        "aliases",
+        "findings"
+      ]
+    },
+    {
+      "variant": "candidate",
+      "tool": "sync_audit.py",
+      "tool_sha256": "af629036820e7765639df7379d94fde4c2b0aca63f54a295384005a015a181d4",
+      "returncode": 0,
+      "files": 8,
+      "raw_output": "candidate-sync_audit.json",
+      "top_level_keys": [
+        "files_scanned",
+        "event_count",
+        "findings",
+        "events"
+      ]
+    },
+    {
+      "variant": "candidate",
+      "tool": "ascendc_flow_analyzer.py",
+      "tool_sha256": "b84ef0d82628bb92c313f4d7b78ff626debf0198cbeed06da5e0a194cf2e799a",
+      "returncode": 0,
+      "files": 8,
+      "raw_output": "candidate-ascendc_flow_analyzer.json",
+      "top_level_keys": [
+        "files_scanned",
+        "frontends",
+        "operations",
+        "buffer_accesses",
+        "buffer_dependencies",
+        "sync_edges",
+        "sync_coverages",
+        "aliases",
+        "findings"
+      ]
+    }
+  ],
+  "source_hashes": {
+    "baseline": {
+      "build/mindie_laser_quant_qresident_source/csrc/ops/vc_laser_quant_qresident_attention/op_kernel/address_const.h": "d933a953ff8deba960e90769b4b86b11c1166ae00b5edc5f64c784b329854421",
+      "build/mindie_laser_quant_qresident_source/csrc/ops/vc_laser_quant_qresident_attention/op_kernel/AddressMappingForwardOnline.h": "b1c83a6078f9a3f41f1e5a46613583991e1dbf26844f1284e04813dbb4b5264d",
+      "build/mindie_laser_quant_qresident_source/csrc/ops/vc_laser_quant_qresident_attention/op_kernel/AddressMappingVectorForwardOnline.h": "27756e0a02fbe68d6827dd0f28c682a23d335510e94ab7b7691d8435e100d8b5",
+      "build/mindie_laser_quant_qresident_source/csrc/ops/vc_laser_quant_qresident_attention/op_kernel/CubeForward.h": "3931418bcdccb1f0e78a3282ab271f856a00ba0f1de0057469e0060324c8d7f6",
+      "build/mindie_laser_quant_qresident_source/csrc/ops/vc_laser_quant_qresident_attention/op_kernel/matmul_const.h": "ac6bef6c468824bab498504b9b7b32588dba2d386e8c6979f122333ff52fcf52",
+      "build/mindie_laser_quant_qresident_source/csrc/ops/vc_laser_quant_qresident_attention/op_kernel/vc_laser_probability.h": "e754ec92c000981bc8f75eb91fdf21d3c97285744bb9c09ae587f5170cf548c9",
+      "build/mindie_laser_quant_qresident_source/csrc/ops/vc_laser_quant_qresident_attention/op_kernel/vc_laser_quant_qresident_attention.cpp": "083cf4866e460bad6eec16e0bf3376826924a9f449659184216bee3b0002fc6c",
+      "build/mindie_laser_quant_qresident_source/csrc/ops/vc_laser_quant_qresident_attention/op_kernel/VectorForward.h": "9e9652b43d2e5d1989f7b50db26b6053950f674a1b05faa477d40ca5bd51b427"
+    },
+    "candidate": {
+      "build/mindie_laser_quant_vscale_source/csrc/ops/vc_laser_quant_vscale_attention/op_kernel/address_const.h": "8f16f692febd91fe3b8b3a4b7ac31a1351597823563a39aa269cc7a2e028b60c",
+      "build/mindie_laser_quant_vscale_source/csrc/ops/vc_laser_quant_vscale_attention/op_kernel/AddressMappingForwardOnline.h": "b1c83a6078f9a3f41f1e5a46613583991e1dbf26844f1284e04813dbb4b5264d",
+      "build/mindie_laser_quant_vscale_source/csrc/ops/vc_laser_quant_vscale_attention/op_kernel/AddressMappingVectorForwardOnline.h": "4d1c1b6df298172052db28e1b24ae4fa265268d5032c5e4fabee8553dc0d0360",
+      "build/mindie_laser_quant_vscale_source/csrc/ops/vc_laser_quant_vscale_attention/op_kernel/CubeForward.h": "ce829cc6f5a2c09aa4157d2608c0b4f15bfe701ff1e6a45a665cd668ad436a5c",
+      "build/mindie_laser_quant_vscale_source/csrc/ops/vc_laser_quant_vscale_attention/op_kernel/matmul_const.h": "ac6bef6c468824bab498504b9b7b32588dba2d386e8c6979f122333ff52fcf52",
+      "build/mindie_laser_quant_vscale_source/csrc/ops/vc_laser_quant_vscale_attention/op_kernel/vc_laser_probability.h": "e754ec92c000981bc8f75eb91fdf21d3c97285744bb9c09ae587f5170cf548c9",
+      "build/mindie_laser_quant_vscale_source/csrc/ops/vc_laser_quant_vscale_attention/op_kernel/vc_laser_quant_vscale_attention.cpp": "b18480278d619d78566c467b76a7a41db4d14c25f35b241ad0219d8c95a46b87",
+      "build/mindie_laser_quant_vscale_source/csrc/ops/vc_laser_quant_vscale_attention/op_kernel/VectorForward.h": "8b38a2e666d51b7e59b3631a98d0d503c092b4ab64ea516717885ca80fe7b2e3"
+    }
+  },
+  "patch_sha256": "6c6080533ff09091f3859c5824d837da4d555a3c52e9aa12d7229f90745cbc6f"
+}

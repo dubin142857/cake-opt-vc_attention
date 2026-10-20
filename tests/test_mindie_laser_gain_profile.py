@@ -20,12 +20,19 @@ CANDIDATES = [
     ("gain-precompute", "gain"), ("score-prefetch", "prefetch"),
     ("scale-cache", "cache"), ("k-prefetch", "kpipe"),
     ("q-resident", "qresident"),
+    ("vector-scale", "vscale"),
 ]
+
+
+def baseline_for(kind):
+    if kind == "vector-scale":
+        return "qresident"
+    return "cache" if kind in ("k-prefetch", "q-resident") else "reuse"
 
 
 @pytest.mark.parametrize("kind, candidate", CANDIDATES)
 def test_candidate_binds_reuse_and_own_identity_and_namespace(tmp_path, kind, candidate):
-    base = "cache" if kind in ("k-prefetch", "q-resident") else "reuse"
+    base = baseline_for(kind)
     args = SimpleNamespace(experiment=kind, **{base+"_build": base+".json",
                            candidate+"_build": candidate+".json"})
     specs = profile.experiment(args)
@@ -47,7 +54,7 @@ def test_existing_scale_experiment_still_uses_original_baseline():
 
 @pytest.mark.parametrize("kind, candidate", CANDIDATES)
 def test_candidate_provenance_uses_each_sources_validator(monkeypatch, tmp_path, kind, candidate):
-    base = "cache" if kind in ("k-prefetch", "q-resident") else "reuse"
+    base = baseline_for(kind)
     args = SimpleNamespace(experiment=kind, preprocess_build="preprocess.json",
                            **{base+"_build": base+".json", candidate+"_build": candidate+".json"})
     seen = []
@@ -112,7 +119,7 @@ def test_block_gains_checks_all_rows_and_detects_wrong_q_pair_selection(monkeypa
 def test_candidate_worker_launch_forwards_experiment_and_manifests(monkeypatch, tmp_path, kind):
     args = SimpleNamespace(_run_dir=str(tmp_path), experiment=kind, quant_build="old",
         reuse_build="reuse", gain_build="gain", prefetch_build="prefetch", cache_build="cache",
-        kpipe_build="kpipe", qresident_build="qresident", preprocess_build="prep", baseline_build="fp16",
+        kpipe_build="kpipe", qresident_build="qresident", vscale_build="vscale", preprocess_build="prep", baseline_build="fp16",
         bridge_manifest="bridge", device=2, warmup=5, repeats=10, trials=9, cpu_threads=4, seed=2026,
         shape=[1, 28, 37741, 128], trace=True)
     seen = []
@@ -131,6 +138,7 @@ def test_candidate_worker_launch_forwards_experiment_and_manifests(monkeypatch, 
     assert command[command.index("--cache-build")+1] == "cache"
     assert command[command.index("--kpipe-build")+1] == "kpipe"
     assert command[command.index("--qresident-build")+1] == "qresident"
+    assert command[command.index("--vscale-build")+1] == "vscale"
     assert "--trace" in command
 
 
@@ -142,7 +150,7 @@ def test_one_command_builds_only_candidate_using_local_reuse_source(tmp_path, fa
     root = tmp_path / "space in project"
     for name in ("scripts", "results", "cann"):
         (root / name).mkdir(parents=True)
-    base = "cache" if kind in ("k-prefetch", "q-resident") else "reuse"
+    base = baseline_for(kind)
     for name in ("mindie_laser_quant_"+base+"_build", "mindie_laser_quant_preprocess_build", "mindie_laser_build", "mindie_laser_bridge"):
         (root / "results" / (name+".json")).write_text("{}")
     script_name = "scripts/run_mindie_laser_"+kind.replace("-", "_")+".sh"
@@ -174,3 +182,31 @@ def test_one_command_builds_only_candidate_using_local_reuse_source(tmp_path, fa
             assert a[a.index("--experiment")+1] == kind
             assert a[a.index("--shape")+1:a.index("--shape")+5] == ["1", "28", "37741", "128"]
             assert a[a.index("--device")+1] == "2" and "--trace" in a
+
+
+def test_changed_rounding_gate_does_not_weaken_old_scheduling_gates():
+    error = dict(relative_rmse=.003, max_abs=.001, exact_match=False)
+    profile.require_pair_agreement(error, "vector-scale")
+    for kind, _ in CANDIDATES:
+        if kind != "vector-scale":
+            with pytest.raises(AssertionError, match="exactly"):
+                profile.require_pair_agreement(error, kind)
+    with pytest.raises(AssertionError, match="more than 1%"):
+        profile.require_pair_agreement(dict(error, relative_rmse=.02), "vector-scale")
+    for field in ("relative_rmse", "max_abs"):
+        with pytest.raises(AssertionError, match="nonfinite"):
+            profile.require_pair_agreement(dict(error, **{field: float("nan")}), "vector-scale")
+
+
+def test_vector_scale_uses_independent_oracle_without_old_exact_validation(monkeypatch):
+    import mindie_laser_quant_reference as reference
+    import mindie_laser_vscale_reference as vscale
+    calls = []
+    monkeypatch.setattr(reference, "validate_small", lambda a, *rest: calls.append(("old", a)))
+    monkeypatch.setattr(vscale, "validate_vector_scale", lambda a, *rest: calls.append(("new", a)))
+    monkeypatch.setattr(profile, "validate_scale_reuse",
+                        lambda *a: pytest.fail("Exact gate is inappropriate for changed arithmetic"))
+    adapters = dict(baseline=object(), reuse=object())
+    report = {"validation": {}}
+    profile.validate_pair(adapters, "cpu", report, lambda: None, "vector-scale")
+    assert calls == [("old", adapters["baseline"]), ("new", adapters)]

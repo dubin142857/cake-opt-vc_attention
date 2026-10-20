@@ -414,3 +414,31 @@ python3 scripts/profile_mindie_laser_scale_reuse.py --experiment q-resident --tr
 ```
 
 [Q 常驻同步审计](../../reports/ascend-q-resident-sync-audit/README.md)记录未变的事件/计算序列、Q 数据及 slot 生命周期、原始 CANNBot 输出与 host 模型限制。候选未在本地运行 CANN/NPU；是否能改善约 88 ms 的 native 延迟，必须以远端正确性和配对测速为准。
+
+## 固定 Cube 输出系数，Vector 融合反量化
+
+Q 常驻的远端 native 配对收益约 0.10 ms；它减少了搬运，但没有解决 INT8 主核仍慢于原版 FP16 Laser 的问题。这次独立测试 QK 的结果路径：Cube 不再逐 Q128/K128 tile 配置反量化系数，固定用 `1/64` 将 INT32 点积输出为 FP16；Vector 将分块反量化与原有 attention scale 乘法融合。Q 常驻、FP16 PV、普通指数以及输入量化方式保持一致。
+
+```bash
+git pull origin master
+bash scripts/run_mindie_laser_vector_scale.sh
+```
+
+默认 BF16 BNSD `[1,28,37741,128]`、设备 0、warmup 5、每轮 10 次、9 轮。需要上一轮 Q-resident 构建及已有 FP16/融合量化器的 manifest；脚本先验证这些缓存和实际 SoC，只编译独立 `VcLaserQuantVscaleAttention`，复用本地 Git objects，不访问 GitHub。结果为 `results/mindie_laser_vector_scale.json`，构建日志为 `results/mindie_laser_quant_vscale_build.log`。候选保留在独立 vendor/source/build 路径，没有替换已有实现。
+
+这次改变了舍入顺序，不能要求逐位等价。令 `I` 为 INT32 点积、`h` 为 FP16 舍入、`g` 为清除低 13 位后的 FP32 `sQ*sK`：
+
+```text
+旧路径：h(h(I*g) * h(attention_scale))
+新路径：transport = h(I/64)
+        coefficient = FP32(FP32(64*g) * FP32(h(attention_scale)))
+        score = h(transport * h(coefficient))
+```
+
+`1/64` 对包含 `-128` 的完整 INT8 范围安全：D128 最大点积除以 64 为 32768。系数无法安全表示为 normal FP16 时使用 FP32 乘法回退，避免先舍入系数造成下溢或溢出。分块系数采用紧凑 UB 广播布局，供一个 section 的多批行复用；没有创建 Q×K 大小的系数矩阵。
+
+验收包含独立候选算术参考、尾块/多 batch/head、同地址输入和 scale 更新。长形状对**全部补齐后的 native 输出**记录 old/new RMSE，超过 1% 停止；该门限用于拒绝本次数值改动漂移，并非模型质量标准。相对 dense FP32 的误差仍单独报告。旧有调度候选的逐位相等要求没有放宽。此候选关闭 V 平滑、V 重排和 ExpCast，先验证 INT8 QK 结果路径本身是否值得保留。
+
+同进程 `Q resident` / `Vector scale` 随机交错配对比较 native、prepared 和 full。FP16 Laser 在独立进程报告，profiler 时间也单列，不能把它们混成同一配对加速比。只有实机通过精度门限且稳定改善 native/full 才考虑保留；本地 CPU/源码检查不代表已完成 CANN 编译或 NPU 验证。
+
+实现、缓冲区生命周期与 CANNBot 检查见[Vector 反量化审计](../../reports/ascend-vector-scale-sync-audit/README.md)。

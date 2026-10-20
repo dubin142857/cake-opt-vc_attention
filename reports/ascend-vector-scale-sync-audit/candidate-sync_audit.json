@@ -1,0 +1,15 @@
+{
+  "files_scanned": [
+    "D:\\codex\\算子\\build\\mindie_laser_quant_vscale_source\\csrc\\ops\\vc_laser_quant_vscale_attention\\op_kernel\\AddressMappingForwardOnline.h",
+    "D:\\codex\\算子\\build\\mindie_laser_quant_vscale_source\\csrc\\ops\\vc_laser_quant_vscale_attention\\op_kernel\\AddressMappingVectorForwardOnline.h",
+    "D:\\codex\\算子\\build\\mindie_laser_quant_vscale_source\\csrc\\ops\\vc_laser_quant_vscale_attention\\op_kernel\\CubeForward.h",
+    "D:\\codex\\算子\\build\\mindie_laser_quant_vscale_source\\csrc\\ops\\vc_laser_quant_vscale_attention\\op_kernel\\VectorForward.h",
+    "D:\\codex\\算子\\build\\mindie_laser_quant_vscale_source\\csrc\\ops\\vc_laser_quant_vscale_attention\\op_kernel\\address_const.h",
+    "D:\\codex\\算子\\build\\mindie_laser_quant_vscale_source\\csrc\\ops\\vc_laser_quant_vscale_attention\\op_kernel\\matmul_const.h",
+    "D:\\codex\\算子\\build\\mindie_laser_quant_vscale_source\\csrc\\ops\\vc_laser_quant_vscale_attention\\op_kernel\\vc_laser_probability.h",
+    "D:\\codex\\算子\\build\\mindie_laser_quant_vscale_source\\csrc\\ops\\vc_laser_quant_vscale_attention\\op_kernel\\vc_laser_quant_vscale_attention.cpp"
+  ],
+  "event_count": 0,
+  "findings": [],
+  "events": []
+}

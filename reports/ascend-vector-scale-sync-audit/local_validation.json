@@ -1,0 +1,40 @@
+{
+  "scope": "Windows CPU checks; no CANN compilation, NPU execution or performance measurement",
+  "interpreter": ".venv-package/Scripts/python.exe",
+  "dependency_path": "D:/ana/Lib/site-packages",
+  "pytest_options": ["-q", "--assert=plain"],
+  "checks": [
+    {
+      "files": ["tests/test_mindie_laser_gain_profile.py"],
+      "passed": 47,
+      "scope": "Provider binding, unchanged old gates, separate candidate oracle, worker arguments, offline Bash success/failure propagation"
+    },
+    {
+      "files": ["tests/test_mindie_laser_quant_vscale_build.py"],
+      "passed": 38,
+      "scope": "Independent build paths, source identity/provenance, source drift and original-exp bridge guard"
+    },
+    {
+      "files": ["tests/test_mindie_laser_quant_vscale_patch.py"],
+      "passed": 13,
+      "scope": "Pinned source patch checks and actual C++ Cube/Vector/mapper methods executed with host instruction models"
+    },
+    {
+      "files": ["tests/test_mindie_laser_vscale_reference.py", "tests/test_mindie_laser_quant_backend.py"],
+      "passed": 39,
+      "scope": "Independent CPU arithmetic, structured oracle, finite range, boundary coefficients and validator failure detection"
+    }
+  ],
+  "total_passed": 137,
+  "additional_checks": [
+    "Python py_compile for changed source preparation, build, kernel patch, reference and profile modules",
+    "Bash syntax check for scripts/run_mindie_laser_vector_scale.sh",
+    "git diff --check"
+  ],
+  "limitations": [
+    "Host intrinsic models do not verify CCE signatures or asynchronous hardware ordering.",
+    "CANNBot regex tools did not recognize the low-level kernel events/operations; zero findings is not a synchronization proof.",
+    "Candidate changes FP16 rounding; remote independent-reference and all-output drift gates precede timing.",
+    "No device speedup or model-quality claim."
+  ]
+}

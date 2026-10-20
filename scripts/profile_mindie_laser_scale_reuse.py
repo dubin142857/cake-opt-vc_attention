@@ -54,6 +54,10 @@ def experiment(args):
         names = ("quant_cache", "quant_qresident")
         paths = (args.cache_build, args.qresident_build)
         labels = ("scale cache", "Q resident")
+    elif kind == "vector-scale":
+        names = ("quant_qresident", "quant_vscale")
+        paths = (args.qresident_build, args.vscale_build)
+        labels = ("Q resident", "Vector scale")
     else:
         raise ValueError(f"Unknown paired experiment: {kind}")
     return {key: dict(source=import_module("prepare_mindie_laser_"+name+"_source"),
@@ -98,7 +102,58 @@ def table(report):
                      f"{pair['median_saved_ms']:+12.4f} {pair['faster_trials']:3}/{pair['trials']}")
     lines += ["native/prepared reuse identical payload objects; full freshly preprocesses every call.",
               "Positive paired saved means candidate is faster. Scopes are not additive or kernel-only times."]
+    if report.get("experiment") == "vector-scale":
+        error = report.get("same_payload_all_output", {})
+        lines += [
+            "Vector scale changes FP16 rounding: fixed 1/64 Cube transport, fused Vector dequantization.",
+            f"ALL padded native output drift: {100*error.get('relative_rmse', float('nan')):.6f}% RMSE; "
+            f"max abs {error.get('max_abs')}; exact={error.get('exact_match')}.",
+            "1% old/new drift is an experiment acceptance gate; structured decoded-reference checks "
+            "use the candidate's own arithmetic. Neither gate proves model quality.",
+        ]
     return "\n".join(lines)
+
+
+def validate_pair(adapters, device, report, save, kind):
+    """Keep exact scheduling gates separate from the changed numerical contract."""
+    import torch
+    from mindie_laser_quant_reference import validate_small
+    for name, adapter in adapters.items():
+        report["validation"][name] = {}
+        if kind != "vector-scale" or name == "baseline":
+            validate_small(adapter, device, report["validation"][name], save, torch)
+    if kind == "vector-scale":
+        from mindie_laser_vscale_reference import validate_vector_scale
+        validate_vector_scale(adapters, device, report, save)
+        return
+    validate_scale_reuse(adapters, device, report, save)
+    if kind == "gain-precompute":
+        from mindie_laser_gain_checks import validate_block_gains
+        validate_block_gains(adapters, device, report, save)
+    if kind == "score-prefetch":
+        from mindie_laser_prefetch_checks import validate_score_prefetch
+        validate_score_prefetch(adapters, device, report, save)
+    if kind in ("scale-cache", "k-prefetch", "q-resident"):
+        from mindie_laser_cache_checks import validate_scale_cache
+        validate_scale_cache(adapters, device, report, save)
+    if kind == "k-prefetch":
+        from mindie_laser_kpipe_checks import validate_k_prefetch
+        validate_k_prefetch(adapters, device, report, save)
+    if kind == "q-resident":
+        from mindie_laser_qresident_checks import validate_q_resident
+        validate_q_resident(adapters, device, report, save)
+
+
+def require_pair_agreement(error, kind):
+    """Reject nonfinite/drifting candidates without weakening existing exact gates."""
+    import math
+    if not all(math.isfinite(error[field]) for field in ("relative_rmse", "max_abs")):
+        raise AssertionError("Candidate native output comparison is nonfinite")
+    if kind == "vector-scale":
+        if error["relative_rmse"] > .01:
+            raise AssertionError("Vector scale changed ALL-row native outputs by more than 1% RMSE")
+    elif not error["exact_match"]:
+        raise AssertionError("Candidate must preserve ALL native output elements exactly")
 
 
 def worker(args):
@@ -118,7 +173,6 @@ def worker(args):
         import torch
         import torch_npu
         from mindie_laser_quant_backend import load_quant_laser, MindIEQuantLaser
-        from mindie_laser_quant_reference import validate_small
         torch.set_num_threads(min(args.cpu_threads, torch.get_num_threads()))
         old = load_quant_laser(providers["baseline"].bridge_path, preprocessing="fused",
             preprocess_build=args.preprocess_build, torch_namespace=specs["baseline"]["namespace"],
@@ -133,6 +187,11 @@ def worker(args):
             quantizer=old.quantizer, v_quantize=False, expcast=False, check_finite=False,
             metadata=dict(old.metadata, dispatch=f"torch.ops.{namespace}.la.default",
                           bridge_path=providers["reuse"].bridge_path, native_schema=str(native._schema)))}
+        if args.experiment == "vector-scale":
+            from mindie_laser_quant_vscale_patch import VSCALE_CONTRACT
+            adapters["reuse"].metadata.update(
+                qk_result_contract=VSCALE_CONTRACT, bitwise_baseline_equivalent=False)
+            report["numerical_contract"] = VSCALE_CONTRACT
         torch.npu.set_option({"ACL_OP_COMPILER_CACHE_MODE": "disable",
                               "ACL_OP_COMPILER_CACHE_DIR": os.environ["ACL_OP_COMPILER_CACHE_DIR"]})
         torch.npu.set_device(args.device)
@@ -155,25 +214,7 @@ def worker(args):
         provider_context = dict(cann_root=os.environ["ASCEND_HOME_PATH"], soc=builds["baseline"]["soc"])
         with torch.no_grad():
             report["stage"], report["validation"] = "structured_validation", {}
-            for name, adapter in adapters.items():
-                report["validation"][name] = {}
-                validate_small(adapter, device, report["validation"][name], save, torch)
-            validate_scale_reuse(adapters, device, report, save)
-            if args.experiment == "gain-precompute":
-                from mindie_laser_gain_checks import validate_block_gains
-                validate_block_gains(adapters, device, report, save)
-            if args.experiment == "score-prefetch":
-                from mindie_laser_prefetch_checks import validate_score_prefetch
-                validate_score_prefetch(adapters, device, report, save)
-            if args.experiment in ("scale-cache", "k-prefetch", "q-resident"):
-                from mindie_laser_cache_checks import validate_scale_cache
-                validate_scale_cache(adapters, device, report, save)
-            if args.experiment == "k-prefetch":
-                from mindie_laser_kpipe_checks import validate_k_prefetch
-                validate_k_prefetch(adapters, device, report, save)
-            if args.experiment == "q-resident":
-                from mindie_laser_qresident_checks import validate_q_resident
-                validate_q_resident(adapters, device, report, save)
+            validate_pair(adapters, device, report, save, args.experiment)
             report["stage"] = "long_shape_validation"
             save()
             generator = torch.Generator().manual_seed(0)
@@ -203,8 +244,7 @@ def worker(args):
                 os.environ.pop(p.marker_env, None)
             report["same_payload_all_output"] = compare_all_rows(raw["reuse"], raw["baseline"])
             save()
-            if not report["same_payload_all_output"]["exact_match"]:
-                raise AssertionError("Candidate must preserve ALL native output elements exactly")
+            require_pair_agreement(report["same_payload_all_output"], args.experiment)
             ids = torch.linspace(0, args.shape[2]-1, min(32, args.shape[2])).long().unique()
             dense = common.dense_reference(*original, ids)
             report["dense_fp32_samples"] = {name: common.error_metrics(
@@ -269,6 +309,8 @@ def launch(args, mode, env, directory):
                   "results/mindie_laser_quant_kpipe_build.json"))]
     command += ["--qresident-build", str(getattr(args, "qresident_build",
                   "results/mindie_laser_quant_qresident_build.json"))]
+    command += ["--vscale-build", str(getattr(args, "vscale_build",
+                  "results/mindie_laser_quant_vscale_build.json"))]
     command += ["--shape", *map(str, args.shape)]
     if args.trace:
         command += ["--trace"]
@@ -338,13 +380,14 @@ def main(argv=None):
         ("cache-build", "results/mindie_laser_quant_cache_build.json"),
         ("kpipe-build", "results/mindie_laser_quant_kpipe_build.json"),
         ("qresident-build", "results/mindie_laser_quant_qresident_build.json"),
+        ("vscale-build", "results/mindie_laser_quant_vscale_build.json"),
         ("preprocess-build", "results/mindie_laser_quant_preprocess_build.json"),
         ("baseline-build", "results/mindie_laser_build.json"),
         ("bridge-manifest", "results/mindie_laser_bridge.json"),
         ("output", "results/mindie_laser_scale_reuse.json"),
     ):
         parser.add_argument("--"+name, default=default)
-    parser.add_argument("--experiment", choices=("scale-reuse", "gain-precompute", "score-prefetch", "scale-cache", "k-prefetch", "q-resident"), default="scale-reuse")
+    parser.add_argument("--experiment", choices=("scale-reuse", "gain-precompute", "score-prefetch", "scale-cache", "k-prefetch", "q-resident", "vector-scale"), default="scale-reuse")
     parser.add_argument("--shape", type=int, nargs=4, default=list(quant.baseline.SHAPE))
     parser.add_argument("--device", type=int, default=0)
     parser.add_argument("--warmup", type=int, default=5)
