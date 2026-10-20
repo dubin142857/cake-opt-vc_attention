@@ -275,6 +275,54 @@ def test_unknown_kernel_edits_fail_without_overwrite(prepared):
     assert cube.read_bytes() == data and manifest.read_bytes() == prior
 
 
+def test_preparation_upgrades_exact_prior_scalar_source_offline(prepared):
+    reference, source, manifest, report = prepared
+    name = f"{prepare.CUSTOM_OP_ROOT}/op_kernel/VectorForward.h"
+    vector = source / name
+    current = vector.read_bytes()
+    previous = prepare._previous_scalar_source(current)
+    assert previous != current
+    # Independently recorded from the published 9f9c5d0 generated header.
+    assert prepare.sha256(previous) == "8b38a2e666d51b7e59b3631a98d0d503c092b4ab64ea516717885ca80fe7b2e3"
+    assert b"packed_gain, 1, 1, 1, 8, 1);" in previous
+    assert b"vmuls(scratch, scratch, ub_attn.vscale_coeff_fp32[block]," in previous
+    vector.write_bytes(previous)
+    old_report = json.loads(manifest.read_text(encoding="utf-8"))
+    old_report["source_files"][name]["prepared_sha256"] = prepare.sha256(previous)
+    old_report["generated_files"][name]["prepared_sha256"] = prepare.sha256(previous)
+    manifest.write_text(json.dumps(old_report), encoding="utf-8")
+    with pytest.raises(prepare.PreparationError):
+        prepare.validate_prepared_source(source, manifest)
+
+    unchanged = {path: (source / path).stat().st_mtime_ns
+                 for path in report["generated_files"] if path != name}
+    upgraded = prepare.prepare(source, reference, manifest, offline=True)
+    assert vector.read_bytes() == current
+    assert upgraded == report
+    assert prepare.validate_prepared_source(source, manifest) == report
+    assert unchanged == {path: (source / path).stat().st_mtime_ns for path in unchanged}
+    before = vector.stat().st_mtime_ns, manifest.stat().st_mtime_ns
+    assert prepare.prepare(source, reference, manifest) == report
+    assert before == (vector.stat().st_mtime_ns, manifest.stat().st_mtime_ns)
+    assert not git(reference, "status", "--porcelain")
+
+
+@pytest.mark.parametrize("edit_target", ["VectorForward.h", "CubeForward.h"])
+def test_legacy_scalar_upgrade_rejects_unrelated_edits_before_writing(prepared, edit_target):
+    reference, source, manifest, _ = prepared
+    vector = source / prepare.CUSTOM_OP_ROOT / "op_kernel/VectorForward.h"
+    vector.write_bytes(prepare._previous_scalar_source(vector.read_bytes()))
+    edited = source / prepare.CUSTOM_OP_ROOT / "op_kernel" / edit_target
+    edited.write_bytes(edited.read_bytes() + b"// additional unrecognized edit\n")
+    before_vector, before_edit, before_manifest = (
+        vector.read_bytes(), edited.read_bytes(), manifest.read_bytes())
+    with pytest.raises(prepare.PreparationError):
+        prepare.prepare(source, reference, manifest)
+    assert vector.read_bytes() == before_vector
+    assert edited.read_bytes() == before_edit
+    assert manifest.read_bytes() == before_manifest
+
+
 @pytest.mark.parametrize("field", [
     "variant", "native_api", "scale_cache_contract", "q_resident_contract",
     "vector_scale_contract", "qk_scale_contract", "baseline_qk_scale_contract",

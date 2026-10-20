@@ -72,6 +72,54 @@ def _audit(source, patches):
     return audit_files(source, patches)[0]
 
 
+def _previous_scalar_source(current):
+    """Reconstruct only the initial, compiler-rejected Vector header.
+
+    This is a single known generated-source migration, not an allowance for
+    arbitrary edits or a relaxation of the upstream/source manifest audit.
+    """
+    replacements = (
+        (
+            b"""            // CCE intrinsic checking needs a concrete scalar value, not a
+            // const template-typed lvalue (INFERCHANNEL in CANN 9.0.1).
+            vector_dup(ub_attn.vscale_gain_fp16 + block * rowPerTime * 16,
+                static_cast<half>(packed_gain), 1, 1, 1, 8, 1);""",
+            b"""            vector_dup(ub_attn.vscale_gain_fp16 + block * rowPerTime * 16,
+                packed_gain, 1, 1, 1, 8, 1);""",
+        ),
+        (
+            b"""                // Load out of UB address space before passing the scalar
+                // operand to the raw intrinsic; preserve its FP32 value.
+                float scalar_coefficient = ub_attn.vscale_coeff_fp32[block];
+                vmuls(scratch, scratch, static_cast<float>(scalar_coefficient),""",
+            b"""                vmuls(scratch, scratch, ub_attn.vscale_coeff_fp32[block],""",
+        ),
+    )
+    for updated, previous in replacements:
+        if current.count(updated) != 1:
+            raise PreparationError("Cannot identify the known Vector scalar-source migration")
+        current = current.replace(updated, previous, 1)
+    return current
+
+
+def _audit_for_preparation(source, patches):
+    """Audit all files before upgrading an exact known generated predecessor."""
+    vector_name = f"{CUSTOM_OP_ROOT}/op_kernel/VectorForward.h"
+    vector_path = source / vector_name
+    accepted = patches
+    if vector_path.is_file() and vector_path.read_bytes() != patches[vector_name]:
+        previous = _previous_scalar_source(patches[vector_name])
+        if vector_path.read_bytes() == previous:
+            accepted = {**patches, vector_name: previous}
+    records = _audit(source, accepted)
+    # The complete audit above succeeded before any source is overwritten.
+    # The manifest describes the new bytes written by prepare(), not the
+    # temporarily accepted predecessor used solely for migration validation.
+    if accepted is not patches:
+        records[vector_name]["prepared_sha256"] = sha256(patches[vector_name])
+    return records
+
+
 def _identity(source):
     return {
         "source_dir": str(source), "variant": "quant_vector_scale", "op_type": OP_TYPE,
@@ -120,7 +168,7 @@ def prepare(source_dir, reference_dir, manifest, *, offline=True):
     seed_local_checkout(source, cached_references(reference), SOURCE_LOCK)
     ensure_checkout(source, SOURCE_LOCK, offline=True)
     patches, generated = expected_files(source)
-    records = _audit(source, patches)
+    records = _audit_for_preparation(source, patches)
     report = {
         "schema_version": 1, **_identity(source), "original_operator": OP_ROOT,
         "diagnostic_instrumentation": False, "source_files": records, "generated_files": generated,

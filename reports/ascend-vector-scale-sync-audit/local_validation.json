@@ -2,25 +2,37 @@
   "scope": "Windows CPU checks; no CANN compilation, NPU execution or performance measurement",
   "interpreter": ".venv-package/Scripts/python.exe",
   "dependency_path": "D:/ana/Lib/site-packages",
-  "pytest_options": ["-q", "--assert=plain"],
+  "pytest_options": [
+    "-q",
+    "--assert=plain"
+  ],
   "checks": [
     {
-      "files": ["tests/test_mindie_laser_gain_profile.py"],
+      "files": [
+        "tests/test_mindie_laser_gain_profile.py"
+      ],
       "passed": 47,
       "scope": "Provider binding, unchanged old gates, separate candidate oracle, worker arguments, offline Bash success/failure propagation"
     },
     {
-      "files": ["tests/test_mindie_laser_quant_vscale_build.py"],
+      "files": [
+        "tests/test_mindie_laser_quant_vscale_build.py"
+      ],
       "passed": 38,
       "scope": "Independent build paths, source identity/provenance, source drift and original-exp bridge guard"
     },
     {
-      "files": ["tests/test_mindie_laser_quant_vscale_patch.py"],
+      "files": [
+        "tests/test_mindie_laser_quant_vscale_patch.py"
+      ],
       "passed": 13,
       "scope": "Pinned source patch checks and actual C++ Cube/Vector/mapper methods executed with host instruction models"
     },
     {
-      "files": ["tests/test_mindie_laser_vscale_reference.py", "tests/test_mindie_laser_quant_backend.py"],
+      "files": [
+        "tests/test_mindie_laser_vscale_reference.py",
+        "tests/test_mindie_laser_quant_backend.py"
+      ],
       "passed": 39,
       "scope": "Independent CPU arithmetic, structured oracle, finite range, boundary coefficients and validator failure detection"
     }
@@ -36,5 +48,72 @@
     "CANNBot regex tools did not recognize the low-level kernel events/operations; zero findings is not a synchronization proof.",
     "Candidate changes FP16 rounding; remote independent-reference and all-output drift gates precede timing.",
     "No device speedup or model-quality claim."
-  ]
+  ],
+  "historical_revision": "9f9c5d027b408b72243c004fd8844e6428309744",
+  "historical_note": "Top-level checks/total_passed describe the initial candidate; only compile_fix_checks below were rerun for this fix.",
+  "remote_compile_failure": {
+    "date": "2026-10-20",
+    "cann": "9.0.1",
+    "stage": "INFERCHANNEL",
+    "initial_VectorForward_sha256": "8b38a2e666d51b7e59b3631a98d0d503c092b4ab64ea516717885ca80fe7b2e3",
+    "errors": [
+      {
+        "line": 158,
+        "call": "vector_dup",
+        "argument": 2,
+        "diagnostic": "the 2nd parameter maybe need a type 'half'"
+      },
+      {
+        "line": 183,
+        "call": "vmuls",
+        "argument": 3,
+        "diagnostic": "the 3rd parameter maybe need a type 'float'"
+      }
+    ],
+    "fixed_target_compilation": "pending remote rerun",
+    "npu_validation": "not reached",
+    "npu_performance": "not reached"
+  },
+  "compile_fix_checks": {
+    "scope": "Windows CPU checks after explicit half/float scalar conversion fix; not CCE compilation",
+    "checks": [
+      {
+        "files": [
+          "tests/test_mindie_laser_quant_vscale_patch.py"
+        ],
+        "passed": 15,
+        "scope": "Actual C++ methods, strict scalar-value boundary regressions; MSVC /permissive-; not CCE address-space emulation"
+      },
+      {
+        "files": [
+          "tests/test_mindie_laser_quant_vscale_build.py"
+        ],
+        "passed": 41,
+        "scope": "Build isolation/provenance plus exact previous-header offline migration, strict validation, idempotency and rejection of unrelated edits before writes"
+      },
+      {
+        "files": [
+          "tests/test_mindie_laser_vscale_reference.py"
+        ],
+        "passed": 24,
+        "scope": "Independent CPU numerical contract and validator checks"
+      },
+      {
+        "files": [
+          "tests/test_mindie_laser_build.py"
+        ],
+        "selection": "stale_device_copy or current_device_copy or new_header or invalid_completion_target or resumed_build_refreshes",
+        "passed": 5,
+        "deselected": 14,
+        "scope": "Target device-source stamp invalidation and incremental resume preserve unrelated build objects"
+      }
+    ],
+    "total_passed": 85,
+    "additional_checks": [
+      "Regenerated actual cached candidate offline and validated current source manifest",
+      "Reconstructed old header SHA256 matches the committed initial candidate header",
+      "Repeated candidate CANNBot full-family scans; 8 files, zero recognized operations/events, no synchronization proof",
+      "Bash syntax for unchanged one-click script; Python py_compile for modified modules; git diff --check"
+    ]
+  }
 }

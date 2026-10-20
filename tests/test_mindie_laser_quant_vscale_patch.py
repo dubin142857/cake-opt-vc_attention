@@ -77,18 +77,21 @@ def test_source_drift_fails_closed(source_files, filename, old, new):
         patch.apply(filename, source_files[filename].replace(old, new))
 
 
-def compile_library(compiler, directory, source):
+def compile_library(compiler, directory, source, *, expect_failure=False):
     directory.mkdir(parents=True, exist_ok=True)
     filename = directory / "vscale.cpp"
     filename.write_text(source, encoding="utf-8")
     if compiler.name.lower() in ("cl", "cl.exe"):
         output = directory / "vscale.dll"
-        command = [str(compiler), "/nologo", "/std:c++17", "/utf-8", "/LD", "/Od",
+        command = [str(compiler), "/nologo", "/std:c++17", "/permissive-", "/utf-8", "/LD", "/Od",
                    "/GS-", "/Zl", str(filename), "/link", "/NOENTRY", "/NODEFAULTLIB", f"/OUT:{output}"]
     else:
         output = directory / "vscale.so"
         command = [str(compiler), "-std=c++17", "-shared", "-fPIC", "-O0", str(filename), "-o", str(output)]
     result = subprocess.run(command, cwd=directory, capture_output=True, timeout=30)
+    if expect_failure:
+        assert result.returncode != 0, "Unsafe scalar argument unexpectedly compiled"
+        return (result.stdout + result.stderr).decode(errors="replace")
     assert result.returncode == 0, (result.stdout + result.stderr).decode(errors="replace")
     library = ctypes.CDLL(str(output))
     library.run_model.restype = ctypes.c_int
@@ -162,7 +165,10 @@ void set_vector_mask(uint64_t hi,uint64_t lo) {
     vector_mask=128;
 }
 void pipe_barrier(int p) { if(p!=PIPE_V && p!=PIPE_FIX) fail(2); }
-void vector_dup(half *dst,half x,int repeat,int a,int b,int c,int d) {
+// Deliberately require scalar values at the two new raw-intrinsic boundaries.
+// A host compiler otherwise accepts the const/UB lvalues rejected by CCE.
+// This checks our call-site discipline, not CCE address-space semantics.
+void vector_dup(half *dst,half&& x,int repeat,int a,int b,int c,int d) {
     if(repeat!=1||a!=1||b!=1||c!=8||d!=1||vector_mask!=64) fail(3);
     for(int i=0;i<vector_mask;++i) dst[i]=x;
 }
@@ -180,7 +186,7 @@ void vconv_f162f32(float*d,half*s,int repeat,int db,int sb,int dr,int sr) {
     if(db!=1||sb!=1||dr!=8||sr!=4||repeat!=8) fail(5);
     ++cast_calls; for(int i=0;i<repeat*64;++i) d[i]=float(s[i]);
 }
-void vmuls(float*d,float*s,float x,int repeat,int db,int sb,int dr,int sr) {
+void vmuls(float*d,float*s,float&& x,int repeat,int db,int sb,int dr,int sr) {
     if(db!=1||sb!=1||dr!=8||sr!=8||repeat!=8) fail(6);
     for(int i=0;i<repeat*64;++i) d[i]=s[i]*x;
 }
@@ -303,6 +309,21 @@ def test_actual_vector_prepare_scale_fallback_cache_and_ub_layout(cpp_compiler, 
     source = vector_model(source_files["VectorForward.h"])
     status = compile_library(cpp_compiler, tmp_path, source).run_model()
     assert status == 0, status
+
+
+@pytest.mark.parametrize("safe,unsafe", [
+    ("static_cast<half>(packed_gain), 1, 1, 1, 8, 1",
+     "packed_gain, 1, 1, 1, 8, 1"),
+    ("vmuls(scratch, scratch, static_cast<float>(scalar_coefficient),",
+     "vmuls(scratch, scratch, ub_attn.vscale_coeff_fp32[block],"),
+])
+def test_original_cce_scalar_errors_are_rejected_by_strict_host_model(
+        cpp_compiler, source_files, tmp_path, safe, unsafe):
+    source = vector_model(source_files["VectorForward.h"])
+    assert source.count(safe) == 1
+    diagnostics = compile_library(cpp_compiler, tmp_path, source.replace(safe, unsafe),
+                                  expect_failure=True)
+    assert "vector_dup" in diagnostics or "vmuls" in diagnostics
 
 
 MAPPING_SCENARIOS = r"""

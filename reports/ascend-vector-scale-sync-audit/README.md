@@ -1,6 +1,8 @@
 # Vector scale 独立候选：设计与同步审计
 
-本候选从 pinned qresident 派生，将 QK 的动态反量化系数从 Cube FIX 路径移到 Vector 已有的 score 缩放位置。它改变舍入顺序，不能视为 qresident 的位级等价替换。尚未进行 CCE 编译、NPU 数值测试或性能测量。
+本候选从 pinned qresident 派生，将 QK 的动态反量化系数从 Cube FIX 路径移到 Vector 已有的 score 缩放位置。它改变舍入顺序，不能视为 qresident 的位级等价替换。初版 `9f9c5d0` 在远端 CANN 9.0.1 的 INFERCHANNEL 编译阶段失败，尚未进入 NPU 数值测试或性能测量。本次修复后的设备编译仍待远端确认。
+
+2026-10-20 编译修复：`vector_dup` 的 gain 参数改为显式 `half` 值；FP32 回退路径先将 UB 数组元素读入普通 `float` 标量，再显式转换传给 `vmuls`。本次只修正这两个调用的标量类型表达形式，未改变数值公式、广播步长或同步位置。准备器仅允许识别出的旧版生成源码升级，任意其他内容修改仍拒绝覆盖；重跑原一键脚本即可增量构建，无需清理目录或访问 GitHub。
 
 使用本地 `build/cannbot-skills/ops/ascendc-perf-optimize` 的四步分析框架、`ascendc-sync-audit` 的完整扫描流程及 `ascendc-api-best-practices` 的广播/精度/同步说明。用户已授权实现该独立候选；技能中的修复前确认步骤不构成新的审批要求。按本次明确要求保留已有的 DCCI + scalar GetValue 缓存一致性方案，未按 API 技能的一般性能建议另行扩大 scale DMA 改造范围。
 
@@ -81,11 +83,11 @@ CubeForward.h:668
 - 每 Q128/K128 读取动态 scale、设置 quant register 并 barrier
 + 每次 Run 一次设置 1/64；QK store 只输出固定缩放 transport
 
-VectorForward.h:130 / :164 / :1145
+VectorForward.h:130 / :166 / :1150
 - 对整个 score section 执行 (half)SCALE 的 vmuls
 + section 开始构造每块 gain；一次广播 vmul，必要时 FP32 scratch 回退
 
-VectorForward.h:646
+VectorForward.h:651
 + 在原 UB 分配末尾追加 4096B gain 和 128B coefficient
 
 AddressMappingVectorForwardOnline.h:295 / address_const.h:164
@@ -98,11 +100,11 @@ vc_laser_quant_vscale_attention.cpp:72
 
 ## 验证及边界
 
-`tests/test_mindie_laser_quant_vscale_patch.py`：**13 passed**。使用本机已有 MSVC 编译并执行从实际补丁提取的方法，没有安装编译器。
+`tests/test_mindie_laser_quant_vscale_patch.py`：本次编译修复后 **15 passed**。使用本机已有 MSVC 编译并执行从实际补丁提取的方法，没有安装编译器。新增的两项回归通过严格主机桩要求显式标量值，检查两个旧调用形式不能回归；该桩不是 CCE 编译器，也不模拟地址空间类型规则。
 
 - 实际 Cube QK outer/base 方法：不同 L0 ping-pong 初始值、K 块数 0–32、ky=1/2、原 upper-right skip、descriptor/PV 边界；数据身份和原事件 ownership 检查通过。
 - 实际 Vector prepare/apply/UB allocation 方法：1–32 K 块、16 个四行 chunk、正常/零/很小/很大/负系数、完整 transport 极值、同地址 scale 改写、输出/scratch sentinel；快速与回退结果符合所声明公式。
 - 实际 dense mapper：跨 row/head/batch/round、两个 AIV；另对 **24、32、64 个 Cube**、B=2/H=17/Qpad=512、Kpad=256/512/4352/8448/37888 逐配置执行容量检查，**不跳过**，全部通过。
 - 探索性极少核配置揭示继承的边界：原 `FORWARD_SECTION_INFO` 仅能存八个 section，即四个两行 descriptor；某些低核数、短 K、大 B/H/Q 组合会超过容量。本候选没有扩容；探索模型明确跳过容量已不成立的原调度配置，不将其计为支持。真实设备需记录实际 Cube 数；远端验证不能在未知配置上默认安全。
 
-尚未验证：目标 CCE 对 intrinsic 参数及低阶地址空间的编译、真实 FIX register/UnitFlag 行为、跨流水执行顺序、设备浮点舍入和 FTZ、全算子精度与性能。主机执行模型只验证所建模的控制、寻址、广播及数值公式，不能替代上述设备验证。
+尚未通过验证：修复后目标 CCE 对 intrinsic 参数及低阶地址空间的编译、真实 FIX register/UnitFlag 行为、跨流水执行顺序、设备浮点舍入和 FTZ、全算子精度与性能。初版远端的两个参数类型错误记录在本次验证记录中；主机执行模型只验证所建模的控制、寻址、广播及数值公式，不能替代上述设备验证。初版 137 项检查与本次实际重跑的检查分别列在 [local_validation.json](local_validation.json)，不将历史结果冒充本次重跑。

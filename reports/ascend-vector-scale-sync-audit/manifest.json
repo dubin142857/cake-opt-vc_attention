@@ -89,8 +89,9 @@
       "build/mindie_laser_quant_vscale_source/csrc/ops/vc_laser_quant_vscale_attention/op_kernel/matmul_const.h": "ac6bef6c468824bab498504b9b7b32588dba2d386e8c6979f122333ff52fcf52",
       "build/mindie_laser_quant_vscale_source/csrc/ops/vc_laser_quant_vscale_attention/op_kernel/vc_laser_probability.h": "e754ec92c000981bc8f75eb91fdf21d3c97285744bb9c09ae587f5170cf548c9",
       "build/mindie_laser_quant_vscale_source/csrc/ops/vc_laser_quant_vscale_attention/op_kernel/vc_laser_quant_vscale_attention.cpp": "b18480278d619d78566c467b76a7a41db4d14c25f35b241ad0219d8c95a46b87",
-      "build/mindie_laser_quant_vscale_source/csrc/ops/vc_laser_quant_vscale_attention/op_kernel/VectorForward.h": "8b38a2e666d51b7e59b3631a98d0d503c092b4ab64ea516717885ca80fe7b2e3"
+      "build/mindie_laser_quant_vscale_source/csrc/ops/vc_laser_quant_vscale_attention/op_kernel/VectorForward.h": "dd99b7089764d018668946e80d54a5c0900097a0fcdc94f48893e6a07259b997"
     }
   },
-  "patch_sha256": "6c6080533ff09091f3859c5824d837da4d555a3c52e9aa12d7229f90745cbc6f"
+  "patch_sha256": "b1d7c1b67a571c1d603f8f99390e00b9609fde2a3d67722b2cfa9a4f9a73c2e2",
+  "revision_note": "2026-10-20: explicit half/float scalar arguments after initial CANN 9.0.1 INFERCHANNEL failure; candidate rescanned, device compilation pending."
 }

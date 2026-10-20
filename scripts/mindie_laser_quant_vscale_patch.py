@@ -126,8 +126,10 @@ VECTOR_METHODS = b"""    // vscale methods: dense MHA only, each section is one 
             // One 32-byte block per 128-element score repeat. Four equal
             // blocks serve the four packed rows belonging to this K128.
             const INPUT_T packed_gain = fast ? static_cast<INPUT_T>(coefficient) : static_cast<INPUT_T>(1.0f);
+            // CCE intrinsic checking needs a concrete scalar value, not a
+            // const template-typed lvalue (INFERCHANNEL in CANN 9.0.1).
             vector_dup(ub_attn.vscale_gain_fp16 + block * rowPerTime * 16,
-                packed_gain, 1, 1, 1, 8, 1);
+                static_cast<half>(packed_gain), 1, 1, 1, 8, 1);
         }
         pipe_barrier(PIPE_V);
         set_vector_mask((uint64_t)-1, (uint64_t)-1);
@@ -152,7 +154,10 @@ VECTOR_METHODS = b"""    // vscale methods: dense MHA only, each section is one 
                 auto values = score + block * rowPerTime * BASE_BLOCK_SIDE_LEN;
                 vconv_f162f32(scratch, values, rowPerTime * 2, 1, 1, 8, 4);
                 pipe_barrier(PIPE_V);
-                vmuls(scratch, scratch, ub_attn.vscale_coeff_fp32[block],
+                // Load out of UB address space before passing the scalar
+                // operand to the raw intrinsic; preserve its FP32 value.
+                float scalar_coefficient = ub_attn.vscale_coeff_fp32[block];
+                vmuls(scratch, scratch, static_cast<float>(scalar_coefficient),
                     rowPerTime * 2, 1, 1, 8, 8);
                 pipe_barrier(PIPE_V);
                 vconv_f322f16(values, scratch, rowPerTime * 2, 1, 1, 4, 8);
