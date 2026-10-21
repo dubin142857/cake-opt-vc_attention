@@ -619,6 +619,8 @@ profiler 活跃时，三者累计设备任务平均时长为 original 80.5560、
 
 ## 在 V 预取基础上单独尝试 P 预取
 
+**2026-10-21 实机结论：输出精确一致，但未测得可采用的增量收益；保留 V-only 的 `vector_pv_prefetch`，不叠加本候选。下方入口用于复现实验。**
+
 ```bash
 git pull origin master
 bash scripts/run_mindie_laser_pv_p_prefetch.sh
@@ -628,4 +630,28 @@ bash scripts/run_mindie_laser_pv_p_prefetch.sh
 
 默认 BF16 BNSD `[1,28,37741,128]`、设备 0、warmup 5、10 次/轮、9 轮；仍可用 `NPU_DEVICE` 选卡。仅编译独立 `VcLaserQuantVscalePvPPrefetchAttention`，复用已有 V-only、原版 Laser 与融合量化器，源码仅从本地缓存获取。主表为 `original_laser` / `vector_pv_prefetch` / `vector_pv_p_prefetch`：原版 Laser 是主要性能基线，V-only 是同算法对照。
 
-先完成各自数值参考、原址 scale 更新和全部 padded native 精确一致检查，再随机交错计时；full 每次重新预处理，prepared/native 各自独立，profiler 后置。保留已有 P/V 块边界、多头及 A/B/A/B 连续输入测试，并增加对 P 行块/相邻 K 块权重敏感的用例。结果为 `results/mindie_laser_pv_p_prefetch.json`，日志同名 `.log`。实现与生产/消费同步记录见 [P 预取审计](../../reports/ascend-pv-p-prefetch-sync-audit/README.md)。本地无 CCE/NPU，远端编译与性能结果待验收。
+先完成各自数值参考、原址 scale 更新和全部 padded native 精确一致检查，再随机交错计时；full 每次重新预处理，prepared/native 各自独立，profiler 后置。保留已有 P/V 块边界、多头及 A/B/A/B 连续输入测试，并增加对 P 行块/相邻 K 块权重敏感的用例。结果为 `results/mindie_laser_pv_p_prefetch.json`，日志同名 `.log`。实现与生产/消费同步记录见 [P 预取审计](../../reports/ascend-pv-p-prefetch-sync-audit/README.md)。本地无 CCE/NPU；下列设备结果来自用户远端回传。
+
+## P 预取回测：基本持平，保留 V-only
+
+2026-10-21 用户回传上述报告的终端摘要；本地没有完整 JSON。本段未包含 full API 主表或 dense RMSE，不补造本轮 full 对原版的加速比或误差数字。默认 BF16 BNSD `[1,28,37741,128]`，同进程随机交错 9 轮。
+
+| 实现 | prepared ms | Laser/prepared | native ms | Laser/native |
+|---|---:|---:|---:|---:|
+| original_laser | 83.0035 | 1.0000× | 81.3272 | 1.0000× |
+| vector_pv_prefetch | 80.9656 | 1.0252× | 78.5664 | 1.0351× |
+| vector_pv_p_prefetch | 80.9714 | 1.0251× | 78.6111 | 1.0346× |
+
+相对 V-only 的增量比较如下，正的配对节省表示新 P+V 候选更快：
+
+| 范围 | old/new 中位数比 | 配对节省 ms | 更快轮数 |
+|---|---:|---:|---:|
+| full | 0.9990× | −0.0084 | 4/9 |
+| prepared | 0.9999× | −0.0268 | 3/9 |
+| native | 0.9994× | −0.0251 | 1/9 |
+
+差异很小、方向略偏慢，没有可采用的新增收益；不将该摘要描述为显著退化。配对差的中位数不是两个表中中位数之差，各 scope 独立，不相加。`Exact old/new output: True` 覆盖全部 padded native 输出，说明本次相同量化算法的调度改动通过了输出回归检查，不代表与 FP16 Laser 等精度或模型质量达标。
+
+profiler 活跃时，original / V-only / P+V 的累计设备任务平均时长分别为 81.4000 / 78.5740 / 78.5984 ms/call，各 3 次调用、3 个设备任务。P+V 比 V-only 多 0.0244 ms，与 API 结果一样接近持平；不能与 wall time 混算。V-only 本轮相对原版的 native 速度比为 1.0351×，不是这次 P 预取带来的收益，也不能将它与上一轮不同原版时延下的速度比作增量比较。
+
+只保留 V-only 作为后续实验基线。下一步优先对**当前 V-only** 进行经校准的 PV 内部诊断，区分 P/V 数据就绪等待、L1→L0 装载调度、矩阵计算与输出链、history/尾部归一化；不在需要连续配对的 MAD/FIX 之间随意加完成屏障。现有整段采样或 profiler 总时长不足以将这些开销分摊成生产百分比，也不能证明 P 搬运无成本或 kernel 已经 compute-bound。P 搬运原本被部分掩盖、提前发射新增指令或争用抵消收益，都只是待验证解释。

@@ -62,4 +62,12 @@ bash scripts/run_mindie_laser_pv_p_prefetch.sh
 
 比较 `original_laser` / `vector_pv_prefetch` / `vector_pv_p_prefetch`。full API 每次重新预处理，是主要指标；prepared/native 使用固定 payload，独立计时。profiler 在主计时之后另列。候选与 V-only 的精度检查覆盖全部 padded native 输出，原版与 INT8 的 dense 误差另报，不能视为等精度或模型质量验证。
 
-报告为 `results/mindie_laser_pv_p_prefetch.json`，日志同名 `.log`。本地无 CCE/NPU，不声称已编译通过或获得性能提升，需远端验收。
+报告为 `results/mindie_laser_pv_p_prefetch.json`，日志同名 `.log`。本地无 CCE/NPU，设备结果来自用户远端回传。
+
+## 2026-10-21 远端结果：不采用 P 预取
+
+终端摘要运行到最终报告，全部 padded native 输出精确一致。P+V 相对 V-only 的 full/prepared/native 配对节省分别为 −0.0084 / −0.0268 / −0.0251 ms，更快轮数为 4/9、3/9、1/9；中位数比为 0.9990× / 0.9999× / 0.9994×。接近持平且略偏慢，未获得可采用的增量收益，继续保留 V-only 基线。
+
+V-only / P+V native 分别为 78.5664 / 78.6111 ms；原版 Laser 为 81.3272 ms。另测 profiler 设备任务平均值分别为 78.5740 / 78.5984 / 81.4000 ms/call。独立计时范围不混算，不将约 0.025 ms 的差异宣称为显著退化。
+
+本地未取得完整 JSON，当前粘贴也未包含 full 主表和 dense RMSE。精确输出仅比较相同量化算法，不表示与原版 FP16 同精度。该实验保留供复现，后续不叠加；统计解释和下一步诊断方向见[量化 Laser 回测记录](../../ascend/laser_quant/README.md)。
