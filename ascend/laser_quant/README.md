@@ -578,6 +578,8 @@ bash scripts/run_mindie_laser_vscale_phases.sh
 
 ## PV 内下一块 V 的预取候选
 
+**2026-10-21 实机回测：同 payload 全部 native 输出精确一致；相对 Vector scale 的 full/prepared/native 配对计时均为 9/9 更快。保留该候选作为后续实验基线，Vector scale 继续作对照。详见下方回测。**
+
 ```bash
 git pull origin master
 bash scripts/run_mindie_laser_pv_prefetch.sh
@@ -588,3 +590,29 @@ bash scripts/run_mindie_laser_pv_prefetch.sh
 一键脚本固定 BF16 BNSD `[1,28,37741,128]`、warmup 5、10 次/轮、9 轮，设备默认为 0（可选 `NPU_DEVICE`）。只构建独立 `VcLaserQuantVscalePvPrefetchAttention`，复用已验证的当前 Vector scale、原版 FP16 Laser 及融合量化器，源码从本地 Git objects 重建。主表三行为 `original_laser`、`vector_scale`、`vector_pv_prefetch`，同进程随机交错，full API 每次包含新预处理；prepared/native 与 profiler 另列。
 
 计时前检查原版数值、当前 Vector scale 自身参考、原址 Q/K scale 连续更新，以及 K128/section 边界、多头映射、A/B/A/B 连续排队输入；新旧 INT8 要求全部 padded native 输出精确一致。公开 payload 按 256 token 补齐，逻辑单数 K128 块边界不冒充真实 Cube 奇数循环；循环及事件主机模型另外覆盖。结果保存在 `results/mindie_laser_pv_prefetch.json`，日志为同名 `.log`。实现边界和同步审计见[PV V 预取记录](../../reports/ascend-pv-prefetch-sync-audit/README.md)。
+
+## PV V 预取回测：保留小幅收益，继续检查 PV 数据路径
+
+以下为用户回传的 2026-10-21 `results/mindie_laser_pv_prefetch.json` 终端摘要。本地未取得完整 JSON；本次粘贴没有 full API 主表和 dense RMSE 列，不能补造本轮相对原版 Laser 的 full 加速比或精度数字。脚本默认 BF16 BNSD `[1,28,37741,128]`，同进程随机交错，9 轮。
+
+| 实现 | prepared ms | Laser/prepared | native ms | Laser/native |
+|---|---:|---:|---:|---:|
+| original_laser | 82.3129 | 1.0000× | 80.6752 | 1.0000× |
+| vector_scale | 81.4107 | 1.0111× | 79.0780 | 1.0202× |
+| vector_pv_prefetch | 80.9052 | 1.0174× | 78.5039 | 1.0277× |
+
+相对原版，候选的 prepared/native 配对节省为 +1.3978 / +2.1759 ms，均为 9/9 更快。native 包含分配和派发，不是纯 kernel 时长；原版 FP16 与 INT8 使用各自 payload，输出 dtype 也不同。
+
+相对上一版 Vector scale，固定范围共享同一量化 payload；full 每次重新预处理：
+
+| 范围 | old/new 中位数比 | 配对节省 ms | 更快轮数 |
+|---|---:|---:|---:|
+| full | 1.0035× | +0.4356 | 9/9 |
+| prepared | 1.0062× | +0.4904 | 9/9 |
+| native | 1.0073× | +0.5541 | 9/9 |
+
+old/new 为两个中位数之比，配对节省为逐轮差值的中位数，两种统计量不能互相替代。三个范围独立测量、不相加。全部 padded native 输出精确一致：这是相同算法的调度优化通过了回归门限，不表示 INT8 与原版 FP16 Laser 等精度。
+
+profiler 活跃时，三者累计设备任务平均时长为 original 80.5560、Vector scale 79.0523、PV prefetch 78.4636 ms/call，各自 3 次调用、3 个设备任务。相对旧 INT8 减少 0.5887 ms，方向与未开 profiler 的 native 配对结果一致，支持收益来自 attention 设备执行内部。它没有测得单独的 V DMA 或 PV 阶段时间，不能把该差额全部归因到某个硬件流水，也不与 API wall time 混算。profiler 无 warmup 提示不作用于已完成的主计时。
+
+保留 `vector_pv_prefetch` 作为后续单变量实验起点，继续保留原版 Laser 和 Vector scale 对照。不叠加此前退化的 bulk/rowmax。下一步可检查 PV 的 P 搬运及 L1→L0 装载链，再单独尝试下一块 P 的 GM→L1 预取：先确认 Vector 已发布当前 descriptor 的 P，两个 P 行块所在的 L1 槽在最后一次 L1→L0A 读取完成后才释放，不跨 descriptor，也不同时调整 MAD 或 L1→L0 顺序。现有结果支持该方向，但不证明整个 kernel 是带宽瓶颈，也不保证同时预取 P/V 会更快。

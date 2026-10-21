@@ -60,4 +60,10 @@ bash scripts/run_mindie_laser_pv_prefetch.sh
 
 计时前保留当前 Vector-scale 自身数值参考、原址 scale 更新、全部 padded native 精确门限，并新增 K128/section 边界与多头映射、A/B/A 连续排队输入检查。公开预处理按 256 token 补齐，所以逻辑 K128 块数 1/3 并不意味着真实 Cube Kx=1/3；奇数和单迭代路径由主机方法模型单独覆盖，不冒充设备路径覆盖。
 
-结果为 `results/mindie_laser_pv_prefetch.json`，日志为同名 `.log`。本地没有 CCE/NPU；首次编译、设备精确输出和性能验收仍需远端完成。
+结果为 `results/mindie_laser_pv_prefetch.json`，日志为同名 `.log`。本地没有 CCE/NPU，设备结果来自用户远端回传。
+
+## 2026-10-21 远端回测
+
+用户回传的终端摘要已运行到最终报告，`Exact old/new output: True`。相对 Vector scale，full/prepared/native 配对节省为 +0.4356 / +0.4904 / +0.5541 ms，均为 9/9 更快；对应中位数比为 1.0035× / 1.0062× / 1.0073×。候选 native 为 78.5039 ms，原版 Laser 为 80.6752 ms，native 速度比 1.0277×。profiler 活跃时的设备任务平均值另为 78.4636 / 80.5560 ms/call，不与 API 计时混用。
+
+这支持保留候选作下一轮实验基线。完整 JSON 未在本地取得；当前粘贴未包含 full 主表和 dense RMSE，不能据此声明本轮相对原版 Laser 的 full 加速比、等精度或模型质量。完整统计解释见[量化 Laser 回测记录](../../ascend/laser_quant/README.md)。
