@@ -10,3 +10,5 @@ dist/
 *.pyd
 *.obj
 *.ptx
+/.cache/tilelang-attention-npu/
+/results/tilelang_attention_npu_artifacts/
