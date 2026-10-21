@@ -498,6 +498,8 @@ Vector scale 相对原版的 full 配对节省为 +1.2094 ms，9/9 更快。这�
 
 ## 分两级归约行最大值
 
+**2026-10-21 实机结论：该候选退化，不采用；保留 `vector_scale`。** 下方入口仅用于复现归约实验，完整结果见后面的回测记录。
+
 ```bash
 git pull origin master
 bash scripts/run_mindie_laser_vector_rowmax.sh
@@ -510,3 +512,21 @@ bash scripts/run_mindie_laser_vector_rowmax.sh
 一键入口仍是 BF16 BNSD `[1,28,37741,128]`、设备 0、warmup 5、10 次/轮、9 轮，可用 `NPU_DEVICE` 指定设备。只编译独立 `VcLaserQuantVscaleRowmaxAttention`，复用已有 Vector scale、原版 Laser 和融合量化器；源码使用本地固定 Git objects。结果为 `results/mindie_laser_vector_rowmax.json`，日志为同名 `.log`。同进程主表三行为 `original_laser`、`vector_scale`、`vector_rowmax`，主要比较 fresh full API 的 `Laser/full`、配对节省和更快轮数，prepared/native 另外报告。
 
 计时前保留原版精度检查、Vector scale 自身数值参考、scale 原址更新测试，并增加 K 块及 section 边界检查。新旧 INT8 版本要求全部 native 输出精确一致，长形状也检查补齐区域；dense FP32 误差另行采样报告。原版与 INT8 的固定 payload 各自生成，两种 INT8 的固定比较共享同一 payload。候选尚无本地 CCE/NPU 验证或性能结论，只有远端精度通过且 full API 有收益才考虑采用。
+
+## 行最大值候选回测：正确，但明确变慢
+
+以下为用户回传的 2026-10-21 远端结果，来源为 `results/mindie_laser_vector_rowmax.json` 的终端摘要；本地未取得该完整 JSON。测试仍为 BF16 BNSD `[1,28,37741,128]`，同进程随机交错，9 轮；原版 FP16 Laser 是主基线。
+
+| 实现 | full ms | prepared ms | native ms | Laser/full | dense FP32 RMSE |
+|---|---:|---:|---:|---:|---:|
+| original_laser | 85.9412 | 82.9925 | 81.6012 | 1.0000× | 0.190947% |
+| vector_scale | 84.0519 | 81.5878 | 79.5306 | 1.0225× | 1.365174% |
+| vector_rowmax | 97.5193 | 95.0846 | 93.0113 | 0.8813× | 1.365174% |
+
+Vector scale 对原版 full 的配对节省为 +1.8843 ms，9/9 更快；本次速度比为 1.0225×，但 dense 误差不同，并非等精度比较。rowmax 相对 Vector scale 的 full/prepared/native 配对节省分别为 −13.4784 / −13.5035 / −13.4772 ms，均为 0/9 更快；全部 padded native 输出精确一致。因此这是性能退化，不是数值回归。
+
+独立 profiler 设备任务总时长均值为 original 81.5435、Vector scale 79.3816、rowmax 92.9811 ms/call；各自 3 次调用、3 个设备任务。这支持退化发生在 attention 设备执行内部，而不是新增 Python 调用或量化预处理；这些数据不能定位到某一硬件流水，也不与 API wall time 混算。profiler 的无 warmup 提示不作用于已完成预热、未开启 profiler 的主计时。
+
+源码层面，32 个 K128 块、四行时，新路径执行 4×32 个局部水平归约，再做四个合并归约；旧路径主要用逐元素 `vmax` 折叠 K 块，最后执行四个水平归约。新路径减少了宽中间向量的写入，却显著增加了水平归约的重复执行。归约吞吐、stride 布局或编译调度抵消搬运收益，是与现有证据一致的解释，**尚非硬件计数器证实的具体瓶颈**。不能由源码调用条数更少推断执行更快。
+
+后续以 Vector scale 为起点重新检查 QK、PV 和 Cube/Vector 等待链路。原有 phase probe 基于更早的 scale-reuse 实现，不能直接当作移动反量化之后的当前瓶颈证据；应先适配和校准当前版本的诊断，再决定分块或流水改动。不将本次 rowmax、上次 bulk 叠加进后续优化。

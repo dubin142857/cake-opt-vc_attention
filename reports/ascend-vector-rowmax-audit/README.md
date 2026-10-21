@@ -1,6 +1,8 @@
 # Vector row-max：本地实现与检查记录
 
-本候选基于已实测的 `vector_scale`，不叠加已经回退的 bulk 系数广播。只调整 dense 四行 score 的最大值归约；INT8 QK、原版指数、FP16 PV、输入量化及 Vector 反量化的数值契约不变。尚未在本地完成 CCE 编译或 NPU 运行，没有新版本的性能结论。
+本候选基于已实测的 `vector_scale`，不叠加已经回退的 bulk 系数广播。只调整 dense 四行 score 的最大值归约；INT8 QK、原版指数、FP16 PV、输入量化及 Vector 反量化的数值契约不变。本文保留实现时的本地检查；本地没有 CCE/NPU。
+
+**2026-10-21 远端结论：数值检查通过，性能明显退化，不采用。** 用户回传全部 padded native 输出精确一致；相对 Vector scale，full API 配对节省 −13.4784 ms，native 为 −13.4772 ms，均 0/9 更快。当前保留 Vector scale，详细三方对比和分析边界见[回测记录](../../ascend/laser_quant/README.md#行最大值候选回测正确但明确变慢)。本目录 manifest 只记录本地审计，不冒充远端完整报告。
 
 ## 优化假设
 
