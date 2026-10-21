@@ -1,0 +1,504 @@
+{
+  "schema": "fp16_expcast_cpu_accuracy_v1",
+  "environment": {
+    "python": "3.10.16 | packaged by Anaconda, Inc. | (main, Dec 11 2024, 16:19:12) [MSC v.1929 64 bit (AMD64)]",
+    "numpy": "1.26.4",
+    "platform": "Windows-10-10.0.26200-SP0"
+  },
+  "configuration": {
+    "seed": 20261021,
+    "grid_points": 2000001,
+    "gain_fp32": 1477.3197021484375,
+    "base_code": 23552,
+    "experimental_code_correction": -44.8
+  },
+  "scope": "CPU accuracy only. No GPU timing, QK quantization, V quantization, or online-softmax accumulation; not an end-to-end attention/model quality measurement.",
+  "reference": "FP64 256*exp(x) at identical max-shifted FP32 inputs; FP64 normalization and PV with identical FP32 random V.",
+  "variants": {
+    "exp_then_fp16": "FP64 exact-function reference weights rounded to FP16 (ordinary quantization baseline).",
+    "expcast_raw": "RNE(FMA_FP32(x,1024*log2(e),23552)), clamp to [0,23552], uint16 bitcast to FP16.",
+    "expcast_corrected": "Experimental same encoder with bias 23552-44.8. Correction scales FP8's -0.35 by 1024/8; not claimed optimal or a published FP16 implementation."
+  },
+  "validation": {
+    "status": "passed",
+    "independent_ieee_bit_patterns": 23553
+  },
+  "weight_sweep": {
+    "normal_target_range": [
+      6.103515625e-05,
+      256.0
+    ],
+    "normal": {
+      "exp_then_fp16": {
+        "max_relative_error_percent": 0.04879656419682802,
+        "mean_relative_error_percent": 0.017611021057843703,
+        "p99_relative_error_percent": 0.0433037249700088,
+        "signed_mean_relative_error_percent": -4.5376972112604465e-06,
+        "relative_l2_error_percent": 0.019163549577607557,
+        "zero_count": 0,
+        "count": 2000000,
+        "target_and_output_both_normal": {
+          "max_relative_error_percent": 0.04879656419682802,
+          "mean_relative_error_percent": 0.017611021057843703,
+          "p99_relative_error_percent": 0.0433037249700088,
+          "signed_mean_relative_error_percent": -4.5376972112604465e-06,
+          "relative_l2_error_percent": 0.019163549577607557,
+          "zero_count": 0,
+          "count": 2000000
+        },
+        "worst_x": -15.248749732971191,
+        "worst_reference_weight": 6.106496329076144e-05,
+        "worst_approximate_weight": 6.109476089477539e-05
+      },
+      "expcast_raw": {
+        "max_relative_error_percent": 6.1835246093230785,
+        "mean_relative_error_percent": 4.068478406992707,
+        "p99_relative_error_percent": 6.164015859850103,
+        "signed_mean_relative_error_percent": 4.068458394281201,
+        "relative_l2_error_percent": 4.2689098226073865,
+        "zero_count": 0,
+        "count": 2000000,
+        "target_and_output_both_normal": {
+          "max_relative_error_percent": 6.1835246093230785,
+          "mean_relative_error_percent": 4.068478406992707,
+          "p99_relative_error_percent": 6.164015859850103,
+          "signed_mean_relative_error_percent": 4.068458394281201,
+          "relative_l2_error_percent": 4.2689098226073865,
+          "zero_count": 0,
+          "count": 2000000
+        },
+        "worst_x": -2.466968297958374,
+        "worst_reference_weight": 21.719471156050773,
+        "worst_approximate_weight": 23.0625
+      },
+      "expcast_corrected": {
+        "max_relative_error_percent": 4.413490071712106,
+        "mean_relative_error_percent": 1.8109051652692898,
+        "p99_relative_error_percent": 2.9959868725465304,
+        "signed_mean_relative_error_percent": 0.9577266119437998,
+        "relative_l2_error_percent": 1.9380985380109443,
+        "zero_count": 0,
+        "count": 2000000,
+        "target_and_output_both_normal": {
+          "max_relative_error_percent": 3.0198581748361444,
+          "mean_relative_error_percent": 1.8072344041807409,
+          "p99_relative_error_percent": 2.9935045098726127,
+          "signed_mean_relative_error_percent": 0.9668512253800646,
+          "relative_l2_error_percent": 1.938098538010935,
+          "zero_count": 0,
+          "count": 1996068
+        },
+        "worst_x": -15.249039649963379,
+        "worst_reference_weight": 6.104726208634011e-05,
+        "worst_approximate_weight": 5.835294723510742e-05
+      }
+    },
+    "subnormal_and_underflow": {
+      "exp_then_fp16": {
+        "max_relative_error_percent": 100.0,
+        "mean_relative_error_percent": 52.02657040927312,
+        "p99_relative_error_percent": 100.0,
+        "signed_mean_relative_error_percent": -46.47759215391104,
+        "relative_l2_error_percent": 0.12107733978478598,
+        "zero_count": 241552,
+        "count": 500000
+      },
+      "expcast_raw": {
+        "max_relative_error_percent": 100.0,
+        "mean_relative_error_percent": 96.99873763923344,
+        "p99_relative_error_percent": 100.0,
+        "signed_mean_relative_error_percent": -96.99873684985742,
+        "relative_l2_error_percent": 58.94725203927789,
+        "zero_count": 476516,
+        "count": 500000
+      },
+      "expcast_corrected": {
+        "max_relative_error_percent": 100.0,
+        "mean_relative_error_percent": 97.28643572800112,
+        "p99_relative_error_percent": 100.0,
+        "signed_mean_relative_error_percent": -97.28643572800112,
+        "relative_l2_error_percent": 61.28635555608263,
+        "zero_count": 477544,
+        "count": 500000
+      }
+    }
+  },
+  "scalar_examples": [
+    {
+      "x_fp32": 0.0,
+      "reference_weight": 256.0,
+      "exp_then_fp16": {
+        "weight": 256.0,
+        "relative_error_percent": 0.0
+      },
+      "expcast_raw": {
+        "weight": 256.0,
+        "relative_error_percent": 0.0
+      },
+      "expcast_corrected": {
+        "weight": 250.375,
+        "relative_error_percent": 2.197265625
+      }
+    },
+    {
+      "x_fp32": -0.6931471824645996,
+      "reference_weight": 127.99999975620425,
+      "exp_then_fp16": {
+        "weight": 128.0,
+        "relative_error_percent": 1.9046544341705385e-07
+      },
+      "expcast_raw": {
+        "weight": 128.0,
+        "relative_error_percent": 1.9046544341705385e-07
+      },
+      "expcast_corrected": {
+        "weight": 125.1875,
+        "relative_error_percent": 2.197265438719598
+      }
+    },
+    {
+      "x_fp32": -1.0,
+      "reference_weight": 94.17713693988924,
+      "exp_then_fp16": {
+        "weight": 94.1875,
+        "relative_error_percent": 0.011003796088404627
+      },
+      "expcast_raw": {
+        "weight": 99.6875,
+        "relative_error_percent": 5.851062411918373
+      },
+      "expcast_corrected": {
+        "weight": 96.875,
+        "relative_error_percent": 2.864668801550785
+      }
+    },
+    {
+      "x_fp32": -5.0,
+      "reference_weight": 1.7249144317658796,
+      "exp_then_fp16": {
+        "weight": 1.724609375,
+        "relative_error_percent": 0.017685327472583
+      },
+      "expcast_raw": {
+        "weight": 1.7861328125,
+        "relative_error_percent": 3.54906768745904
+      },
+      "expcast_corrected": {
+        "weight": 1.7431640625,
+        "relative_error_percent": 1.0580020897290154
+      }
+    },
+    {
+      "x_fp32": -10.0,
+      "reference_weight": 0.011622382019196123,
+      "exp_then_fp16": {
+        "weight": 0.01161956787109375,
+        "relative_error_percent": 0.02421317848376736
+      },
+      "expcast_raw": {
+        "weight": 0.01229095458984375,
+        "relative_error_percent": 5.752457366685926
+      },
+      "expcast_corrected": {
+        "weight": 0.0119476318359375,
+        "relative_error_percent": 2.7984781106332512
+      }
+    },
+    {
+      "x_fp32": -15.0,
+      "reference_weight": 7.83109940484674e-05,
+      "exp_then_fp16": {
+        "weight": 7.832050323486328e-05,
+        "relative_error_percent": 0.012142849814922307
+      },
+      "expcast_raw": {
+        "weight": 8.296966552734375e-05,
+        "relative_error_percent": 5.948936717612163
+      },
+      "expcast_corrected": {
+        "weight": 8.028745651245117e-05,
+        "relative_error_percent": 2.5238633323445336
+      }
+    },
+    {
+      "x_fp32": -16.0,
+      "reference_weight": 2.8809004728130334e-05,
+      "exp_then_fp16": {
+        "weight": 2.8789043426513672e-05,
+        "relative_error_percent": 0.06928841105423578
+      },
+      "expcast_raw": {
+        "weight": 0.0,
+        "relative_error_percent": 100.0
+      },
+      "expcast_corrected": {
+        "weight": 0.0,
+        "relative_error_percent": 100.0
+      }
+    },
+    {
+      "x_fp32": -20.0,
+      "reference_weight": 5.276553273442708e-07,
+      "exp_then_fp16": {
+        "weight": 5.364418029785156e-07,
+        "relative_error_percent": 1.665192253145209
+      },
+      "expcast_raw": {
+        "weight": 0.0,
+        "relative_error_percent": 100.0
+      },
+      "expcast_corrected": {
+        "weight": 0.0,
+        "relative_error_percent": 100.0
+      }
+    },
+    {
+      "x_fp32": -24.0,
+      "reference_weight": 9.66434443335449e-09,
+      "exp_then_fp16": {
+        "weight": 0.0,
+        "relative_error_percent": 100.0
+      },
+      "expcast_raw": {
+        "weight": 0.0,
+        "relative_error_percent": 100.0
+      },
+      "expcast_corrected": {
+        "weight": 0.0,
+        "relative_error_percent": 100.0
+      }
+    }
+  ],
+  "softmax": [
+    {
+      "name": "gaussian_sigma1",
+      "rows": 256,
+      "tokens": 1024,
+      "value_dim": 32,
+      "variants": {
+        "exp_then_fp16": {
+          "mean_total_variation_percent": 0.008649943419080987,
+          "max_total_variation_percent": 0.009371944352778421,
+          "probability_relative_l2_percent": 0.019188317488210472,
+          "max_absolute_probability_error": 6.997646143227371e-06,
+          "output_relative_l2_percent": 0.019449004264538633,
+          "reference_probability_mass_dropped_percent": 0.0
+        },
+        "expcast_raw": {
+          "mean_total_variation_percent": 0.7864730969017523,
+          "max_total_variation_percent": 0.8669414196589271,
+          "probability_relative_l2_percent": 2.1504091284379334,
+          "max_absolute_probability_error": 0.0029105464084588917,
+          "output_relative_l2_percent": 2.1661794829747105,
+          "reference_probability_mass_dropped_percent": 0.0
+        },
+        "expcast_corrected": {
+          "mean_total_variation_percent": 0.7782309046775469,
+          "max_total_variation_percent": 0.8443587769030086,
+          "probability_relative_l2_percent": 1.973782694792764,
+          "max_absolute_probability_error": 0.0023554807952648193,
+          "output_relative_l2_percent": 1.9952700548102615,
+          "reference_probability_mass_dropped_percent": 0.0
+        }
+      }
+    },
+    {
+      "name": "gaussian_sigma2",
+      "rows": 256,
+      "tokens": 1024,
+      "value_dim": 32,
+      "variants": {
+        "exp_then_fp16": {
+          "mean_total_variation_percent": 0.00782674969961536,
+          "max_total_variation_percent": 0.0095356908920423,
+          "probability_relative_l2_percent": 0.0119972270677782,
+          "max_absolute_probability_error": 3.09523529481992e-05,
+          "output_relative_l2_percent": 0.012059356613330092,
+          "reference_probability_mass_dropped_percent": 0.0
+        },
+        "expcast_raw": {
+          "mean_total_variation_percent": 0.8909858434492903,
+          "max_total_variation_percent": 1.187749143708991,
+          "probability_relative_l2_percent": 2.582333930547194,
+          "max_absolute_probability_error": 0.010895524400465095,
+          "output_relative_l2_percent": 2.536915946161433,
+          "reference_probability_mass_dropped_percent": 5.572101215815955e-08
+        },
+        "expcast_corrected": {
+          "mean_total_variation_percent": 0.8438266217500906,
+          "max_total_variation_percent": 1.0239710090970213,
+          "probability_relative_l2_percent": 2.1484427630561562,
+          "max_absolute_probability_error": 0.00876192284143934,
+          "output_relative_l2_percent": 2.106271315892684,
+          "reference_probability_mass_dropped_percent": 5.572101215815955e-08
+        }
+      }
+    },
+    {
+      "name": "gaussian_sigma4",
+      "rows": 256,
+      "tokens": 1024,
+      "value_dim": 32,
+      "variants": {
+        "exp_then_fp16": {
+          "mean_total_variation_percent": 0.0053485400823048,
+          "max_total_variation_percent": 0.010200816299002899,
+          "probability_relative_l2_percent": 0.007732012919370946,
+          "max_absolute_probability_error": 8.6100793508459e-05,
+          "output_relative_l2_percent": 0.007655459028185212,
+          "reference_probability_mass_dropped_percent": 3.4701383740084483e-08
+        },
+        "expcast_raw": {
+          "mean_total_variation_percent": 0.9283244823963857,
+          "max_total_variation_percent": 1.353761995261318,
+          "probability_relative_l2_percent": 1.700877267547428,
+          "max_absolute_probability_error": 0.01267096228946274,
+          "output_relative_l2_percent": 1.68944379530565,
+          "reference_probability_mass_dropped_percent": 0.0003711225595538875
+        },
+        "expcast_corrected": {
+          "mean_total_variation_percent": 0.8098887521797077,
+          "max_total_variation_percent": 1.2157079287257802,
+          "probability_relative_l2_percent": 1.4055868862565866,
+          "max_absolute_probability_error": 0.010394139929451207,
+          "output_relative_l2_percent": 1.3971993479311577,
+          "reference_probability_mass_dropped_percent": 0.00038349515052002225
+        }
+      }
+    },
+    {
+      "name": "gaussian_sigma8",
+      "rows": 256,
+      "tokens": 1024,
+      "value_dim": 32,
+      "variants": {
+        "exp_then_fp16": {
+          "mean_total_variation_percent": 0.003091581566067622,
+          "max_total_variation_percent": 0.010352022197433275,
+          "probability_relative_l2_percent": 0.0053697008700100135,
+          "max_absolute_probability_error": 9.447286543501354e-05,
+          "output_relative_l2_percent": 0.005478225427071595,
+          "reference_probability_mass_dropped_percent": 3.6122325606472e-07
+        },
+        "expcast_raw": {
+          "mean_total_variation_percent": 0.6857560703780676,
+          "max_total_variation_percent": 1.4399960913669123,
+          "probability_relative_l2_percent": 1.2573236146046771,
+          "max_absolute_probability_error": 0.014395982438465516,
+          "output_relative_l2_percent": 1.2753743313284667,
+          "reference_probability_mass_dropped_percent": 0.0002127108180022095
+        },
+        "expcast_corrected": {
+          "mean_total_variation_percent": 0.5691592316656406,
+          "max_total_variation_percent": 1.2519835867926508,
+          "probability_relative_l2_percent": 1.0390474243536647,
+          "max_absolute_probability_error": 0.01220761875803017,
+          "output_relative_l2_percent": 1.0522879394346318,
+          "reference_probability_mass_dropped_percent": 0.000218104024481395
+        }
+      }
+    },
+    {
+      "name": "long_gaussian_sigma4",
+      "rows": 32,
+      "tokens": 37741,
+      "value_dim": 32,
+      "variants": {
+        "exp_then_fp16": {
+          "mean_total_variation_percent": 0.007118993027632506,
+          "max_total_variation_percent": 0.00882815960740235,
+          "probability_relative_l2_percent": 0.010538934093802648,
+          "max_absolute_probability_error": 3.866745969971497e-05,
+          "output_relative_l2_percent": 0.010510829776777537,
+          "reference_probability_mass_dropped_percent": 1.9868314204943994e-06
+        },
+        "expcast_raw": {
+          "mean_total_variation_percent": 0.9723211806801588,
+          "max_total_variation_percent": 1.1734423453528855,
+          "probability_relative_l2_percent": 2.3712489013723936,
+          "max_absolute_probability_error": 0.010372067319775802,
+          "output_relative_l2_percent": 2.3369568931651274,
+          "reference_probability_mass_dropped_percent": 0.008372913813933448
+        },
+        "expcast_corrected": {
+          "mean_total_variation_percent": 0.8883098542505852,
+          "max_total_variation_percent": 1.0397994432701652,
+          "probability_relative_l2_percent": 1.9606836953108047,
+          "max_absolute_probability_error": 0.008355570560962478,
+          "output_relative_l2_percent": 1.9345976191929743,
+          "reference_probability_mass_dropped_percent": 0.008628266390428506
+        }
+      }
+    },
+    {
+      "name": "uniform",
+      "rows": 4,
+      "tokens": 1024,
+      "value_dim": 32,
+      "variants": {
+        "exp_then_fp16": {
+          "mean_total_variation_percent": 0.0,
+          "max_total_variation_percent": 0.0,
+          "probability_relative_l2_percent": 0.0,
+          "max_absolute_probability_error": 0.0,
+          "output_relative_l2_percent": 0.0,
+          "reference_probability_mass_dropped_percent": 0.0
+        },
+        "expcast_raw": {
+          "mean_total_variation_percent": 0.0,
+          "max_total_variation_percent": 0.0,
+          "probability_relative_l2_percent": 0.0,
+          "max_absolute_probability_error": 0.0,
+          "output_relative_l2_percent": 0.0,
+          "reference_probability_mass_dropped_percent": 0.0
+        },
+        "expcast_corrected": {
+          "mean_total_variation_percent": 0.0,
+          "max_total_variation_percent": 0.0,
+          "probability_relative_l2_percent": 0.0,
+          "max_absolute_probability_error": 0.0,
+          "output_relative_l2_percent": 0.0,
+          "reference_probability_mass_dropped_percent": 0.0
+        }
+      }
+    },
+    {
+      "name": "one_peak_many_small_weights",
+      "rows": 1,
+      "tokens": 37741,
+      "value_dim": 32,
+      "variants": {
+        "exp_then_fp16": {
+          "mean_total_variation_percent": 0.00029179033793030976,
+          "max_total_variation_percent": 0.00029179033793030976,
+          "probability_relative_l2_percent": 0.00029303347624391903,
+          "max_absolute_probability_error": 2.9179033794735076e-06,
+          "output_relative_l2_percent": 0.0002928563622266053,
+          "reference_probability_mass_dropped_percent": 0.0,
+          "tail_indicator_v_reference_output": 0.004229116110054715,
+          "tail_indicator_v_actual_output": 0.004226198206675582
+        },
+        "expcast_raw": {
+          "mean_total_variation_percent": 0.4229116110054884,
+          "max_total_variation_percent": 0.4229116110054884,
+          "probability_relative_l2_percent": 0.42471337601048875,
+          "max_absolute_probability_error": 0.004229116110055053,
+          "output_relative_l2_percent": 0.4244566726361573,
+          "reference_probability_mass_dropped_percent": 0.42291161100547153,
+          "tail_indicator_v_reference_output": 0.004229116110054715,
+          "tail_indicator_v_actual_output": 0.0
+        },
+        "expcast_corrected": {
+          "mean_total_variation_percent": 0.4229116110054884,
+          "max_total_variation_percent": 0.4229116110054884,
+          "probability_relative_l2_percent": 0.42471337601048875,
+          "max_absolute_probability_error": 0.004229116110055053,
+          "output_relative_l2_percent": 0.4244566726361573,
+          "reference_probability_mass_dropped_percent": 0.42291161100547153,
+          "tail_indicator_v_reference_output": 0.004229116110054715,
+          "tail_indicator_v_actual_output": 0.0
+        }
+      }
+    }
+  ]
+}
