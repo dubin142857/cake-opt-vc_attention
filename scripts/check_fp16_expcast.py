@@ -1,4 +1,4 @@
-"""CPU accuracy experiment for an FP16 adaptation of ExpCast.
+"""CPU accuracy experiment comparing FP8 and an FP16 adaptation of ExpCast.
 
 Run: bash scripts/check_fp16_expcast.sh
 Requires NumPy only. This measures numerical error, not GPU performance.
@@ -19,7 +19,15 @@ ROOT = Path(__file__).resolve().parents[1]
 GAIN = np.float32(1024.0 * math.log2(math.e))
 BASE_CODE = 1024 * (8 + 15)
 CORRECTION = -0.35 * (1024 / 8)
-VARIANTS = ("exp_then_fp16", "expcast_raw", "expcast_corrected")
+FP8_GAIN = np.float32(8.0 * math.log2(math.e))
+FP8_CODES = np.arange(121, dtype=np.uint16)
+FP8_EXPONENT = (FP8_CODES >> 3).astype(np.int32)
+FP8_MANTISSA = (FP8_CODES & 7).astype(np.float64)
+FP8_VALUES = np.where(
+    FP8_EXPONENT == 0,
+    np.ldexp(FP8_MANTISSA, -9),
+    np.ldexp(1.0 + FP8_MANTISSA / 8.0, FP8_EXPONENT - 7),
+)
 
 
 def reference_weights(x):
@@ -41,13 +49,41 @@ def expcast(x, correction=0.0):
     return codes.view(np.float16).astype(np.float64)
 
 
-def evaluate(x):
+def round_to_fp8(ref):
+    """Nearest E4M3FN value, ties to an even code, for weights in [0,256]."""
+    high = np.clip(np.searchsorted(FP8_VALUES, ref), 1, 120)
+    low = high - 1
+    low_distance = ref - FP8_VALUES[low]
+    high_distance = FP8_VALUES[high] - ref
+    choose_high = (high_distance < low_distance) | (
+        (high_distance == low_distance) & ((high & 1) == 0)
+    )
+    return FP8_VALUES[np.where(choose_high, high, low)]
+
+
+def expcast_fp8(x, correction=-0.35):
+    """FP8 ExpCast with the same FP32 FMA/RNE contract as the FP16 variant."""
+    x = np.asarray(x, dtype=np.float32)
+    bias = np.float32(120 + correction)
+    affine = (x.astype(np.float64) * float(FP8_GAIN) + float(bias)).astype(np.float32)
+    codes = np.clip(np.rint(affine), 0, 120).astype(np.uint8)
+    return FP8_VALUES[codes]
+
+
+def evaluate(x, include_fp8=False):
     ref = reference_weights(x)
-    return ref, {
+    values = {
         "exp_then_fp16": ref.astype(np.float16).astype(np.float64),
         "expcast_raw": expcast(x),
         "expcast_corrected": expcast(x, CORRECTION),
     }
+    if include_fp8:
+        values.update({
+            "exp_then_fp8": round_to_fp8(ref),
+            "expcast_fp8_raw": expcast_fp8(x, 0),
+            "expcast_fp8_corrected": expcast_fp8(x),
+        })
+    return ref, values
 
 
 def error_metrics(actual, ref):
@@ -80,7 +116,28 @@ def validate_encoding():
     # Verify RNE tie handling and saturation used by the encoder.
     np.testing.assert_array_equal(np.rint([0.5, 1.5, 2.5, 3.5]), [0, 2, 2, 4])
     assert expcast(np.array([-np.inf]))[0] == 0.0
-    return {"status": "passed", "independent_ieee_bit_patterns": int(codes.size)}
+    # Independent exact relation: these FP8 values / 256 have half bits c<<7.
+    np.testing.assert_array_equal(FP8_VALUES, (FP8_CODES << 7).view(np.float16).astype(np.float64) * 256)
+    np.testing.assert_array_equal(round_to_fp8(FP8_VALUES), FP8_VALUES)
+    midpoints = (FP8_VALUES[:-1] + FP8_VALUES[1:]) / 2
+    expected_even_codes = np.arange(120) + (np.arange(120) & 1)
+    np.testing.assert_array_equal(round_to_fp8(midpoints), FP8_VALUES[expected_even_codes])
+    np.testing.assert_array_equal(expcast_fp8(x, 0), [256.0, 128.0, 64.0])
+    return {"status": "passed", "independent_ieee_bit_patterns": int(codes.size), "fp8_codes": 121, "fp8_rounding_midpoints": 120}
+
+
+def compare_fp8(grid_points):
+    # This shared interval keeps target AND every candidate output normal in
+    # both formats. It isolates the approximation/rounding from underflow.
+    x = np.linspace(-9, 0, grid_points, dtype=np.float32)
+    ref, values = evaluate(x, include_fp8=True)
+    assert ref.min() >= 2 ** -6
+    assert all(actual.min() >= 2 ** -6 for actual in values.values())
+    return {
+        "x_range": [-9.0, 0.0],
+        "scope": "Identical FP32 x; targets and outputs normal in both FP8 E4M3FN and FP16. No subnormal or underflow effects in this comparison.",
+        "variants": {name: error_metrics(actual, ref) for name, actual in values.items()},
+    }
 
 
 def sweep(grid_points):
@@ -136,7 +193,7 @@ def softmax_case(name, logits, seed):
     # The FP32 max subtraction models the input of the proposed ExpCast step.
     logits = np.asarray(logits, dtype=np.float32)
     x = logits - logits.max(axis=-1, keepdims=True)
-    ref_weights, weights = evaluate(x)
+    ref_weights, weights = evaluate(x, include_fp8=True)
     ref = ref_weights / ref_weights.sum(axis=-1, keepdims=True)
     rng = np.random.default_rng(seed)
     # Same FP32 V for every variant; FP64 PV isolates the probability error.
@@ -181,7 +238,7 @@ def softmax_experiments(seed):
 
 
 def print_report(report):
-    print("FP16 ExpCast accuracy; CPU numerical experiment, NOT a GPU speed benchmark")
+    print("FP8 / FP16 ExpCast accuracy; CPU numerical experiment, NOT a GPU speed benchmark")
     print(f"FP32 gain={float(GAIN):.10f}; raw bias={BASE_CODE}; corrected bias={float(np.float32(BASE_CODE + CORRECTION)):.10f}")
     print("Reference: 256*exp(FP32 x), evaluated and normalized in FP64.")
     print("Normal target weights [2^-14, 256]; dense-grid errors (%):")
@@ -191,6 +248,10 @@ def print_report(report):
     print("Max relative error when BOTH target and output are normal FP16 (%):")
     for name, stats in report["weight_sweep"]["normal"].items():
         print(f"  {name}: {stats['target_and_output_both_normal']['max_relative_error_percent']:.6f}")
+    print("\nFP8 vs FP16 on IDENTICAL x in [-9,0], all targets/outputs normal; errors (%):")
+    print(f"{'variant':<24} {'max relative':>14} {'mean relative':>15}")
+    for name, stats in report["fp8_comparison"]["variants"].items():
+        print(f"{name:<24} {stats['max_relative_error_percent']:>14.6f} {stats['mean_relative_error_percent']:>15.6f}")
     print("\nSoftmax and random-V output errors (%); TV is half the probability L1 distance:")
     print(f"{'case':<29} {'variant':<22} {'mean TV':>10} {'max TV':>10} {'P rel L2':>10} {'PV rel L2':>11}")
     for case in report["softmax"]:
@@ -214,7 +275,7 @@ def main():
     if args.grid_points < 100:
         parser.error("--grid-points must be >= 100")
     report = {
-        "schema": "fp16_expcast_cpu_accuracy_v1",
+        "schema": "fp8_fp16_expcast_cpu_accuracy_v2",
         "environment": {"python": sys.version, "numpy": np.__version__, "platform": platform.platform()},
         "configuration": {"seed": args.seed, "grid_points": args.grid_points, "gain_fp32": float(GAIN), "base_code": BASE_CODE, "experimental_code_correction": CORRECTION},
         "scope": "CPU accuracy only. No GPU timing, QK quantization, V quantization, or online-softmax accumulation; not an end-to-end attention/model quality measurement.",
@@ -223,9 +284,13 @@ def main():
             "exp_then_fp16": "FP64 exact-function reference weights rounded to FP16 (ordinary quantization baseline).",
             "expcast_raw": "RNE(FMA_FP32(x,1024*log2(e),23552)), clamp to [0,23552], uint16 bitcast to FP16.",
             "expcast_corrected": "Experimental same encoder with bias 23552-44.8. Correction scales FP8's -0.35 by 1024/8; not claimed optimal or a published FP16 implementation.",
+            "exp_then_fp8": "FP64 exact-function reference rounded to nearest FP8 E4M3FN, ties to even code.",
+            "expcast_fp8_raw": "RNE(FMA_FP32(x,8*log2(e),120)), clamp to [0,120], E4M3FN decode.",
+            "expcast_fp8_corrected": "FP8 ExpCast with FP32 bias 119.65, same 256*exp(x) target and identical inputs as FP16.",
         },
         "validation": validate_encoding(),
         "weight_sweep": sweep(args.grid_points),
+        "fp8_comparison": compare_fp8(args.grid_points),
         "scalar_examples": scalar_examples(),
         "softmax": softmax_experiments(args.seed),
     }

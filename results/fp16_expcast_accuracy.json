@@ -1,5 +1,5 @@
 {
-  "schema": "fp16_expcast_cpu_accuracy_v1",
+  "schema": "fp8_fp16_expcast_cpu_accuracy_v2",
   "environment": {
     "python": "3.10.16 | packaged by Anaconda, Inc. | (main, Dec 11 2024, 16:19:12) [MSC v.1929 64 bit (AMD64)]",
     "numpy": "1.26.4",
@@ -17,11 +17,16 @@
   "variants": {
     "exp_then_fp16": "FP64 exact-function reference weights rounded to FP16 (ordinary quantization baseline).",
     "expcast_raw": "RNE(FMA_FP32(x,1024*log2(e),23552)), clamp to [0,23552], uint16 bitcast to FP16.",
-    "expcast_corrected": "Experimental same encoder with bias 23552-44.8. Correction scales FP8's -0.35 by 1024/8; not claimed optimal or a published FP16 implementation."
+    "expcast_corrected": "Experimental same encoder with bias 23552-44.8. Correction scales FP8's -0.35 by 1024/8; not claimed optimal or a published FP16 implementation.",
+    "exp_then_fp8": "FP64 exact-function reference rounded to nearest FP8 E4M3FN, ties to even code.",
+    "expcast_fp8_raw": "RNE(FMA_FP32(x,8*log2(e),120)), clamp to [0,120], E4M3FN decode.",
+    "expcast_fp8_corrected": "FP8 ExpCast with FP32 bias 119.65, same 256*exp(x) target and identical inputs as FP16."
   },
   "validation": {
     "status": "passed",
-    "independent_ieee_bit_patterns": 23553
+    "independent_ieee_bit_patterns": 23553,
+    "fp8_codes": 121,
+    "fp8_rounding_midpoints": 120
   },
   "weight_sweep": {
     "normal_target_range": [
@@ -120,6 +125,69 @@
         "relative_l2_error_percent": 61.28635555608263,
         "zero_count": 477544,
         "count": 500000
+      }
+    }
+  },
+  "fp8_comparison": {
+    "x_range": [
+      -9.0,
+      0.0
+    ],
+    "scope": "Identical FP32 x; targets and outputs normal in both FP8 E4M3FN and FP16. No subnormal or underflow effects in this comparison.",
+    "variants": {
+      "exp_then_fp16": {
+        "max_relative_error_percent": 0.04879465861312248,
+        "mean_relative_error_percent": 0.017603253127464014,
+        "p99_relative_error_percent": 0.0432719166676274,
+        "signed_mean_relative_error_percent": -4.67169922361204e-06,
+        "relative_l2_error_percent": 0.01916352633320967,
+        "zero_count": 0,
+        "count": 2000001
+      },
+      "expcast_raw": {
+        "max_relative_error_percent": 6.183537260205832,
+        "mean_relative_error_percent": 4.073115495095497,
+        "p99_relative_error_percent": 6.164026177305409,
+        "signed_mean_relative_error_percent": 4.073096780351708,
+        "relative_l2_error_percent": 4.268916064790366,
+        "zero_count": 0,
+        "count": 2000001
+      },
+      "expcast_corrected": {
+        "max_relative_error_percent": 3.019858544263433,
+        "mean_relative_error_percent": 1.8081219974944627,
+        "p99_relative_error_percent": 2.993502540717516,
+        "signed_mean_relative_error_percent": 0.963862115470122,
+        "relative_l2_error_percent": 1.938098131157275,
+        "zero_count": 0,
+        "count": 2000001
+      },
+      "exp_then_fp8": {
+        "max_relative_error_percent": 5.882350298954265,
+        "mean_relative_error_percent": 2.253726113681193,
+        "p99_relative_error_percent": 5.5373263592962605,
+        "signed_mean_relative_error_percent": -0.0696438388723176,
+        "relative_l2_error_percent": 2.4523290245876113,
+        "zero_count": 0,
+        "count": 2000001
+      },
+      "expcast_fp8_raw": {
+        "max_relative_error_percent": 10.761980100508213,
+        "mean_relative_error_percent": 4.395114064215281,
+        "p99_relative_error_percent": 10.358935160255376,
+        "signed_mean_relative_error_percent": 4.041468720927764,
+        "relative_l2_error_percent": 4.923607582822548,
+        "zero_count": 0,
+        "count": 2000001
+      },
+      "expcast_fp8_corrected": {
+        "max_relative_error_percent": 7.453495015163847,
+        "mean_relative_error_percent": 2.7026745073969574,
+        "p99_relative_error_percent": 7.076208083945723,
+        "signed_mean_relative_error_percent": 0.9301516536935577,
+        "relative_l2_error_percent": 3.133824993070795,
+        "zero_count": 0,
+        "count": 2000001
       }
     }
   },
@@ -299,6 +367,30 @@
           "max_absolute_probability_error": 0.0023554807952648193,
           "output_relative_l2_percent": 1.9952700548102615,
           "reference_probability_mass_dropped_percent": 0.0
+        },
+        "exp_then_fp8": {
+          "mean_total_variation_percent": 1.1029273447842058,
+          "max_total_variation_percent": 1.1879602681904253,
+          "probability_relative_l2_percent": 2.424452942174558,
+          "max_absolute_probability_error": 0.0008591047243787266,
+          "output_relative_l2_percent": 2.4523746986593538,
+          "reference_probability_mass_dropped_percent": 0.0
+        },
+        "expcast_fp8_raw": {
+          "mean_total_variation_percent": 1.3029257355256345,
+          "max_total_variation_percent": 1.406885629725253,
+          "probability_relative_l2_percent": 3.2296873033721174,
+          "max_absolute_probability_error": 0.002711775851978182,
+          "output_relative_l2_percent": 3.2493842505282795,
+          "reference_probability_mass_dropped_percent": 0.0
+        },
+        "expcast_fp8_corrected": {
+          "mean_total_variation_percent": 1.2754800030847173,
+          "max_total_variation_percent": 1.4156738513703773,
+          "probability_relative_l2_percent": 2.8974366446974624,
+          "max_absolute_probability_error": 0.0010018720829012007,
+          "output_relative_l2_percent": 2.9203107850426675,
+          "reference_probability_mass_dropped_percent": 0.0
         }
       }
     },
@@ -331,6 +423,30 @@
           "max_absolute_probability_error": 0.00876192284143934,
           "output_relative_l2_percent": 2.106271315892684,
           "reference_probability_mass_dropped_percent": 5.572101215815955e-08
+        },
+        "exp_then_fp8": {
+          "mean_total_variation_percent": 1.003005583684549,
+          "max_total_variation_percent": 1.1818463296649482,
+          "probability_relative_l2_percent": 1.5412003031078356,
+          "max_absolute_probability_error": 0.0056460202697667106,
+          "output_relative_l2_percent": 1.5545608081265896,
+          "reference_probability_mass_dropped_percent": 0.0001594898054581053
+        },
+        "expcast_fp8_raw": {
+          "mean_total_variation_percent": 1.336036166492242,
+          "max_total_variation_percent": 1.6434051917990407,
+          "probability_relative_l2_percent": 2.926926330978448,
+          "max_absolute_probability_error": 0.010034374063701668,
+          "output_relative_l2_percent": 2.8827395840020666,
+          "reference_probability_mass_dropped_percent": 0.011045464810279028
+        },
+        "expcast_fp8_corrected": {
+          "mean_total_variation_percent": 1.1804366536744277,
+          "max_total_variation_percent": 1.44114544000284,
+          "probability_relative_l2_percent": 1.8831112448013034,
+          "max_absolute_probability_error": 0.0062084093762030945,
+          "output_relative_l2_percent": 1.857568747920697,
+          "reference_probability_mass_dropped_percent": 0.011605592825742679
         }
       }
     },
@@ -363,6 +479,30 @@
           "max_absolute_probability_error": 0.010394139929451207,
           "output_relative_l2_percent": 1.3971993479311577,
           "reference_probability_mass_dropped_percent": 0.00038349515052002225
+        },
+        "exp_then_fp8": {
+          "mean_total_variation_percent": 0.6856009685239349,
+          "max_total_variation_percent": 1.3169842797566884,
+          "probability_relative_l2_percent": 0.9282522862632041,
+          "max_absolute_probability_error": 0.009093275896234376,
+          "output_relative_l2_percent": 0.9280521087671573,
+          "reference_probability_mass_dropped_percent": 0.015058798957594752
+        },
+        "expcast_fp8_raw": {
+          "mean_total_variation_percent": 1.182202410051917,
+          "max_total_variation_percent": 2.35092226417865,
+          "probability_relative_l2_percent": 1.8531230848336588,
+          "max_absolute_probability_error": 0.02183699367900993,
+          "output_relative_l2_percent": 1.8493257840824664,
+          "reference_probability_mass_dropped_percent": 0.1077211571484261
+        },
+        "expcast_fp8_corrected": {
+          "mean_total_variation_percent": 0.8626697823595798,
+          "max_total_variation_percent": 1.7740344747475736,
+          "probability_relative_l2_percent": 1.139293748682074,
+          "max_absolute_probability_error": 0.012678214811278732,
+          "output_relative_l2_percent": 1.1227033800579582,
+          "reference_probability_mass_dropped_percent": 0.11058419054958929
         }
       }
     },
@@ -395,6 +535,30 @@
           "max_absolute_probability_error": 0.01220761875803017,
           "output_relative_l2_percent": 1.0522879394346318,
           "reference_probability_mass_dropped_percent": 0.000218104024481395
+        },
+        "exp_then_fp8": {
+          "mean_total_variation_percent": 0.40737972647004445,
+          "max_total_variation_percent": 1.3052927955162654,
+          "probability_relative_l2_percent": 0.704640038788931,
+          "max_absolute_probability_error": 0.01181118206887466,
+          "output_relative_l2_percent": 0.7300195479496183,
+          "reference_probability_mass_dropped_percent": 0.003984091613952812
+        },
+        "expcast_fp8_raw": {
+          "mean_total_variation_percent": 0.7686145922155746,
+          "max_total_variation_percent": 2.308721658251177,
+          "probability_relative_l2_percent": 1.3959632011705085,
+          "max_absolute_probability_error": 0.022762380291728,
+          "output_relative_l2_percent": 1.4195452493055414,
+          "reference_probability_mass_dropped_percent": 0.022096744396966402
+        },
+        "expcast_fp8_corrected": {
+          "mean_total_variation_percent": 0.5124147312565965,
+          "max_total_variation_percent": 1.8616415912184214,
+          "probability_relative_l2_percent": 0.9121340842694592,
+          "max_absolute_probability_error": 0.015424898273826482,
+          "output_relative_l2_percent": 0.9252331932894962,
+          "reference_probability_mass_dropped_percent": 0.022734675946952276
         }
       }
     },
@@ -427,6 +591,30 @@
           "max_absolute_probability_error": 0.008355570560962478,
           "output_relative_l2_percent": 1.9345976191929743,
           "reference_probability_mass_dropped_percent": 0.008628266390428506
+        },
+        "exp_then_fp8": {
+          "mean_total_variation_percent": 1.0853261933250034,
+          "max_total_variation_percent": 1.3528074580634775,
+          "probability_relative_l2_percent": 1.406894529125603,
+          "max_absolute_probability_error": 0.004446644085229448,
+          "output_relative_l2_percent": 1.4027461969984418,
+          "reference_probability_mass_dropped_percent": 0.19323241871182253
+        },
+        "expcast_fp8_raw": {
+          "mean_total_variation_percent": 1.8515967760905145,
+          "max_total_variation_percent": 2.2158617896332338,
+          "probability_relative_l2_percent": 2.0441390861433555,
+          "max_absolute_probability_error": 0.006507530206001477,
+          "output_relative_l2_percent": 2.007388931642304,
+          "reference_probability_mass_dropped_percent": 0.9508420125337252
+        },
+        "expcast_fp8_corrected": {
+          "mean_total_variation_percent": 1.7392442961703034,
+          "max_total_variation_percent": 2.2928003851952683,
+          "probability_relative_l2_percent": 2.105172800489753,
+          "max_absolute_probability_error": 0.01465123609453578,
+          "output_relative_l2_percent": 2.129092890737152,
+          "reference_probability_mass_dropped_percent": 0.9698995885400609
         }
       }
     },
@@ -453,6 +641,30 @@
           "reference_probability_mass_dropped_percent": 0.0
         },
         "expcast_corrected": {
+          "mean_total_variation_percent": 0.0,
+          "max_total_variation_percent": 0.0,
+          "probability_relative_l2_percent": 0.0,
+          "max_absolute_probability_error": 0.0,
+          "output_relative_l2_percent": 0.0,
+          "reference_probability_mass_dropped_percent": 0.0
+        },
+        "exp_then_fp8": {
+          "mean_total_variation_percent": 0.0,
+          "max_total_variation_percent": 0.0,
+          "probability_relative_l2_percent": 0.0,
+          "max_absolute_probability_error": 0.0,
+          "output_relative_l2_percent": 0.0,
+          "reference_probability_mass_dropped_percent": 0.0
+        },
+        "expcast_fp8_raw": {
+          "mean_total_variation_percent": 0.0,
+          "max_total_variation_percent": 0.0,
+          "probability_relative_l2_percent": 0.0,
+          "max_absolute_probability_error": 0.0,
+          "output_relative_l2_percent": 0.0,
+          "reference_probability_mass_dropped_percent": 0.0
+        },
+        "expcast_fp8_corrected": {
           "mean_total_variation_percent": 0.0,
           "max_total_variation_percent": 0.0,
           "probability_relative_l2_percent": 0.0,
@@ -489,6 +701,36 @@
           "tail_indicator_v_actual_output": 0.0
         },
         "expcast_corrected": {
+          "mean_total_variation_percent": 0.4229116110054884,
+          "max_total_variation_percent": 0.4229116110054884,
+          "probability_relative_l2_percent": 0.42471337601048875,
+          "max_absolute_probability_error": 0.004229116110055053,
+          "output_relative_l2_percent": 0.4244566726361573,
+          "reference_probability_mass_dropped_percent": 0.42291161100547153,
+          "tail_indicator_v_reference_output": 0.004229116110054715,
+          "tail_indicator_v_actual_output": 0.0
+        },
+        "exp_then_fp8": {
+          "mean_total_variation_percent": 0.4229116110054884,
+          "max_total_variation_percent": 0.4229116110054884,
+          "probability_relative_l2_percent": 0.42471337601048875,
+          "max_absolute_probability_error": 0.004229116110055053,
+          "output_relative_l2_percent": 0.4244566726361573,
+          "reference_probability_mass_dropped_percent": 0.42291161100547153,
+          "tail_indicator_v_reference_output": 0.004229116110054715,
+          "tail_indicator_v_actual_output": 0.0
+        },
+        "expcast_fp8_raw": {
+          "mean_total_variation_percent": 0.4229116110054884,
+          "max_total_variation_percent": 0.4229116110054884,
+          "probability_relative_l2_percent": 0.42471337601048875,
+          "max_absolute_probability_error": 0.004229116110055053,
+          "output_relative_l2_percent": 0.4244566726361573,
+          "reference_probability_mass_dropped_percent": 0.42291161100547153,
+          "tail_indicator_v_reference_output": 0.004229116110054715,
+          "tail_indicator_v_actual_output": 0.0
+        },
+        "expcast_fp8_corrected": {
           "mean_total_variation_percent": 0.4229116110054884,
           "max_total_variation_percent": 0.4229116110054884,
           "probability_relative_l2_percent": 0.42471337601048875,
