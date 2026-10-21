@@ -547,3 +547,31 @@ bash scripts/run_mindie_laser_vscale_phases.sh
 当前 INT8 与原版 FP16 在独立进程中分别校准，使用相同原始输入生成各自的 payload；跨算法的这些 native 时间不作为新的配对加速比。原版 Laser 的主性能对比继续以已完成的同进程 full API 结果为准。稀疏记录仅覆盖 Cube 核 0～3 的 first/middle/last 逻辑组，按 descriptor、K 块、history/normalize 次数分组，保留原始 system ticks，不换算核心周期或外推整核毫秒。
 
 将两组校准表和阶段表回传后，先判断当前版本的主要变化在 QK 输出路径还是 PV/history；若仍需区分 Vector/跨核等待，再增加相应诊断。实现和来源/同步检查见[当前 Vector scale Cube 诊断审计](../../reports/ascend-vscale-cube-phase-audit/README.md)。本地没有 CCE/NPU，远端编译、精确输出门限及扰动校准通过后才解释阶段数据。
+
+## 当前 Cube 采样回测：QK 路径变短，优先检查 PV 流水
+
+2026-10-21 用户回传 `results/mindie_laser_vscale_phases.json` 的终端摘要；本地未取得完整 JSON。本次脚本完成两个 worker，经过自身基线输出门限、9 轮校准及 5 轮稀疏采样。原版与当前 INT8 仍在独立进程运行，不能用以下 calibration baseline 的 native 时间制造新的配对加速结论。
+
+| 算法 | baseline native ms | baseline → completed 配对增加 ms | 相对 baseline 中位数的量级 |
+|---|---:|---:|---:|
+| vector_scale | 79.5117 | +0.0226 | 约 0.028% |
+| original FP16 | 81.2538 | +0.2918 | 约 0.359% |
+
+这里的 paired added 是同轮差值的中位数，不是表中两个中位数之差。整体扰动较小，支持继续使用稀疏采样作方向判断；这不代表 sampled completed 窗口没有被 drain 改变，不能拿它求生产流水占比。
+
+下表为 completed elapsed 的中位数，单位是 **raw system ticks**。各行 descriptor=1、Kblocks=32、logical tiles=64、samples=20；middle PV 含一次 history，first PV 不含 history，两者均无末尾 normalize。
+
+| 阶段 / 位置 | original FP16 | vector_scale | 当前窗口相对原版缩短 |
+|---|---:|---:|---:|
+| QK first | 1024.0 | 640.0 | 37.5% |
+| QK middle | 985.5 | 807.0 | 18.1% |
+| PV first | 1426.5 | 1352.0 | 5.2% |
+| PV middle | 1369.5 | 1345.5 | 1.8% |
+
+尾组只有 8 个 K block，单独观察：QK 为 289.5 → 182.0 ticks；PV 为 756.0 → 759.0 ticks，均含一次 history 和一次 normalize。issue 模式也显示当前 QK first/middle 比原版短；没有把 issue 与 completed 两种调度的数值相减来推算生产阶段。
+
+本次支持的结论是**当前整条 QK Cube 路径已经有效缩短，而 PV 组没有相应幅度的缩短**。不能把它全归功于 INT8 乘法：当前版本还包含 Q 驻留、固定 FIX transport 和反量化搬到 Vector。尤其 Vector 反量化已经移出本次 QK 计时区间，仍要支付执行成本。PV middle 的完成窗口约为当前 QK 的 1.67 倍，是优先检查 PV 的依据；它不等于 PV 占整个 attention 的 62.5%，也不能证明 FP16 MAD 是唯一瓶颈。PV first 没有 history 却仍较长，说明只盯住 history 或尾部归一化不足以解释长窗口。
+
+下一候选优先保持原版 FP16 P/V 与累加顺序，检查 PV 的数据搬运和流水：现有每个 K128 块先搬两个 P 块与一个 V 块，再等待 L1 数据并装载 L0；在 D128、Ky=2 时，源码包含 8 次 V 和 2×8 次 P 的 L1→L0 load 调用。需要判断是否能利用既有双缓冲更早发射下一块搬运、减少装载调度开销，并核对与 QK 共用的 L1/L0 槽和事件生命周期。现有代码本身已有异步重叠，不能仅凭这些调用顺序断言搬运完全串行，也不能把 load 调用次数当作硬件耗时。
+
+继续以 `vector_scale` 为基线，不叠加 rowmax/bulk，不立刻改变 PV 量化或重新加入 ExpCast。候选的数值门限保持全部 padded native 输出精确一致；收益仍以原版 FP16 Laser 的同进程随机交错 full API 为主要验收指标。若 PV 候选无收益，再补当前 Vector 反量化及跨核等待诊断，不能将旧 scale-reuse 的 Vector 数据套用到现在。
