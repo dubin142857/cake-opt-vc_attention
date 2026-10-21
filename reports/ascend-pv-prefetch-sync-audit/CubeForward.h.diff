@@ -1,0 +1,72 @@
+--- baseline/CubeForward.h
++++ candidate/CubeForward.h
+@@ -204,0 +205,13 @@
++        // PV V lookahead: both P slots and diagonal scratch are disjoint.
++        // The preceding history helper must finish before touching PV L0.
++        const bool pv_v_prefetch = D == 128 && sizeof(TYPE) == 2 && Ky == 2 &&
++            l1_m == 128 && l1_k == 128 && l1_n == 128 && qk_triangle == 0 &&
++            sparseMode == 0 && !upper_right && vcore_num_per_head == 1 && Kx > 0;
++        if (pv_v_prefetch) {
++            auto pv_first_v = ping_pong_flag_l1_b_ ? l1_b_pong_ : l1_b_ping_;
++            wait_flag(PIPE_MTE1, PIPE_MTE2, ping_pong_flag_l1_b_);
++            copy_gm_to_cbuf_multi_nd2nz_b16(pv_first_v, right_start_addr,
++                0, 1, l1_k, l1_n, 0, n_, l1_k, 1, 0);
++            set_flag(PIPE_MTE2, PIPE_MTE1, ping_pong_flag_l1_b_);
++        }
++
+@@ -215 +228,3 @@
+-            wait_flag(PIPE_MTE1, PIPE_MTE2, ping_pong_flag_l1_b_);
++            if (!pv_v_prefetch) {
++                wait_flag(PIPE_MTE1, PIPE_MTE2, ping_pong_flag_l1_b_);
++            }
+@@ -247,13 +262,15 @@
+-            copy_gm_to_cbuf_multi_nd2nz_b16(l1_b_buf,
+-                right_start_addr + i * l1_k * n_,
+-                0,     // sid
+-                1,     // ndNum
+-                l1_k,  // nValue   实际拷贝的行数
+-                l1_n,  // dValue   实际拷贝的列数
+-                0,     // srcNdMatrixStride, unused
+-                n_,    // srcDValue 大矩阵的列数
+-                l1_k,  // dstNzC0Stride 目标行数
+-                1,     // dstNzNStride  目标行之间间隔（1为连续）
+-                0      // dstNzMatrixStride, unused
+-            );
+-            set_flag(PIPE_MTE2, PIPE_MTE1, ping_pong_flag_l1_b_);
++            if (!pv_v_prefetch) {
++                copy_gm_to_cbuf_multi_nd2nz_b16(l1_b_buf,
++                    right_start_addr + i * l1_k * n_,
++                    0,     // sid
++                    1,     // ndNum
++                    l1_k,  // nValue   实际拷贝的行数
++                    l1_n,  // dValue   实际拷贝的列数
++                    0,     // srcNdMatrixStride, unused
++                    n_,    // srcDValue 大矩阵的列数
++                    l1_k,  // dstNzC0Stride 目标行数
++                    1,     // dstNzNStride  目标行之间间隔（1为连续）
++                    0      // dstNzMatrixStride, unused
++                );
++                set_flag(PIPE_MTE2, PIPE_MTE1, ping_pong_flag_l1_b_);
++            }
+@@ -281,0 +299,16 @@
++
++                if (pv_v_prefetch) {
++                    // MTE1 has consumed all current V fragments. Free this L1
++                    // slot now; the MADs below read their independent L0B copy.
++                    set_flag(PIPE_MTE1, PIPE_MTE2, ping_pong_flag_l1_b_);
++                    if (i + 1 < Kx) {
++                        const uint32_t pv_next_v_slot = 1 - ping_pong_flag_l1_b_;
++                        auto pv_next_v = pv_next_v_slot ? l1_b_pong_ : l1_b_ping_;
++                        wait_flag(PIPE_MTE1, PIPE_MTE2, pv_next_v_slot);
++                        copy_gm_to_cbuf_multi_nd2nz_b16(pv_next_v,
++                            right_start_addr + (i + 1) * l1_k * n_,
++                            0, 1, l1_k, l1_n, 0, n_, l1_k, 1, 0);
++                        set_flag(PIPE_MTE2, PIPE_MTE1, pv_next_v_slot);
++                    }
++                }
++
+@@ -347 +380,3 @@
+-            set_flag(PIPE_MTE1, PIPE_MTE2, ping_pong_flag_l1_b_);
++            if (!pv_v_prefetch) {
++                set_flag(PIPE_MTE1, PIPE_MTE2, ping_pong_flag_l1_b_);
++            }

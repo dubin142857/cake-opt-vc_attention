@@ -30,11 +30,16 @@ CANDIDATES = {
     "rowmax": dict(name="vector_rowmax", build_arg="rowmax_build", suffix="vscale_rowmax",
                    comparison="rowmax_vs_previous", report_name="vector_rowmax",
                    contract_key="rowmax_schedule_contract"),
+    "pv_prefetch": dict(name="vector_pv_prefetch", build_arg="pv_prefetch_build",
+                        suffix="vscale_pv_prefetch", comparison="pv_prefetch_vs_previous",
+                        report_name="pv_prefetch", contract_key="pv_prefetch_contract",
+                        metadata_key="pv_schedule"),
 }
 MANIFESTS = {
     "vscale_build": "results/mindie_laser_quant_vscale_build.json",
     "bulk_build": "results/mindie_laser_quant_vscale_bulk_build.json",
     "rowmax_build": "results/mindie_laser_quant_vscale_rowmax_build.json",
+    "pv_prefetch_build": "results/mindie_laser_quant_vscale_pv_prefetch_build.json",
     "preprocess_build": "results/mindie_laser_quant_preprocess_build.json",
     "baseline_build": "results/mindie_laser_build.json",
     "bridge_manifest": "results/mindie_laser_bridge.json",
@@ -397,7 +402,7 @@ def worker(args):
             dispatch=f"torch.ops.{namespace}.la.default",
             bridge_path=providers[candidate].bridge_path, native_schema=str(native._schema)))
         adapters = {ORIGINAL: original, OLD: old, candidate: new}
-        new.metadata["vector_scale_schedule"] = candidate_contract
+        new.metadata[config.get("metadata_key", "vector_scale_schedule")] = candidate_contract
         report["numerical_contract"] = VSCALE_CONTRACT
         report[config["contract_key"]] = candidate_contract
         report["adapters"] = {name: adapter.metadata for name, adapter in adapters.items()}
@@ -431,6 +436,9 @@ def worker(args):
             exact_adapter.flush()
             if args.candidate == "rowmax":
                 validate_rowmax_boundaries(old, new, device, report, save)
+            elif args.candidate == "pv_prefetch":
+                from mindie_laser_pv_prefetch_checks import validate_pv_prefetch
+                validate_pv_prefetch(old, new, device, report, save)
             report["stage"] = "long_shape_validation"
             save()
             generator = torch.Generator().manual_seed(0)

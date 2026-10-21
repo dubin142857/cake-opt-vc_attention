@@ -251,7 +251,7 @@ def test_parent_preserves_failed_child_and_never_reports_success(monkeypatch, tm
 
 
 @pytest.mark.parametrize("failure", [None, "preflight", "build", "profile"])
-@pytest.mark.parametrize("candidate", ["bulk", "rowmax"])
+@pytest.mark.parametrize("candidate", ["bulk", "rowmax", "pv_prefetch"])
 def test_one_click_builds_only_candidate_and_stops_at_failure(tmp_path, failure, candidate):
     bash = Path("C:/Program Files/Git/bin/bash.exe") if os.name == "nt" else Path(shutil.which("bash") or "/missing")
     if not bash.is_file():
@@ -262,7 +262,7 @@ def test_one_click_builds_only_candidate_and_stops_at_failure(tmp_path, failure,
     for name in ("mindie_laser_quant_vscale_build", "mindie_laser_quant_preprocess_build",
                  "mindie_laser_build", "mindie_laser_bridge"):
         (root/"results"/(name+".json")).write_text("{}")
-    script_suffix = "vector_scale_bulk" if candidate == "bulk" else "vector_rowmax"
+    script_suffix = {"bulk": "vector_scale_bulk", "rowmax": "vector_rowmax", "pv_prefetch": "pv_prefetch"}[candidate]
     driver = root/("scripts/run_mindie_laser_"+script_suffix+".sh")
     driver.write_bytes((ROOT/("scripts/run_mindie_laser_"+script_suffix+".sh")).read_bytes())
     stub = root/"stub.py"

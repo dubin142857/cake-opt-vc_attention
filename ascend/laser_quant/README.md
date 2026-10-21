@@ -575,3 +575,16 @@ bash scripts/run_mindie_laser_vscale_phases.sh
 下一候选优先保持原版 FP16 P/V 与累加顺序，检查 PV 的数据搬运和流水：现有每个 K128 块先搬两个 P 块与一个 V 块，再等待 L1 数据并装载 L0；在 D128、Ky=2 时，源码包含 8 次 V 和 2×8 次 P 的 L1→L0 load 调用。需要判断是否能利用既有双缓冲更早发射下一块搬运、减少装载调度开销，并核对与 QK 共用的 L1/L0 槽和事件生命周期。现有代码本身已有异步重叠，不能仅凭这些调用顺序断言搬运完全串行，也不能把 load 调用次数当作硬件耗时。
 
 继续以 `vector_scale` 为基线，不叠加 rowmax/bulk，不立刻改变 PV 量化或重新加入 ExpCast。候选的数值门限保持全部 padded native 输出精确一致；收益仍以原版 FP16 Laser 的同进程随机交错 full API 为主要验收指标。若 PV 候选无收益，再补当前 Vector 反量化及跨核等待诊断，不能将旧 scale-reuse 的 Vector 数据套用到现在。
+
+## PV 内下一块 V 的预取候选
+
+```bash
+git pull origin master
+bash scripts/run_mindie_laser_pv_prefetch.sh
+```
+
+这轮只改变 PV 的 V 搬运发射位置。每个 descriptor 在 history 处理后搬入 V0；当前 V 完成 L1→L0B 装载后，提前释放其 L1B 槽，并把下一块 V 的 GM→L1 搬运发到另一槽，使其有机会与当前 Ky=2 的矩阵乘重叠。最后一块不多搬；不跨 descriptor 投机；原 P 搬运、全部 MAD 累加、FIX 输出、Vector 反量化及 softmax 不变。使用既有双缓冲和事件，不增加 L1/L0/UB 容量。当前 `vector_scale` 继续保留，候选是否更快以远端结果为准。
+
+一键脚本固定 BF16 BNSD `[1,28,37741,128]`、warmup 5、10 次/轮、9 轮，设备默认为 0（可选 `NPU_DEVICE`）。只构建独立 `VcLaserQuantVscalePvPrefetchAttention`，复用已验证的当前 Vector scale、原版 FP16 Laser 及融合量化器，源码从本地 Git objects 重建。主表三行为 `original_laser`、`vector_scale`、`vector_pv_prefetch`，同进程随机交错，full API 每次包含新预处理；prepared/native 与 profiler 另列。
+
+计时前检查原版数值、当前 Vector scale 自身参考、原址 Q/K scale 连续更新，以及 K128/section 边界、多头映射、A/B/A/B 连续排队输入；新旧 INT8 要求全部 padded native 输出精确一致。公开 payload 按 256 token 补齐，逻辑单数 K128 块边界不冒充真实 Cube 奇数循环；循环及事件主机模型另外覆盖。结果保存在 `results/mindie_laser_pv_prefetch.json`，日志为同名 `.log`。实现边界和同步审计见[PV V 预取记录](../../reports/ascend-pv-prefetch-sync-audit/README.md)。
