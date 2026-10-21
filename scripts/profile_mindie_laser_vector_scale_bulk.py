@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Interleaved original FP16 Laser / INT8 Vector-scale / bulk Vector-scale APIs."""
+"""Interleaved original FP16 Laser / INT8 Vector-scale / selected candidate APIs."""
 from __future__ import annotations
 
 import argparse
@@ -23,9 +23,18 @@ ORIGINAL = "original_laser"
 OLD = "vector_scale"
 NEW = "vector_scale_bulk"
 VARIANTS = (ORIGINAL, OLD, NEW)
+CANDIDATES = {
+    "bulk": dict(name=NEW, build_arg="bulk_build", suffix="vscale_bulk",
+                 comparison="bulk_vs_previous", report_name="vector_scale_bulk",
+                 contract_key="bulk_schedule_contract"),
+    "rowmax": dict(name="vector_rowmax", build_arg="rowmax_build", suffix="vscale_rowmax",
+                   comparison="rowmax_vs_previous", report_name="vector_rowmax",
+                   contract_key="rowmax_schedule_contract"),
+}
 MANIFESTS = {
     "vscale_build": "results/mindie_laser_quant_vscale_build.json",
     "bulk_build": "results/mindie_laser_quant_vscale_bulk_build.json",
+    "rowmax_build": "results/mindie_laser_quant_vscale_rowmax_build.json",
     "preprocess_build": "results/mindie_laser_quant_preprocess_build.json",
     "baseline_build": "results/mindie_laser_build.json",
     "bridge_manifest": "results/mindie_laser_bridge.json",
@@ -42,12 +51,36 @@ BASELINE_DESCRIPTION = (
 )
 
 
+def candidate_config(args):
+    key = getattr(args, "candidate", "bulk")
+    if key not in CANDIDATES:
+        raise ValueError("Unknown Vector candidate: " + str(key))
+    return CANDIDATES[key]
+
+
+def variant_names(candidate):
+    if candidate not in {config["name"] for config in CANDIDATES.values()}:
+        raise ValueError("Unknown candidate variant: " + str(candidate))
+    return ORIGINAL, OLD, candidate
+
+
+def group_candidate(group):
+    candidates = set(group) - {ORIGINAL, OLD}
+    if len(group) != 3 or len(candidates) != 1:
+        raise ValueError("Three-provider benchmark requires original and both INT8 variants")
+    candidate = next(iter(candidates))
+    variant_names(candidate)
+    return candidate
+
+
 def specifications(args):
+    config = candidate_config(args)
     return {
         OLD: dict(path=args.vscale_build, namespace="vc_laser_quant_vscale",
                   source=importlib.import_module("prepare_mindie_laser_quant_vscale_source")),
-        NEW: dict(path=args.bulk_build, namespace="vc_laser_quant_vscale_bulk",
-                  source=importlib.import_module("prepare_mindie_laser_quant_vscale_bulk_source")),
+        config["name"]: dict(path=getattr(args, config["build_arg"]),
+                  namespace="vc_laser_quant_"+config["suffix"],
+                  source=importlib.import_module("prepare_mindie_laser_quant_"+config["suffix"]+"_source")),
     }
 
 
@@ -82,9 +115,8 @@ def verify_builds(args, providers=None):
 
 
 def worker_environment(base, providers, directory):
-    if set(providers) != set(VARIANTS):
-        raise ValueError("Three-provider benchmark requires original and both INT8 variants")
-    roots = [str(Path(providers[name].vendor_root).resolve()) for name in VARIANTS]
+    names = variant_names(group_candidate(providers))
+    roots = [str(Path(providers[name].vendor_root).resolve()) for name in names]
     if len(set(roots)) != 3:
         raise ValueError("Three distinct vendor roots are required")
     env = quant.baseline.worker_environment(base, "local", roots[0], directory)
@@ -132,7 +164,10 @@ def verify_mapped_hashes(relevant, providers, evidence):
 
 def make_calls(adapters, payloads, inputs):
     from mindie_laser_fp16_trace_worker import native_call
-    if payloads[OLD] is not payloads[NEW]:
+    candidate = group_candidate(adapters)
+    if set(payloads) != set(adapters):
+        raise ValueError("Payloads must match the three selected adapters")
+    if payloads[OLD] is not payloads[candidate]:
         raise ValueError("INT8 variants must share identical payload objects")
     if payloads[ORIGINAL] is payloads[OLD]:
         raise ValueError("Original FP16 Laser requires its own prepared payload")
@@ -149,7 +184,7 @@ def make_calls(adapters, payloads, inputs):
 def require_exact(error):
     if (not all(math.isfinite(error[key]) for key in ("relative_rmse", "max_abs"))
             or not error["exact_match"]):
-        raise AssertionError("Bulk Vector scale must preserve ALL padded native output elements exactly")
+        raise AssertionError("Vector candidate must preserve ALL padded native output elements exactly")
 
 
 class ExactValidationAdapter:
@@ -183,18 +218,23 @@ class ExactValidationAdapter:
 
 
 def compare_scopes(timing):
+    candidate = group_candidate(timing["rows"])
+    key = next(c["comparison"] for c in CANDIDATES.values() if c["name"] == candidate)
     return {OLD: paired_comparison(timing, ORIGINAL, OLD),
-            NEW: paired_comparison(timing, ORIGINAL, NEW),
-            "bulk_vs_previous": paired_comparison(timing, OLD, NEW)}
+            candidate: paired_comparison(timing, ORIGINAL, candidate),
+            key: paired_comparison(timing, OLD, candidate)}
 
 
 def table(report):
+    candidate = group_candidate(report["timings"]["full"]["rows"])
+    names = variant_names(candidate)
+    comparison_key = next(c["comparison"] for c in CANDIDATES.values() if c["name"] == candidate)
     lines = ["Same-process randomized interleaved synchronized API ms; NO profiler:",
              "Primary baseline: pinned ORIGINAL FP16 MindIE Laser (local source reproduction).",
              f"{'variant':<21} {'full API':>11} {'Laser/full':>12} {'saved ms':>11} {'faster':>8} {'dense RMSE %':>14}"]
     timing = report["timings"]["full"]
     original = timing["rows"][ORIGINAL]["median_ms"]
-    for name in VARIANTS:
+    for name in names:
         value = timing["rows"][name]["median_ms"]
         dense = 100 * report["dense_fp32_samples"][name]["relative_rmse"]
         pair = report["comparisons"]["full"].get(name)
@@ -206,16 +246,16 @@ def table(report):
               "", f"{'scope':<12} {'variant':<21} {'API ms':>11} {'Laser/row':>12} {'saved ms':>11} {'faster':>8}"]
     for scope in ("prepared", "native"):
         rows = report["timings"][scope]["rows"]
-        for name in VARIANTS:
+        for name in names:
             pair = report["comparisons"][scope].get(name)
             saved = f"{pair['median_saved_ms']:+.4f}" if pair else "--"
             faster = f"{pair['faster_trials']}/{pair['trials']}" if pair else "--"
             value = rows[name]["median_ms"]
             lines.append(f"{scope:<12} {name:<21} {value:11.4f} "
                          f"{rows[ORIGINAL]['median_ms']/value:11.4f}x {saved:>11} {faster:>8}")
-    lines.append("Bulk / previous INT8: identical fixed payload; ALL padded native outputs checked:")
+    lines.append(candidate + " / previous INT8: fixed scopes share payload; full freshly preprocesses; ALL native outputs checked:")
     for scope in SCOPES:
-        pair = report["comparisons"][scope]["bulk_vs_previous"]
+        pair = report["comparisons"][scope][comparison_key]
         lines.append(f"  {scope}: old/new {pair['baseline_median_ms']/pair['candidate_median_ms']:.4f}x; "
                      f"paired saved {pair['median_saved_ms']:+.4f} ms; "
                      f"faster {pair['faster_trials']}/{pair['trials']}")
@@ -225,11 +265,104 @@ def table(report):
     return "\n".join(lines)
 
 
+ROWMAX_KEYS = (127, 128, 129, 1023, 1024, 1025, 2047, 2048, 2049, 3968, 4095, 4096, 4097)
+ROWMAX_MODES = ("zero", "negative", "moving_winner", "finite_extreme")
+
+
+def rowmax_payload(keys, dtype, dim, mode):
+    """Direct INT8 payload: distinct query/channel winners and masked K tails.
+
+    A query selects one feature, so no dot accumulation ambiguity is needed.
+    The extreme case remains below 16384 absolute score, keeping both the
+    scores and pairwise score differences inside FP16's finite range.
+    """
+    import torch
+    from mindie_laser_quant_backend import prepare_quant_tensors
+    if keys <= 0 or dim not in (64, 128) or mode not in ROWMAX_MODES:
+        raise ValueError("Invalid rowmax boundary fixture")
+    queries = 17
+    q = torch.zeros(1, 2, queries, dim, dtype=dtype)
+    k = torch.zeros(1, 2, keys, dim, dtype=dtype)
+    tokens = torch.arange(keys)
+    values = ((tokens[:, None] * 13 + torch.arange(dim)[None, :] * 7) % 29 - 14).float()/14
+    v = values[None, None].expand(1, 2, -1, -1).to(dtype).clone()
+    v[..., 0], v[..., 1] = 0, 2
+    payload = prepare_quant_tensors(q, k, v, v_quantize=False)
+    winners = []
+    for head in range(2):
+        head_winners = []
+        for row in range(queries):
+            sign = 1 if mode in ("zero", "negative") or row % 2 == 0 else -1
+            payload.q[0, head, row, row] = sign
+            if mode == "negative":
+                codes = -((tokens * 7 + row * 11 + head) % 127 + 1)
+            elif mode == "zero":
+                codes = torch.zeros_like(tokens)
+            else:
+                codes = ((tokens * 13 + row * 19 + head * 3) % 97 - 48) * sign
+            block = (row * 7 + head * 3) % ((keys + 127)//128)
+            begin = block * 128
+            winner = begin + min((row * 17 + head * 31) % 128, keys - begin - 1)
+            if mode in ("moving_winner", "finite_extreme"):
+                codes[winner] = 127 * sign
+            payload.k[0, head, :keys, row] = codes.to(torch.int8)
+            head_winners.append(winner)
+        winners.append(head_winners)
+    payload.q_scale.fill_(32 if mode == "finite_extreme" else 1)
+    payload.k_scale.fill_(32 if mode == "finite_extreme" else 1)
+    return payload, dict(keys=keys, queries=queries, dim=dim, dtype=str(dtype), mode=mode,
+        assigned_winner_keys=winners if mode in ("moving_winner", "finite_extreme") else None,
+        max_absolute_score_bound=16384 if mode == "finite_extreme" else 16,
+        direct_payload=True)
+
+
+def validate_rowmax_boundaries(old, new, device, report, save):
+    import torch
+    from dataclasses import replace
+    from profile_mindie_laser_quant import FIELDS, compare_all_rows
+    rows = report["rowmax_boundary_validation"] = []
+    report["rowmax_boundary_scope"] = {
+        "keys": list(ROWMAX_KEYS), "modes": list(ROWMAX_MODES),
+        "output_gate": "Exact ALL padded native output rows/heads/features; finite outputs required",
+        "purpose": "K128 tails, 8/16/32-block reduction boundaries and K4096 section transition",
+        "timed": False, "dense_reference": False,
+    }
+    save()
+    for dtype in (torch.float16, torch.bfloat16):
+        for i, keys in enumerate(ROWMAX_KEYS):
+            dim = (64, 128)[i % 2]
+            for mode in ROWMAX_MODES:
+                host, row = rowmax_payload(keys, dtype, dim, mode)
+                fixed = replace(host, **{name: getattr(host, name).to(device)
+                                        for name in (*FIELDS, "v_scale")})
+                rows.append(row)
+                row["status"] = "running"
+                save()
+                print(f"Rowmax boundary: {dtype} Q17 K{keys} D{dim} {mode}", flush=True)
+                pair = (("old", old), ("new", new)) if len(rows) % 2 else (("new", new), ("old", old))
+                outputs = {name: adapter.run_native(fixed) for name, adapter in pair}
+                row["all_native_output"] = compare_all_rows(outputs["new"], outputs["old"])
+                require_exact(row["all_native_output"])
+                for name, adapter in (("old", old), ("new", new)):
+                    actual = adapter.postprocess(outputs[name], fixed).cpu()
+                    torch.testing.assert_close(actual[..., 0], torch.zeros_like(actual[..., 0]), rtol=0, atol=0,
+                                               msg=name+" rowmax fixture zero channel")
+                    torch.testing.assert_close(actual[..., 1], torch.full_like(actual[..., 1], 2), rtol=.004, atol=.003,
+                                               msg=name+" rowmax fixture constant channel")
+                row["status"] = "passed"
+                save()
+    return rows
+
+
 def worker(args):
+    config = candidate_config(args)
+    candidate = config["name"]
+    names = variant_names(candidate)
+    namespace = "vc_laser_quant_" + config["suffix"]
     directory = Path(args._run_dir) / "paired" / "local"
     directory.mkdir(parents=True, exist_ok=True)
     report = dict(status="running", stage="provenance", pid=os.getpid(),
-        primary_baseline=ORIGINAL, original_baseline=BASELINE_DESCRIPTION,
+        primary_baseline=ORIGINAL, original_baseline=BASELINE_DESCRIPTION, candidate=candidate,
         shape_bnsd=args.shape, dtype="bfloat16", seed=0, scopes=SCOPES,
         timings={}, comparisons={}, contract="INT8 QK, original exp and FP16 PV; no V smoothing/reordering")
     save = lambda: common.write_json(directory / "report.json", report)
@@ -251,21 +384,22 @@ def worker(args):
             preprocess_build=args.preprocess_build, torch_namespace="vc_laser_quant_vscale",
             v_quantize=False, expcast=False, check_finite=False)
         from mindie_laser_quant_vscale_patch import VSCALE_CONTRACT
-        from mindie_laser_quant_vscale_bulk_patch import CONTRACT as BULK_CONTRACT
+        candidate_contract = importlib.import_module(
+            "mindie_laser_quant_"+config["suffix"]+"_patch").CONTRACT
         old.metadata["qk_result_contract"] = VSCALE_CONTRACT
-        torch.ops.load_library(providers[NEW].bridge_path)
-        native = torch.ops.vc_laser_quant_vscale_bulk.la.default
+        torch.ops.load_library(providers[candidate].bridge_path)
+        native = getattr(torch.ops, namespace).la.default
         if ([str(x.type) for x in native._schema.arguments] != ["Tensor"]*5+["float", "int", "bool"]
                 or [str(x.type) for x in native._schema.returns] != ["Tensor"]):
-            raise RuntimeError(f"Unexpected bulk schema: {native._schema}")
+            raise RuntimeError(f"Unexpected candidate schema: {native._schema}")
         new = MindIEQuantLaser(native, quantizer=old.quantizer, v_quantize=False,
             expcast=False, check_finite=False, metadata=dict(old.metadata,
-            dispatch="torch.ops.vc_laser_quant_vscale_bulk.la.default",
-            bridge_path=providers[NEW].bridge_path, native_schema=str(native._schema)))
-        adapters = {ORIGINAL: original, OLD: old, NEW: new}
-        new.metadata["vector_scale_schedule"] = BULK_CONTRACT
+            dispatch=f"torch.ops.{namespace}.la.default",
+            bridge_path=providers[candidate].bridge_path, native_schema=str(native._schema)))
+        adapters = {ORIGINAL: original, OLD: old, candidate: new}
+        new.metadata["vector_scale_schedule"] = candidate_contract
         report["numerical_contract"] = VSCALE_CONTRACT
-        report["bulk_schedule_contract"] = BULK_CONTRACT
+        report[config["contract_key"]] = candidate_contract
         report["adapters"] = {name: adapter.metadata for name, adapter in adapters.items()}
         torch.npu.set_option({"ACL_OP_COMPILER_CACHE_MODE": "disable",
                               "ACL_OP_COMPILER_CACHE_DIR": os.environ["ACL_OP_COMPILER_CACHE_DIR"]})
@@ -279,10 +413,10 @@ def worker(args):
         soc = soc.decode()
         cann = os.environ["ASCEND_HOME_PATH"]
         prep = json.loads(Path(args.preprocess_build).read_text(encoding="utf-8"))
-        builds = {name: evidence[name]["build_manifest"] for name in VARIANTS}
+        builds = {name: evidence[name]["build_manifest"] for name in names}
         report["runtime_targets"] = {
             ORIGINAL: verify_fp16_target(builds[ORIGINAL], soc, cann),
-            **{name: verify_runtime_target(builds[name], prep, soc, cann) for name in (OLD, NEW)}}
+            **{name: verify_runtime_target(builds[name], prep, soc, cann) for name in (OLD, candidate)}}
         report["environment"] = dict(torch=torch.__version__, torch_npu=torch_npu.__version__,
             runtime_soc=soc, device_index=args.device, custom_opp_path=os.environ["ASCEND_CUSTOM_OPP_PATH"])
         context = dict(cann_root=cann, soc=builds[ORIGINAL]["soc"])
@@ -295,6 +429,8 @@ def worker(args):
             validate_vector_scale({"baseline": old,
                 "reuse": exact_adapter}, device, report, save)
             exact_adapter.flush()
+            if args.candidate == "rowmax":
+                validate_rowmax_boundaries(old, new, device, report, save)
             report["stage"] = "long_shape_validation"
             save()
             generator = torch.Generator().manual_seed(0)
@@ -302,13 +438,13 @@ def worker(args):
             report["input_sha256"] = [common.tensor_sha256(x) for x in host]
             inputs = [x.to(device) for x in host]
             fixed = old.prepare(*inputs)
-            payloads = {ORIGINAL: original.prepare(*inputs), OLD: fixed, NEW: fixed}
+            payloads = {ORIGINAL: original.prepare(*inputs), OLD: fixed, candidate: fixed}
             report["payloads"] = {ORIGINAL: original.describe_payload(payloads[ORIGINAL]),
                                   "shared_int8": payload_evidence(fixed)}
             calls = make_calls(adapters, payloads, inputs)
             raw, marker_sizes = {}, {}
             report["host_markers"] = {}
-            for name in VARIANTS:
+            for name in names:
                 marker = Path(os.environ[providers[name].marker_env])
                 offset = marker.stat().st_size if marker.exists() else 0
                 raw[name] = calls["native"][name]()
@@ -324,7 +460,7 @@ def worker(args):
             quant.inspect_fused_preprocessor(providers[OLD], report)
             for p in providers.values():
                 os.environ.pop(p.marker_env, None)
-            report["same_payload_all_output"] = compare_all_rows(raw[NEW], raw[OLD])
+            report["same_payload_all_output"] = compare_all_rows(raw[candidate], raw[OLD])
             require_exact(report["same_payload_all_output"])
             ids = torch.linspace(0, args.shape[2]-1, min(32, args.shape[2])).long().unique()
             dense = common.dense_reference(*host, ids)
@@ -395,7 +531,7 @@ def launch(args, env, directory):
         Path(env[key]).mkdir(parents=True, exist_ok=True)
     command = [sys.executable, "-u", str(Path(__file__).resolve()), "--_worker",
                "--_run-dir", args._run_dir]
-    for key in (*MANIFESTS, "device", "warmup", "repeats", "trials", "seed", "cpu_threads"):
+    for key in (*MANIFESTS, "candidate", "device", "warmup", "repeats", "trials", "seed", "cpu_threads"):
         command += ["--"+key.replace("_", "-"), str(getattr(args, key))]
     command += ["--shape", *map(str, args.shape)]
     if args.trace:
@@ -417,8 +553,8 @@ def launch(args, env, directory):
 def parent(args):
     output = Path(args.output).resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
-    args._run_dir = tempfile.mkdtemp(prefix="mindie_laser_vector_scale_bulk_", dir=output.parent)
-    report = dict(status="running", primary_baseline=ORIGINAL,
+    args._run_dir = tempfile.mkdtemp(prefix="mindie_laser_"+candidate_config(args)["report_name"]+"_", dir=output.parent)
+    report = dict(status="running", primary_baseline=ORIGINAL, candidate=candidate_config(args)["name"],
                   original_baseline=BASELINE_DESCRIPTION, run_dir=args._run_dir, workers={})
     save = lambda: common.write_json(output, report)
     save()
@@ -443,11 +579,12 @@ def parent(args):
         return 1
 
 
-def parser():
+def parser(default_candidate="bulk"):
     result = argparse.ArgumentParser(description=__doc__)
     for key, default in MANIFESTS.items():
         result.add_argument("--"+key.replace("_", "-"), default=default)
-    result.add_argument("--output", default="results/mindie_laser_vector_scale_bulk.json")
+    result.add_argument("--candidate", choices=tuple(CANDIDATES), default=default_candidate)
+    result.add_argument("--output", default=None)
     result.add_argument("--shape", nargs=4, type=int, default=list(quant.baseline.SHAPE))
     for key, default in (("device", 0), ("warmup", 5), ("repeats", 10), ("trials", 9),
                          ("seed", 2026), ("cpu-threads", 4)):
@@ -458,9 +595,11 @@ def parser():
     return result
 
 
-def main(argv=None):
-    cli = parser()
+def main(argv=None, *, default_candidate="bulk"):
+    cli = parser(default_candidate)
     args = cli.parse_args(argv)
+    if args.output is None:
+        args.output = "results/mindie_laser_"+candidate_config(args)["report_name"]+".json"
     if (min(args.shape) <= 0 or args.shape[-1] not in (64, 128) or args.device < 0
             or args.warmup < 0 or min(args.repeats, args.trials, args.cpu_threads) <= 0):
         cli.error("Need nonempty BNSD D64/128, nonnegative device/warmup and positive repeats/trials/threads")

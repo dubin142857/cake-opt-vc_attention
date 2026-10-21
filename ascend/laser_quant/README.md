@@ -483,3 +483,30 @@ bash scripts/run_mindie_laser_vector_scale_bulk.sh
 **以 full API 为主要指标**：每次重新预处理输入，`Laser/full > 1` 表示比原版完整调用更快；同时看配对节省和更快轮数。prepared/native 各自独立测量，不相加、不混用。两种 INT8 的固定输入使用同一 payload 对象；原版使用相同原始输入生成自己的 FP16 payload。原版是固定源码复现，不能冒称与安装包二进制相同。来源、实际加载库哈希和首次长形状调用的 provider 标记均在计时前检查；profiler 在主计时之后单独运行。
 
 本地只完成源码生成、主机模型和脚本验证，尚无本候选的 CANN 编译及 NPU 加速结论。[批量系数同步审计](../../reports/ascend-vector-scale-bulk-audit/README.md)记录缓冲区、事件生命周期和工具覆盖限制。
+
+## 与原版同进程回测：保留 Vector scale，停止叠加 bulk
+
+2026-10-21 用户回传的同进程随机交错结果如下。每种实现每轮调用 10 次，共 9 轮；full 每次重新预处理，原版为前述固定源码 FP16 Laser 复现。
+
+| 实现 | full ms | prepared ms | native ms | Laser/full | dense FP32 RMSE |
+|---|---:|---:|---:|---:|---:|
+| original_laser | 87.2905 | 83.5870 | 81.5745 | 1.0000× | 0.190947% |
+| vector_scale | 85.9907 | 82.3968 | 79.5296 | 1.0151× | 1.365174% |
+| vector_scale_bulk | 86.1240 | 82.5851 | 79.8424 | 1.0135× | 1.365174% |
+
+Vector scale 相对原版的 full 配对节省为 +1.2094 ms，9/9 更快。这是本次形状、设备及数值设定下的小幅优势，不是等精度比较或跨场景结论。bulk 相对 Vector scale 的 full 配对节省为 −0.0615 ms（3/9 更快），native 为 −0.2991 ms（0/9 更快）；全部 padded native 输出精确一致。因此后续从 Vector scale 开始，不叠加 bulk。profiler 活跃时三者设备任务平均值为 80.9972 / 79.6046 / 79.9154 ms，单独记录，不混入 API 比率。
+
+## 分两级归约行最大值
+
+```bash
+git pull origin master
+bash scripts/run_mindie_laser_vector_rowmax.sh
+```
+
+本候选只改变普通 dense 路径中的行最大值归约。旧路径先对完整的 128 元素行向量跨 K 块逐级取最大值，再做行内归约。新路径先按 K128 块求局部行最大值，再归约各块的小结果；保持原有 score 缩放、mask、padding、在线历史更新、指数、求和及 FP16 PV。目标是减少宽中间向量在 UB 内的读写和归约树层数，不是减少数学上必要的 max 比较总数。
+
+仅四行处理、实际 K 块数 8～32、含 padding 后不超过 32 块的 dense section 走新路径，其他情况保留旧路径。新归约复用已有 rowmax scratch，不增加 UB 或跨流水 event。额外注意源/目标对齐、归约 stride 单位、mask 恢复和四行结果布局；CANNBot 扫描、手工生命周期检查及主机模型的边界见[行最大值归约审计](../../reports/ascend-vector-rowmax-audit/README.md)。
+
+一键入口仍是 BF16 BNSD `[1,28,37741,128]`、设备 0、warmup 5、10 次/轮、9 轮，可用 `NPU_DEVICE` 指定设备。只编译独立 `VcLaserQuantVscaleRowmaxAttention`，复用已有 Vector scale、原版 Laser 和融合量化器；源码使用本地固定 Git objects。结果为 `results/mindie_laser_vector_rowmax.json`，日志为同名 `.log`。同进程主表三行为 `original_laser`、`vector_scale`、`vector_rowmax`，主要比较 fresh full API 的 `Laser/full`、配对节省和更快轮数，prepared/native 另外报告。
+
+计时前保留原版精度检查、Vector scale 自身数值参考、scale 原址更新测试，并增加 K 块及 section 边界检查。新旧 INT8 版本要求全部 native 输出精确一致，长形状也检查补齐区域；dense FP32 误差另行采样报告。原版与 INT8 的固定 payload 各自生成，两种 INT8 的固定比较共享同一 payload。候选尚无本地 CCE/NPU 验证或性能结论，只有远端精度通过且 full API 有收益才考虑采用。

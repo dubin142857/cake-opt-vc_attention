@@ -1,0 +1,82 @@
+{
+  "candidate": "vector_rowmax",
+  "local_only": true,
+  "device_validation": false,
+  "source_hashes": {
+    "build/mindie_laser_quant_vscale_rowmax_source/csrc/ops/vc_laser_quant_vscale_rowmax_attention/op_kernel/address_const.h": "8f16f692febd91fe3b8b3a4b7ac31a1351597823563a39aa269cc7a2e028b60c",
+    "build/mindie_laser_quant_vscale_rowmax_source/csrc/ops/vc_laser_quant_vscale_rowmax_attention/op_kernel/AddressMappingForwardOnline.h": "b1c83a6078f9a3f41f1e5a46613583991e1dbf26844f1284e04813dbb4b5264d",
+    "build/mindie_laser_quant_vscale_rowmax_source/csrc/ops/vc_laser_quant_vscale_rowmax_attention/op_kernel/AddressMappingVectorForwardOnline.h": "4d1c1b6df298172052db28e1b24ae4fa265268d5032c5e4fabee8553dc0d0360",
+    "build/mindie_laser_quant_vscale_rowmax_source/csrc/ops/vc_laser_quant_vscale_rowmax_attention/op_kernel/CubeForward.h": "ce829cc6f5a2c09aa4157d2608c0b4f15bfe701ff1e6a45a665cd668ad436a5c",
+    "build/mindie_laser_quant_vscale_rowmax_source/csrc/ops/vc_laser_quant_vscale_rowmax_attention/op_kernel/matmul_const.h": "ac6bef6c468824bab498504b9b7b32588dba2d386e8c6979f122333ff52fcf52",
+    "build/mindie_laser_quant_vscale_rowmax_source/csrc/ops/vc_laser_quant_vscale_rowmax_attention/op_kernel/vc_laser_probability.h": "e754ec92c000981bc8f75eb91fdf21d3c97285744bb9c09ae587f5170cf548c9",
+    "build/mindie_laser_quant_vscale_rowmax_source/csrc/ops/vc_laser_quant_vscale_rowmax_attention/op_kernel/vc_laser_quant_vscale_rowmax_attention.cpp": "5899c2d4f2286989a2c19561a301b4f99b57048ef77cf1388e6a33b5114cac16",
+    "build/mindie_laser_quant_vscale_rowmax_source/csrc/ops/vc_laser_quant_vscale_rowmax_attention/op_kernel/VectorForward.h": "7d63525c44b3e97e517a1b1e61b2d9612ebeb17403f783ea8405d2ae210fc012"
+  },
+  "patch_sha256": "5f600783f00b4c1d494ed18503b8610901de1da247ab43dabbabf8c972a74066",
+  "runs": [
+    {
+      "tool": "sync_audit.py",
+      "tool_sha256": "af629036820e7765639df7379d94fde4c2b0aca63f54a295384005a015a181d4",
+      "returncode": 0,
+      "files": 8,
+      "raw_output": "sync_audit.json",
+      "command": [
+        "D:\\codex\\算子\\build\\cannbot-skills\\ops\\ascendc-sync-audit\\scripts\\sync_audit.py",
+        "build\\mindie_laser_quant_vscale_rowmax_source\\csrc\\ops\\vc_laser_quant_vscale_rowmax_attention\\op_kernel\\address_const.h",
+        "build\\mindie_laser_quant_vscale_rowmax_source\\csrc\\ops\\vc_laser_quant_vscale_rowmax_attention\\op_kernel\\AddressMappingForwardOnline.h",
+        "build\\mindie_laser_quant_vscale_rowmax_source\\csrc\\ops\\vc_laser_quant_vscale_rowmax_attention\\op_kernel\\AddressMappingVectorForwardOnline.h",
+        "build\\mindie_laser_quant_vscale_rowmax_source\\csrc\\ops\\vc_laser_quant_vscale_rowmax_attention\\op_kernel\\CubeForward.h",
+        "build\\mindie_laser_quant_vscale_rowmax_source\\csrc\\ops\\vc_laser_quant_vscale_rowmax_attention\\op_kernel\\matmul_const.h",
+        "build\\mindie_laser_quant_vscale_rowmax_source\\csrc\\ops\\vc_laser_quant_vscale_rowmax_attention\\op_kernel\\vc_laser_probability.h",
+        "build\\mindie_laser_quant_vscale_rowmax_source\\csrc\\ops\\vc_laser_quant_vscale_rowmax_attention\\op_kernel\\vc_laser_quant_vscale_rowmax_attention.cpp",
+        "build\\mindie_laser_quant_vscale_rowmax_source\\csrc\\ops\\vc_laser_quant_vscale_rowmax_attention\\op_kernel\\VectorForward.h",
+        "--format",
+        "json",
+        "--check",
+        "all"
+      ],
+      "top_level_keys": [
+        "files_scanned",
+        "event_count",
+        "findings",
+        "events"
+      ]
+    },
+    {
+      "tool": "ascendc_flow_analyzer.py",
+      "tool_sha256": "b84ef0d82628bb92c313f4d7b78ff626debf0198cbeed06da5e0a194cf2e799a",
+      "returncode": 0,
+      "files": 8,
+      "raw_output": "ascendc_flow_analyzer.json",
+      "command": [
+        "D:\\codex\\算子\\build\\cannbot-skills\\ops\\ascendc-sync-audit\\scripts\\ascendc_flow_analyzer.py",
+        "build\\mindie_laser_quant_vscale_rowmax_source\\csrc\\ops\\vc_laser_quant_vscale_rowmax_attention\\op_kernel\\address_const.h",
+        "build\\mindie_laser_quant_vscale_rowmax_source\\csrc\\ops\\vc_laser_quant_vscale_rowmax_attention\\op_kernel\\AddressMappingForwardOnline.h",
+        "build\\mindie_laser_quant_vscale_rowmax_source\\csrc\\ops\\vc_laser_quant_vscale_rowmax_attention\\op_kernel\\AddressMappingVectorForwardOnline.h",
+        "build\\mindie_laser_quant_vscale_rowmax_source\\csrc\\ops\\vc_laser_quant_vscale_rowmax_attention\\op_kernel\\CubeForward.h",
+        "build\\mindie_laser_quant_vscale_rowmax_source\\csrc\\ops\\vc_laser_quant_vscale_rowmax_attention\\op_kernel\\matmul_const.h",
+        "build\\mindie_laser_quant_vscale_rowmax_source\\csrc\\ops\\vc_laser_quant_vscale_rowmax_attention\\op_kernel\\vc_laser_probability.h",
+        "build\\mindie_laser_quant_vscale_rowmax_source\\csrc\\ops\\vc_laser_quant_vscale_rowmax_attention\\op_kernel\\vc_laser_quant_vscale_rowmax_attention.cpp",
+        "build\\mindie_laser_quant_vscale_rowmax_source\\csrc\\ops\\vc_laser_quant_vscale_rowmax_attention\\op_kernel\\VectorForward.h",
+        "--format",
+        "json"
+      ],
+      "top_level_keys": [
+        "files_scanned",
+        "frontends",
+        "operations",
+        "buffer_accesses",
+        "buffer_dependencies",
+        "sync_edges",
+        "sync_coverages",
+        "aliases",
+        "findings"
+      ]
+    }
+  ],
+  "host_tests": {
+    "command": "tests/test_mindie_laser_quant_vscale_rowmax_patch.py",
+    "passed": 9,
+    "compiler": "MSVC host C++17; no CCE lowering"
+  }
+}

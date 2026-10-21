@@ -1,0 +1,15 @@
+{
+  "files_scanned": [
+    "build\\mindie_laser_quant_vscale_rowmax_source\\csrc\\ops\\vc_laser_quant_vscale_rowmax_attention\\op_kernel\\AddressMappingForwardOnline.h",
+    "build\\mindie_laser_quant_vscale_rowmax_source\\csrc\\ops\\vc_laser_quant_vscale_rowmax_attention\\op_kernel\\AddressMappingVectorForwardOnline.h",
+    "build\\mindie_laser_quant_vscale_rowmax_source\\csrc\\ops\\vc_laser_quant_vscale_rowmax_attention\\op_kernel\\CubeForward.h",
+    "build\\mindie_laser_quant_vscale_rowmax_source\\csrc\\ops\\vc_laser_quant_vscale_rowmax_attention\\op_kernel\\VectorForward.h",
+    "build\\mindie_laser_quant_vscale_rowmax_source\\csrc\\ops\\vc_laser_quant_vscale_rowmax_attention\\op_kernel\\address_const.h",
+    "build\\mindie_laser_quant_vscale_rowmax_source\\csrc\\ops\\vc_laser_quant_vscale_rowmax_attention\\op_kernel\\matmul_const.h",
+    "build\\mindie_laser_quant_vscale_rowmax_source\\csrc\\ops\\vc_laser_quant_vscale_rowmax_attention\\op_kernel\\vc_laser_probability.h",
+    "build\\mindie_laser_quant_vscale_rowmax_source\\csrc\\ops\\vc_laser_quant_vscale_rowmax_attention\\op_kernel\\vc_laser_quant_vscale_rowmax_attention.cpp"
+  ],
+  "event_count": 0,
+  "findings": [],
+  "events": []
+}

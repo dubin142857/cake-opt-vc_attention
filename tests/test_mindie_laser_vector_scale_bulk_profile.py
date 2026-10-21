@@ -251,7 +251,8 @@ def test_parent_preserves_failed_child_and_never_reports_success(monkeypatch, tm
 
 
 @pytest.mark.parametrize("failure", [None, "preflight", "build", "profile"])
-def test_one_click_builds_only_bulk_and_stops_at_failure(tmp_path, failure):
+@pytest.mark.parametrize("candidate", ["bulk", "rowmax"])
+def test_one_click_builds_only_candidate_and_stops_at_failure(tmp_path, failure, candidate):
     bash = Path("C:/Program Files/Git/bin/bash.exe") if os.name == "nt" else Path(shutil.which("bash") or "/missing")
     if not bash.is_file():
         pytest.skip("Bash required")
@@ -261,8 +262,9 @@ def test_one_click_builds_only_bulk_and_stops_at_failure(tmp_path, failure):
     for name in ("mindie_laser_quant_vscale_build", "mindie_laser_quant_preprocess_build",
                  "mindie_laser_build", "mindie_laser_bridge"):
         (root/"results"/(name+".json")).write_text("{}")
-    driver = root/"scripts/run_mindie_laser_vector_scale_bulk.sh"
-    driver.write_bytes((ROOT/"scripts/run_mindie_laser_vector_scale_bulk.sh").read_bytes())
+    script_suffix = "vector_scale_bulk" if candidate == "bulk" else "vector_rowmax"
+    driver = root/("scripts/run_mindie_laser_"+script_suffix+".sh")
+    driver.write_bytes((ROOT/("scripts/run_mindie_laser_"+script_suffix+".sh")).read_bytes())
     stub = root/"stub.py"
     stub.write_text("import json,sys\nfrom pathlib import Path\n"
         "a=sys.argv[1:]\ns='preflight' if a[0]=='-' else 'metadata' if a[0]=='-c' else 'build' if 'build_' in a[1] else 'profile'\n"
@@ -284,7 +286,7 @@ def test_one_click_builds_only_bulk_and_stops_at_failure(tmp_path, failure):
     else:
         assert [c["stage"] for c in calls] == ["preflight", "metadata", "metadata", "build", "profile"]
         build, profile_call = calls[-2]["args"], calls[-1]["args"]
-        assert build[1] == "scripts/build_mindie_laser_quant_vscale_bulk.py"
+        assert build[1] == "scripts/build_mindie_laser_quant_vscale_"+candidate+".py"
         assert build[build.index("--reference-dir")+1] == "cached vector scale source"
-        assert profile_call[1] == "scripts/profile_mindie_laser_vector_scale_bulk.py"
+        assert profile_call[1] == "scripts/profile_mindie_laser_"+script_suffix+".py"
         assert "--trace" in profile_call
