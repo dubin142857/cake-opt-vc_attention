@@ -68,14 +68,18 @@ def boundary_payload(case, dtype, identity):
 
 
 @torch.no_grad()
-def validate_pv_prefetch(old, new, device, report, save):
+def validate_pv_prefetch(old, new, device, report, save, *, cases=None, payload_factory=None,
+                         scope_name="pv_prefetch", description=None):
     from profile_mindie_laser_quant import compare_all_rows
     from profile_mindie_laser_vector_scale_bulk import require_exact
 
-    rows = report["pv_prefetch_boundary_validation"] = []
-    report["pv_prefetch_validation_scope"] = dict(
-        candidate="V-only GM-to-L1 prefetch; P copies and MAD order unchanged",
-        cases=list(CASES), queue=list(QUEUE),
+    cases = CASES if cases is None else cases
+    payload_factory = boundary_payload if payload_factory is None else payload_factory
+    description = description or "V-only GM-to-L1 prefetch; P copies and MAD order unchanged"
+    rows = report[scope_name+"_boundary_validation"] = []
+    report[scope_name+"_validation_scope"] = dict(
+        candidate=description,
+        cases=list(cases), queue=list(QUEUE),
         output_gate="Finite exact ALL padded native output rows/heads/features",
         queued_calls="Both adapters A/B/A/B without intervening host reads or synchronization",
         physical_padding="256-token padding; logical odd K128 counts do not prove device odd Kx",
@@ -83,15 +87,15 @@ def validate_pv_prefetch(old, new, device, report, save):
         timed=False, dense_reference=False)
     save()
     for dtype in (torch.float16, torch.bfloat16):
-        for case in CASES:
+        for case in cases:
             row = dict(case, dtype=str(dtype), status="running", queued_outputs=[])
             rows.append(row)
             save()
-            print(f"PV V-prefetch boundary: {dtype} {case['name']} "
+            print(f"{scope_name} boundary: {dtype} {case['name']} "
                   f"B{case['batch']} H{case['heads']} Q{case['queries']} K{case['keys']}", flush=True)
             payloads, descriptions = {}, {}
             for identity in ("A", "B"):
-                host, descriptions[identity] = boundary_payload(case, dtype, identity)
+                host, descriptions[identity] = payload_factory(case, dtype, identity)
                 payloads[identity] = replace(host, **{
                     field: getattr(host, field).to(device) for field in FIELDS})
             row["payloads"] = descriptions

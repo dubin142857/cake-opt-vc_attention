@@ -1,0 +1,92 @@
+{
+  "upstream_commit": "71098c20ff90838d1fd1ca0a40515c751a3869b0",
+  "kernel_files": {
+    "op_kernel/AddressMappingForwardOnline.h": {
+      "baseline_sha256": "b1c83a6078f9a3f41f1e5a46613583991e1dbf26844f1284e04813dbb4b5264d",
+      "candidate_sha256": "b1c83a6078f9a3f41f1e5a46613583991e1dbf26844f1284e04813dbb4b5264d",
+      "inverse_rename_identical": true
+    },
+    "op_kernel/AddressMappingVectorForwardOnline.h": {
+      "baseline_sha256": "4d1c1b6df298172052db28e1b24ae4fa265268d5032c5e4fabee8553dc0d0360",
+      "candidate_sha256": "4d1c1b6df298172052db28e1b24ae4fa265268d5032c5e4fabee8553dc0d0360",
+      "inverse_rename_identical": true
+    },
+    "op_kernel/CubeForward.h": {
+      "baseline_sha256": "2c5217f1f1911919d633d4d350c82b0bc632c47bf7cb8c430c70e03749bc36fe",
+      "candidate_sha256": "f07b66d2f2ce15f47513dfd273a6d6c3a720ea6ef8c16d87099a0b6d50cc0d44",
+      "inverse_rename_identical": false
+    },
+    "op_kernel/VectorForward.h": {
+      "baseline_sha256": "dd99b7089764d018668946e80d54a5c0900097a0fcdc94f48893e6a07259b997",
+      "candidate_sha256": "dd99b7089764d018668946e80d54a5c0900097a0fcdc94f48893e6a07259b997",
+      "inverse_rename_identical": true
+    },
+    "op_kernel/address_const.h": {
+      "baseline_sha256": "8f16f692febd91fe3b8b3a4b7ac31a1351597823563a39aa269cc7a2e028b60c",
+      "candidate_sha256": "8f16f692febd91fe3b8b3a4b7ac31a1351597823563a39aa269cc7a2e028b60c",
+      "inverse_rename_identical": true
+    },
+    "op_kernel/vc_laser_quant_vscale_pv_prefetch_attention.cpp": {
+      "baseline_sha256": "0ef28a3645ce97f8775365da74ff7bf4ce2f76bdf1221f4f594d4e02a4cae1a7",
+      "candidate_sha256": "fc22519d92093cec8967c7ee5ccd9452482594237a32905b4df3900137f0e2e0",
+      "inverse_rename_identical": true
+    },
+    "op_kernel/matmul_const.h": {
+      "baseline_sha256": "ac6bef6c468824bab498504b9b7b32588dba2d386e8c6979f122333ff52fcf52",
+      "candidate_sha256": "ac6bef6c468824bab498504b9b7b32588dba2d386e8c6979f122333ff52fcf52",
+      "inverse_rename_identical": true
+    },
+    "op_kernel/vc_laser_probability.h": {
+      "baseline_sha256": "e754ec92c000981bc8f75eb91fdf21d3c97285744bb9c09ae587f5170cf548c9",
+      "candidate_sha256": "e754ec92c000981bc8f75eb91fdf21d3c97285744bb9c09ae587f5170cf548c9",
+      "inverse_rename_identical": true
+    }
+  },
+  "unchanged_methods": {
+    "cube1_matmul_op": {
+      "baseline_sha256": "06eb8c09ef4072ab996b046c917f996feccfc983ef166a889315ff1447aaadcd",
+      "candidate_sha256": "06eb8c09ef4072ab996b046c917f996feccfc983ef166a889315ff1447aaadcd",
+      "identical": true
+    },
+    "cube1_base_matmul": {
+      "baseline_sha256": "e5c1b69bbd92aa9a21e0b0541858447ba52da18925be9182c1d5acb1c580748c",
+      "candidate_sha256": "e5c1b69bbd92aa9a21e0b0541858447ba52da18925be9182c1d5acb1c580748c",
+      "identical": true
+    },
+    "Run": {
+      "baseline_sha256": "d52d824a08d73cfe8384c33d00e667eab64c96742dc759444a0c5c894a6320a2",
+      "candidate_sha256": "d52d824a08d73cfe8384c33d00e667eab64c96742dc759444a0c5c894a6320a2",
+      "identical": true
+    },
+    "Init": {
+      "baseline_sha256": "3d9cf6897337f7e963b2ea5c479d399c0299fcc95566337aa49f450c0488e53c",
+      "candidate_sha256": "3d9cf6897337f7e963b2ea5c479d399c0299fcc95566337aa49f450c0488e53c",
+      "identical": true
+    },
+    "PresetFlag": {
+      "baseline_sha256": "27a8deee3d3492ced857b0daa39b558a199ea0e26f4dfff3127f0086637ca45e",
+      "candidate_sha256": "27a8deee3d3492ced857b0daa39b558a199ea0e26f4dfff3127f0086637ca45e",
+      "identical": true
+    },
+    "ClearFlag": {
+      "baseline_sha256": "96464459bef9b23e26b4c715d2e7a05cfee468bd13d18e4fab47e7599b490fa3",
+      "candidate_sha256": "96464459bef9b23e26b4c715d2e7a05cfee468bd13d18e4fab47e7599b490fa3",
+      "identical": true
+    },
+    "matmul_fp32": {
+      "baseline_sha256": "d5d4f6118dcb0bdc1a5cd0289efa198db23f040163a49552ab7ab6db446034fb",
+      "candidate_sha256": "d5d4f6118dcb0bdc1a5cd0289efa198db23f040163a49552ab7ab6db446034fb",
+      "identical": true
+    },
+    "diag_matmul": {
+      "baseline_sha256": "0bc829efdd530455e802b6b4f3f57e5256576a19cec8f77f476f819eca5db7df",
+      "candidate_sha256": "0bc829efdd530455e802b6b4f3f57e5256576a19cec8f77f476f819eca5db7df",
+      "identical": true
+    }
+  },
+  "pv_math_output_calls": {
+    "baseline": 4,
+    "candidate": 4,
+    "identical": true
+  }
+}

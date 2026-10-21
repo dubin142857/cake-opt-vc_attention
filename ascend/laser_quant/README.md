@@ -616,3 +616,16 @@ old/new 为两个中位数之比，配对节省为逐轮差值的中位数，两
 profiler 活跃时，三者累计设备任务平均时长为 original 80.5560、Vector scale 79.0523、PV prefetch 78.4636 ms/call，各自 3 次调用、3 个设备任务。相对旧 INT8 减少 0.5887 ms，方向与未开 profiler 的 native 配对结果一致，支持收益来自 attention 设备执行内部。它没有测得单独的 V DMA 或 PV 阶段时间，不能把该差额全部归因到某个硬件流水，也不与 API wall time 混算。profiler 无 warmup 提示不作用于已完成的主计时。
 
 保留 `vector_pv_prefetch` 作为后续单变量实验起点，继续保留原版 Laser 和 Vector scale 对照。不叠加此前退化的 bulk/rowmax。下一步可检查 PV 的 P 搬运及 L1→L0 装载链，再单独尝试下一块 P 的 GM→L1 预取：先确认 Vector 已发布当前 descriptor 的 P，两个 P 行块所在的 L1 槽在最后一次 L1→L0A 读取完成后才释放，不跨 descriptor，也不同时调整 MAD 或 L1→L0 顺序。现有结果支持该方向，但不证明整个 kernel 是带宽瓶颈，也不保证同时预取 P/V 会更快。
+
+## 在 V 预取基础上单独尝试 P 预取
+
+```bash
+git pull origin master
+bash scripts/run_mindie_laser_pv_p_prefetch.sh
+```
+
+新候选 `vector_pv_p_prefetch` 直接继承已实测的 V 预取。只在其 dense D128/Ky2 guard 内且 Kx>1 时，预先搬入当前 descriptor 的第一块 P，并将后续两块 P128×128 的搬运发到当前矩阵乘之前的相反 L1A 槽。原 A 槽释放位置、L1→L0 装载、MAD、FIX、history/normalize、QK、Vector 和跨核信号均保留。先确认 Vector 发布了当前轮 P，再读取当前 descriptor 内的下一块，不跨轮/descriptor 或越过尾块预取。参数、缓冲区与数值契约不变，不能提前宣称会提速。
+
+默认 BF16 BNSD `[1,28,37741,128]`、设备 0、warmup 5、10 次/轮、9 轮；仍可用 `NPU_DEVICE` 选卡。仅编译独立 `VcLaserQuantVscalePvPPrefetchAttention`，复用已有 V-only、原版 Laser 与融合量化器，源码仅从本地缓存获取。主表为 `original_laser` / `vector_pv_prefetch` / `vector_pv_p_prefetch`：原版 Laser 是主要性能基线，V-only 是同算法对照。
+
+先完成各自数值参考、原址 scale 更新和全部 padded native 精确一致检查，再随机交错计时；full 每次重新预处理，prepared/native 各自独立，profiler 后置。保留已有 P/V 块边界、多头及 A/B/A/B 连续输入测试，并增加对 P 行块/相邻 K 块权重敏感的用例。结果为 `results/mindie_laser_pv_p_prefetch.json`，日志同名 `.log`。实现与生产/消费同步记录见 [P 预取审计](../../reports/ascend-pv-p-prefetch-sync-audit/README.md)。本地无 CCE/NPU，远端编译与性能结果待验收。

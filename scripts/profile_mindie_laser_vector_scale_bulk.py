@@ -34,12 +34,19 @@ CANDIDATES = {
                         suffix="vscale_pv_prefetch", comparison="pv_prefetch_vs_previous",
                         report_name="pv_prefetch", contract_key="pv_prefetch_contract",
                         metadata_key="pv_schedule"),
+    "pv_p_prefetch": dict(name="vector_pv_p_prefetch", build_arg="pv_p_prefetch_build",
+                          suffix="vscale_pv_p_prefetch", comparison="pv_p_prefetch_vs_previous",
+                          report_name="pv_p_prefetch", contract_key="pv_p_prefetch_contract",
+                          metadata_key="pv_schedule", old_name="vector_pv_prefetch",
+                          old_build_arg="pv_prefetch_build", old_suffix="vscale_pv_prefetch",
+                          old_contract_key="pv_prefetch_contract"),
 }
 MANIFESTS = {
     "vscale_build": "results/mindie_laser_quant_vscale_build.json",
     "bulk_build": "results/mindie_laser_quant_vscale_bulk_build.json",
     "rowmax_build": "results/mindie_laser_quant_vscale_rowmax_build.json",
     "pv_prefetch_build": "results/mindie_laser_quant_vscale_pv_prefetch_build.json",
+    "pv_p_prefetch_build": "results/mindie_laser_quant_vscale_pv_p_prefetch_build.json",
     "preprocess_build": "results/mindie_laser_quant_preprocess_build.json",
     "baseline_build": "results/mindie_laser_build.json",
     "bridge_manifest": "results/mindie_laser_bridge.json",
@@ -64,25 +71,33 @@ def candidate_config(args):
 
 
 def variant_names(candidate):
-    if candidate not in {config["name"] for config in CANDIDATES.values()}:
-        raise ValueError("Unknown candidate variant: " + str(candidate))
-    return ORIGINAL, OLD, candidate
+    for config in CANDIDATES.values():
+        if config["name"] == candidate:
+            return ORIGINAL, config.get("old_name", OLD), candidate
+    raise ValueError("Unknown candidate variant: " + str(candidate))
 
 
 def group_candidate(group):
-    candidates = set(group) - {ORIGINAL, OLD}
-    if len(group) != 3 or len(candidates) != 1:
-        raise ValueError("Three-provider benchmark requires original and both INT8 variants")
-    candidate = next(iter(candidates))
-    variant_names(candidate)
-    return candidate
+    if len(group) == 3:
+        for config in CANDIDATES.values():
+            if set(group) == set(variant_names(config["name"])):
+                return config["name"]
+        if ORIGINAL in group and OLD in group:
+            # Preserve the legacy unknown-candidate diagnostic; known rows
+            # with the wrong parent still fail the selected-triple check.
+            candidate = next(iter(set(group) - {ORIGINAL, OLD}))
+            variant_names(candidate)
+    raise ValueError("Three-provider benchmark requires original and the selected INT8 parent/candidate")
 
 
 def specifications(args):
     config = candidate_config(args)
+    old = config.get("old_name", OLD)
+    old_suffix = config.get("old_suffix", "vscale")
     return {
-        OLD: dict(path=args.vscale_build, namespace="vc_laser_quant_vscale",
-                  source=importlib.import_module("prepare_mindie_laser_quant_vscale_source")),
+        old: dict(path=getattr(args, config.get("old_build_arg", "vscale_build")),
+                  namespace="vc_laser_quant_"+old_suffix,
+                  source=importlib.import_module("prepare_mindie_laser_quant_"+old_suffix+"_source")),
         config["name"]: dict(path=getattr(args, config["build_arg"]),
                   namespace="vc_laser_quant_"+config["suffix"],
                   source=importlib.import_module("prepare_mindie_laser_quant_"+config["suffix"]+"_source")),
@@ -170,11 +185,12 @@ def verify_mapped_hashes(relevant, providers, evidence):
 def make_calls(adapters, payloads, inputs):
     from mindie_laser_fp16_trace_worker import native_call
     candidate = group_candidate(adapters)
+    _, old, _ = variant_names(candidate)
     if set(payloads) != set(adapters):
         raise ValueError("Payloads must match the three selected adapters")
-    if payloads[OLD] is not payloads[candidate]:
+    if payloads[old] is not payloads[candidate]:
         raise ValueError("INT8 variants must share identical payload objects")
-    if payloads[ORIGINAL] is payloads[OLD]:
+    if payloads[ORIGINAL] is payloads[old]:
         raise ValueError("Original FP16 Laser requires its own prepared payload")
     return {
         "full": {name: lambda a=adapter: a(*inputs) for name, adapter in adapters.items()},
@@ -224,10 +240,11 @@ class ExactValidationAdapter:
 
 def compare_scopes(timing):
     candidate = group_candidate(timing["rows"])
+    _, old, _ = variant_names(candidate)
     key = next(c["comparison"] for c in CANDIDATES.values() if c["name"] == candidate)
-    return {OLD: paired_comparison(timing, ORIGINAL, OLD),
+    return {old: paired_comparison(timing, ORIGINAL, old),
             candidate: paired_comparison(timing, ORIGINAL, candidate),
-            key: paired_comparison(timing, OLD, candidate)}
+            key: paired_comparison(timing, old, candidate)}
 
 
 def table(report):
@@ -363,11 +380,14 @@ def worker(args):
     config = candidate_config(args)
     candidate = config["name"]
     names = variant_names(candidate)
+    old_name = names[1]
+    old_namespace = "vc_laser_quant_" + config.get("old_suffix", "vscale")
     namespace = "vc_laser_quant_" + config["suffix"]
     directory = Path(args._run_dir) / "paired" / "local"
     directory.mkdir(parents=True, exist_ok=True)
     report = dict(status="running", stage="provenance", pid=os.getpid(),
         primary_baseline=ORIGINAL, original_baseline=BASELINE_DESCRIPTION, candidate=candidate,
+        previous_int8_variant=old_name,
         shape_bnsd=args.shape, dtype="bfloat16", seed=0, scopes=SCOPES,
         timings={}, comparisons={}, contract="INT8 QK, original exp and FP16 PV; no V smoothing/reordering")
     save = lambda: common.write_json(directory / "report.json", report)
@@ -385,13 +405,18 @@ def worker(args):
         original, transforms = quant.baseline.load_adapter(providers[ORIGINAL],
             evidence[ORIGINAL]["source_manifest"])
         report["source_transform_validation"] = transforms
-        old = load_quant_laser(providers[OLD].bridge_path, preprocessing="fused",
-            preprocess_build=args.preprocess_build, torch_namespace="vc_laser_quant_vscale",
+        old = load_quant_laser(providers[old_name].bridge_path, preprocessing="fused",
+            preprocess_build=args.preprocess_build, torch_namespace=old_namespace,
             v_quantize=False, expcast=False, check_finite=False)
         from mindie_laser_quant_vscale_patch import VSCALE_CONTRACT
         candidate_contract = importlib.import_module(
             "mindie_laser_quant_"+config["suffix"]+"_patch").CONTRACT
         old.metadata["qk_result_contract"] = VSCALE_CONTRACT
+        if "old_contract_key" in config:
+            previous_contract = importlib.import_module(
+                "mindie_laser_quant_"+config["old_suffix"]+"_patch").CONTRACT
+            old.metadata[config.get("metadata_key", "vector_scale_schedule")] = previous_contract
+            report[config["old_contract_key"]] = previous_contract
         torch.ops.load_library(providers[candidate].bridge_path)
         native = getattr(torch.ops, namespace).la.default
         if ([str(x.type) for x in native._schema.arguments] != ["Tensor"]*5+["float", "int", "bool"]
@@ -401,7 +426,7 @@ def worker(args):
             expcast=False, check_finite=False, metadata=dict(old.metadata,
             dispatch=f"torch.ops.{namespace}.la.default",
             bridge_path=providers[candidate].bridge_path, native_schema=str(native._schema)))
-        adapters = {ORIGINAL: original, OLD: old, candidate: new}
+        adapters = {ORIGINAL: original, old_name: old, candidate: new}
         new.metadata[config.get("metadata_key", "vector_scale_schedule")] = candidate_contract
         report["numerical_contract"] = VSCALE_CONTRACT
         report[config["contract_key"]] = candidate_contract
@@ -421,7 +446,7 @@ def worker(args):
         builds = {name: evidence[name]["build_manifest"] for name in names}
         report["runtime_targets"] = {
             ORIGINAL: verify_fp16_target(builds[ORIGINAL], soc, cann),
-            **{name: verify_runtime_target(builds[name], prep, soc, cann) for name in (OLD, candidate)}}
+            **{name: verify_runtime_target(builds[name], prep, soc, cann) for name in (old_name, candidate)}}
         report["environment"] = dict(torch=torch.__version__, torch_npu=torch_npu.__version__,
             runtime_soc=soc, device_index=args.device, custom_opp_path=os.environ["ASCEND_CUSTOM_OPP_PATH"])
         context = dict(cann_root=cann, soc=builds[ORIGINAL]["soc"])
@@ -439,6 +464,9 @@ def worker(args):
             elif args.candidate == "pv_prefetch":
                 from mindie_laser_pv_prefetch_checks import validate_pv_prefetch
                 validate_pv_prefetch(old, new, device, report, save)
+            elif args.candidate == "pv_p_prefetch":
+                from mindie_laser_pv_p_prefetch_checks import validate_pv_p_prefetch
+                validate_pv_p_prefetch(old, new, device, report, save)
             report["stage"] = "long_shape_validation"
             save()
             generator = torch.Generator().manual_seed(0)
@@ -446,7 +474,7 @@ def worker(args):
             report["input_sha256"] = [common.tensor_sha256(x) for x in host]
             inputs = [x.to(device) for x in host]
             fixed = old.prepare(*inputs)
-            payloads = {ORIGINAL: original.prepare(*inputs), OLD: fixed, candidate: fixed}
+            payloads = {ORIGINAL: original.prepare(*inputs), old_name: fixed, candidate: fixed}
             report["payloads"] = {ORIGINAL: original.describe_payload(payloads[ORIGINAL]),
                                   "shared_int8": payload_evidence(fixed)}
             calls = make_calls(adapters, payloads, inputs)
@@ -465,10 +493,10 @@ def worker(args):
                         fresh, os.getpid(), providers[name].marker_token))
                 marker_sizes[marker] = marker.stat().st_size
             inspect_providers(providers, evidence, report, directory, **context)
-            quant.inspect_fused_preprocessor(providers[OLD], report)
+            quant.inspect_fused_preprocessor(providers[old_name], report)
             for p in providers.values():
                 os.environ.pop(p.marker_env, None)
-            report["same_payload_all_output"] = compare_all_rows(raw[candidate], raw[OLD])
+            report["same_payload_all_output"] = compare_all_rows(raw[candidate], raw[old_name])
             require_exact(report["same_payload_all_output"])
             ids = torch.linspace(0, args.shape[2]-1, min(32, args.shape[2])).long().unique()
             dense = common.dense_reference(*host, ids)
@@ -520,7 +548,7 @@ def worker(args):
                                                        directory=directory/"profiler", repeats=3)
                 save()
             inspect_providers(providers, evidence, report, directory, **context)
-            quant.inspect_fused_preprocessor(providers[OLD], report)
+            quant.inspect_fused_preprocessor(providers[old_name], report)
         report.update(status="passed", stage="complete")
         save()
         return 0
@@ -563,6 +591,7 @@ def parent(args):
     output.parent.mkdir(parents=True, exist_ok=True)
     args._run_dir = tempfile.mkdtemp(prefix="mindie_laser_"+candidate_config(args)["report_name"]+"_", dir=output.parent)
     report = dict(status="running", primary_baseline=ORIGINAL, candidate=candidate_config(args)["name"],
+                  previous_int8_variant=candidate_config(args).get("old_name", OLD),
                   original_baseline=BASELINE_DESCRIPTION, run_dir=args._run_dir, workers={})
     save = lambda: common.write_json(output, report)
     save()

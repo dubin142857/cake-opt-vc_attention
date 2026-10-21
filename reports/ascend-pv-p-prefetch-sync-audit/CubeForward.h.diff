@@ -1,0 +1,91 @@
+--- baseline/CubeForward.h
++++ candidate/CubeForward.h
+@@ -217,0 +218,19 @@
++        // Run() already waited for Vector's completed-round MTE3 publication.
++        // Never prefetch P from another descriptor or a future round.
++        const bool pv_p_prefetch = pv_v_prefetch && Kx > 1;
++        if (pv_p_prefetch) {
++            auto pv_first_p = ping_pong_flag_l1_a_ ? l1_a_pong_ : l1_a_ping_;
++            wait_flag(PIPE_MTE1, PIPE_MTE2, ping_pong_flag_l1_a_ + 2);
++            copy_gm_to_cbuf_multi_nd2nz_b16(pv_first_p,
++                (__gm__ TYPE *)(left_start_addr + 0 * l1_m * l1_k),
++                0, vcore_num_per_head, l1_m / vcore_num_per_head, l1_k,
++                128 / vcore_num_per_head * 128 * 2, l1_k, l1_m, 1,
++                128 * BLOCK_SIZE / vcore_num_per_head);
++            copy_gm_to_cbuf_multi_nd2nz_b16(pv_first_p + SIZE_128 * SIZE_128,
++                (__gm__ TYPE *)(left_start_addr + 0 * l1_k * l1_m + line_stride),
++                0, vcore_num_per_head, l1_m / vcore_num_per_head, l1_k,
++                128 / vcore_num_per_head * 128 * 2, l1_k, l1_m, 1,
++                128 * BLOCK_SIZE / vcore_num_per_head);
++            set_flag(PIPE_MTE2, PIPE_MTE1, ping_pong_flag_l1_a_ + 2);
++        }
++
+@@ -231,5 +250,20 @@
+-            wait_flag(PIPE_MTE1, PIPE_MTE2, ping_pong_flag_l1_a_ + 2);
+-
+-            if (!l1_skip_flag) {
+-                copy_gm_to_cbuf_multi_nd2nz_b16(l1_a_buf,
+-                    (__gm__ TYPE *)(left_start_addr + i * l1_m * l1_k),
++            if (!pv_p_prefetch) {
++                wait_flag(PIPE_MTE1, PIPE_MTE2, ping_pong_flag_l1_a_ + 2);
++
++                if (!l1_skip_flag) {
++                    copy_gm_to_cbuf_multi_nd2nz_b16(l1_a_buf,
++                        (__gm__ TYPE *)(left_start_addr + i * l1_m * l1_k),
++                        0,                                     // sid
++                        vcore_num_per_head,                    // ndNum
++                        l1_m / vcore_num_per_head,             // nValue   实际拷贝的行数
++                        l1_k,                                  // dValue   实际拷贝的列数
++                        128 / vcore_num_per_head * 128 * 2,    // srcNdMatrixStride, unused
++                        l1_k,                                  // srcDValue 大矩阵的列数
++                        l1_m,                                  // dstNzC0Stride 目标行数
++                        1,                                     // dstNzNStride  目标行之间间隔（1为连续）
++                        128 * BLOCK_SIZE / vcore_num_per_head  // dstNzMatrixStride, unused
++                    );
++                }
++
++                copy_gm_to_cbuf_multi_nd2nz_b16(l1_a_buf + SIZE_128 * SIZE_128,
++                    (__gm__ TYPE *)(left_start_addr + i * l1_k * l1_m + line_stride),
+@@ -240 +274 @@
+-                    128 / vcore_num_per_head * 128 * 2,    // srcNdMatrixStride, unused
++                    128 / vcore_num_per_head * 128 * 2,    // srcNdMatrixStride, 拷贝两块之间间隔
+@@ -247,13 +280,0 @@
+-
+-            copy_gm_to_cbuf_multi_nd2nz_b16(l1_a_buf + SIZE_128 * SIZE_128,
+-                (__gm__ TYPE *)(left_start_addr + i * l1_k * l1_m + line_stride),
+-                0,                                     // sid
+-                vcore_num_per_head,                    // ndNum
+-                l1_m / vcore_num_per_head,             // nValue   实际拷贝的行数
+-                l1_k,                                  // dValue   实际拷贝的列数
+-                128 / vcore_num_per_head * 128 * 2,    // srcNdMatrixStride, 拷贝两块之间间隔
+-                l1_k,                                  // srcDValue 大矩阵的列数
+-                l1_m,                                  // dstNzC0Stride 目标行数
+-                1,                                     // dstNzNStride  目标行之间间隔（1为连续）
+-                128 * BLOCK_SIZE / vcore_num_per_head  // dstNzMatrixStride, unused
+-            );
+@@ -278 +299,3 @@
+-            set_flag(PIPE_MTE2, PIPE_MTE1, ping_pong_flag_l1_a_ + 2);
++            if (!pv_p_prefetch) {
++                set_flag(PIPE_MTE2, PIPE_MTE1, ping_pong_flag_l1_a_ + 2);
++            }
+@@ -313,0 +337,20 @@
++
++                if (pv_p_prefetch && i + 1 < Kx) {
++                    // The opposite slot was released by tile i-1 (or preset).
++                    // Current P remains in its own L1A slot until both Ky reads.
++                    const uint32_t pv_next_p_slot = 1 - ping_pong_flag_l1_a_;
++                    auto pv_next_p = pv_next_p_slot ? l1_a_pong_ : l1_a_ping_;
++                    wait_flag(PIPE_MTE1, PIPE_MTE2, pv_next_p_slot + 2);
++                    copy_gm_to_cbuf_multi_nd2nz_b16(pv_next_p,
++                        (__gm__ TYPE *)(left_start_addr + (i + 1) * l1_m * l1_k),
++                        0, vcore_num_per_head, l1_m / vcore_num_per_head, l1_k,
++                        128 / vcore_num_per_head * 128 * 2, l1_k, l1_m, 1,
++                        128 * BLOCK_SIZE / vcore_num_per_head);
++                    copy_gm_to_cbuf_multi_nd2nz_b16(pv_next_p + SIZE_128 * SIZE_128,
++                        (__gm__ TYPE *)(left_start_addr + (i + 1) * l1_k * l1_m + line_stride),
++                        0, vcore_num_per_head, l1_m / vcore_num_per_head, l1_k,
++                        128 / vcore_num_per_head * 128 * 2, l1_k, l1_m, 1,
++                        128 * BLOCK_SIZE / vcore_num_per_head);
++                    set_flag(PIPE_MTE2, PIPE_MTE1, pv_next_p_slot + 2);
++                }
++

@@ -1,0 +1,11 @@
+{
+  "l1_to_l0_call_sites": 2,
+  "l1_to_l0_identical": true,
+  "a_release_toggles_tail_identical": true,
+  "run_identical": true,
+  "vector_identical": true,
+  "cube_pv_sites": 3,
+  "cube_publication_wait_sites": 3,
+  "vector_publication": "ffts_cross_core_sync(PIPE_MTE3, config4)",
+  "boundary": "Publication ownership also manually traced through Run and the unchanged round mapper; counts alone are not a synchronization proof."
+}
