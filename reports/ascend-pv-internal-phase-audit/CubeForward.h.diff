@@ -1,0 +1,197 @@
+--- baseline/CubeForward.h
++++ probe/CubeForward.h
+@@ -18,0 +19,3 @@
++// VC_PV_PROBE_BEGIN INCLUDE
++#include "vc_laser_pv_probe.h"
++// VC_PV_PROBE_END INCLUDE
+@@ -46,0 +50,5 @@
++    // VC_PV_PROBE_BEGIN SETUP
++    __aicore__ inline void SetupCubeProbe(__gm__ uint8_t *trace, int32_t mode) {
++        pv_probe_.Init(trace, mode, get_block_idx());
++    }
++    // VC_PV_PROBE_END SETUP
+@@ -51,0 +60,3 @@
++    // VC_PV_PROBE_BEGIN MEMBER
++    vc_laser_pv_probe::PvProbe pv_probe_;
++    // VC_PV_PROBE_END MEMBER
+@@ -196,0 +208,3 @@
++        // VC_PV_PROBE_BEGIN DESCRIPTOR
++        pv_probe_.Descriptor(idx, src_len, Kx, Ky, src[idx].onStartSection, src[idx].onEndSection);
++        // VC_PV_PROBE_END DESCRIPTOR
+@@ -201,0 +216,3 @@
++            // VC_PV_PROBE_BEGIN HISTORY_BEGIN
++            pv_probe_.StartGroup();
++            // VC_PV_PROBE_END HISTORY_BEGIN
+@@ -202,0 +220,3 @@
++            // VC_PV_PROBE_BEGIN HISTORY_END
++            pv_probe_.StopGroup(23);
++            // VC_PV_PROBE_END HISTORY_END
+@@ -209,0 +230,3 @@
++            // VC_PV_PROBE_BEGIN GUARD
++        pv_probe_.SetGuard(pv_v_prefetch);
++            // VC_PV_PROBE_END GUARD
+@@ -211,0 +235,3 @@
++            // VC_PV_PROBE_BEGIN V_PRIME_FREE_BEGIN
++            pv_probe_.StartGroup();
++            // VC_PV_PROBE_END V_PRIME_FREE_BEGIN
+@@ -212,0 +239,6 @@
++            // VC_PV_PROBE_BEGIN V_PRIME_FREE_END
++            pv_probe_.StopGroup(40);
++            // VC_PV_PROBE_END V_PRIME_FREE_END
++            // VC_PV_PROBE_BEGIN V_PRIME_COPY_BEGIN
++            pv_probe_.StartGroup();
++            // VC_PV_PROBE_END V_PRIME_COPY_BEGIN
+@@ -214,0 +247,3 @@
++            // VC_PV_PROBE_BEGIN V_PRIME_COPY_END
++            pv_probe_.StopGroup(41);
++            // VC_PV_PROBE_END V_PRIME_COPY_END
+@@ -219,0 +255,3 @@
++        // VC_PV_PROBE_BEGIN TILE_BEGIN
++            pv_probe_.BeginTile(i);
++        // VC_PV_PROBE_END TILE_BEGIN
+@@ -230,0 +269,3 @@
++            // VC_PV_PROBE_BEGIN P_FREE_BEGIN
++            pv_probe_.Start(26);
++            // VC_PV_PROBE_END P_FREE_BEGIN
+@@ -231,0 +273,6 @@
++            // VC_PV_PROBE_BEGIN P_FREE_END
++            pv_probe_.Stop(26);
++            // VC_PV_PROBE_END P_FREE_END
++// VC_PV_PROBE_BEGIN P_COPIES_BEGIN
++pv_probe_.Start(27);
++// VC_PV_PROBE_END P_COPIES_BEGIN
+@@ -260,0 +308,4 @@
++// VC_PV_PROBE_BEGIN P_COPIES_END
++pv_probe_.Stop(27);
++            pv_probe_.Count(43, l1_skip_flag ? 1 : 2);
++// VC_PV_PROBE_END P_COPIES_END
+@@ -276,0 +328,3 @@
++            // VC_PV_PROBE_BEGIN V_READY_BEGIN
++            pv_probe_.Start(28);
++            // VC_PV_PROBE_END V_READY_BEGIN
+@@ -277,0 +332,6 @@
++            // VC_PV_PROBE_BEGIN V_READY_END
++            pv_probe_.Stop(28);
++            // VC_PV_PROBE_END V_READY_END
++            // VC_PV_PROBE_BEGIN P_READY_BEGIN
++            pv_probe_.Start(29);
++            // VC_PV_PROBE_END P_READY_BEGIN
+@@ -279,0 +340,3 @@
++            // VC_PV_PROBE_BEGIN P_READY_END
++            pv_probe_.Stop(29);
++            // VC_PV_PROBE_END P_READY_END
+@@ -283,0 +347,3 @@
++                // VC_PV_PROBE_BEGIN L0B_FREE_BEGIN
++                pv_probe_.Start(30);
++                // VC_PV_PROBE_END L0B_FREE_BEGIN
+@@ -284,0 +351,6 @@
++                // VC_PV_PROBE_BEGIN L0B_FREE_END
++                pv_probe_.Stop(30);
++                // VC_PV_PROBE_END L0B_FREE_END
++                // VC_PV_PROBE_BEGIN V_L0_LOADS_BEGIN
++                pv_probe_.Start(31);
++                // VC_PV_PROBE_END V_L0_LOADS_BEGIN
+@@ -296,0 +369,7 @@
++                // VC_PV_PROBE_BEGIN V_L0_LOADS_END
++                pv_probe_.Stop(31);
++                pv_probe_.Count(44, 8);
++                // VC_PV_PROBE_END V_L0_LOADS_END
++                // VC_PV_PROBE_BEGIN L0B_READY_BEGIN
++                pv_probe_.Start(32);
++                // VC_PV_PROBE_END L0B_READY_BEGIN
+@@ -298,0 +378,3 @@
++                // VC_PV_PROBE_BEGIN L0B_READY_END
++                pv_probe_.Stop(32);
++                // VC_PV_PROBE_END L0B_READY_END
+@@ -306,0 +389,3 @@
++                        // VC_PV_PROBE_BEGIN V_NEXT_FREE_BEGIN
++                        pv_probe_.Start(33);
++                        // VC_PV_PROBE_END V_NEXT_FREE_BEGIN
+@@ -307,0 +393,6 @@
++                        // VC_PV_PROBE_BEGIN V_NEXT_FREE_END
++                        pv_probe_.Stop(33);
++                        // VC_PV_PROBE_END V_NEXT_FREE_END
++                        // VC_PV_PROBE_BEGIN V_NEXT_COPY_BEGIN
++                        pv_probe_.Start(34);
++                        // VC_PV_PROBE_END V_NEXT_COPY_BEGIN
+@@ -310,0 +402,4 @@
++                        // VC_PV_PROBE_BEGIN V_NEXT_COPY_END
++                        pv_probe_.Stop(34);
++                        pv_probe_.Count(48, 1);
++                        // VC_PV_PROBE_END V_NEXT_COPY_END
+@@ -324,0 +420,3 @@
++                    // VC_PV_PROBE_BEGIN L0A_FREE_BEGIN
++                    pv_probe_.Start(35);
++                    // VC_PV_PROBE_END L0A_FREE_BEGIN
+@@ -325,0 +424,6 @@
++                    // VC_PV_PROBE_BEGIN L0A_FREE_END
++                    pv_probe_.Stop(35);
++                    // VC_PV_PROBE_END L0A_FREE_END
++                    // VC_PV_PROBE_BEGIN P_L0_LOADS_BEGIN
++                    pv_probe_.Start(36);
++                    // VC_PV_PROBE_END P_L0_LOADS_BEGIN
+@@ -339,0 +444,7 @@
++                    // VC_PV_PROBE_BEGIN P_L0_LOADS_END
++                    pv_probe_.Stop(36);
++                    pv_probe_.Count(45, l0_skip_flag ? 0 : 8);
++                    // VC_PV_PROBE_END P_L0_LOADS_END
++                    // VC_PV_PROBE_BEGIN L0A_READY_BEGIN
++                    pv_probe_.Start(37);
++                    // VC_PV_PROBE_END L0A_READY_BEGIN
+@@ -342,0 +454,6 @@
++                    // VC_PV_PROBE_BEGIN L0A_READY_END
++                    pv_probe_.Stop(37);
++                    // VC_PV_PROBE_END L0A_READY_END
++                    // VC_PV_PROBE_BEGIN MAD_FIX_BEGIN
++                    pv_probe_.Start(38);
++                    // VC_PV_PROBE_END MAD_FIX_BEGIN
+@@ -372,0 +490,5 @@
++                    // VC_PV_PROBE_BEGIN MAD_FIX_END
++                    pv_probe_.Stop(38);
++                    pv_probe_.Count(46, 1);
++                    pv_probe_.Count(47, last_k ? 1 : 0);
++                    // VC_PV_PROBE_END MAD_FIX_END
+@@ -379,0 +502,3 @@
++            // VC_PV_PROBE_BEGIN RELEASE_BEGIN
++            pv_probe_.Start(39);
++            // VC_PV_PROBE_END RELEASE_BEGIN
+@@ -383,0 +509,3 @@
++            // VC_PV_PROBE_BEGIN RELEASE_END
++            pv_probe_.Stop(39);
++            // VC_PV_PROBE_END RELEASE_END
+@@ -386,0 +515,3 @@
++            // VC_PV_PROBE_BEGIN TILE_END
++            pv_probe_.EndTile();
++            // VC_PV_PROBE_END TILE_END
+@@ -388,0 +520,3 @@
++            // VC_PV_PROBE_BEGIN OUTPUT_BEGIN
++            pv_probe_.StartGroup();
++            // VC_PV_PROBE_END OUTPUT_BEGIN
+@@ -389,0 +524,3 @@
++            // VC_PV_PROBE_BEGIN OUTPUT_END
++            pv_probe_.StopGroup(24);
++            // VC_PV_PROBE_END OUTPUT_END
+@@ -733,0 +871,3 @@
++                // VC_PV_PROBE_BEGIN CALL_0_BEGIN
++                pv_probe_.BeginCall(roundId, Z);
++                // VC_PV_PROBE_END CALL_0_BEGIN
+@@ -735,0 +876,3 @@
++                // VC_PV_PROBE_BEGIN CALL_0_END
++                pv_probe_.EndCall();
++                // VC_PV_PROBE_END CALL_0_END
+@@ -770,0 +914,3 @@
++                // VC_PV_PROBE_BEGIN CALL_1_BEGIN
++                pv_probe_.BeginCall(roundId - 2, Z);
++                // VC_PV_PROBE_END CALL_1_BEGIN
+@@ -772,0 +919,3 @@
++                // VC_PV_PROBE_BEGIN CALL_1_END
++                pv_probe_.EndCall();
++                // VC_PV_PROBE_END CALL_1_END
+@@ -796,0 +946,3 @@
++                // VC_PV_PROBE_BEGIN CALL_2_BEGIN
++                pv_probe_.BeginCall(roundId + Z - 2, Z);
++                // VC_PV_PROBE_END CALL_2_BEGIN
+@@ -798,0 +951,3 @@
++                // VC_PV_PROBE_BEGIN CALL_2_END
++                pv_probe_.EndCall();
++                // VC_PV_PROBE_END CALL_2_END

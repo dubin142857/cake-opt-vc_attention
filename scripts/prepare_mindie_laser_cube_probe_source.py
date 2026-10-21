@@ -18,6 +18,7 @@ if str(ROOT) not in sys.path:
 from scripts import prepare_mindie_laser_source as original
 from scripts import prepare_mindie_laser_quant_reuse_source as quant
 from scripts import prepare_mindie_laser_quant_vscale_source as vscale
+from scripts import prepare_mindie_laser_quant_vscale_pv_prefetch_source as pv
 from scripts.mindie_laser_quant_patch import once
 from scripts.mindie_laser_offline_cache import local_objects_only, seed_local_checkout
 from scripts.prepare_cann_fas_source import PreparationError, ensure_checkout, check_dirty, audit_files, sha256, git
@@ -25,7 +26,7 @@ from scripts.prepare_cann_fas_source import PreparationError, ensure_checkout, c
 SOURCE_LOCK = original.SOURCE_LOCK
 OP_ROOT = original.OP_ROOT
 PREPARE_SCRIPT = original.PREPARE_SCRIPT
-KINDS = ("int8", "fp16", "vscale")
+KINDS = ("int8", "fp16", "vscale", "pv")
 TRACE_SHAPE = [4, 2, 3, 24]
 PROBE_CONTRACT = {
     "output_index": 2, "dtype": "int64", "shape": TRACE_SHAPE,
@@ -33,6 +34,18 @@ PROBE_CONTRACT = {
     "allocation": "fresh zero-filled trace in every mode; original statistics allocation retained",
     "timing": "sparse system ticks; not production phase percentages or additive kernel durations",
     "calibration": "each provider against its own uninstrumented baseline and compiled plain mode",
+}
+PV_TRACE_SHAPE = [4, 3, 3, 64]
+PV_PROBE_CONTRACT = {
+    "output_index": 2, "dtype": "int64", "shape": PV_TRACE_SHAPE,
+    "schema_version": 1, "magic": 0x56434C5056505242,
+    "modes": {"0": "plain", "1": "whole-call scalar issue", "2": "internal scalar issue/dependency windows"},
+    "allocation": "fresh zero-filled trace in every mode; original statistics allocation retained",
+    "sampling": "first four Cube cores; unique first/middle/last logical PV rounds; descriptor 0; unique first/middle/last K tiles",
+    "group_fields": "whole-call fields cover all descriptors; history/output/prime fields cover descriptor 0 only; stored once in first K record",
+    "completion": "mode 2 PIPE_ALL only after complete cube2 call; never inside MAD/FIX or history-to-PV chain",
+    "timing": "raw system ticks, internal passive scalar issue/dependency brackets; not pure engine time, kernel percentages or additive phases",
+    "calibration": "V-only production vs compiled plain; plain vs issue/detail; exact all-output own-payload gates",
 }
 
 
@@ -55,12 +68,12 @@ def marker_environment(kind):
 
 def quantized(kind):
     identity(kind)
-    return kind in ("int8", "vscale")
+    return kind in ("int8", "vscale", "pv")
 
 
 def baseline_module(kind):
     identity(kind)
-    return {"int8": quant, "fp16": original, "vscale": vscale}[kind]
+    return {"int8": quant, "fp16": original, "vscale": vscale, "pv": pv}[kind]
 
 
 def _rename(data, kind):
@@ -126,6 +139,9 @@ def patch_abi(path, data, kind):
 static ge::graphStatus''')
         data = once(data, b"    context->SetOutputDataType(1, ge::DT_FLOAT);",
                     b"    context->SetOutputDataType(1, ge::DT_FLOAT);\n    context->SetOutputDataType(2, ge::DT_INT64);")
+        if kind == "pv":
+            data = once(data, b"    traceOut->SetDim(1, 2);", b"    traceOut->SetDim(1, 3);")
+            data = once(data, b"    traceOut->SetDim(3, 24);", b"    traceOut->SetDim(3, 64);")
     elif path.endswith(f"/op_host/{name}_tiling.h"):
         data = once(data, b"END_TILING_DATA_DEF;", b"TILING_DATA_FIELD_DEF(int32_t, probeMode);\nEND_TILING_DATA_DEF;")
     elif path.endswith(f"/op_host/{name}_tiling.cpp"):
@@ -151,7 +167,12 @@ static ge::graphStatus''')
 
 
 def expected_files(source, kind="int8"):
-    from scripts.mindie_laser_cube_probe_patch import apply
+    if kind == "pv":
+        from scripts.mindie_laser_pv_probe_patch import apply
+        header_basename = "vc_laser_pv_probe.h"
+    else:
+        from scripts.mindie_laser_cube_probe_patch import apply
+        header_basename = "vc_laser_cube_probe.h"
     base_files, base_records = baseline_files(source, kind)
     patches, records = {}, {}
     for name, data in base_files.items():
@@ -161,8 +182,8 @@ def expected_files(source, kind="int8"):
         if name in base_records:
             records[target] = {**base_records[name], "prepared_sha256": sha256(transformed),
                                "baseline_prepared_sha256": sha256(data)}
-    header_name = f'csrc/ops/{identity(kind)["op_name"]}/op_kernel/vc_laser_cube_probe.h'
-    header = (ROOT / "ascend/laser_cube_probe/vc_laser_cube_probe.h").read_bytes()
+    header_name = f'csrc/ops/{identity(kind)["op_name"]}/op_kernel/{header_basename}'
+    header = (ROOT / "ascend/laser_cube_probe" / header_basename).read_bytes()
     patches[header_name] = header
     records[header_name] = dict(original_path=None, original_sha256=None, prepared_sha256=sha256(header))
     return patches, records
@@ -181,7 +202,8 @@ def _manifest_identity(source, kind):
                   custom_operator=f'csrc/ops/{identity(kind)["op_name"]}',
                   marker_token=marker_token(kind), marker_environment=marker_environment(kind),
                   upstream={"url": SOURCE_LOCK.url, "commit": SOURCE_LOCK.commit, "tag": SOURCE_LOCK.tag},
-                  diagnostic_instrumentation=True, probe_contract=PROBE_CONTRACT, probe_kind=kind)
+                  diagnostic_instrumentation=True,
+                  probe_contract=PV_PROBE_CONTRACT if kind == "pv" else PROBE_CONTRACT, probe_kind=kind)
     if kind == "int8":
         record.update(qk_scale_contract=quant.SCALE_CONTRACT, scale_reuse_contract=quant.REUSE_CONTRACT)
     elif kind == "vscale":
@@ -196,10 +218,19 @@ def _manifest_identity(source, kind):
                           "Parent contracts record provenance; vector_scale_contract defines "
                           "the current scale ownership and arithmetic. Diagnostic hooks do "
                           "not alter the fixed vector_scale parent math."))
+    elif kind == "pv":
+        parent_identity = pv._identity(source)
+        record.update({key: value for key, value in parent_identity.items() if key.endswith("_contract")})
+        record.update(baseline_variant=parent_identity["variant"],
+                      inherited_contract_scope=(
+                          "All parent contracts retain the V-only Vector-scale arithmetic and PV schedule; "
+                          "probe_contract defines passive internal instrumentation and the complete-call end drain."))
     return record
 
 
 def cached_references(reference, kind):
+    if kind == "pv":
+        return pv.cached_references(reference)
     if kind != "vscale":
         return quant.cached_references(reference)
     # Prefer the already compiled current baseline. Only Git objects are read;
@@ -227,6 +258,7 @@ def prepare(source_dir, reference_dir, manifest, *, kind="int8", offline=True):
     records = _audit(source, patches, kind)
     report = {"schema_version": 1, **_manifest_identity(source, kind), "original_operator": OP_ROOT,
               "algorithm_scope": ("Original pinned FP16 QK/PV Laser" if kind == "fp16" else
+                                  pv.ALGORITHM if kind == "pv" else
                                   vscale.ALGORITHM if kind == "vscale" else
                                   "Scale-reuse INT8 QK/INT32/FIX DEQF16; original FP16 PV"),
               "kernel_inverse_rename_equivalent": False, "source_files": records,

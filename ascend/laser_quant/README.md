@@ -655,3 +655,22 @@ bash scripts/run_mindie_laser_pv_p_prefetch.sh
 profiler 活跃时，original / V-only / P+V 的累计设备任务平均时长分别为 81.4000 / 78.5740 / 78.5984 ms/call，各 3 次调用、3 个设备任务。P+V 比 V-only 多 0.0244 ms，与 API 结果一样接近持平；不能与 wall time 混算。V-only 本轮相对原版的 native 速度比为 1.0351×，不是这次 P 预取带来的收益，也不能将它与上一轮不同原版时延下的速度比作增量比较。
 
 只保留 V-only 作为后续实验基线。下一步优先对**当前 V-only** 进行经校准的 PV 内部诊断，区分 P/V 数据就绪等待、L1→L0 装载调度、矩阵计算与输出链、history/尾部归一化；不在需要连续配对的 MAD/FIX 之间随意加完成屏障。现有整段采样或 profiler 总时长不足以将这些开销分摊成生产百分比，也不能证明 P 搬运无成本或 kernel 已经 compute-bound。P 搬运原本被部分掩盖、提前发射新增指令或争用抵消收益，都只是待验证解释。
+
+## V-only PV 内部诊断：先找阻塞窗口
+
+```bash
+git pull origin master
+bash scripts/run_mindie_laser_pv_phases.sh
+```
+
+本轮保留已测得收益的 `vector_pv_prefetch`，另建 `VcLaserCubePvProbeAttention` 诊断 provider。不叠加 P 预取，也不改变 P/V 精度、MAD 累加顺序或生产事件。脚本复用现有原版 Laser、V-only 与融合量化器，仅从本地固定 Git objects 准备并编译诊断版，不访问 GitHub。默认 BF16 BNSD `[1,28,37741,128]`、设备 0、warmup 5、每轮 10 次、9 轮校准、5 次采样，可用 `NPU_DEVICE` 选择设备。
+
+输出分三部分：
+
+1. **原版 Laser 与 V-only 的生产计时**：同进程随机交错的 full/prepared/native API wall time。full 每次重新量化和准备输入，诊断算子不参加加速比排名。
+2. **插桩扰动校准**：同一量化 payload 上比较 V-only native 与探针 plain/issue/detail。plain 保留编译结构和 trace 分配，但不计时、不写记录；issue 只看整次 PV 调用发射窗口；detail 增加内部稀疏记录及完整 PV 返回后的完成屏障。表中的 added time 是开销，不是优化收益。
+3. **稀疏 PV 记录**：在核 0～3 的首/中/尾逻辑 round，采样第一个 descriptor 的首/中/尾 K 块；重复位置只记录一次。P/V 搬运、原有事件依赖、L1→L0 装载、MAD/FIX 和下一块 V 发射分别记录；history/末尾归一化与整次调用字段单独保存，不能复制到各个 K 块后求和。
+
+内部 `GetSystemCycle` 是标量系统计数器。尤其 `wait_flag` 的目的流水不一定是标量流水，因此前后计数差可能只是发射与队列反压窗口，**不保证是 DMA 完成等待或矩阵乘的执行时长**。detail 的完成屏障只放在整个 PV 调用返回后，避免在 history 的未落盘累加与后续 MAD/FIX 之间排空。该完成尾巴也不是纯 FIX 时长；所有 ticks 均不得换算生产阶段百分比或相加外推 kernel 时间。
+
+计时前要求全部 padded native 输出精确一致，并运行当前 Vector-scale 的独立参考、同地址 Q/K scale 更新与 P/V 边界连续输入检查。结果保存到 `results/mindie_laser_pv_phases.json`，完整日志同名 `.log`。回传生产计时、Probe calibration 和 PV 内部采样三部分即可；先评估扰动，再决定下一项优化，不因单个采样较大就宣布带宽或计算瓶颈。同步与来源检查见 [PV 内部诊断审计](../../reports/ascend-pv-internal-phase-audit/README.md)。本地没有 CCE/NPU，远端编译和测量仍待执行。

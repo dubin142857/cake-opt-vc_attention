@@ -14,6 +14,7 @@ BRIDGE_SOURCE = ROOT / "ascend/laser_cube_probe/bridge"
 SCHEMAS = {
     "int8": "la(Tensor q, Tensor k, Tensor v, Tensor q_scale, Tensor k_scale, float scale, int keys, bool expcast, int probe_mode) -> (Tensor, Tensor)",
     "vscale": "la(Tensor q, Tensor k, Tensor v, Tensor q_scale, Tensor k_scale, float scale, int keys, bool expcast, int probe_mode) -> (Tensor, Tensor)",
+    "pv": "la(Tensor q, Tensor k, Tensor v, Tensor q_scale, Tensor k_scale, float scale, int keys, bool expcast, int probe_mode) -> (Tensor, Tensor)",
     "fp16": "la(Tensor q, Tensor k, Tensor v, float scale, int keys, int probe_mode) -> (Tensor, Tensor)",
 }
 
@@ -42,7 +43,7 @@ def build_bridge(source, cann, bridge_dir, jobs, output, *, kind="int8", runner=
     native = identity(kind)
     base = _module("build_mindie_laser_quant")
     # Preserve the existing int8/fp16 bridge source hashes and build cache.
-    bridge_source = BRIDGE_SOURCE / "vscale" if kind == "vscale" else BRIDGE_SOURCE
+    bridge_source = BRIDGE_SOURCE / kind if kind in ("vscale", "pv") else BRIDGE_SOURCE
     report = base.build_bridge(source, cann, bridge_dir, jobs, output, runner=runner, runtime=runtime,
                               identity=native, torch_namespace=native["vendor"], bridge_source=bridge_source,
                               bridge_name=bridge_name(kind))
@@ -67,7 +68,7 @@ def build(source, reference, source_manifest, cann, soc, jobs, install_dir, brid
 
 def parser():
     result = argparse.ArgumentParser(description=__doc__)
-    result.add_argument("--kind", choices=("int8", "fp16", "vscale"), required=True)
+    result.add_argument("--kind", choices=("int8", "fp16", "vscale", "pv"), required=True)
     result.add_argument("--cann-root", type=Path, required=True)
     result.add_argument("--soc", required=True)
     result.add_argument("--jobs", type=int, default=4)

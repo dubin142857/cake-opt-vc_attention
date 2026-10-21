@@ -1,0 +1,20 @@
+{
+  "prior_commit": "67b9e75",
+  "checks": {
+    "int8": {
+      "files_identical": true,
+      "records_identical": true,
+      "identity_identical": true
+    },
+    "vscale": {
+      "files_identical": true,
+      "records_identical": true,
+      "identity_identical": true
+    },
+    "fp16": {
+      "files_identical": true,
+      "records_identical": true,
+      "identity_identical": true
+    }
+  }
+}

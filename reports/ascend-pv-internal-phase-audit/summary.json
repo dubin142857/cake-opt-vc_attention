@@ -1,0 +1,38 @@
+[
+  {
+    "tree": "baseline",
+    "tool": "sync_audit",
+    "returncode": 0,
+    "files": 13,
+    "findings": 0,
+    "events": 0,
+    "operations": 0
+  },
+  {
+    "tree": "baseline",
+    "tool": "ascendc_flow_analyzer",
+    "returncode": 0,
+    "files": 13,
+    "findings": 0,
+    "events": null,
+    "operations": 0
+  },
+  {
+    "tree": "probe",
+    "tool": "sync_audit",
+    "returncode": 0,
+    "files": 14,
+    "findings": 1,
+    "events": 1,
+    "operations": 0
+  },
+  {
+    "tree": "probe",
+    "tool": "ascendc_flow_analyzer",
+    "returncode": 0,
+    "files": 14,
+    "findings": 0,
+    "events": null,
+    "operations": 0
+  }
+]
