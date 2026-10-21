@@ -1,0 +1,74 @@
+[
+  {
+    "tree": "vscale_baseline",
+    "tool": "sync_audit",
+    "returncode": 0,
+    "files": 13,
+    "findings": 0,
+    "events": 0,
+    "operations": 0
+  },
+  {
+    "tree": "vscale_baseline",
+    "tool": "ascendc_flow_analyzer",
+    "returncode": 0,
+    "files": 13,
+    "findings": 0,
+    "events": null,
+    "operations": 0
+  },
+  {
+    "tree": "vscale_probe",
+    "tool": "sync_audit",
+    "returncode": 0,
+    "files": 14,
+    "findings": 1,
+    "events": 1,
+    "operations": 0
+  },
+  {
+    "tree": "vscale_probe",
+    "tool": "ascendc_flow_analyzer",
+    "returncode": 0,
+    "files": 14,
+    "findings": 0,
+    "events": null,
+    "operations": 0
+  },
+  {
+    "tree": "fp16_baseline",
+    "tool": "sync_audit",
+    "returncode": 0,
+    "files": 12,
+    "findings": 0,
+    "events": 0,
+    "operations": 0
+  },
+  {
+    "tree": "fp16_baseline",
+    "tool": "ascendc_flow_analyzer",
+    "returncode": 0,
+    "files": 12,
+    "findings": 0,
+    "events": null,
+    "operations": 0
+  },
+  {
+    "tree": "fp16_probe",
+    "tool": "sync_audit",
+    "returncode": 0,
+    "files": 13,
+    "findings": 1,
+    "events": 1,
+    "operations": 0
+  },
+  {
+    "tree": "fp16_probe",
+    "tool": "ascendc_flow_analyzer",
+    "returncode": 0,
+    "files": 13,
+    "findings": 0,
+    "events": null,
+    "operations": 0
+  }
+]

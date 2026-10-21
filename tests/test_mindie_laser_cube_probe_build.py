@@ -14,7 +14,7 @@ from scripts.prepare_cann_fas_source import RepositoryLock, PreparationError, gi
 ROOT = Path(__file__).resolve().parents[1]
 
 
-@pytest.fixture(params=["int8", "fp16"])
+@pytest.fixture(params=["int8", "fp16", "vscale"])
 def kind(request):
     return request.param
 
@@ -79,15 +79,18 @@ def test_bridge_metadata_schema_and_target_match_kind(tmp_path, monkeypatch, kin
     assert report["probe_kind"] == kind
     assert json.loads((tmp_path / "bridge.json").read_text(encoding="utf-8"))["torch_schema"] == build.SCHEMAS[kind]
     assert Path(report["bridge_path"]).name == build.bridge_name(kind)
+    expected_sources = build.BRIDGE_SOURCE / "vscale" if kind == "vscale" else build.BRIDGE_SOURCE
+    assert {Path(row["path"]).parent for row in report["bridge_sources"]} == {expected_sources.resolve()}
 
 
 def test_default_paths_are_disjoint_and_kind_is_required():
     args = [build.resolve_defaults(build.parser().parse_args(["--kind", kind, "--cann-root", "cann", "--soc", "ascend910_93"]))
             for kind in prep.KINDS]
     for field in ("source_dir", "source_manifest", "install_dir", "bridge_dir", "output"):
-        assert getattr(args[0], field) != getattr(args[1], field)
+        assert len({getattr(arg, field) for arg in args}) == len(prep.KINDS)
         assert "cube_int8_probe" in getattr(args[0], field).name
         assert "cube_fp16_probe" in getattr(args[1], field).name
+        assert "cube_vscale_probe" in getattr(args[2], field).name
     with pytest.raises(SystemExit):
         build.parser().parse_args(["--cann-root", "cann", "--soc", "ascend910_93"])
     with pytest.raises(PreparationError):
@@ -127,7 +130,8 @@ def test_original_vector_math_is_unchanged_and_trace_abi_agrees(prepared):
     kind, reference, source, manifest, report = prepared
     identity = prep.identity(kind)
     base, _ = prep.baseline_files(source, kind)
-    original_name = "vc_laser_quant_reuse_attention" if kind == "int8" else "vc_laser_attention"
+    original_name = {"int8": "vc_laser_quant_reuse_attention", "fp16": "vc_laser_attention",
+                     "vscale": "vc_laser_quant_vscale_attention"}[kind]
     raw_vector = base[f"csrc/ops/{original_name}/op_kernel/VectorForward.h"]
     operator = source / "csrc/ops" / identity["op_name"]
     assert (operator / "op_kernel/VectorForward.h").read_bytes() == prep._rename(raw_vector, kind)
@@ -141,7 +145,7 @@ def test_original_vector_math_is_unchanged_and_trace_abi_agrees(prepared):
     for dimension, size in enumerate(prep.TRACE_SHAPE):
         assert f"traceOut->SetDim({dimension}, {size});" in proto
     tiling = (host / (identity["op_name"] + "_tiling.cpp")).read_text(encoding="utf-8")
-    assert f"GetAttrPointer<int64_t>({8 if kind == 'int8' else 7})" in tiling
+    assert f"GetAttrPointer<int64_t>({8 if prep.quantized(kind) else 7})" in tiling
     assert "*probeMode < 0 || *probeMode > 2" in tiling
     assert f"if (tiling.Tiling4{identity['op_type']}(context) != ge::GRAPH_SUCCESS)" in tiling
     definition = (host / (identity["op_name"] + "_def.cpp")).read_text(encoding="utf-8")
@@ -152,6 +156,14 @@ def test_original_vector_math_is_unchanged_and_trace_abi_agrees(prepared):
     else:
         assert 'Input("q_scale")' in definition and "use_expcast" in definition
         assert "if (*useExpCast) return ge::GRAPH_FAILED;" in tiling
+    if kind == "vscale":
+        assert report["vector_scale_contract"] == prep.vscale.VSCALE_CONTRACT
+        assert report["qk_scale_contract"] == prep.vscale.SCALE_CONTRACT
+        assert report["baseline_variant"] == "quant_vector_scale"
+        assert "scale_reuse_contract" not in report
+        assert "baseline_scale_reuse_contract" in report
+        assert "constant 1/64 FIX DEQF16 transport" in report["algorithm_scope"]
+        assert b"TryDenseTileRowMax" not in raw_vector
     assert report["probe_contract"]["shape"] == [4, 2, 3, 24]
 
 
@@ -189,3 +201,36 @@ def test_bridge_trace_is_initialized_and_fp16_is_a_separate_schema():
     assert "TORCH_LIBRARY(vc_laser_cube_int8_probe" in bridge
     assert "TORCH_LIBRARY(vc_laser_cube_fp16_probe" in bridge
     assert "-Wl,-Bsymbolic" in (build.BRIDGE_SOURCE / "CMakeLists.txt").read_text()
+
+
+def test_vscale_bridge_only_registers_current_quantized_schema_and_rejects_expcast():
+    bridge = (build.BRIDGE_SOURCE / "vscale/register.cpp").read_text()
+    cmake = (build.BRIDGE_SOURCE / "vscale/CMakeLists.txt").read_text()
+    assert '"aclnnVcLaserCubeVscaleProbeAttention"' in bridge
+    assert "TORCH_LIBRARY(vc_laser_cube_vscale_probe, module)" in bridge
+    assert "TORCH_LIBRARY_IMPL(vc_laser_cube_vscale_probe, PrivateUse1, module)" in bridge
+    assert 'TORCH_CHECK(!expcast,' in bridge
+    assert "is_high_precision, use_expcast, cube_probe_mode, statistics, output, trace);" in bridge
+    assert "bool use_expcast = false;" in bridge
+    assert "VC_CUBE_PROBE_INT8" not in bridge
+    assert "vc_laser_cube_int8_probe" not in bridge
+    assert "vc_laser_cube_fp16_probe" not in bridge
+    assert "set(target vc_laser_cube_vscale_probe_bridge)" in cmake
+    assert 'add_library(${target} SHARED register.cpp' in cmake
+    assert build.SCHEMAS["vscale"] == build.SCHEMAS["int8"]
+
+
+def test_vscale_prefers_current_local_cache_and_leaves_legacy_cache_order_unchanged(tmp_path, monkeypatch):
+    monkeypatch.setattr(prep, "ROOT", tmp_path)
+    results = tmp_path / "results"
+    results.mkdir()
+    cached = tmp_path / "current-vscale"
+    (results / "mindie_laser_quant_vscale_build.json").write_text(json.dumps(
+        {"status": "passed", "source_dir": str(cached)}))
+    reference = tmp_path / "reference"
+    monkeypatch.setattr(prep.vscale, "cached_references", lambda x: [x, tmp_path / "qresident"])
+    monkeypatch.setattr(prep.quant, "cached_references", lambda x: [x, tmp_path / "reuse"])
+    assert prep.cached_references(reference, "vscale") == [
+        cached, tmp_path / "build/mindie_laser_quant_vscale_source", reference, tmp_path / "qresident"]
+    assert prep.cached_references(reference, "int8") == [reference, tmp_path / "reuse"]
+    assert prep.cached_references(reference, "fp16") == [reference, tmp_path / "reuse"]

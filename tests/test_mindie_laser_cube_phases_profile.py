@@ -17,7 +17,7 @@ from mindie_laser_cube_records import decode_trace, summarize_records
 from tests.test_mindie_laser_cube_records import empty_trace, record, put
 
 
-@pytest.mark.parametrize("family", ["int8", "fp16"])
+@pytest.mark.parametrize("family", ["int8", "vscale", "fp16"])
 def test_native_argument_routing_and_output_order(family):
     payload = SimpleNamespace(**{key: object() for key in ("q", "k", "v", "q_scale", "k_scale")},
                               scale=.125, keys=37741, shape=(1, 28, 37741, 128), pre_tokens=147)
@@ -29,7 +29,7 @@ def test_native_argument_routing_and_output_order(family):
         return result
     assert profile.baseline_call(SimpleNamespace(native=native), payload, family) is result
     assert profile.probe_call(native, payload, family, 37741, 2) is result
-    if family == "int8":
+    if family != "fp16":
         assert seen[0] == (payload.q, payload.k, payload.v, payload.q_scale, payload.k_scale, .125, 37741, False)
         assert seen[1] == seen[0] + (2,)
         assert profile.baseline_output(result, family) is result
@@ -39,9 +39,9 @@ def test_native_argument_routing_and_output_order(family):
         assert profile.baseline_output(result, family) is result[1]
 
 
-@pytest.mark.parametrize("family", ["int8", "fp16"])
+@pytest.mark.parametrize("family", ["int8", "vscale", "fp16"])
 def test_trace_contract_requires_both_long_shape_stages(family):
-    q = torch.zeros(1, 1, 256, 128, dtype=torch.int8 if family == "int8" else torch.float16)
+    q = torch.zeros(1, 1, 256, 128, dtype=torch.int8 if family != "fp16" else torch.float16)
     payload = SimpleNamespace(q=q, tensors=(q, q, q))
     out = q.float()
     trace = torch.tensor(empty_trace(), dtype=torch.int64)
@@ -71,7 +71,7 @@ def test_summary_table_distinguishes_work_and_unmeasured_fields():
     assert table.split("issue/QK/first")[1].splitlines()[0].count("--") == 3
 
 
-@pytest.mark.parametrize("family", ["int8", "fp16"])
+@pytest.mark.parametrize("family", ["int8", "vscale", "fp16"])
 def test_changed_padded_output_stops_before_timing(monkeypatch, family):
     original_randn = torch.randn
     monkeypatch.setattr(torch, "randn", lambda shape, **kw: original_randn((1, 1, 2, 2), **kw))
@@ -81,7 +81,7 @@ def test_changed_padded_output_stops_before_timing(monkeypatch, family):
             return SimpleNamespace(q=q, k=k, v=v, q_scale=q, k_scale=k, tensors=(q, k, v),
                                    scale=1., keys=2, shape=q.shape, pre_tokens=0)
         def native(self, q, *args):
-            return q.float() if family == "int8" else (None, q.float())
+            return q.float() if family != "fp16" else (None, q.float())
     def bad(q, *args):
         return q.float() + (1 if args[-1] == 2 else 0), None
     report = {}

@@ -1,0 +1,72 @@
+{
+  "vscale": {
+    "CubeForward.h": {
+      "baseline_sha256": "ce829cc6f5a2c09aa4157d2608c0b4f15bfe701ff1e6a45a665cd668ad436a5c",
+      "probe_sha256": "e7c821964eb007586b4eeeff6894ccde425ab0373496dda8574bbf669159aca5",
+      "byte_identical": false,
+      "baseline_raw_calls": 79,
+      "probe_raw_calls": 79,
+      "raw_calls_identical": true,
+      "inverse_byte_identical": true
+    },
+    "VectorForward.h": {
+      "baseline_sha256": "dd99b7089764d018668946e80d54a5c0900097a0fcdc94f48893e6a07259b997",
+      "probe_sha256": "dd99b7089764d018668946e80d54a5c0900097a0fcdc94f48893e6a07259b997",
+      "byte_identical": true,
+      "baseline_raw_calls": 96,
+      "probe_raw_calls": 96,
+      "raw_calls_identical": true
+    },
+    "AddressMappingForwardOnline.h": {
+      "baseline_sha256": "b1c83a6078f9a3f41f1e5a46613583991e1dbf26844f1284e04813dbb4b5264d",
+      "probe_sha256": "b1c83a6078f9a3f41f1e5a46613583991e1dbf26844f1284e04813dbb4b5264d",
+      "byte_identical": true,
+      "baseline_raw_calls": 0,
+      "probe_raw_calls": 0,
+      "raw_calls_identical": true
+    },
+    "AddressMappingVectorForwardOnline.h": {
+      "baseline_sha256": "4d1c1b6df298172052db28e1b24ae4fa265268d5032c5e4fabee8553dc0d0360",
+      "probe_sha256": "4d1c1b6df298172052db28e1b24ae4fa265268d5032c5e4fabee8553dc0d0360",
+      "byte_identical": true,
+      "baseline_raw_calls": 0,
+      "probe_raw_calls": 0,
+      "raw_calls_identical": true
+    }
+  },
+  "fp16": {
+    "CubeForward.h": {
+      "baseline_sha256": "71401a8c33482a7dbc05d385f4f01e174e104506508364d1b65da0042a03a9d4",
+      "probe_sha256": "4f0bf67026c0c502e6c87b8f35a1d313a1ae50f75017458225249975e8ba5300",
+      "byte_identical": false,
+      "baseline_raw_calls": 77,
+      "probe_raw_calls": 77,
+      "raw_calls_identical": true,
+      "inverse_byte_identical": true
+    },
+    "VectorForward.h": {
+      "baseline_sha256": "da6d68346275a061111be7c2122db8c6e711d047d7744165a3a4130fcc0d9627",
+      "probe_sha256": "da6d68346275a061111be7c2122db8c6e711d047d7744165a3a4130fcc0d9627",
+      "byte_identical": true,
+      "baseline_raw_calls": 91,
+      "probe_raw_calls": 91,
+      "raw_calls_identical": true
+    },
+    "AddressMappingForwardOnline.h": {
+      "baseline_sha256": "b1c83a6078f9a3f41f1e5a46613583991e1dbf26844f1284e04813dbb4b5264d",
+      "probe_sha256": "b1c83a6078f9a3f41f1e5a46613583991e1dbf26844f1284e04813dbb4b5264d",
+      "byte_identical": true,
+      "baseline_raw_calls": 0,
+      "probe_raw_calls": 0,
+      "raw_calls_identical": true
+    },
+    "AddressMappingVectorForwardOnline.h": {
+      "baseline_sha256": "27756e0a02fbe68d6827dd0f28c682a23d335510e94ab7b7691d8435e100d8b5",
+      "probe_sha256": "27756e0a02fbe68d6827dd0f28c682a23d335510e94ab7b7691d8435e100d8b5",
+      "byte_identical": true,
+      "baseline_raw_calls": 0,
+      "probe_raw_calls": 0,
+      "raw_calls_identical": true
+    }
+  }
+}

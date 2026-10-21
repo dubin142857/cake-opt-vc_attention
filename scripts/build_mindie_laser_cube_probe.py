@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build one isolated INT8 or original-FP16 Cube diagnostic provider, locally only."""
+"""Build one isolated original-FP16 or INT8 Cube diagnostic provider, locally only."""
 from __future__ import annotations
 
 import argparse
@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 BRIDGE_SOURCE = ROOT / "ascend/laser_cube_probe/bridge"
 SCHEMAS = {
     "int8": "la(Tensor q, Tensor k, Tensor v, Tensor q_scale, Tensor k_scale, float scale, int keys, bool expcast, int probe_mode) -> (Tensor, Tensor)",
+    "vscale": "la(Tensor q, Tensor k, Tensor v, Tensor q_scale, Tensor k_scale, float scale, int keys, bool expcast, int probe_mode) -> (Tensor, Tensor)",
     "fp16": "la(Tensor q, Tensor k, Tensor v, float scale, int keys, int probe_mode) -> (Tensor, Tensor)",
 }
 
@@ -40,8 +41,10 @@ def bridge_name(kind):
 def build_bridge(source, cann, bridge_dir, jobs, output, *, kind="int8", runner=None, runtime=None):
     native = identity(kind)
     base = _module("build_mindie_laser_quant")
+    # Preserve the existing int8/fp16 bridge source hashes and build cache.
+    bridge_source = BRIDGE_SOURCE / "vscale" if kind == "vscale" else BRIDGE_SOURCE
     report = base.build_bridge(source, cann, bridge_dir, jobs, output, runner=runner, runtime=runtime,
-                              identity=native, torch_namespace=native["vendor"], bridge_source=BRIDGE_SOURCE,
+                              identity=native, torch_namespace=native["vendor"], bridge_source=bridge_source,
                               bridge_name=bridge_name(kind))
     report.update(torch_schema=SCHEMAS[kind], probe_kind=kind)
     base.write_json(output, report)
@@ -64,7 +67,7 @@ def build(source, reference, source_manifest, cann, soc, jobs, install_dir, brid
 
 def parser():
     result = argparse.ArgumentParser(description=__doc__)
-    result.add_argument("--kind", choices=("int8", "fp16"), required=True)
+    result.add_argument("--kind", choices=("int8", "fp16", "vscale"), required=True)
     result.add_argument("--cann-root", type=Path, required=True)
     result.add_argument("--soc", required=True)
     result.add_argument("--jobs", type=int, default=4)

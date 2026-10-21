@@ -6,20 +6,22 @@ import pytest
 
 from scripts import mindie_laser_cube_probe_patch as patch
 from scripts import prepare_mindie_laser_quant_reuse_source as reuse
+from scripts import prepare_mindie_laser_quant_vscale_source as vscale
 from scripts.prepare_cann_fas_source import git
 from tests.test_mindie_laser_expcast_cpp import cpp_compiler, compile_syntax
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-@pytest.fixture(scope="module", params=["int8", "fp16"])
+@pytest.fixture(scope="module", params=["int8", "fp16", "vscale"])
 def cube(request):
     reference = ROOT / "build/mindie-sd-reference"
     if not (reference / ".git").is_dir():
         pytest.skip("Locked source cache unavailable; tests do not download")
-    if request.param == "int8":
-        files, _ = reuse.expected_files(reference)
-        return files[f"{reuse.CUSTOM_OP_ROOT}/op_kernel/CubeForward.h"]
+    if request.param in ("int8", "vscale"):
+        parent = reuse if request.param == "int8" else vscale
+        files, _ = parent.expected_files(reference)
+        return files[f"{parent.CUSTOM_OP_ROOT}/op_kernel/CubeForward.h"]
     return git(reference, "show", "HEAD:csrc/ops/laser_attention/op_kernel/CubeForward.h")
 
 

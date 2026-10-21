@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare independent Cube diagnostics of original FP16 and scale-reuse INT8 Laser.
+"""Prepare independent Cube diagnostics of original FP16 and two INT8 Laser paths.
 
 Only pinned local Git objects are read. Both providers retain their original
 Vector arithmetic; an explicit third output contains diagnostic records.
@@ -17,6 +17,7 @@ if str(ROOT) not in sys.path:
 
 from scripts import prepare_mindie_laser_source as original
 from scripts import prepare_mindie_laser_quant_reuse_source as quant
+from scripts import prepare_mindie_laser_quant_vscale_source as vscale
 from scripts.mindie_laser_quant_patch import once
 from scripts.mindie_laser_offline_cache import local_objects_only, seed_local_checkout
 from scripts.prepare_cann_fas_source import PreparationError, ensure_checkout, check_dirty, audit_files, sha256, git
@@ -24,7 +25,7 @@ from scripts.prepare_cann_fas_source import PreparationError, ensure_checkout, c
 SOURCE_LOCK = original.SOURCE_LOCK
 OP_ROOT = original.OP_ROOT
 PREPARE_SCRIPT = original.PREPARE_SCRIPT
-KINDS = ("int8", "fp16")
+KINDS = ("int8", "fp16", "vscale")
 TRACE_SHAPE = [4, 2, 3, 24]
 PROBE_CONTRACT = {
     "output_index": 2, "dtype": "int64", "shape": TRACE_SHAPE,
@@ -52,11 +53,21 @@ def marker_environment(kind):
     return f"VC_MINDIE_LASER_CUBE_{kind.upper()}_PROBE_MARKER_FILE"
 
 
+def quantized(kind):
+    identity(kind)
+    return kind in ("int8", "vscale")
+
+
+def baseline_module(kind):
+    identity(kind)
+    return {"int8": quant, "fp16": original, "vscale": vscale}[kind]
+
+
 def _rename(data, kind):
     target = identity(kind)
-    source = quant if kind == "int8" else original
-    old_name = quant.OP_NAME if kind == "int8" else "vc_laser_attention"
-    old_env = quant.MARKER_ENV if kind == "int8" else "VC_MINDIE_LASER_MARKER_FILE"
+    source = baseline_module(kind)
+    old_name = source.OP_NAME if quantized(kind) else "vc_laser_attention"
+    old_env = source.MARKER_ENV if quantized(kind) else "VC_MINDIE_LASER_MARKER_FILE"
     for old, new in ((source.OP_TYPE, target["op_type"]), (old_name, target["op_name"]),
                      (source.MARKER_TOKEN, marker_token(kind)), (old_env, marker_environment(kind))):
         data = data.replace(old.encode(), new.encode())
@@ -64,8 +75,8 @@ def _rename(data, kind):
 
 
 def baseline_files(source, kind):
-    if kind == "int8":
-        return quant.expected_files(source)
+    if quantized(kind):
+        return baseline_module(kind).expected_files(source)
     # Reconstruct the original renamed baseline directly from locked Git bytes.
     # Do not use the INT8 patch or a generated reference worktree for FP16.
     names = git(source, "ls-tree", "-r", "--name-only", "HEAD", "--", OP_ROOT).decode().splitlines()
@@ -91,15 +102,15 @@ def patch_abi(path, data, kind):
     name = identity(kind)["op_name"]
     op_type = identity(kind)["op_type"]
     if path.endswith(f"/op_host/{name}_def.cpp"):
-        dtypes = b"ge::DT_INT64" if kind == "int8" else b"ge::DT_INT64, ge::DT_INT64"
-        formats = b"ge::FORMAT_ND" if kind == "int8" else b"ge::FORMAT_ND, ge::FORMAT_ND"
+        dtypes = b"ge::DT_INT64" if quantized(kind) else b"ge::DT_INT64, ge::DT_INT64"
+        formats = b"ge::FORMAT_ND" if quantized(kind) else b"ge::FORMAT_ND, ge::FORMAT_ND"
         data = once(data, b'        this->Attr("scale_value")',
             b'        this->Output("cube_trace")\n                .ParamType(REQUIRED)\n'
             b'                .DataType({' + dtypes + b'} )\n'
             b'                .Format({' + formats + b'});\n'
             b'        this->Attr("scale_value")')
         anchor = (b'        this->Attr("use_expcast").AttrType(OPTIONAL).Bool(false);'
-                  if kind == "int8" else b'                .Bool(true);')
+                  if quantized(kind) else b'                .Bool(true);')
         data = once(data, anchor, anchor + b'\n        this->Attr("probe_mode").AttrType(OPTIONAL).Int(0);')
     elif path.endswith(f"/op_host/{name}_proto.cpp"):
         data = once(data, b"    return ge::GRAPH_SUCCESS;\n}\n\nstatic ge::graphStatus", b'''    gert::Shape *traceOut = context->GetOutputShape(2);
@@ -118,13 +129,13 @@ static ge::graphStatus''')
     elif path.endswith(f"/op_host/{name}_tiling.h"):
         data = once(data, b"END_TILING_DATA_DEF;", b"TILING_DATA_FIELD_DEF(int32_t, probeMode);\nEND_TILING_DATA_DEF;")
     elif path.endswith(f"/op_host/{name}_tiling.cpp"):
-        attr_index = 8 if kind == "int8" else 7
+        attr_index = 8 if quantized(kind) else 7
         anchor = b"    tilingData.set_isHighPrecision(*isHighPrecision);"
         data = once(data, anchor, anchor + f'''
     const auto probeMode = context->GetAttrs()->GetAttrPointer<int64_t>({attr_index});
     if (probeMode == nullptr || *probeMode < 0 || *probeMode > 2) return ge::GRAPH_FAILED;
     tilingData.set_probeMode(static_cast<int32_t>(*probeMode));'''.encode())
-        if kind == "int8":
+        if quantized(kind):
             data = once(data, b"    tilingData.set_useExpCast(*useExpCast);",
                         b"    if (*useExpCast) return ge::GRAPH_FAILED;\n    tilingData.set_useExpCast(false);")
         data = once(data, f"    tiling.Tiling4{op_type}(context);".encode(),
@@ -173,7 +184,35 @@ def _manifest_identity(source, kind):
                   diagnostic_instrumentation=True, probe_contract=PROBE_CONTRACT, probe_kind=kind)
     if kind == "int8":
         record.update(qk_scale_contract=quant.SCALE_CONTRACT, scale_reuse_contract=quant.REUSE_CONTRACT)
+    elif kind == "vscale":
+        record.update(qk_scale_contract=vscale.SCALE_CONTRACT,
+                      vector_scale_contract=vscale.VSCALE_CONTRACT,
+                      baseline_qk_scale_contract=vscale.baseline.SCALE_CONTRACT,
+                      baseline_scale_reuse_contract=vscale.REUSE_CONTRACT,
+                      scale_cache_contract=vscale.CACHE_CONTRACT,
+                      q_resident_contract=vscale.QRESIDENT_CONTRACT,
+                      baseline_variant="quant_vector_scale",
+                      inherited_contract_scope=(
+                          "Parent contracts record provenance; vector_scale_contract defines "
+                          "the current scale ownership and arithmetic. Diagnostic hooks do "
+                          "not alter the fixed vector_scale parent math."))
     return record
+
+
+def cached_references(reference, kind):
+    if kind != "vscale":
+        return quant.cached_references(reference)
+    # Prefer the already compiled current baseline. Only Git objects are read;
+    # generated files in the cached provider are never copied or overwritten.
+    candidates = []
+    manifest = ROOT / "results/mindie_laser_quant_vscale_build.json"
+    if manifest.is_file():
+        record = json.loads(manifest.read_text(encoding="utf-8"))
+        if record.get("status") == "passed" and record.get("source_dir"):
+            candidates.append(Path(record["source_dir"]))
+    candidates.append(ROOT / "build/mindie_laser_quant_vscale_source")
+    candidates.extend(vscale.cached_references(reference))
+    return candidates
 
 
 @local_objects_only()
@@ -182,12 +221,13 @@ def prepare(source_dir, reference_dir, manifest, *, kind="int8", offline=True):
     source, reference, destination = map(lambda x: Path(x).resolve(), (source_dir, reference_dir, manifest))
     if source == reference or source.is_relative_to(reference) or reference.is_relative_to(source):
         raise PreparationError("Cube-probe source must be separate from the reference checkout")
-    seed_local_checkout(source, quant.cached_references(reference), SOURCE_LOCK)
+    seed_local_checkout(source, cached_references(reference, kind), SOURCE_LOCK)
     ensure_checkout(source, SOURCE_LOCK, offline=True)
     patches, generated = expected_files(source, kind)
     records = _audit(source, patches, kind)
     report = {"schema_version": 1, **_manifest_identity(source, kind), "original_operator": OP_ROOT,
               "algorithm_scope": ("Original pinned FP16 QK/PV Laser" if kind == "fp16" else
+                                  vscale.ALGORITHM if kind == "vscale" else
                                   "Scale-reuse INT8 QK/INT32/FIX DEQF16; original FP16 PV"),
               "kernel_inverse_rename_equivalent": False, "source_files": records,
               "generated_files": generated, "modified_original_files": [PREPARE_SCRIPT]}

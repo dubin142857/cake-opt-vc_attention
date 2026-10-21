@@ -530,3 +530,20 @@ Vector scale 对原版 full 的配对节省为 +1.8843 ms，9/9 更快；本次�
 源码层面，32 个 K128 块、四行时，新路径执行 4×32 个局部水平归约，再做四个合并归约；旧路径主要用逐元素 `vmax` 折叠 K 块，最后执行四个水平归约。新路径减少了宽中间向量的写入，却显著增加了水平归约的重复执行。归约吞吐、stride 布局或编译调度抵消搬运收益，是与现有证据一致的解释，**尚非硬件计数器证实的具体瓶颈**。不能由源码调用条数更少推断执行更快。
 
 后续以 Vector scale 为起点重新检查 QK、PV 和 Cube/Vector 等待链路。原有 phase probe 基于更早的 scale-reuse 实现，不能直接当作移动反量化之后的当前瓶颈证据；应先适配和校准当前版本的诊断，再决定分块或流水改动。不将本次 rowmax、上次 bulk 叠加进后续优化。
+
+## 当前 Vector scale 的 Cube 阶段诊断
+
+```bash
+git pull origin master
+bash scripts/run_mindie_laser_vscale_phases.sh
+```
+
+固定 BF16 BNSD `[1,28,37741,128]`、设备 0、warmup 5、每轮 10 次、9 轮校准和 5 次稀疏采样；`NPU_DEVICE` 可选。入口读取已有 `mindie_laser_quant_vscale_build.json`、原版 Laser 和融合量化器的构建记录，从本地 Git objects 生成独立 `vc_laser_cube_vscale_probe`。原版 FP16 Cube probe 走已有增量构建和来源校验；旧 scale-reuse 的 probe 仍保留其原身份，不能混充当前版本。报告为 `results/mindie_laser_vscale_phases.json`，完整日志为同名 `.log`。
+
+这次交付是诊断适配，不是新的加速候选。当前 `vector_scale` 的计算和 Vector 代码保持原样；只在 Cube 的完整 QK/PV 调用边界增加可关闭的稀疏采样。QK 组包含地址映射、输入搬运、矩阵乘及 score 输出；PV 组包含概率/值搬运、矩阵乘、历史缩放和存在时的末尾归一化。当前反量化在 Vector 执行，**不计入这里的 QK Cube 组**。采样也不覆盖调用前的跨核等待，不能凭它把全部 attention 延迟分摊为 QK、softmax、PV 百分比。
+
+先验证每个诊断模式相对自身生产版本的全部 padded native 输出精确一致，再比较 production、plain、issue、completed 的配对 native API 时间：plain 包含额外 trace 分配及编译足迹；issue 记录发射窗口；completed 增加完整调用前后的流水排空，能观察完成窗口，但会改变重叠。四种模式共享本算法的同一 payload，结果用于量化探针扰动。
+
+当前 INT8 与原版 FP16 在独立进程中分别校准，使用相同原始输入生成各自的 payload；跨算法的这些 native 时间不作为新的配对加速比。原版 Laser 的主性能对比继续以已完成的同进程 full API 结果为准。稀疏记录仅覆盖 Cube 核 0～3 的 first/middle/last 逻辑组，按 descriptor、K 块、history/normalize 次数分组，保留原始 system ticks，不换算核心周期或外推整核毫秒。
+
+将两组校准表和阶段表回传后，先判断当前版本的主要变化在 QK 输出路径还是 PV/history；若仍需区分 Vector/跨核等待，再增加相应诊断。实现和来源/同步检查见[当前 Vector scale Cube 诊断审计](../../reports/ascend-vscale-cube-phase-audit/README.md)。本地没有 CCE/NPU，远端编译、精确输出门限及扰动校准通过后才解释阶段数据。
