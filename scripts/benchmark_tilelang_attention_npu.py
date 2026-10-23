@@ -13,6 +13,7 @@ import json
 import math
 import os
 from pathlib import Path
+import re
 import shutil
 import statistics
 import subprocess
@@ -447,6 +448,70 @@ def archive_sources(directory):
     return evidence
 
 
+def audit_generated_source(exported_sources):
+    """Best-effort static sync call counts in exported AscendC, without includes.
+
+    These lexical call sites are diagnostics, not dynamic event counts, device
+    instructions, a race-freedom check, or an estimate of execution time.
+    """
+    result = {"status": "unavailable", "scope": (
+        "static lexical call sites in exported AscendC body; includes are not expanded; "
+        "not dynamic execution counts, synchronization correctness, or a timing estimate")}
+    try:
+        source_path = exported_sources.get("ascendc") if isinstance(exported_sources, dict) else None
+        if not source_path:
+            result["reason"] = "export_source did not provide an AscendC source path"
+            return result
+        source_path = Path(source_path)
+        result["path"] = str(source_path)
+        if not source_path.is_file():
+            result["reason"] = "exported AscendC source is not an available file"
+            return result
+        data = source_path.read_bytes()
+        result.update(sha256=hashlib.sha256(data).hexdigest(), source_bytes=len(data))
+        if not data:
+            result.update(status="empty_source", reason="exported AscendC source is empty")
+            return result
+        text = data.decode("utf-8")
+        # Preserve enum identifiers in code, while excluding comments, escaped
+        # strings/chars and C++ raw strings containing diagnostic examples.
+        noncode = re.compile(
+            r'//[^\r\n]*|/\*[\s\S]*?\*/|'
+            r'(?:u8|u|U|L)?R"(?P<raw_delim>[^\s()\\]{0,16})\([\s\S]*?\)(?P=raw_delim)"|'
+            r'(?:u8|u|U|L)?"(?:\\[\s\S]|[^"\\])*"|'
+            r"(?:u8|u|U|L)?'(?:\\[\s\S]|[^'\\])*'")
+        code = noncode.sub(" ", text)
+        barriers = {"PIPE_ALL": 0, "PIPE_V": 0}
+        for pattern in (
+                r'\bPipeBarrier\s*<\s*(?:AscendC\s*::\s*)?(PIPE_[A-Z0-9_]+)\s*>\s*\(',
+                r'\bpipe_barrier\s*\(\s*(?:AscendC\s*::\s*)?(PIPE_[A-Z0-9_]+)\s*\)'):
+            for pipe in re.findall(pattern, code, flags=re.IGNORECASE):
+                pipe = pipe.upper()
+                barriers[pipe] = barriers.get(pipe, 0) + 1
+        counts = {"pipe_barrier_by_pipe": dict(sorted(barriers.items()))}
+        template = r'(?:\s*<[^;(){}]*>)?\s*\('
+        for operation, field in (("SetFlag", "set_flag"), ("WaitFlag", "wait_flag")):
+            counts[field + "_calls"] = len(re.findall(r'\b' + operation + template, code, flags=re.IGNORECASE))
+            by_event = {}
+            event_pattern = (r'\b' + operation + r'\s*<\s*(?:AscendC\s*::\s*)?HardEvent\s*::\s*'
+                             r'([A-Z0-9_]+)\s*>\s*\(')
+            for event in re.findall(event_pattern, code, flags=re.IGNORECASE):
+                event = event.upper()
+                by_event[event] = by_event.get(event, 0) + 1
+            counts[field + "_by_hard_event"] = dict(sorted(by_event.items()))
+        for operation, field in (("CrossCoreSetFlag", "cross_core_set_flag_calls"),
+                                 ("CrossCoreWaitFlag", "cross_core_wait_flag_calls")):
+            counts[field] = len(re.findall(r'\b' + operation + template, code, flags=re.IGNORECASE))
+        counts["sync_all_calls"] = len(re.findall(
+            r'\b(?:SyncAll|sync_all(?:_aic|_aiv)?)' + template, code, flags=re.IGNORECASE))
+        result.update(status="ok", static_calls=counts)
+    except Exception as exc:
+        # Source formatting or audit availability must not reject a compiled
+        # candidate or replace the independent accuracy gate.
+        result.update(status="error", error={"type": type(exc).__name__, "message": str(exc)})
+    return result
+
+
 def validate_contract(output, q):
     if tuple(output.shape) != tuple(q.shape) or output.dtype != q.dtype or output.device != q.device:
         raise AssertionError("Attention output must retain input BNSD, dtype, and NPU device")
@@ -495,6 +560,8 @@ def validate_small(torch, backend, providers, args, device, report, save, artifa
         source_key = f"small_{dtype_name}_b{shape[0]}_h{shape[1]}_q{queries}_k{keys}_d{dim}"
         if source_key not in report["kernel_sources"]:
             report["kernel_sources"][source_key] = kernel.export_source(artifact_dir / source_key)
+            report.setdefault("generated_source_audits", {})[source_key] = audit_generated_source(
+                report["kernel_sources"][source_key])
             save()
         prepared = kernel.prepare(q, k, v)
         output = kernel.run_prepared(prepared)
@@ -583,6 +650,17 @@ def run(args, report, save, artifact_dir):
         prepared = kernel.prepare(q, k, v)
         report["prepared"] = prepared.metadata()
         report["kernel_sources"]["main"] = kernel.export_source(artifact_dir / "generated_main")
+        audit = audit_generated_source(report["kernel_sources"]["main"])
+        report.setdefault("generated_source_audits", {})["main"] = audit
+        if audit["status"] == "ok":
+            calls = audit["static_calls"]
+            print(f"Generated source static sync sites: ALL={calls['pipe_barrier_by_pipe']['PIPE_ALL']} "
+                  f"V={calls['pipe_barrier_by_pipe']['PIPE_V']} SetFlag={calls['set_flag_calls']} "
+                  f"WaitFlag={calls['wait_flag_calls']} sha8={audit['sha256'][:8]}", flush=True)
+        else:
+            print(f"Generated source audit: status={audit['status']} "
+                  f"{audit.get('reason', audit.get('error', ''))}", flush=True)
+        save()
         selection = torch.tensor(ids, device=device, dtype=torch.long)
         records = report["validation"]["main"]
         row = {"dtype": args.dtype, "shape_bnsd": list(shape), "keys": keys, "query_ids": ids,
@@ -667,7 +745,7 @@ def main(argv=None):
     report = {"status": "running", "created_utc": stamp, "shape_bnsd": list(args.shape), "keys": args.key_length,
               "dtype": args.dtype, "layout": "BNSD", "causal": False, "quantized": False,
               "attention": "softmax(QK^T / sqrt(D)) V", "timing_scope": TIMING_SCOPE,
-              "artifact_dir": str(artifact_dir), "kernel_sources": {},
+              "artifact_dir": str(artifact_dir), "kernel_sources": {}, "generated_source_audits": {},
               "validation": {"status": "running", "small": [], "main": []}, "calibration": {}, "timings": {},
               "settings": {name: value for name, value in vars(args).items() if name not in ("output", "artifact_dir")}}
     save = lambda: write_json(args.output, report)

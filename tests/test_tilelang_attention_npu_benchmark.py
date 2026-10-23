@@ -135,6 +135,8 @@ def test_small_kernel_object_cache_keeps_all_patterns_and_fresh_payloads(benchma
     assert "current_small_case" not in report["validation"]
     assert report["validation"]["small"][-1]["persistent_task_reuse"]
     assert all(row["packet_size"] == 4 for row in report["validation"]["small"])
+    assert len(report["generated_source_audits"]) == 29
+    assert all(row["status"] == "unavailable" for row in report["generated_source_audits"].values())
 
 
 def test_small_compile_failure_retains_current_case_label(benchmark, monkeypatch, tmp_path):
@@ -154,6 +156,61 @@ def test_small_compile_failure_retains_current_case_label(benchmark, monkeypatch
     assert pending["dtype"] == "float16" and pending["shape_bnsd"] == [1, 2, 65, 64]
     assert pending["keys"] == 129 and pending["pattern"] == "random"
     assert report["validation"]["small_cases_count"] == 0
+
+
+def test_generated_sync_audit_counts_body_forms_and_ignores_noncode_and_includes(benchmark, tmp_path):
+    path = tmp_path / "attention.cpp"
+    (tmp_path / "sync_helper.h").write_text("AscendC::PipeBarrier<PIPE_ALL>();\n" * 100, encoding="utf-8")
+    path.write_text(r'''
+        #include "sync_helper.h"
+        // AscendC::PipeBarrier<PIPE_ALL>(); SetFlag<HardEvent::MTE2_V>(0);
+        /* pipe_barrier(PIPE_V); CrossCoreWaitFlag(0); */
+        const char *text = "PipeBarrier<PIPE_ALL>(); WaitFlag<HardEvent::MTE2_V>(0);";
+        const char *escaped = "\" pipe_barrier(PIPE_ALL); \"";
+        const char *raw = R"audit(SyncAll<false>(); CrossCoreSetFlag<0x2, PIPE_FIX>(0);)audit";
+        char quote = '\'';
+        AscendC::PipeBarrier<PIPE_ALL>();
+        PipeBarrier < AscendC::PIPE_V > ();
+        pipe_barrier(PIPE_ALL);
+        PIPE_BARRIER (PIPE_V);
+        AscendC::PipeBarrier<PIPE_MTE2>();
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(0);
+        SetFlag<HardEvent::V_MTE3>(1);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(0);
+        WaitFlag<HardEvent::V_MTE3>(1);
+        AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(0);
+        AscendC::CrossCoreWaitFlag(0);
+        AscendC::SyncAll<false>();
+    ''', encoding="utf-8")
+    audit = benchmark.audit_generated_source({"ascendc": str(path)})
+    assert audit["status"] == "ok" and audit["source_bytes"] == path.stat().st_size
+    assert len(audit["sha256"]) == 64 and "includes are not expanded" in audit["scope"]
+    calls = audit["static_calls"]
+    assert calls["pipe_barrier_by_pipe"] == {"PIPE_ALL": 2, "PIPE_V": 2, "PIPE_MTE2": 1}
+    assert calls["set_flag_calls"] == calls["wait_flag_calls"] == 2
+    assert calls["set_flag_by_hard_event"] == calls["wait_flag_by_hard_event"] == {"MTE2_V": 1, "V_MTE3": 1}
+    assert calls["cross_core_set_flag_calls"] == calls["cross_core_wait_flag_calls"] == calls["sync_all_calls"] == 1
+
+
+def test_generated_sync_audit_missing_empty_or_bad_source_is_diagnostic(benchmark, tmp_path, monkeypatch):
+    for export in (None, {}, {"ascendc": str(tmp_path / "missing.cpp")}):
+        assert benchmark.audit_generated_source(export)["status"] == "unavailable"
+    empty = tmp_path / "empty.cpp"
+    empty.write_bytes(b"")
+    assert benchmark.audit_generated_source({"ascendc": str(empty)})["status"] == "empty_source"
+    invalid = tmp_path / "invalid.cpp"
+    invalid.write_bytes(b"\xff")
+    audit = benchmark.audit_generated_source({"ascendc": str(invalid)})
+    assert audit["status"] == "error" and audit["error"]["type"] == "UnicodeDecodeError"
+    source = tmp_path / "valid.cpp"
+    source.write_text("pipe_barrier(PIPE_ALL);", encoding="utf-8")
+
+    def parser_failure(*args, **kwargs):
+        raise RuntimeError("intentional lexical audit failure")
+
+    monkeypatch.setattr(benchmark.re, "findall", parser_failure)
+    audit = benchmark.audit_generated_source({"ascendc": str(source)})
+    assert audit["status"] == "error" and audit["error"]["message"] == "intentional lexical audit failure"
 
 
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])

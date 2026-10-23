@@ -1,0 +1,146 @@
+{
+  "date": "2026-10-23",
+  "status": "passed_local_checks_v5_npu_validation_pending",
+  "implementation_revision": "packet4_vector_auto_sync_v5",
+  "default_shape_bnsd": [
+    1,
+    28,
+    37741,
+    128
+  ],
+  "default_dtype": "bfloat16",
+  "tiles": [
+    128,
+    128
+  ],
+  "packet_size": 4,
+  "v4_user_reported_device_baseline": {
+    "source": "user-pasted terminal output; original remote JSON not available locally",
+    "kernel_commit": "b76f855f570c7b4789b480515ea5a4c4b8d01022",
+    "result_status": "passed",
+    "timing_scope": "synchronized Python API wall time in milliseconds, not device-kernel durations",
+    "median_ms": {
+      "tilelang_full": 488.25,
+      "tilelang_prepared": 485.829,
+      "cann_fusion_attention": 128.785
+    },
+    "v3_over_v4_time_ratio": {
+      "tilelang_full": 1.372868407578085,
+      "tilelang_prepared": 1.3807883020568965
+    },
+    "v4_over_cann_time_ratio": {
+      "tilelang_full": 3.7912023915828708,
+      "tilelang_prepared": 3.772403618433824
+    },
+    "runtime_soc_and_physical_core_count": "not present in pasted output"
+  },
+  "v5_change_scope": {
+    "removed": "manual PIPE_ALL barriers between pure PIPE_V arithmetic, reduction, broadcast and UB copy operations",
+    "retained": [
+      "scalar tail initialization",
+      "task initialization",
+      "GM-to-UB score loads",
+      "dynamic alpha slot copy",
+      "probability cast and GM store",
+      "output-merge and PV-load boundaries",
+      "all packet cross-core flags",
+      "final output cast and store",
+      "all Cube-side synchronization"
+    ],
+    "auto_sync": "existing TL_ASCEND_AUTO_SYNC=True retained",
+    "auto_sync_vs": "not additionally enabled",
+    "math_and_scheduling": "input dtypes, FP32 online softmax, ordered delayed output accumulation, tile sizes, packet size and workspace dimensions unchanged"
+  },
+  "actual_source_ast_comparison_to_v4": {
+    "baseline_commit": "b76f855f570c7b4789b480515ea5a4c4b8d01022",
+    "cube_scope_identical": true,
+    "vector_scope_identical_after_removing_barrier_all_expressions": true,
+    "vector_explicit_barrier_all_sites_before": 29,
+    "vector_explicit_barrier_all_sites_after": 13,
+    "count_scope": "Python DSL source call sites; not generated code or dynamic hardware operations"
+  },
+  "independent_static_dependency_review": {
+    "result": "no uncovered dependency found in the removed pure-Vector boundaries",
+    "backend_commit": "1d7525399141b242435e6e1c60cc006df0a3d7a6",
+    "evidence": [
+      "tilelang/engine/phase.py runs memory planning before AscendSyncInsert",
+      "src/transform/common/operation_config.h classifies UB copy/cast/reduce/broadcast as PIPE_V",
+      "ResolveOperationConfig derives shared workspace read/write dependencies from actual access_ptr masks",
+      "src/transform/ascend_sync_insert.cc tracks RAW/WAR/WAW, physical aliases and loop backedges"
+    ],
+    "scope": "source review, not NPU compilation or a proof against rare device races"
+  },
+  "generated_source_diagnostics": {
+    "new": "best-effort static counts recorded per exported unique small kernel and main kernel",
+    "counts": [
+      "PipeBarrier or pipe_barrier grouped by pipeline",
+      "SetFlag/WaitFlag and HardEvent type",
+      "CrossCoreSetFlag/CrossCoreWaitFlag",
+      "SyncAll"
+    ],
+    "source_identity": "SHA256 and byte count of the exported AscendC source",
+    "limitations": "comments, strings and chars excluded; include files not expanded; lexical sites do not establish dynamic counts, race freedom or performance",
+    "failure_policy": "unavailable, empty or unparseable source is diagnostic and does not replace or reject the accuracy gate"
+  },
+  "local_validation": {
+    "pytest_passed": 131,
+    "test_files": [
+      "tests/test_tilelang_attention_npu.py",
+      "tests/test_tilelang_attention_npu_benchmark.py",
+      "tests/test_tilelang_attention_npu_setup.py",
+      "tests/test_ascend_soc_preflight.py"
+    ],
+    "python_syntax": "passed",
+    "bash_syntax": "passed",
+    "python": "3.10.16 | packaged by Anaconda, Inc. | (main, Dec 11 2024, 16:19:12) [MSC v.1929 64 bit (AMD64)]",
+    "cpu_math": {
+      "rows_checked": 34,
+      "max_abs_error": 1.249000902703301e-16,
+      "scope": "unrounded Float64 recurrence and delayed-output math, not device numerical or synchronization validation"
+    }
+  },
+  "npu_acceptance": {
+    "small_cases": 45,
+    "gates": "unchanged independent CPU FP32 oracle, repeated/full/prepared equality, nondefault stream, persistent task reuse and main-shape checks",
+    "source_generation": "not run locally",
+    "compilation": "not run locally",
+    "execution": "not run locally",
+    "v5_latency_ms": null,
+    "v5_measured_speedup": null
+  },
+  "memory": {
+    "ub_explicit_bytes_per_vector": 166656,
+    "ub_explicit_allocations": {
+      "scores": 32768,
+      "probabilities": 16384,
+      "running_output": 32768,
+      "partial_output": 32768,
+      "output_cast": 16384,
+      "row_statistics": 1024,
+      "shared_broadcast": 32768,
+      "narrow_broadcast": 256,
+      "tail_mask_row": 512,
+      "packet_alpha_history": 1024
+    },
+    "ub_physical_allocation_alignment_bytes": 32,
+    "ub_statistics_row_padding_bytes": 0,
+    "ub_layout_policy": "full_tile_contiguous_stats_normal_broadcast_no_tail_pass",
+    "ub_capacity_bytes_per_vector": 196352,
+    "ub_headroom_before_compiler_tmp_bytes": 29696,
+    "compiler_shared_tmp_bytes_per_vector": 4672,
+    "compiler_tmp_policy": "pinned_fp32_reduce2d_v2_max_shared_arena",
+    "ub_total_static_bound_bytes_per_vector": 171328,
+    "ub_headroom_after_compiler_tmp_bytes": 25024,
+    "l1_explicit_bytes_per_cube": 131072,
+    "l1_capacity_bytes_per_cube": 524032,
+    "l0c_explicit_bytes_per_cube": 131072,
+    "l0c_capacity_bytes_per_cube": 131072,
+    "relies_on_automatic_buffer_aliasing": false
+  },
+  "launch": "bash scripts/run_tilelang_attention_npu.sh",
+  "source_sha256_normalized_lf": {
+    "scripts/tilelang_attention_npu.py": "4a83cc16b22cae1ed8bebae208876312d710fe0852411f37fe184e3c52e06389",
+    "scripts/benchmark_tilelang_attention_npu.py": "9a2a5a14d22e72a7dbee524cba7214f69d4997b35e876b686b1722fd55c7ddf7",
+    "tests/test_tilelang_attention_npu_benchmark.py": "d7d39c95bf655c6d216e73e520293eaca02087450bddbc2998e0ed98c03a3a3e"
+  }
+}

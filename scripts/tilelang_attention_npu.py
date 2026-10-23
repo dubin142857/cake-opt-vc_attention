@@ -58,7 +58,7 @@ DEFAULT_SHAPE = (1, 28, 37741, 128)
 DEFAULT_BLOCK_M = 128
 DEFAULT_BLOCK_N = 128
 PACKET_SIZE = 4
-IMPLEMENTATION_REVISION = "packet4_delayed_output_v4"
+IMPLEMENTATION_REVISION = "packet4_vector_auto_sync_v5"
 
 
 @dataclass(frozen=True)
@@ -407,38 +407,32 @@ def make_primfunc(spec, active_cores):
                             kb = packet * PACKET_SIZE + slot
                             T.copy(Scores[cid, slot, vid * half : (vid + 1) * half, :], scores_ub)
                             T.barrier_all()
+                            # These are all PIPE_V operations in the pinned
+                            # backend. AUTO_SYNC follows true buffer and shared
+                            # tmp-arena RAW/WAR/WAW edges and emits PIPE_V
+                            # barriers, instead of draining every pipeline after
+                            # every vector operation. GM/region handoffs below
+                            # retain explicit ALL boundaries.
                             T.tile.mul(scores_ub, scores_ub, scale)
-                            T.barrier_all()
                             if keys != kp:
                                 if kb == kblocks - 1:
                                     T.tile.broadcast(score_broadcast_buffer(broadcast_ub, narrow_broadcast_ub), tail_mask, axis=0)
-                                    T.barrier_all()
                                     T.tile.add(scores_ub, scores_ub, score_broadcast_buffer(broadcast_ub, narrow_broadcast_ub))
-                                    T.barrier_all()
                             T.copy(row_max, prev_max_alpha)
-                            T.barrier_all()
                             T.reduce_max(scores_ub, row_max, dim=-1)
-                            T.barrier_all()
                             T.tile.max(row_max, row_max, prev_max_alpha)
-                            T.barrier_all()
                             T.tile.sub(prev_max_alpha, prev_max_alpha, row_max)
-                            T.barrier_all()
                             T.tile.exp(prev_max_alpha, prev_max_alpha)
-                            T.barrier_all()
                             T.copy(prev_max_alpha, alpha_history[slot, :, :])
+                            # The dynamically indexed alpha slot remains a
+                            # conservative explicit synchronization boundary.
                             T.barrier_all()
                             T.tile.broadcast(score_broadcast_buffer(broadcast_ub, narrow_broadcast_ub), row_max, axis=1)
-                            T.barrier_all()
                             T.tile.sub(scores_ub, scores_ub, score_broadcast_buffer(broadcast_ub, narrow_broadcast_ub))
-                            T.barrier_all()
                             T.tile.exp(scores_ub, scores_ub)
-                            T.barrier_all()
                             T.reduce_sum(scores_ub, tile_sum, dim=-1)
-                            T.barrier_all()
                             T.tile.mul(row_sum, row_sum, prev_max_alpha)
-                            T.barrier_all()
                             T.tile.add(row_sum, row_sum, tile_sum)
-                            T.barrier_all()
                             T.copy(scores_ub, prob_ub)
                             T.barrier_all()
                             T.copy(prob_ub, Prob[cid, slot, vid * half : (vid + 1) * half, :])
@@ -457,9 +451,7 @@ def make_primfunc(spec, active_cores):
                         T.set_cross_flag("V", 3)
                         T.barrier_all()
                     T.tile.broadcast(output_broadcast_buffer(broadcast_ub, narrow_broadcast_ub), row_sum, axis=1)
-                    T.barrier_all()
                     T.tile.div(out_ub, out_ub, output_broadcast_buffer(broadcast_ub, narrow_broadcast_ub))
-                    T.barrier_all()
                     T.copy(out_ub, output_ub)
                     T.barrier_all()
                     T.copy(output_ub, O[b, h, qb * bm + vid * half : qb * bm + (vid + 1) * half, :])
@@ -521,6 +513,17 @@ class AttentionKernel:
             "scheduling": "packet_qk_softmax_pv_then_ordered_output_delayed_pv_credit",
             "packet_alpha_dtype": "float32",
             "workspace_axes": "active_core,packet_slot,query_row,key_or_head_dim",
+            "intra_core_sync": {
+                "vector_chains": "pinned_ascend_auto_sync_pipe_dependencies",
+                "manual_all_boundaries": [
+                    "scalar_tail_mask_initialization", "task_initialization",
+                    "gm_to_ub_load", "probability_cast_and_gm_store",
+                    "dynamic_alpha_slot", "pv_load_and_output_merge",
+                    "packet_flags", "final_output_cast_and_store",
+                ],
+                "cube_sync": "unchanged_manual_all_and_gemm_internal_events",
+                "auto_sync_vs_changed": False,
+            },
             "padded_queries": self.spec.padded_queries,
             "padded_keys": self.spec.padded_keys,
             "scale": 1.0 / math.sqrt(self.spec.dim),
