@@ -24,6 +24,28 @@ bash scripts/run_mindie_laser_fp16_expcast.sh
 
 报告为 `results/mindie_laser_fp16_expcast.json`，终端日志为同名 `.log`。默认不启动 profiler 或内部计时探针。
 
+## 2026-10-23 远端结果
+
+用户回传同进程随机交错 9 轮结果，BF16 BNSD `[1,28,37741,128]`：
+
+| 版本 | full API ms | native API ms | dense RMSE % |
+| --- | ---: | ---: | ---: |
+| 原版 Laser | 85.5090 | 81.2776 | 0.190947 |
+| 稳定 `vector_pv_prefetch` | 83.6454 | 79.1086 | 1.365174 |
+| 新 provider 关闭 ExpCast | 83.5159 | 79.2287 | 1.365174 |
+| 新 provider 开启 FP16 ExpCast | 123.1336 | 118.5415 | 2.282386 |
+
+同 provider 的开启组 native 配对节省为 **-39.2932 ms，0/9 轮更快**；full 配对节省为 **-39.6128 ms，0/9 轮更快**。开启组 native 中位延迟比关闭组增加约 49.6%。当前适配没有性能收益，不替换稳定版本；误差也高于关闭组，这不是模型质量结论。原始报告在远端，以上数字来自用户回传，未在本机重测。
+
+源码显示原 bulk FP16 `vexp` + Vector 屏障被替换为每个最多 8192 元素 chunk 的 7 道向量操作和 7 个屏障，包含 FP16/FP32/INT16 转换与 scratch 访问。额外执行、同步和 UB 访问是待验证的原因，API 时间不能确认各自占比或寄存器 spill。下一步用已有产物采集整核计数器，仍保留相同 provider 的开关对照：
+
+```bash
+LASER_MSOPPROF_EXPCAST=1 bash scripts/run_mindie_laser_msopprof.sh
+cat results/mindie_laser_msopprof_summary.txt
+```
+
+采集不重新编译或加入内部探针；检查计数器与原版、稳定版、关闭组的差异，再决定是否值得继续改写该映射。
+
 ## 这次如何生成 FP16 概率
 
 [VC 论文](https://arxiv.org/html/2609.15810v1#S3.SS3)的 ExpCast 使用仿射变换、整数舍入和浮点位编码近似指数。这里借用这一思路，适配 binary16，**不是论文 E4M3 编码的逐字复现**，也不需要 FP8 矩阵乘。

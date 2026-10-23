@@ -157,14 +157,17 @@ def require_expcast_validation(info):
     worker = report.get("workers", {}).get("paired", {})
     if report.get("status") != "passed" or worker.get("status") != "passed":
         raise RuntimeError("Validate FP16 ExpCast with run_mindie_laser_fp16_expcast.sh first")
-    old = worker.get("provenance", {}).get("fp16_expcast", {})
+    provenance = worker.get("provenance", {})
+    old = provenance.get("fp16_expcast", {})
     now = info["provenance"]
     for key in ("build_manifest_sha256", "source_manifest_sha256", "bridge_sha256", "device_binary_sha256"):
         if key not in now or old.get(key) != now[key]:
             raise RuntimeError("FP16 ExpCast artifacts differ from the validated report: "+key)
     for key in ("build_manifest_sha256", "library_sha256"):
         value = now.get("preprocessor", {}).get(key)
-        if not value or old.get("preprocessor", {}).get(key) != value:
+        # The four-arm benchmark stores its shared preprocessor once beside
+        # the providers; this single-provider worker nests it in its evidence.
+        if not value or provenance.get("preprocessor", {}).get(key) != value:
             raise RuntimeError("FP16 ExpCast preprocessor differs from the validated report: "+key)
 
 

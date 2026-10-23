@@ -10,7 +10,7 @@ bash scripts/run_mindie_laser_stable.sh
 
 已失败的 `run_mindie_laser_pv_phases.sh` 和 `run_mindie_laser_pv_const.sh` 停用，直接提示上述入口并退出。恢复只涉及入口选择，生产内核保持此前实测代码，探针源码和失败证据保留。详见 [Laser 量化与历史实验](ascend/laser_quant/README.md)、[PV 诊断失败记录](reports/ascend-pv-internal-phase-audit/README.md)。首次构建的历史入口 `run_mindie_laser_quant.sh`、[原版 Laser 源码复现](MINDIE_LASER_REPRO.md)及[旧 ExpCast 实验](MINDIE_LASER_EXPCAST.md)仍保留。
 
-新增独立 [FP16 ExpCast 实验](MINDIE_LASER_FP16_EXPCAST.md)：`bash scripts/run_mindie_laser_fp16_expcast.sh`，保留稳定 INT8 QK / FP16 PV，直接构造 binary16 概率；对比原 Laser、稳定版、新编译关闭组与开启组。只编译新的本地候选，默认无内部探针；CANN 编译、NPU 正确性和收益等待远端验证，稳定入口保持不变。
+独立 [FP16 ExpCast 实验](MINDIE_LASER_FP16_EXPCAST.md)：保留稳定 INT8 QK / FP16 PV，直接构造 binary16 概率。2026-10-23 远端回传开启/关闭组 native API 为 118.5415/79.2287 ms，开启组 9/9 轮更慢，暂不采用。稳定版 full API 为 83.6454 ms，原 Laser 为 85.5090 ms；下一步用 msOpProf 对比四组计数器，默认入口仍为稳定版。
 
 [msOpProf 硬件指标采集](MINDIE_LASER_MSOPPROF.md)：`bash scripts/run_mindie_laser_msopprof.sh`，复用原版 Laser 和稳定版二进制，按 kernel 名过滤，收集流水、计算、搬运、缓存与冲突数据；摘要为 `results/mindie_laser_msopprof_summary.txt`。不重新编译或启用内部 PV 探针。
 

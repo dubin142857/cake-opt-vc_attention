@@ -80,7 +80,12 @@ def test_expcast_requires_current_passed_validation(tmp_path,monkeypatch):
     (tmp_path/"results").mkdir()
     evidence={key:key for key in ("build_manifest_sha256","source_manifest_sha256","bridge_sha256","device_binary_sha256")}
     evidence["preprocessor"] = dict(build_manifest_sha256="prep-manifest", library_sha256="prep-library")
-    payload=dict(status="passed",workers=dict(paired=dict(status="passed",provenance=dict(fp16_expcast=evidence))))
+    prep = dict(build_manifest_sha256="prep-manifest", library_sha256="prep-library")
+    # Match profile_mindie_laser_fp16_expcast.verify_builds: the quantizer is
+    # shared, so its provenance is a sibling of the attention providers.
+    original = {key:value for key,value in evidence.items() if key != "preprocessor"}
+    payload=dict(status="passed",workers=dict(paired=dict(status="passed",
+        provenance=dict(fp16_expcast=original, preprocessor=prep))))
     (tmp_path/"results/mindie_laser_fp16_expcast.json").write_text(json.dumps(payload))
     info=dict(variant="fp16_expcast",provenance=dict(evidence))
     collect.require_expcast_validation(info)
