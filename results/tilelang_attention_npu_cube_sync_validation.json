@@ -1,0 +1,171 @@
+{
+  "date": "2026-10-23",
+  "status": "passed_local_checks_v6_npu_validation_pending",
+  "implementation_revision": "packet4_cube_event_sync_v6",
+  "attention": "ordinary dense noncausal native BF16/FP16 attention with FP32 online softmax",
+  "default_shape_bnsd": [
+    1,
+    28,
+    37741,
+    128
+  ],
+  "default_dtype": "bfloat16",
+  "tiles": [
+    128,
+    128
+  ],
+  "packet_size": 4,
+  "v5_user_reported_device_baseline": {
+    "evidence": "complete terminal log pasted by the user; original remote JSON and generated C++ not available locally",
+    "kernel_commit": "944b92d9715db2db7d0ff7c1ec27db6d88466499",
+    "result_status": "passed",
+    "runtime_soc": "Ascend910_9382",
+    "selected_platform": "A3",
+    "npu_device_index": 0,
+    "base_python_version": "3.12.13",
+    "physical_cube_cores": "not printed; do not infer from the machine label",
+    "small_cases_passed": 45,
+    "timing_scope": "synchronized Python API wall time in milliseconds, not device-kernel durations",
+    "median_ms": {
+      "tilelang_full": 472.707,
+      "tilelang_prepared": 470.438,
+      "cann_fusion_attention": 127.3
+    },
+    "v4_to_v5_observed_time_reduction_fraction": {
+      "tilelang_full": 0.031834101382488544,
+      "tilelang_prepared": 0.03167987090107838
+    },
+    "v5_over_cann_time_ratio": {
+      "tilelang_full": 3.7133307148468186,
+      "tilelang_prepared": 3.695506677140613
+    },
+    "generated_body_static_sites": {
+      "PIPE_ALL": 28,
+      "PIPE_V": 16,
+      "SetFlag": 15,
+      "WaitFlag": 15,
+      "sha256_prefix": "99139576"
+    },
+    "static_count_limit": "call sites in the generated body, excluding included helpers; not dynamic execution counts or phase timings"
+  },
+  "v6_change": {
+    "cube_explicit_all_sites_before": 10,
+    "cube_explicit_all_sites_after": 3,
+    "removed_after": [
+      "query GM-to-L1 load",
+      "key GM-to-L1 load",
+      "QK gemm_v0",
+      "score FIX-to-GM store",
+      "probability/value GM-to-L1 loads",
+      "PV gemm_v0",
+      "partial-output FIX-to-GM store"
+    ],
+    "retained_all_boundaries": [
+      "probability-ready cross-core wait",
+      "previous-PV-consumed cross-core wait",
+      "final task packet drain"
+    ],
+    "unchanged": [
+      "Vector scope",
+      "arithmetic order and dtypes",
+      "four cross-core flag protocol",
+      "tile sizes",
+      "packet size",
+      "seven-buffer API",
+      "workspace dimensions and memory budgets"
+    ]
+  },
+  "actual_ast_checks": {
+    "baseline_commit": "944b92d9715db2db7d0ff7c1ec27db6d88466499",
+    "vector_scope_identical": true,
+    "cube_scope_identical_after_removing_barrier_all_expressions": true,
+    "scope": "Python DSL structure; not AscendC compilation"
+  },
+  "independent_source_review": {
+    "backend_commit": "1d7525399141b242435e6e1c60cc006df0a3d7a6",
+    "status": "no blocking dependency defect found",
+    "gemm_source": "src/tl_templates/ascend/common.h: gemm_v0",
+    "entry_events": [
+      "MTE2_MTE1",
+      "FIX_M"
+    ],
+    "hidden_l0ab": "both M_MTE1 ping-pong credits are consumed before return; no outstanding L0AB reader/writer or helper credit crosses calls",
+    "exit_events": [
+      "MTE1_MTE2",
+      "M_FIX"
+    ],
+    "workspace_publication": "CrossCoreSetFlag on PIPE_FIX is queued after all packet FIX stores",
+    "l0c_reuse": "the next gemm entry FIX_M orders the previous FIX store before reusing L0C",
+    "corrections": [
+      "gemm_v0 does not end with PIPE_ALL",
+      "InitBuffer is emitted once at kernel entry, not for every GEMM call"
+    ],
+    "automatic_sync_caveat": "the compiler may insert further synchronization; dynamic GM offset alone does not prove unconditional ALL reinsertion in the copy path",
+    "overlap_caveat": "the source permits additional load/store overlap; actual overlap and speedup have not been measured"
+  },
+  "benchmark_footer": {
+    "change": "repeat existing main-source sync summary after final latency ratios, with revision, actual tiles, packet size, runtime SoC and Cube count",
+    "scope": "reads existing report only; no extra NPU query, source reparse or timing call",
+    "unavailable_metadata": "prints n/a or diagnostic status without replacing correctness checks"
+  },
+  "local_validation": {
+    "pytest_passed": 132,
+    "test_files": [
+      "tests/test_tilelang_attention_npu.py",
+      "tests/test_tilelang_attention_npu_benchmark.py",
+      "tests/test_tilelang_attention_npu_setup.py",
+      "tests/test_ascend_soc_preflight.py"
+    ],
+    "python_syntax": "passed",
+    "bash_syntax": "passed",
+    "python": "3.10.16 | packaged by Anaconda, Inc. | (main, Dec 11 2024, 16:19:12) [MSC v.1929 64 bit (AMD64)]",
+    "cpu_math": {
+      "rows_checked": 34,
+      "max_abs_error": 1.249000902703301e-16,
+      "scope": "unrounded Float64 recurrence and delayed-output math; not device synchronization validation"
+    }
+  },
+  "memory": {
+    "ub_explicit_bytes_per_vector": 166656,
+    "ub_explicit_allocations": {
+      "scores": 32768,
+      "probabilities": 16384,
+      "running_output": 32768,
+      "partial_output": 32768,
+      "output_cast": 16384,
+      "row_statistics": 1024,
+      "shared_broadcast": 32768,
+      "narrow_broadcast": 256,
+      "tail_mask_row": 512,
+      "packet_alpha_history": 1024
+    },
+    "ub_physical_allocation_alignment_bytes": 32,
+    "ub_statistics_row_padding_bytes": 0,
+    "ub_layout_policy": "full_tile_contiguous_stats_normal_broadcast_no_tail_pass",
+    "ub_capacity_bytes_per_vector": 196352,
+    "ub_headroom_before_compiler_tmp_bytes": 29696,
+    "compiler_shared_tmp_bytes_per_vector": 4672,
+    "compiler_tmp_policy": "pinned_fp32_reduce2d_v2_max_shared_arena",
+    "ub_total_static_bound_bytes_per_vector": 171328,
+    "ub_headroom_after_compiler_tmp_bytes": 25024,
+    "l1_explicit_bytes_per_cube": 131072,
+    "l1_capacity_bytes_per_cube": 524032,
+    "l0c_explicit_bytes_per_cube": 131072,
+    "l0c_capacity_bytes_per_cube": 131072,
+    "relies_on_automatic_buffer_aliasing": false
+  },
+  "v6_npu_validation": {
+    "source_generation": "not run locally",
+    "compilation": "not run locally",
+    "execution": "not run locally",
+    "latency_ms": null,
+    "measured_speedup": null,
+    "acceptance": "45 existing small cases, main-shape accuracy/finiteness, repeats/full/prepared/stream/task-reuse checks before timing"
+  },
+  "launch": "bash scripts/run_tilelang_attention_npu.sh",
+  "source_sha256_normalized_lf": {
+    "scripts/tilelang_attention_npu.py": "e940054c02d60e34f9a47b6f0361abb71893ad3f5f26f9adfa2c8a2db03428e1",
+    "scripts/benchmark_tilelang_attention_npu.py": "b201cf5160058ce3490dc332b7ba631d84595bb9db5f2f6bd543600453de8491",
+    "tests/test_tilelang_attention_npu_benchmark.py": "cb8251d8395e11ee60bc7a5ca7b8ab754a6541acaaf4dd8e9335e8f5e850dbe5"
+  }
+}

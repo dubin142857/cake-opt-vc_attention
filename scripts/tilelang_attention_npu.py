@@ -58,7 +58,7 @@ DEFAULT_SHAPE = (1, 28, 37741, 128)
 DEFAULT_BLOCK_M = 128
 DEFAULT_BLOCK_N = 128
 PACKET_SIZE = 4
-IMPLEMENTATION_REVISION = "packet4_vector_auto_sync_v5"
+IMPLEMENTATION_REVISION = "packet4_cube_event_sync_v6"
 
 
 @dataclass(frozen=True)
@@ -333,24 +333,26 @@ def make_primfunc(spec, active_cores):
             # Each Cube and its two Vector subblocks process the same sequence
             # of tasks. All cross-core signals are consumed before reuse.
             with T.Scope("C"):
+                # The pinned gemm_v0 helper waits MTE2 -> MTE1 before its L0
+                # loads, FIX -> M before reusing L0C, and drains both L0AB
+                # credits before returning through MTE1 -> MTE2 and M -> FIX.
+                # Together with AUTO_SYNC this replaces per-copy/per-gemm
+                # PIPE_ALL drains. FIX stores remain asynchronous; their
+                # packet-ready signal is issued on the same FIX queue.
                 for task_iter in T.serial(T.ceildiv(tasks - cid, active_cores)):
                     task = task_iter * active_cores + cid
                     qb = task % qblocks
                     h = (task // qblocks) % heads
                     b = task // (qblocks * heads)
                     T.copy(Q[b, h, qb * bm : (qb + 1) * bm, :], q_l1)
-                    T.barrier_all()
                     for packet in T.serial(packets):
                         valid_slots = T.min(PACKET_SIZE, kblocks - packet * PACKET_SIZE)
                         # Produce the whole packet before publishing scores.
                         for slot in T.serial(valid_slots):
                             kb = packet * PACKET_SIZE + slot
                             T.copy(K[b, h, kb * bn : (kb + 1) * bn, :], k_l1)
-                            T.barrier_all()
                             T.gemm_v0(q_l1, k_l1, scores_l0c, transpose_B=True, init=True)
-                            T.barrier_all()
                             T.copy(scores_l0c, Scores[cid, slot, :, :])
-                            T.barrier_all()
                         T.set_cross_flag("FIX", 0)
                         T.wait_cross_flag(1)
                         T.barrier_all()
@@ -364,11 +366,8 @@ def make_primfunc(spec, active_cores):
                             kb = packet * PACKET_SIZE + slot
                             T.copy(Prob[cid, slot, :, :], p_l1)
                             T.copy(V[b, h, kb * bn : (kb + 1) * bn, :], v_l1)
-                            T.barrier_all()
                             T.gemm_v0(p_l1, v_l1, pv_l0c, init=True)
-                            T.barrier_all()
                             T.copy(pv_l0c, PV[cid, slot, :, :])
-                            T.barrier_all()
                         T.set_cross_flag("FIX", 2)
                     # Drain exactly the final packet's credit on every task,
                     # including single-packet keys. No token crosses tasks.
@@ -521,7 +520,17 @@ class AttentionKernel:
                     "dynamic_alpha_slot", "pv_load_and_output_merge",
                     "packet_flags", "final_output_cast_and_store",
                 ],
-                "cube_sync": "unchanged_manual_all_and_gemm_internal_events",
+                "cube_sync": "pinned_gemm_internal_events_and_ascend_auto_sync",
+                "cube_manual_all_boundaries": [
+                    "probability_packet_ready_wait", "previous_pv_consumed_wait",
+                    "final_packet_drain",
+                ],
+                "cube_gemm_internal_events": {
+                    "entry": ["MTE2_MTE1", "FIX_M"],
+                    "l0ab": "both_M_MTE1_credits_drained_before_return",
+                    "exit": ["MTE1_MTE2", "M_FIX"],
+                },
+                "cube_gm_publication": "same_FIX_queue_store_then_cross_core_flag",
                 "auto_sync_vs_changed": False,
             },
             "padded_queries": self.spec.padded_queries,

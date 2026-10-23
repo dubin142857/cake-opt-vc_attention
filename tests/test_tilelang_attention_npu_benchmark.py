@@ -213,6 +213,17 @@ def test_generated_sync_audit_missing_empty_or_bad_source_is_diagnostic(benchmar
     assert audit["status"] == "error" and audit["error"]["message"] == "intentional lexical audit failure"
 
 
+def test_static_summary_handles_missing_or_invalid_existing_data(benchmark, capsys):
+    for report in (None, {}, {"generated_source_audits": None},
+                   {"generated_source_audits": {"main": {"status": "ok", "static_calls": None}}}):
+        benchmark.print_generated_source_summary(report, include_configuration=True)
+    lines = capsys.readouterr().out.splitlines()
+    assert len(lines) == 4 and all(
+        "revision=n/a actual_tiles=n/axn/a packet_size=n/a soc=n/a cube_cores=n/a" in line for line in lines)
+    assert all("status=unavailable" in line for line in lines[:3])
+    assert "status=invalid" in lines[-1]
+
+
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("dim", [64, 128])
 def test_zero_q_oracle_is_all_value_mean_and_constant_v_is_preserved(benchmark, dtype, dim):
@@ -319,7 +330,7 @@ def test_calibrated_plan_credits_validation_and_bounds_slow_provider_work(benchm
     assert (fast["extra_warmup"], fast["effective_repeats"], fast["effective_trials"]) == (0, 5, 3)
 
 
-def test_provider_timing_adds_no_calibration_or_duplicate_warmup_calls(benchmark):
+def test_provider_timing_adds_no_calibration_or_duplicate_warmup_calls(benchmark, monkeypatch, capsys):
     seconds = {"tilelang_full": 40.0, "tilelang_prepared": 39.5, "cann_fusion_attention": 0.128}
     now, called = [0.0], []
 
@@ -328,8 +339,16 @@ def test_provider_timing_adds_no_calibration_or_duplicate_warmup_calls(benchmark
         now[0] += seconds[name]
 
     report = {"validation": {"status": "passed"}, "providers": {}, "timings": {},
+              "runtime": {"backend_implementation_revision": "test_revision", "soc": "Ascend910_9382"},
+              "kernel": {"runtime": {"cube_core_num": 24}},
+              "effective_tiles": {"block_m": 128, "block_n": 128}, "packet_size": 4,
+              "generated_source_audits": {"main": {"status": "ok", "sha256": "12345678" + "0" * 56,
+                  "static_calls": {"pipe_barrier_by_pipe": {"PIPE_ALL": 3, "PIPE_V": 7},
+                                   "set_flag_calls": 11, "wait_flag_calls": 11}}},
               "calibration": {name: {"ms": duration * 1000, "verified_calls": 1}
                               for name, duration in seconds.items()}}
+    monkeypatch.setattr(benchmark, "audit_generated_source", lambda *args, **kwargs:
+                        pytest.fail("Final summary must not reparse generated source"))
     benchmark.time_providers({name: (lambda name=name: call(name), "test API") for name in seconds},
                              report, benchmark.parse_args([]), lambda: None, lambda: None, clock=lambda: now[0])
     assert called.count("tilelang_full") == called.count("tilelang_prepared") == 1
@@ -339,6 +358,10 @@ def test_provider_timing_adds_no_calibration_or_duplicate_warmup_calls(benchmark
     assert report["timings"]["tilelang_full"]["calibration_in_final_statistics"] is False
     assert report["comparisons"]["tilelang_full"]["tilelang_over_cann_time_ratio"] == pytest.approx(312.5)
     assert report["comparisons"]["tilelang_prepared"]["tilelang_over_cann_time_ratio"] == pytest.approx(39.5 / .128)
+    lines = capsys.readouterr().out.splitlines()
+    assert "tilelang_prepared / CANN API time ratio" in lines[-2]
+    assert lines[-1] == ("Generated source static sync sites: ALL=3 V=7 SetFlag=11 WaitFlag=11 sha8=12345678 "
+                         "revision=test_revision actual_tiles=128x128 packet_size=4 soc=Ascend910_9382 cube_cores=24")
     json.dumps(report, allow_nan=False)
 
 

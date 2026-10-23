@@ -327,6 +327,7 @@ def time_providers(calls, report, args, synchronize, save, clock=time.perf_count
                 print(f"  {name} / CANN API time ratio: "
                       f"{comparisons[name]['tilelang_over_cann_time_ratio']:.3f}x", flush=True)
         report["comparisons"] = comparisons
+    print_generated_source_summary(report, include_configuration=True)
 
 
 def _version(package):
@@ -512,6 +513,38 @@ def audit_generated_source(exported_sources):
     return result
 
 
+def print_generated_source_summary(report, *, include_configuration=False):
+    """Print existing static audit data; never reread source or run the NPU."""
+    def mapping(value):
+        return value if isinstance(value, dict) else {}
+
+    report = mapping(report)
+    audit = mapping(mapping(report.get("generated_source_audits")).get("main"))
+    status = audit.get("status", "unavailable")
+    counts = mapping(audit.get("static_calls"))
+    barriers = mapping(counts.get("pipe_barrier_by_pipe"))
+    fields = {"ALL": barriers.get("PIPE_ALL"), "V": barriers.get("PIPE_V"),
+              "SetFlag": counts.get("set_flag_calls"), "WaitFlag": counts.get("wait_flag_calls")}
+    if status == "ok" and all(type(value) is int and value >= 0 for value in fields.values()):
+        summary = " ".join(f"{name}={value}" for name, value in fields.items())
+        digest = audit.get("sha256")
+        summary += " sha8=" + (digest[:8] if isinstance(digest, str) and digest else "n/a")
+    else:
+        summary = "status=" + ("invalid" if status == "ok" else str(status))
+    if include_configuration:
+        kernel, runtime = mapping(report.get("kernel")), mapping(report.get("runtime"))
+        kernel_runtime = mapping(kernel.get("runtime"))
+        tiles = mapping(report.get("effective_tiles")) or mapping(kernel.get("effective_tiles"))
+        revision = runtime.get("backend_implementation_revision") or kernel.get("implementation_revision") or "n/a"
+        packet = report.get("packet_size", kernel.get("packet_size", "n/a"))
+        soc = kernel_runtime.get("runtime_soc") or runtime.get("soc") or "n/a"
+        cube_cores = kernel_runtime.get("cube_core_num")
+        cube_cores = cube_cores if cube_cores is not None else "n/a"
+        summary += (f" revision={revision} actual_tiles={tiles.get('block_m', 'n/a')}x"
+                    f"{tiles.get('block_n', 'n/a')} packet_size={packet} soc={soc} cube_cores={cube_cores}")
+    print("Generated source static sync sites: " + summary, flush=True)
+
+
 def validate_contract(output, q):
     if tuple(output.shape) != tuple(q.shape) or output.dtype != q.dtype or output.device != q.device:
         raise AssertionError("Attention output must retain input BNSD, dtype, and NPU device")
@@ -652,14 +685,7 @@ def run(args, report, save, artifact_dir):
         report["kernel_sources"]["main"] = kernel.export_source(artifact_dir / "generated_main")
         audit = audit_generated_source(report["kernel_sources"]["main"])
         report.setdefault("generated_source_audits", {})["main"] = audit
-        if audit["status"] == "ok":
-            calls = audit["static_calls"]
-            print(f"Generated source static sync sites: ALL={calls['pipe_barrier_by_pipe']['PIPE_ALL']} "
-                  f"V={calls['pipe_barrier_by_pipe']['PIPE_V']} SetFlag={calls['set_flag_calls']} "
-                  f"WaitFlag={calls['wait_flag_calls']} sha8={audit['sha256'][:8]}", flush=True)
-        else:
-            print(f"Generated source audit: status={audit['status']} "
-                  f"{audit.get('reason', audit.get('error', ''))}", flush=True)
+        print_generated_source_summary(report)
         save()
         selection = torch.tensor(ids, device=device, dtype=torch.long)
         records = report["validation"]["main"]
