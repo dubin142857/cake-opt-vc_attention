@@ -12,6 +12,8 @@ bash scripts/run_mindie_laser_stable.sh
 
 新增独立 [FP16 ExpCast 实验](MINDIE_LASER_FP16_EXPCAST.md)：`bash scripts/run_mindie_laser_fp16_expcast.sh`，保留稳定 INT8 QK / FP16 PV，直接构造 binary16 概率；对比原 Laser、稳定版、新编译关闭组与开启组。只编译新的本地候选，默认无内部探针；CANN 编译、NPU 正确性和收益等待远端验证，稳定入口保持不变。
 
+[msOpProf 硬件指标采集](MINDIE_LASER_MSOPPROF.md)：`bash scripts/run_mindie_laser_msopprof.sh`，复用原版 Laser 和稳定版二进制，按 kernel 名过滤，收集流水、计算、搬运、缓存与冲突数据；摘要为 `results/mindie_laser_msopprof_summary.txt`。不重新编译或启用内部 PV 探针。
+
 **当前 H200 主路线（2026-10-13）：`sageattn_vc`，INT8 QK + FP8 PV。**
 新候选 `bash scripts/run_tensor_mass_h200.sh`：针对概率分母求和，用无损解码后的 FP16 输入、FP32 累加的 Tensor Core 归约替代逐值升 FP32/相加。D128 编码/求和常规分支的本地静态指令从 325 降到 239，寄存器仍为 168；85 项检查通过，H200 整核性能待测。对比同次 scale-prefetch、installed、Sage、FA4，见 [CUDA 实验说明](SAGE_CUDA_EXPCAST.md)。
 最新 scalar-prefetch 为 23.0945 ms，同轮 scale-prefetch 为 22.9710 ms，候选慢 0.1235 ms（0.54%），不采用，继续保留 K128 scale-prefetch 基线。随后回传确认两者编译资源相同、输出逐位一致，但 full/core 均仅 2/9 轮更快，配对节省中位数均为负。该轮基线相对 Sage/FA4 的 GPU 内核加速比为 1.077×/1.326×，不代表完整 API 或模型收益。`bash scripts/run_scalar_prefetch_h200.sh` 保留作实验对照，见 [CUDA 实验说明](SAGE_CUDA_EXPCAST.md)。
