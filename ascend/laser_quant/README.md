@@ -658,6 +658,17 @@ profiler 活跃时，original / V-only / P+V 的累计设备任务平均时长�
 
 ## V-only PV 内部诊断：先找阻塞窗口
 
+**2026-10-23 更新：探针 v2 的 plain 模式在 tiny 输入上超时，暂不重跑本节的采样命令。** 生产 V-only 的同一输入已单独同步成功。请先运行离线检查：
+
+```bash
+git pull origin master
+bash scripts/inspect_mindie_laser_pv_failure.sh
+```
+
+读取已有失败日志、构建清单、device ELF 与编译元数据，不编译、不联网、不启动 NPU。输出 `results/mindie_laser_pv_failure.log` 和 `.json`，工具缺失时也保存部分证据。当前尚未确定超时根因，不把动态插桩的 plain 等同于原版机器码，也不将 PC 直接相减值当成已确认的 ELF 故障地址。详见 [v2 失败分析与离线检查](../../reports/ascend-pv-internal-phase-audit/README.md#v2-远端失败先检查已有编译产物)。
+
+下面保留原诊断流程供后续修复验证：
+
 ```bash
 git pull origin master
 bash scripts/run_mindie_laser_pv_phases.sh
@@ -675,4 +686,4 @@ bash scripts/run_mindie_laser_pv_phases.sh
 
 计时前先逐模式执行 tiny FP16 smoke，每次 launch 后单独同步并保存模式/shape/阶段；通过后运行原有 Vector-scale 独立参考、同地址 Q/K scale 异步排队更新与 P/V 边界连续输入检查，全部 padded native 输出仍要求精确一致。首次设备异常后只保存主机 JSON，不在 finally/checkpoint 中再次读取 trace。结果保存到 `results/mindie_laser_pv_phases.json`，完整日志同名 `.log`。失败时先看 `probe_validation_failure` 与 `active_probe_validation`；成功才分析生产计时、扰动校准及采样。同步与来源检查见 [PV 内部诊断审计](../../reports/ascend-pv-internal-phase-audit/README.md)。
 
-2026-10-23 远端 v1 在首个 FP16 B1/H2/Q1/K1/D128 验证中出现 `507014 / aicore timeout`（FIXP 报错），没有得到性能样本。旧 runner 将三个 mode 连续入队，无法据此判定是哪一个模式或哪个指令故障；异常处理还重复访问故障 stream，覆盖首错。v2 移除新增的 `PIPE_ALL` 作为减少诊断干预的措施，**未证实它就是根因，尚需远端复验**。一键脚本使用独立 `mindie_laser_cube_pv_probe_v2_*` 构建目录，保留旧诊断二进制以便定位，只重编新探针并复用生产缓存，不访问上游网络。
+2026-10-23 远端 v1 在首个 FP16 B1/H2/Q1/K1/D128 验证中出现 `507014 / aicore timeout`（FIXP 报错），没有得到性能样本。旧 runner 将三个 mode 连续入队，无法据此判定是哪一个模式或哪个指令故障；异常处理还重复访问故障 stream，覆盖首错。v2 移除新增的 `PIPE_ALL` 作为减少诊断干预的措施，但远端复验仍在 plain0 超时，**移除屏障并未解决根因**。一键脚本使用独立 `mindie_laser_cube_pv_probe_v2_*` 构建目录，保留旧诊断二进制以便定位，只重编新探针并复用生产缓存，不访问上游网络。目前改为上面的离线检查，保留已通过的 production 版本。

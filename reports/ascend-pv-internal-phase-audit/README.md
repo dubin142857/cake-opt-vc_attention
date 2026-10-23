@@ -6,9 +6,28 @@
 
 固定上游 MindIE-SD commit `71098c20ff90838d1fd1ca0a40515c751a3869b0`。诊断为独立 kind `pv`、op `VcLaserCubePvProbeAttention`、vendor/namespace `vc_laser_cube_pv_probe`。生产 V-only、原版 FP16 和融合量化器的既有构建保持可用；准备源码只读取本地固定 Git objects。
 
-运行 `bash scripts/run_mindie_laser_pv_phases.sh`。默认 BF16 BNSD `[1,28,37741,128]`。先逐模式同步 tiny smoke，再保留原有异步排队输出检查；通过后独立测量原版和 V-only 的 full/prepared/native，随后在相同 INT8 payload 上校准生产、plain、issue、detail，最后采样。没有将诊断版当优化候选，没有把 ticks 当生产百分比。
+原诊断入口为 `bash scripts/run_mindie_laser_pv_phases.sh`；**v2 已在远端失败，当前先使用下述离线检查入口，不重复运行探针**。原计划默认 BF16 BNSD `[1,28,37741,128]`：先逐模式同步 tiny smoke，再保留原有异步排队输出检查；通过后独立测量原版和 V-only 的 full/prepared/native，随后在相同 INT8 payload 上校准生产、plain、issue、detail，最后采样。没有将诊断版当优化候选，没有把 ticks 当生产百分比。
 
-2026-10-23 远端 v1 的首个 FP16 B1/H2/Q1/K1/D128 检查发生 `507014 / aicore timeout`，设备报 FIXP timeout/trap，尚未进入计时。因三模式连续提交，现有日志不能唯一定位失败模式，更不能确认屏障或私有数组就是根因。已证实的主机缺陷是异常后的 `finally: save()` 再次 flush/读取 trace，覆盖原始异常。schema v2 修复首次错误保留与模式定位，同时移除新增全流水 drain。旧 probe 编译产物保留；新版本默认在独立 `*_v2_*` 缓存中从本地固定 Git 对象构建。NPU 修复效果待远端复验。
+2026-10-23 远端 v1 的首个 FP16 B1/H2/Q1/K1/D128 检查发生 `507014 / aicore timeout`，设备报 FIXP timeout/trap，尚未进入计时。因三模式连续提交，v1 日志不能唯一定位失败模式，更不能确认屏障或私有数组就是根因。已证实的主机缺陷是异常后的 `finally: save()` 再次 flush/读取 trace，覆盖原始异常。schema v2 修复首次错误保留与模式定位，同时移除新增全流水 drain。旧 probe 编译产物保留；v2 在独立 `*_v2_*` 缓存中从本地固定 Git 对象构建。后续 v2 仍失败，详见下节。
+
+## v2 远端失败：先检查已有编译产物
+
+2026-10-23 第二份远端日志已确定调用顺序：FP16 B1/H2/Q1/K1/D128 的 **V-only production 单独同步成功，随后 plain(mode 0) 单独同步超时**。issue/detail 尚未提交。错误为 `507014`，core 20，FIXP timeout/trap；没有取得本轮性能数据。移除新增 `PIPE_ALL` 未解决问题，不能再将它描述为已验证的修复。
+
+plain 不执行系统计数器读取、trace 写回或 DCCI；但它仍与 issue/detail 共用一个包含动态分支和 `values_[3][64]` 私有数组（1536 字节）的编译内核。因此不能把 plain 当成与原核机器码相同的对照。源码复核未发现明确的 bridge 参数顺序、第三输出或 tiling attr 索引错误；代码生成、资源布局或原始调度被插桩扰动均是待验证假设。core 20 的故障也不能直接归属某个 PV 采样窗口。
+
+```bash
+git pull origin master
+bash scripts/inspect_mindie_laser_pv_failure.sh
+```
+
+检查器只使用 Python 标准库和现有 CANN `llvm-objdump`，读取失败报告、worker 日志、production/probe 构建清单及其 device ELF，不加载 torch/NPU，不重新构建、不联网、不发射 kernel。按构建记录核对二进制 SHA256；不一致的对象停止反汇编。工具从清单记录的 CANN 路径寻找，找不到或不支持目标 ELF 时仍保存部分证据，不要求安装 NVIDIA `nvdisasm`。
+
+结果摘要为 `results/mindie_laser_pv_failure.log`，结构化结果为 `results/mindie_laser_pv_failure.json`；原始工具输出保存在独立 artifact 目录。编译资源按实际导出的字段记录，缺少 stack/register 信息即为未知，不能凭源码数组大小断言寄存器溢出。日志中 `current_pc - start_pc = 0x50b4` 仅为直接相减值；运行时载入基址、MIX AIC/AIV 物理符号和对象身份尚未全部确认。检查器的符号内候选窗口是显式假设，不能作为已经锁定的故障指令，更不能从未知 FIXP 位域推算根因。
+
+下一步根据二进制证据决定隔离实验：保留新增接口而彻底使用原版 Cube 源码，可区分 ABI 链路与插桩编译结构；通过后再设计更小的编译期探针。尚不把这一隔离设想当作修复，也不要求当前再次等待 v2 超时。
+
+离线检查器本地回归 **30 passed**：覆盖构建/元数据哈希冲突、嵌套哈希不误判、工具缺失/超时、意外解析错误保留已采证据、不同 section 的同地址隔离、PC 边界及未知指令拒绝；真实回传日志已核对提取 core 20 和 `0x50b4`。Python 编译、Bash 语法及 diff 检查通过。测试使用合成工具输出，不代表本地有 CANN/NPU 或已经确认故障指令。
 
 ## 同步及观测边界
 
@@ -38,4 +57,4 @@
 
 v1 曾通过 130 项本地测试但随后远端发生超时，表明 host 测试无法代替设备验证。v2 增加故障注入测试，检查 native launch、同步、trace CPU 读取和上层 finally 的失败路径，确保首错后不再读取设备、后续模式不再提交，同时保留原来的无同步 scale 更新门禁。当前 header 的 scalar GM 写与 DCCI 仅用于稀疏诊断并放在计时窗口之后；额外 footprint 与 trace 分配仍在 plain 校准中保留。未进行本轮 CCE 编译或 NPU 实测。
 
-v2 本地验证：8 个 PV/Cube/vscale 测试文件共 **155 passed**、无 skip，包含真实 C++ writer→Python decoder 的 host 回环与异步错误路径故障注入。Python 编译、Bash 语法和 `git diff --check` 通过。`regenerate.py` 重建固定上游和探针同族源码，四次 analyzer 均退出 0；原始指令序列及旧三种探针源码/identity 保持一致。仍须远端对同一个 tiny 输入执行 CCE/NPU 验证。
+v2 本地验证：8 个 PV/Cube/vscale 测试文件共 **155 passed**、无 skip，包含真实 C++ writer→Python decoder 的 host 回环与异步错误路径故障注入。Python 编译、Bash 语法和 `git diff --check` 通过。`regenerate.py` 重建固定上游和探针同族源码，四次 analyzer 均退出 0；原始指令序列及旧三种探针源码/identity 保持一致。这些 host 检查未覆盖随后远端出现的 plain0 超时。
