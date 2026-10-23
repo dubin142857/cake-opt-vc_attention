@@ -37,14 +37,14 @@ public:
             const uint64_t k = slot == 0 ? 0 : (slot == 1 ? kx / 2 : kx - 1);
             if (Position(k, kx) != static_cast<int32_t>(slot)) continue;
             auto *v = values_[slot];
-            v[0] = MAGIC; v[1] = 1; v[2] = mode_; v[3] = core_;
+            v[0] = MAGIC; v[1] = 2; v[2] = mode_; v[3] = core_;
             v[4] = position_; v[5] = slot; v[6] = round_; v[7] = total_;
             v[8] = index; v[9] = count; v[10] = kx; v[11] = ky; v[12] = k;
             v[13] = on_start ? 1 : 0; v[14] = on_end ? 1 : 0;
             v[16] = slot == 0 ? 1 : 0;
             v[51] = (slot == 0 ? 1U : 0U) | (mode_ == 2 ? 4U : 0U);
             if (slot == 0 && mode_ == 2) {
-                v[51] |= 2U | (on_start ? 0U : 8U) | (on_end ? 16U : 0U);
+                v[51] |= (on_start ? 0U : 8U) | (on_end ? 16U : 0U);
                 v[49] = on_start ? 0 : 1; v[50] = on_end ? 1 : 0;
             }
         }
@@ -95,24 +95,14 @@ public:
     __aicore__ inline void EndCall() {
         if (!active_) return;
         const uint64_t issue_end = Tick();
-        uint64_t completed = issue_end;
-        if (mode_ == 2) {
-#ifdef __DAV_C220_CUBE__
-            // ONLY after the complete cube2 call, with terminal MAD/FIX pairs
-            // and any normalization already issued. Never between history
-            // MAD(unitFlag=2) and its following terminal PV/FIX operation.
-            AscendC::PipeBarrier<PIPE_ALL>();
-#endif
-            completed = Tick();
-        }
+        // Version 2 is passive in BOTH modes. Do not insert an all-pipeline
+        // drain into the parent's live event schedule. Reserved completion
+        // fields 19/21/22 and validity bit 1 remain zero: these timestamps
+        // observe scalar issue, never completion of queued DMA/MAD/FIX work.
         if (values_[0][0] == MAGIC) {
             auto *group = values_[0];
             group[17] = call_begin_; group[18] = issue_end;
             group[20] = issue_end - call_begin_;
-            if (mode_ == 2) {
-                group[19] = completed; group[21] = completed - issue_end;
-                group[22] = completed - call_begin_;
-            }
         }
         active_ = false; first_descriptor_ = false; tile_ = -1;
         // All record stores and cache flushes are outside measured windows.

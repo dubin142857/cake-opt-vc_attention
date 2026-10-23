@@ -15,28 +15,7 @@
     "D:\\codex\\算子\\build\\ascend_pv_internal_phase_audit\\probe\\op_kernel\\vc_laser_probability.h",
     "D:\\codex\\算子\\build\\ascend_pv_internal_phase_audit\\probe\\op_kernel\\vc_laser_pv_probe.h"
   ],
-  "event_count": 1,
-  "findings": [
-    {
-      "code": "SYNC-09",
-      "severity": "性能",
-      "file": "D:\\codex\\算子\\build\\ascend_pv_internal_phase_audit\\probe\\op_kernel\\vc_laser_pv_probe.h",
-      "line": 104,
-      "message": "PipeBarrier<PIPE_ALL> 粒度过粗",
-      "detail": "若仅需 V 排序可用 PipeBarrier<PIPE_V>；确认无跨 PIPE 依赖后再收窄"
-    }
-  ],
-  "events": [
-    {
-      "kind": "pipebarrier",
-      "event_type": "PIPE_ALL",
-      "flag_id": "",
-      "line": 104,
-      "file": "D:\\codex\\算子\\build\\ascend_pv_internal_phase_audit\\probe\\op_kernel\\vc_laser_pv_probe.h",
-      "func": "__aicore__ inline void EndCall",
-      "raw": "PipeBarrier<PIPE_ALL>(",
-      "side": "",
-      "pipe_param": ""
-    }
-  ]
+  "event_count": 0,
+  "findings": [],
+  "events": []
 }

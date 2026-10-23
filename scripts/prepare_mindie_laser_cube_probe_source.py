@@ -38,12 +38,12 @@ PROBE_CONTRACT = {
 PV_TRACE_SHAPE = [4, 3, 3, 64]
 PV_PROBE_CONTRACT = {
     "output_index": 2, "dtype": "int64", "shape": PV_TRACE_SHAPE,
-    "schema_version": 1, "magic": 0x56434C5056505242,
+    "schema_version": 2, "magic": 0x56434C5056505242,
     "modes": {"0": "plain", "1": "whole-call scalar issue", "2": "internal scalar issue/dependency windows"},
     "allocation": "fresh zero-filled trace in every mode; original statistics allocation retained",
     "sampling": "first four Cube cores; unique first/middle/last logical PV rounds; descriptor 0; unique first/middle/last K tiles",
     "group_fields": "whole-call fields cover all descriptors; history/output/prime fields cover descriptor 0 only; stored once in first K record",
-    "completion": "mode 2 PIPE_ALL only after complete cube2 call; never inside MAD/FIX or history-to-PV chain",
+    "completion": "no diagnostic completion drain in either mode; completed-call fields 19/21/22 and validity bit 1 stay zero",
     "timing": "raw system ticks, internal passive scalar issue/dependency brackets; not pure engine time, kernel percentages or additive phases",
     "calibration": "V-only production vs compiled plain; plain vs issue/detail; exact all-output own-payload gates",
 }
@@ -224,7 +224,7 @@ def _manifest_identity(source, kind):
         record.update(baseline_variant=parent_identity["variant"],
                       inherited_contract_scope=(
                           "All parent contracts retain the V-only Vector-scale arithmetic and PV schedule; "
-                          "probe_contract defines passive internal instrumentation and the complete-call end drain."))
+                          "probe_contract defines passive internal instrumentation without added completion drains."))
     return record
 
 

@@ -6,7 +6,7 @@ from numbers import Integral
 from statistics import median
 
 MAGIC = 0x56434C5056505242
-VERSION = 1
+VERSION = 2
 TRACE_SHAPE = (4, 3, 3, 64)
 FIELD_NAMES = (
     "magic", "version", "mode", "core", "round_position", "k_position", "round", "rounds",
@@ -28,8 +28,8 @@ POSITION_NAMES = ("first", "middle", "last")
 CALL_FIELDS = FIELD_NAMES[20:23]
 SCOPE = (
     "Sparse Cube-only raw system ticks. Internal brackets observe original scalar issue/dependency windows, "
-    "not pure DMA/MAD/FIX completion. Only detail's whole-call boundary adds PIPE_ALL completion; it changes "
-    "overlap. Whole calls cover all descriptors, while tiles/history/output/prime represent descriptor 0. "
+    "not pure DMA/MAD/FIX completion. Neither mode adds a completion drain; completed-call fields are "
+    "unavailable. Whole calls cover all descriptors, while tiles/history/output/prime represent descriptor 0. "
     "Do not add windows, subtract probe overhead from samples, or convert them into kernel percentages/ms."
 )
 
@@ -90,18 +90,13 @@ def decode_trace(trace, mode, require_records=False):
                 detailed = mode == 2
                 history, output = detailed and group and not r["on_start"], detailed and group and bool(r["on_end"])
                 next_v = detailed and bool(r["v_prefetch"]) and r["k"]+1 < r["kx"]
-                flags = int(group) | (int(detailed and group)<<1) | (int(detailed)<<2) | (int(history)<<3) | (int(output)<<4) | (int(next_v)<<5)
+                flags = int(group) | (int(detailed)<<2) | (int(history)<<3) | (int(output)<<4) | (int(next_v)<<5)
                 check(r["valid_flags"] == flags, "valid flags")
+                check(r["call_completed_end"] == r["call_completion_ticks"] == r["call_total_ticks"] == 0,
+                      "passive probe cannot contain completed call fields")
                 if group:
                     check(r["call_begin"] <= r["call_issue_end"] and
                           r["call_issue_ticks"] == r["call_issue_end"]-r["call_begin"], "call issue timestamp/delta")
-                    if detailed:
-                        check(r["call_issue_end"] <= r["call_completed_end"] and
-                              r["call_completion_ticks"] == r["call_completed_end"]-r["call_issue_end"] and
-                              r["call_total_ticks"] == r["call_completed_end"]-r["call_begin"], "completed call timestamp/deltas")
-                    else:
-                        check(r["call_completed_end"] == r["call_completion_ticks"] == r["call_total_ticks"] == 0,
-                              "issue mode cannot contain completed call fields")
                 else:
                     check(not any(values[17:25]) and not any(values[40:42]) and not any(values[49:51]),
                           "non-first K record duplicates whole-call/descriptor-only windows")
@@ -174,7 +169,7 @@ def summarize_records(trials):
                     elif field == "history_issue_ticks": valid = bool(r["valid_flags"] & 8)
                     elif field == "output_issue_ticks": valid = bool(r["valid_flags"] & 16)
                     elif field.startswith("prime_v_"): valid = r["mode"] == 2 and bool(r["v_prefetch"])
-                    elif field in ("call_completion_ticks", "call_total_ticks"): valid = r["mode"] == 2
+                    elif field in ("call_completion_ticks", "call_total_ticks"): valid = False
                     if valid: values.append(r[field])
                 row["inactive"][field] = len(samples)-len(values)
                 if values: row["ticks"][field] = _stats(values)

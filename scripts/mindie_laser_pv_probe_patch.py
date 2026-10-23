@@ -1,8 +1,8 @@
 """Passive sparse PV issue/dependency windows on the V-only parent schedule.
 
-Instrumentation is additive and removable byte-for-byte. Internal windows add
-only scalar GetSystemCycle reads. The only diagnostic drain is after the entire
-cube2 invocation, never between a MAD unitFlag and its corresponding FIX copy.
+Instrumentation is additive and removable byte-for-byte. Windows add scalar
+GetSystemCycle reads and bookkeeping; there are no diagnostic completion drains.
+The parent MAD/FIX and event sequence remains intact.
 """
 from pathlib import Path
 import re

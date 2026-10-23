@@ -31,11 +31,11 @@ enum { PIPE_ALL };
 static uint64_t trace_data[4*3*3*64];
 static uint64_t counter=101;
 static int faults=0, barriers=0, flushes=0;
-static bool complete_boundary=false;
 namespace AscendC {
 uint64_t GetSystemCycle() { counter+=7;return counter; }
 template<int Pipe> void PipeBarrier() {
-    if(Pipe!=PIPE_ALL || !complete_boundary) ++faults;
+    // Any diagnostic barrier is a regression, even at a whole-call boundary.
+    ++faults;
     ++barriers;counter+=13;
 }
 template<class T> class GlobalTensor {
@@ -67,7 +67,7 @@ void group(vc_laser_pv_probe::PvProbe &probe,uint32_t field) {
 }
 EXPORT int capture(int mode,int total,int kx,int core,int descriptors,int guard,int repeat) {
     for(int i=0;i<4*3*3*64;++i) trace_data[i]=0;
-    counter=101;faults=barriers=flushes=0;complete_boundary=false;
+    counter=101;faults=barriers=flushes=0;
     vc_laser_pv_probe::PvProbe probe;
     probe.Init(reinterpret_cast<uint8_t*>(trace_data),mode,core);
     for(int pass=0;pass<repeat;++pass) for(int round=0;round<total;++round) {
@@ -92,7 +92,7 @@ EXPORT int capture(int mode,int total,int kx,int core,int descriptors,int guard,
             }
             if(end) group(probe,24);
         }
-        complete_boundary=true;probe.EndCall();complete_boundary=false;
+        probe.EndCall();
     }
     return faults;
 }
@@ -143,16 +143,17 @@ def test_real_writer_roundtrip_modes_and_first_match_sampling(writer, mode, tota
     expected = set() if mode == 0 else {(r, k) for r in rounds for k in keys}
     assert {(r["round"], r["k"]) for r in decoded} == expected
     assert len(decoded) == len(expected)  # duplicate calls do not overwrite/add records
-    assert writer.barrier_count() == (len(rounds) if mode == 2 else 0)
+    assert writer.barrier_count() == 0
     assert writer.flush_count() == len(decoded)*8
     assert all(r["round_position"] == rounds[r["round"]] and
                r["k_position"] == keys[r["k"]] for r in decoded)
     assert all(r["descriptor"] == 0 and r["descriptors"] == 2 for r in decoded)
     for record in decoded:
+        assert record["version"] == 2
+        assert not record["valid_flags"] & 2
+        assert record["call_completed_end"] == record["call_completion_ticks"] == record["call_total_ticks"] == 0
         if record["group_valid"]:
             assert record["call_begin"] > 0 and record["call_issue_ticks"] > 0
-            if mode == 1:
-                assert record["call_completed_end"] == record["call_completion_ticks"] == record["call_total_ticks"] == 0
         else:
             assert all(record[field] == 0 for field in records.FIELD_NAMES[17:25])
         if mode == 2:
@@ -162,6 +163,7 @@ def test_real_writer_roundtrip_modes_and_first_match_sampling(writer, mode, tota
 @pytest.mark.parametrize("case", [dict(total=0), dict(kx=0), dict(core=4), dict(descriptors=0)])
 def test_inactive_real_writer_does_not_invent_zero_duration_samples(writer, case):
     trace = capture(writer, 2, **case)
+    assert writer.barrier_count() == 0
     assert records.decode_trace(trace, 2) == []
     with pytest.raises(ValueError, match="required|records"):
         records.decode_trace(trace, 2, require_records=True)
@@ -178,6 +180,11 @@ def test_full_four_core_real_writer_coverage_and_aggregation(writer):
     summary = records.summarize_records([decoded])
     assert sum(row["samples"] for row in summary["calls"]) == 12  # not 36
     assert sum(row["samples"] for row in summary["tiles"]) == 36
+    assert all(not {"call_completion_ticks", "call_total_ticks"} & row["ticks"].keys()
+               for row in summary["calls"])
+    assert all(row["inactive"][field] == row["samples"]
+               for row in summary["calls"]
+               for field in ("call_completion_ticks", "call_total_ticks"))
     first_call = next(row for row in summary["calls"] if row["round_position"] == 0)
     assert first_call["inactive"]["history_issue_ticks"] == 4
     assert "history_issue_ticks" not in first_call["ticks"]
@@ -236,6 +243,31 @@ def test_partial_or_inconsistent_real_records_are_rejected(writer, damage):
         trace[0][0][1][fields["descriptors"]] += 1
     with pytest.raises(ValueError):
         records.decode_trace(trace, 2, require_records=True)
+
+
+@pytest.mark.parametrize("mode", [1, 2])
+def test_v1_real_records_are_rejected_even_when_all_other_metadata_is_valid(writer, mode):
+    trace = capture(writer, mode)
+    for keys in trace[0]:
+        for row in keys:
+            if row[0]:
+                row[1] = 1
+    with pytest.raises(ValueError, match="version"):
+        records.decode_trace(trace, mode, require_records=True)
+
+
+@pytest.mark.parametrize("mode", [1, 2])
+@pytest.mark.parametrize("field", ["call_completed_end", "call_completion_ticks", "call_total_ticks", "valid_flags"])
+def test_no_fence_schema_rejects_any_claim_of_completed_work(writer, mode, field):
+    trace = capture(writer, mode)
+    row = trace[0][0][0]
+    index = records.FIELD_NAMES.index(field)
+    if field == "valid_flags":
+        row[index] |= 2
+    else:
+        row[index] = 1
+    with pytest.raises(ValueError):
+        records.decode_trace(trace, mode, require_records=True)
 
 
 @pytest.mark.parametrize("damage", ["missing_core", "missing_k", "fallback_guard"])

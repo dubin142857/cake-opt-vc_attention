@@ -1,6 +1,6 @@
 {
   "command": [
-    "D:\\codex\\算子\\.venv-package\\Scripts\\python.exe",
+    "C:\\Python314\\python.exe",
     "-X",
     "utf8",
     "D:\\codex\\算子\\build\\cannbot-skills\\ops\\ascendc-sync-audit\\scripts\\sync_audit.py",

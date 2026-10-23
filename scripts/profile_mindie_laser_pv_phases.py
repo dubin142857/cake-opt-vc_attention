@@ -35,7 +35,8 @@ SCOPE = (
     "are paired with current V-only PV-prefetch INT8, with no profiler. Diagnostic plain/issue/detail "
     "are separate calibration rows on identical V-only prepared operands, never optimization variants. "
     "All three diagnostic modes include fresh trace allocation/zeroing. Sparse system ticks are "
-    "not core cycles, production percentages, additive phase costs or kernel milliseconds."
+    "not core cycles, production percentages, additive phase costs or kernel milliseconds. "
+    "Issue/detail sampling adds no pipeline completion drain."
 )
 
 
@@ -112,20 +113,109 @@ def checked_trace(result, payload, mode, *, require=False):
     return records
 
 
+class ProbeValidationGuard:
+    """Remember the first failure and keep exception-path checkpoints host-only."""
+    def __init__(self, report, save):
+        self.report, self.save = report, save
+        self.first_error = None
+        self.context = {}
+
+    def require_healthy(self):
+        if self.first_error is not None:
+            raise self.first_error
+
+    def mark(self, payload, label, stage, *, isolated=False):
+        self.require_healthy()
+        self.context = dict(mode=label, stage=stage, isolated=isolated,
+            shape_bnsd=list(getattr(payload, "shape", ())), keys=getattr(payload, "keys", None),
+            dtype=str(getattr(payload, "dtype", "unknown")),
+            native_q_dtype=str(getattr(getattr(payload, "q", None), "dtype", "unknown")),
+            attribution=("Individually synchronized smoke call" if isolated else
+                         "Deferred queue: last enqueued/read mode does not identify a failing kernel"))
+        self.report["active_probe_validation"] = dict(self.context)
+        if stage == "about_to_launch":
+            print(f"PV probe validation: mode={label} shape={self.context['shape_bnsd']} "
+                  f"K={self.context['keys']} isolated={isolated} about_to_launch", flush=True)
+        self.save()
+
+    def fail(self, error, *, origin=None):
+        if self.first_error is None:
+            self.first_error = error
+            self.report["probe_validation_failure"] = dict(self.context, origin=origin,
+                error=f"{type(error).__name__}: {error}",
+                traceback="".join(traceback.format_exception(type(error), error, error.__traceback__)),
+                further_device_access_aborted=True)
+
+    def save_failure(self):
+        # JSON writes only. Never flush pending NPU outputs after a failure,
+        # including when an upstream validator invokes save() from finally.
+        try:
+            self.save()
+        except Exception as error:
+            self.report["probe_failure_report_error"] = f"{type(error).__name__}: {error}"
+
+
+def validate_tiny_probe_modes(production, native, device, guard, synchronize):
+    """Localize launch/sync failures before running the unchanged queued gates."""
+    import torch
+    from profile_mindie_laser_quant import compare_all_rows
+    from mindie_laser_vscale_reference import MAPPING_CASES, _mapping_inputs
+    try:
+        # Replay the first fixture that failed remotely, including heads,
+        # D128 padding and structured data, rather than a simpler H1/zero case.
+        case = next(case for case in MAPPING_CASES if case["name"] == "tiny")
+        inputs = tuple(x.to(device) for x in _mapping_inputs(case, torch.float16))
+        payload = production.prepare(*inputs)
+        guard.mark(payload, PRODUCTION, "about_to_launch", isolated=True)
+        expected = production.run_native(payload)
+        guard.mark(payload, PRODUCTION, "awaiting_sync", isolated=True)
+        synchronize()
+        rows = guard.report["probe_tiny_smoke_validation"] = []
+        for label, mode in MODES.items():
+            guard.mark(payload, label, "about_to_launch", isolated=True)
+            result = probe_call(native, payload, mode)
+            guard.mark(payload, label, "awaiting_sync", isolated=True)
+            synchronize()
+            guard.mark(payload, label, "trace_cpu", isolated=True)
+            records = checked_trace(result, payload, mode)
+            guard.mark(payload, label, "exact_output", isolated=True)
+            error = compare_all_rows(result[0], expected)
+            require_exact(error)
+            rows.append(dict(mode=label, shape_bnsd=list(payload.shape), keys=payload.keys,
+                             records=len(records), **error))
+            guard.mark(payload, label, "completed", isolated=True)
+            print(f"PV probe validation: mode={label} shape={list(payload.shape)} K={payload.keys} completed", flush=True)
+    except Exception as error:
+        guard.fail(error, origin="isolated_tiny_smoke")
+        guard.save_failure()
+        raise
+
+
 class DeferredProbeAdapter:
     """All modes launch before comparisons; preserve queued scale update tests."""
-    def __init__(self, production, native, rows):
+    def __init__(self, production, native, rows, guard=None):
         self.production, self.native, self.rows = production, native, rows
         self.pending = []
+        self.guard = guard or ProbeValidationGuard({}, lambda: None)
 
     def __getattr__(self, name):
         return getattr(self.production, name)
 
     def run_native(self, payload):
-        expected = self.production.run_native(payload)
-        results = {label: probe_call(self.native, payload, mode) for label, mode in MODES.items()}
-        self.pending.append((payload, expected, results))
-        return results["detail"][0]
+        self.guard.require_healthy()
+        try:
+            self.guard.mark(payload, PRODUCTION, "about_to_launch")
+            expected = self.production.run_native(payload)
+            results = {}
+            for label, mode in MODES.items():
+                self.guard.mark(payload, label, "about_to_launch")
+                results[label] = probe_call(self.native, payload, mode)
+                self.guard.mark(payload, label, "enqueued")
+            self.pending.append((payload, expected, results))
+            return results["detail"][0]
+        except Exception as error:
+            self.guard.fail(error, origin="deferred_launch")
+            raise
 
     def __call__(self, *inputs):
         payload = self.prepare(*inputs)
@@ -133,31 +223,56 @@ class DeferredProbeAdapter:
 
     def flush(self):
         from profile_mindie_laser_quant import compare_all_rows
-        for payload, expected, results in self.pending:
-            for label, result in results.items():
-                records = checked_trace(result, payload, MODES[label])
-                error = compare_all_rows(result[0], expected)
-                require_exact(error)
-                self.rows.append(dict(mode=label, records=len(records), **error))
-        self.pending.clear()
+        self.guard.require_healthy()
+        try:
+            for payload, expected, results in self.pending:
+                for label, result in results.items():
+                    self.guard.mark(payload, label, "trace_cpu")
+                    records = checked_trace(result, payload, MODES[label])
+                    self.guard.mark(payload, label, "exact_output")
+                    error = compare_all_rows(result[0], expected)
+                    require_exact(error)
+                    self.rows.append(dict(mode=label, records=len(records), **error))
+            self.pending.clear()
+        except Exception as error:
+            self.guard.fail(error, origin="deferred_output_read")
+            raise
 
 
-def validate_probe(production, native, device, report, save):
+def validate_probe(production, native, device, report, save, *, synchronize=None):
     from mindie_laser_vscale_reference import validate_vector_scale
     from mindie_laser_pv_prefetch_checks import validate_pv_prefetch
-    checked = DeferredProbeAdapter(production, native, report.setdefault("probe_exact_validation", []))
+    if synchronize is None:
+        import torch
+        synchronize = torch.npu.synchronize
+    guard = ProbeValidationGuard(report, save)
+    checked = DeferredProbeAdapter(production, native, report.setdefault("probe_exact_validation", []), guard)
     def checkpoint():
+        active_error = sys.exc_info()[1]
+        if active_error is not None:
+            guard.fail(active_error, origin="upstream_validation")
+        if guard.first_error is not None:
+            guard.save_failure()
+            return
         checked.flush()
         save()
-    validate_vector_scale({"baseline": production, "reuse": checked}, device, report, checkpoint)
-    validate_pv_prefetch(production, checked, device, report, checkpoint,
-        scope_name="pv_probe",
-        description="Current V-only production versus plain/issue/detail diagnostic; unchanged algorithm")
-    checked.flush()
-    report["validation_scope"] = (
-        "Current Vector-scale decoded oracle, same-address queued Q/K scale updates, 38 PV boundary cases; "
-        "ALL padded outputs exact in plain/issue/detail. No model-quality claim.")
-    save()
+    try:
+        validate_tiny_probe_modes(production, native, device, guard, synchronize)
+        validate_vector_scale({"baseline": production, "reuse": checked}, device, report, checkpoint)
+        validate_pv_prefetch(production, checked, device, report, checkpoint,
+            scope_name="pv_probe",
+            description="Current V-only production versus plain/issue/detail diagnostic; unchanged algorithm")
+        checked.flush()
+        report["validation_scope"] = (
+            "First: original tiny FP16 B1/H2/Q1/K1/D128 fixture with per-mode synchronization to localize failures. Then: "
+            "unchanged Current Vector-scale decoded oracle, same-address queued Q/K scale updates, 38 PV boundary cases; "
+            "ALL padded outputs exact in plain/issue/detail. Deferred mode labels do not identify an asynchronous failing kernel. "
+            "No model-quality claim; synchronized smoke is outside every timing scope.")
+        save()
+    except Exception as error:
+        guard.fail(error, origin="validation")
+        guard.save_failure()
+        raise
 
 
 def make_production_calls(original, production, payloads, inputs):

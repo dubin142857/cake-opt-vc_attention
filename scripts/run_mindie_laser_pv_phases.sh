@@ -73,6 +73,7 @@ print('Verified existing V-only PV-prefetch INT8, FP16 and fused-preprocessing b
 PY
 BUILD_SOC="$("$PYTHON_BIN" -c 'import json; print(json.load(open("results/mindie_laser_quant_vscale_pv_prefetch_build.json"))["soc"])')"
 SOURCE_REFERENCE="$("$PYTHON_BIN" -c 'import json; print(json.load(open("results/mindie_laser_quant_vscale_pv_prefetch_build.json"))["source_dir"])')"
+echo "PV probe v2: passive issue windows, no added completion drain; separate v2 build cache"
 echo "Only build the PV diagnostic provider; existing V-only PV-prefetch/FP16/quantizer are reused"
 echo "Reuse verified source checkout: $SOURCE_REFERENCE (no upstream download)"
 "$PYTHON_BIN" -u scripts/build_mindie_laser_cube_probe.py --kind pv \

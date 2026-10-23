@@ -6,7 +6,9 @@
 
 固定上游 MindIE-SD commit `71098c20ff90838d1fd1ca0a40515c751a3869b0`。诊断为独立 kind `pv`、op `VcLaserCubePvProbeAttention`、vendor/namespace `vc_laser_cube_pv_probe`。生产 V-only、原版 FP16 和融合量化器的既有构建保持可用；准备源码只读取本地固定 Git objects。
 
-运行 `bash scripts/run_mindie_laser_pv_phases.sh`。默认 BF16 BNSD `[1,28,37741,128]`。先检查输出，再独立测量原版和 V-only 的 full/prepared/native，随后在相同 INT8 payload 上校准生产、plain、issue、detail，最后采样。没有将诊断版当优化候选，没有把 ticks 当生产百分比。
+运行 `bash scripts/run_mindie_laser_pv_phases.sh`。默认 BF16 BNSD `[1,28,37741,128]`。先逐模式同步 tiny smoke，再保留原有异步排队输出检查；通过后独立测量原版和 V-only 的 full/prepared/native，随后在相同 INT8 payload 上校准生产、plain、issue、detail，最后采样。没有将诊断版当优化候选，没有把 ticks 当生产百分比。
+
+2026-10-23 远端 v1 的首个 FP16 B1/H2/Q1/K1/D128 检查发生 `507014 / aicore timeout`，设备报 FIXP timeout/trap，尚未进入计时。因三模式连续提交，现有日志不能唯一定位失败模式，更不能确认屏障或私有数组就是根因。已证实的主机缺陷是异常后的 `finally: save()` 再次 flush/读取 trace，覆盖原始异常。schema v2 修复首次错误保留与模式定位，同时移除新增全流水 drain。旧 probe 编译产物保留；新版本默认在独立 `*_v2_*` 缓存中从本地固定 Git 对象构建。NPU 修复效果待远端复验。
 
 ## 同步及观测边界
 
@@ -17,10 +19,10 @@
 | P L1A / P、V L0 | MTE1 装载 → MAD 消费 → 原事件释放 | 内部只插入被动计数器读取；不添加 Set/Wait 或 drain |
 | history | diagonal MAD(copy_out=false) → 后续 PV 累加 | 未发完匹配的终端 MAD/FIX 前，禁止 PIPE_ALL |
 | PV 终端输出 | MAD unitFlag=3 → FIX UnitFlagMode=3 | 保持指令配对；不在两者之间插完成屏障 |
-| 末尾归一化 | diagonal MAD → 匹配输出 copy | 整次 PV 返回后才能观察完成尾巴 |
+| 末尾归一化 | diagonal MAD → 匹配输出 copy | 不添加完成屏障，不报告完成尾巴 |
 | trace | 独占 core/round/K 槽 → 主机同步后解码 | 每次分配清零；有效位区分未采样与真实零值；记录写回在所测窗口外 |
 
-`wait_flag` 是目标流水的同步命令，标量系统计数器不自动跟随该流水等待。因此内部记录是发射/依赖窗口，可能包含队列反压，不能直接称为硬件等待时长。整次 PV 完成尾巴覆盖剩余排队工作，并非纯 FIX 或纯矩阵乘。history/归一化、整次调用和单 K 块分别分组，不能相加或重复归属。
+`wait_flag` 是目标流水的同步命令，标量系统计数器不自动跟随该流水等待。因此内部记录是发射/依赖窗口，可能包含队列反压，不能直接称为硬件等待时长。v2 两种采样模式都没有诊断 drain，完成类字段 19/21/22 与 validity bit 1 保持零；decoder 拒绝 v1，summary 不把无效零值当成测得的零耗时。history/归一化、整次调用和单 K 块分别分组，不能相加或重复归属。
 
 ## CANNBot 工作流
 
@@ -30,14 +32,10 @@
 
 本地重建证明：Cube 去插桩后逐字节等于 V-only；匹配的原始调用序列 94/94 一致；Vector 的 96/96 条调用及两个地址映射文件逐字节不变。旧 `int8`、`vscale`、`fp16` 三种探针与提交 `67b9e75` 的生成源码、来源记录和 manifest identity 相同，避免本次功能扩展使已验证的构建失效。见 `source_comparison.json`、`legacy_equivalence.json`。
 
-两个 analyzer 对 baseline/probe 分别扫描 13/14 个文件，四次均退出 0。probe 保留一条性能提示，位于 `op_kernel/vc_laser_pv_probe.h:104`：
+两个 analyzer 对 baseline/probe 分别扫描 13/14 个文件。v1 报告的一条 SYNC-09 性能提示对应新增 `PipeBarrier<PIPE_ALL>`；v2 删除该屏障而不换成另一种完成等待。更新后的原始输出见同目录 JSON。analyzer 未覆盖 Laser 原始 DMA/MAD/flag 的完整数据流，operations 为 0，因此无 findings 不构成同步证明，更不能证明这次设备超时已消失。去插桩字节等价也不能证明编译器生成的异步执行时序等价。
 
-> SYNC-09，性能：PipeBarrier<PIPE_ALL> 粒度过粗
->
-> 若仅需 V 排序可用 PipeBarrier<PIPE_V>；确认无跨 PIPE 依赖后再收窄
+跨语言回环测试将实际 `PvProbe` C++ header 用主机 stub 编译执行，产生 trace，再经 JSON 交给实际 Python decoder，覆盖 plain/issue/detail、首中尾重合去重、inactive、完整长 shape 槽位、字段破损和分组不重复。v2 stub 将任何新增 PipeBarrier 视为失败，并检查旧 schema、伪造完成字段和 validity bit 1 均被拒绝；它不模拟真实 NPU 异步流水，也不替代远端输出门限与编译。
 
-它对应 detail 的整次 PV 结束完成屏障，本实验有意保留并测量其扰动，不能替换成只等 Vector 的屏障来声称 Cube 已完成。没有红线或高级别候选。同步 analyzer 只识别了这个新增 barrier；数据流 analyzer 的 operations 均为 0，未覆盖 Laser 原始 DMA/MAD/flag 的完整数据流，因此该结果不构成同步证明。手工检查和去插桩字节检查补充了这一边界。
+v1 曾通过 130 项本地测试但随后远端发生超时，表明 host 测试无法代替设备验证。v2 增加故障注入测试，检查 native launch、同步、trace CPU 读取和上层 finally 的失败路径，确保首错后不再读取设备、后续模式不再提交，同时保留原来的无同步 scale 更新门禁。当前 header 的 scalar GM 写与 DCCI 仅用于稀疏诊断并放在计时窗口之后；额外 footprint 与 trace 分配仍在 plain 校准中保留。未进行本轮 CCE 编译或 NPU 实测。
 
-跨语言回环测试将实际 `PvProbe` C++ header 用主机 stub 编译执行，产生 trace，再经 JSON 交给实际 Python decoder，覆盖 plain/issue/detail、首中尾重合去重、inactive、完整长 shape 槽位、字段破损和分组不重复。stub 还检查完成屏障只能发生在整次调用结束；它不模拟真实 NPU 异步流水，也不替代远端输出门限与编译。
-
-本轮本地共 130 项通过、无跳过：旧 Cube 源码/构建/入口回归及新 profile/回环合计 116 项，新 PV 来源/构建/插桩 14 项。其中真实 C++ writer→Python reader 回环为 35 项。Python 编译、Bash 语法和差异检查通过。当前 header 的 scalar GM 写与 DCCI 仅用于稀疏诊断并放在计时窗口之后，不能拿它当生产高性能写法；其额外 footprint 与 trace 分配仍在 plain 校准中保留。未进行本轮 CCE 编译或 NPU 实测。
+v2 本地验证：8 个 PV/Cube/vscale 测试文件共 **155 passed**、无 skip，包含真实 C++ writer→Python decoder 的 host 回环与异步错误路径故障注入。Python 编译、Bash 语法和 `git diff --check` 通过。`regenerate.py` 重建固定上游和探针同族源码，四次 analyzer 均退出 0；原始指令序列及旧三种探针源码/identity 保持一致。仍须远端对同一个 tiny 输入执行 CCE/NPU 验证。

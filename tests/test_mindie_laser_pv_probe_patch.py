@@ -40,9 +40,10 @@ def test_mad_fix_pair_and_history_are_only_passively_bracketed(cube):
     for logical in (b"roundId", b"roundId - 2", b"roundId + Z - 2"):
         assert b"pv_probe_.BeginCall(" + logical + b", Z);" in run
     header = (ROOT / "ascend/laser_cube_probe/vc_laser_pv_probe.h").read_bytes()
-    assert header.count(b"AscendC::PipeBarrier<PIPE_ALL>();") == 1
+    executable = re.sub(rb"//[^\n]*|/\*.*?\*/", b"", header, flags=re.S)
+    assert not re.search(rb"\b(?:PipeBarrier|pipe_barrier|fence|set_flag|wait_flag|wait_flag_dev)\s*(?:<|\()", executable)
     end = header[header.index(b"inline void EndCall()"):]
-    assert end.index(b"issue_end = Tick()") < end.index(b"PipeBarrier<PIPE_ALL>") < end.index(b"record.SetValue")
+    assert end.index(b"issue_end = Tick()") < end.index(b"record.SetValue")
 
 
 def test_missing_and_repeated_pinned_hooks_fail_closed(cube):

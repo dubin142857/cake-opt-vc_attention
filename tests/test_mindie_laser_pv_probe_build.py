@@ -68,6 +68,7 @@ def test_source_contract_abi_and_v_only_parent(prepared):
     assert report["pv_prefetch_contract"] == prep.pv.CONTRACT
     assert report["vector_scale_contract"] == prep.vscale.VSCALE_CONTRACT
     assert report["probe_contract"] == prep.PV_PROBE_CONTRACT
+    assert report["probe_contract"]["schema_version"] == 2
     assert report["probe_contract"]["shape"] == [4, 3, 3, 64]
     assert "pv_p_prefetch_contract" not in report
     name = identity["op_name"]
@@ -135,3 +136,15 @@ def test_bridge_schema_trace_allocation_and_separate_defaults():
         ["--kind", kind, "--cann-root", "cann", "--soc", "ascend910_93"])) for kind in prep.KINDS]
     for field in ("source_dir", "source_manifest", "install_dir", "bridge_dir", "output"):
         assert len({getattr(args, field) for args in arguments}) == len(prep.KINDS)
+
+
+def test_v2_build_preserves_v1_evidence_and_other_provider_defaults():
+    for kind in prep.KINDS:
+        args = build.resolve_defaults(build.parser().parse_args(
+            ["--kind", kind, "--cann-root", "cann", "--soc", "ascend910_93"]))
+        prefix = f"mindie_laser_cube_{kind}_probe"
+        cache = prefix + "_v2" if kind == "pv" else prefix
+        for field, suffix in (("source_dir", "_source"), ("source_manifest", "_source_manifest.json"),
+                              ("install_dir", "_install"), ("bridge_dir", "_bridge")):
+            assert getattr(args, field) == ROOT / "build" / (cache + suffix)
+        assert args.output == ROOT / "results" / (prefix + "_build.json")

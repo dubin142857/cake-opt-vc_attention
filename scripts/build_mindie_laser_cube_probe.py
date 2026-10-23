@@ -80,10 +80,14 @@ def parser():
 
 def resolve_defaults(args):
     prefix = f"mindie_laser_cube_{args.kind}_probe"
-    values = {"source_dir": ROOT / "build" / (prefix + "_source"),
-              "source_manifest": ROOT / "build" / (prefix + "_source_manifest.json"),
-              "install_dir": ROOT / "build" / (prefix + "_install"),
-              "bridge_dir": ROOT / "build" / (prefix + "_bridge"),
+    # A failed v1 build is useful evidence. Its generated source is immutable
+    # under the source auditor, so build the passive v2 in separate directories
+    # instead of overwriting v1 or asking the user to delete their build tree.
+    cache_prefix = prefix + "_v2" if args.kind == "pv" else prefix
+    values = {"source_dir": ROOT / "build" / (cache_prefix + "_source"),
+              "source_manifest": ROOT / "build" / (cache_prefix + "_source_manifest.json"),
+              "install_dir": ROOT / "build" / (cache_prefix + "_install"),
+              "bridge_dir": ROOT / "build" / (cache_prefix + "_bridge"),
               "output": ROOT / "results" / (prefix + "_build.json")}
     for key, value in values.items():
         if getattr(args, key) is None:

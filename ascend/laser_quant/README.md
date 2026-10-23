@@ -668,9 +668,11 @@ bash scripts/run_mindie_laser_pv_phases.sh
 输出分三部分：
 
 1. **原版 Laser 与 V-only 的生产计时**：同进程随机交错的 full/prepared/native API wall time。full 每次重新量化和准备输入，诊断算子不参加加速比排名。
-2. **插桩扰动校准**：同一量化 payload 上比较 V-only native 与探针 plain/issue/detail。plain 保留编译结构和 trace 分配，但不计时、不写记录；issue 只看整次 PV 调用发射窗口；detail 增加内部稀疏记录及完整 PV 返回后的完成屏障。表中的 added time 是开销，不是优化收益。
+2. **插桩扰动校准**：同一量化 payload 上比较 V-only native 与探针 plain/issue/detail。plain 保留编译结构和 trace 分配，但不计时、不写记录；issue 只看整次 PV 调用发射窗口；detail 增加内部稀疏记录。schema v2 的两种记录模式均不添加完成屏障。表中的 added time 是开销，不是优化收益。
 3. **稀疏 PV 记录**：在核 0～3 的首/中/尾逻辑 round，采样第一个 descriptor 的首/中/尾 K 块；重复位置只记录一次。P/V 搬运、原有事件依赖、L1→L0 装载、MAD/FIX 和下一块 V 发射分别记录；history/末尾归一化与整次调用字段单独保存，不能复制到各个 K 块后求和。
 
-内部 `GetSystemCycle` 是标量系统计数器。尤其 `wait_flag` 的目的流水不一定是标量流水，因此前后计数差可能只是发射与队列反压窗口，**不保证是 DMA 完成等待或矩阵乘的执行时长**。detail 的完成屏障只放在整个 PV 调用返回后，避免在 history 的未落盘累加与后续 MAD/FIX 之间排空。该完成尾巴也不是纯 FIX 时长；所有 ticks 均不得换算生产阶段百分比或相加外推 kernel 时间。
+内部 `GetSystemCycle` 是标量系统计数器。尤其 `wait_flag` 的目的流水不一定是标量流水，因此前后计数差可能只是发射与队列反压窗口，**不保证是 DMA 完成等待或矩阵乘的执行时长**。schema v2 不再记录完成尾巴：字段 19/21/22 保留为零，valid bit 1 不置位，summary 将其标为不可用而不是零耗时；decoder 拒绝旧 v1 数据。所有 ticks 均不得换算生产阶段百分比或相加外推 kernel 时间。
 
-计时前要求全部 padded native 输出精确一致，并运行当前 Vector-scale 的独立参考、同地址 Q/K scale 更新与 P/V 边界连续输入检查。结果保存到 `results/mindie_laser_pv_phases.json`，完整日志同名 `.log`。回传生产计时、Probe calibration 和 PV 内部采样三部分即可；先评估扰动，再决定下一项优化，不因单个采样较大就宣布带宽或计算瓶颈。同步与来源检查见 [PV 内部诊断审计](../../reports/ascend-pv-internal-phase-audit/README.md)。本地没有 CCE/NPU，远端编译和测量仍待执行。
+计时前先逐模式执行 tiny FP16 smoke，每次 launch 后单独同步并保存模式/shape/阶段；通过后运行原有 Vector-scale 独立参考、同地址 Q/K scale 异步排队更新与 P/V 边界连续输入检查，全部 padded native 输出仍要求精确一致。首次设备异常后只保存主机 JSON，不在 finally/checkpoint 中再次读取 trace。结果保存到 `results/mindie_laser_pv_phases.json`，完整日志同名 `.log`。失败时先看 `probe_validation_failure` 与 `active_probe_validation`；成功才分析生产计时、扰动校准及采样。同步与来源检查见 [PV 内部诊断审计](../../reports/ascend-pv-internal-phase-audit/README.md)。
+
+2026-10-23 远端 v1 在首个 FP16 B1/H2/Q1/K1/D128 验证中出现 `507014 / aicore timeout`（FIXP 报错），没有得到性能样本。旧 runner 将三个 mode 连续入队，无法据此判定是哪一个模式或哪个指令故障；异常处理还重复访问故障 stream，覆盖首错。v2 移除新增的 `PIPE_ALL` 作为减少诊断干预的措施，**未证实它就是根因，尚需远端复验**。一键脚本使用独立 `mindie_laser_cube_pv_probe_v2_*` 构建目录，保留旧诊断二进制以便定位，只重编新探针并复用生产缓存，不访问上游网络。

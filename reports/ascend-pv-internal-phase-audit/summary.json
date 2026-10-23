@@ -22,8 +22,8 @@
     "tool": "sync_audit",
     "returncode": 0,
     "files": 14,
-    "findings": 1,
-    "events": 1,
+    "findings": 0,
+    "events": 0,
     "operations": 0
   },
   {
