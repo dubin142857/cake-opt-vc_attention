@@ -1,0 +1,232 @@
+{
+  "date": "2026-10-23",
+  "status": "passed_local_checks_v3_npu_validation_pending",
+  "implementation_revision": "tile128_shared_broadcast_v3",
+  "default_shape_bnsd": [
+    1,
+    28,
+    37741,
+    128
+  ],
+  "default_dtype": "bfloat16",
+  "attention": "ordinary dense noncausal softmax(QK^T/sqrt(D))V; native float QK/PV and FP32 online softmax",
+  "user_reported_device_results": {
+    "source": "terminal outputs pasted by the user; original NPU JSON files were not available locally",
+    "timing_scope": "synchronized Python API wall time in milliseconds, not device-kernel durations",
+    "v1": {
+      "kernel_commit": "076a7f9fcd4311465f151cd9146636be36e0aebb",
+      "status": "passed",
+      "median_ms": {
+        "tilelang_full": 39593.003,
+        "tilelang_prepared": 39597.879,
+        "cann_fusion_attention": 128.128
+      }
+    },
+    "v2": {
+      "kernel_commit": "8f8ab4aafb7aa5d82864ec0a14e1decb79a17767",
+      "status": "passed",
+      "median_ms": {
+        "tilelang_full": 1666.61,
+        "tilelang_prepared": 1654.926,
+        "cann_fusion_attention": 128.587
+      }
+    },
+    "v1_over_v2_time_ratio": {
+      "tilelang_full": 23.75660952472384,
+      "tilelang_prepared": 23.927280736419636
+    },
+    "v2_over_cann_time_ratio": {
+      "tilelang_full": 12.960952506863059,
+      "tilelang_prepared": 12.870087956014217
+    },
+    "runtime_soc_and_physical_core_count": "not shown in the pasted outputs; do not infer from machine label"
+  },
+  "v3_changes": {
+    "default_tiles": [
+      128,
+      128
+    ],
+    "explicit_supported_tiles": [
+      [
+        64,
+        64
+      ],
+      [
+        128,
+        128
+      ]
+    ],
+    "small_shape_policy": "same requested candidate tile size; no separate small-shape fallback",
+    "old_query_kv_tile_pairs": 9746800,
+    "new_query_kv_tile_pairs": 2436700,
+    "tile_pair_reduction_factor": 4.0,
+    "mask": "one persistent [1,N] additive mask row, broadcast and applied only at the final KV tile",
+    "scratch_reuse": "one wide broadcast buffer for mask, row maximum, alpha and final denominator; distinct narrow buffer only for different score/output widths",
+    "shape_selection": "ordinary Python helpers outside T.prim_func select valid buffers while intrinsics are constructed; no invalid API in an unselected DSL branch",
+    "synchronization": "four cross-core exchanges and explicit dependency barriers retained; no new multi-stage pipeline",
+    "performance_limit": "useful FLOPs are unchanged; four times fewer tile pairs does not establish a fourfold latency gain"
+  },
+  "static_local_memory_plan": {
+    "ub_explicit_bytes_per_vector": 165632,
+    "ub_explicit_allocations": {
+      "scores": 32768,
+      "probabilities": 16384,
+      "running_output": 32768,
+      "partial_output": 32768,
+      "output_cast": 16384,
+      "row_statistics": 1024,
+      "shared_broadcast": 32768,
+      "narrow_broadcast": 256,
+      "tail_mask_row": 512
+    },
+    "ub_physical_allocation_alignment_bytes": 32,
+    "ub_statistics_row_padding_bytes": 0,
+    "ub_layout_policy": "full_tile_contiguous_stats_normal_broadcast_no_tail_pass",
+    "ub_capacity_bytes_per_vector": 196352,
+    "ub_headroom_before_compiler_tmp_bytes": 30720,
+    "compiler_shared_tmp_bytes_per_vector": 4672,
+    "compiler_tmp_policy": "pinned_fp32_reduce2d_v2_max_shared_arena",
+    "ub_total_static_bound_bytes_per_vector": 170304,
+    "ub_headroom_after_compiler_tmp_bytes": 26048,
+    "l1_explicit_bytes_per_cube": 131072,
+    "l1_capacity_bytes_per_cube": 524032,
+    "l0c_explicit_bytes_per_cube": 131072,
+    "l0c_capacity_bytes_per_cube": 131072,
+    "relies_on_automatic_buffer_aliasing": false
+  },
+  "host_scratch_probe": {
+    "backend_commit": "1d7525399141b242435e6e1c60cc006df0a3d7a6",
+    "header": "src/tl_templates/ascend/reduce_2d_v2.h",
+    "compiler": "Visual Studio 2017 cl, temporary host-only executable; no NPU compiler",
+    "function": "reduce2d_v2::Reduce2DScratchElements",
+    "result_64_128_128_clear_true_float_elements": 1168,
+    "result_bytes": 4672,
+    "arena_policy": "one implicit temporary arena sized to the maximum operation; allocate_tmp_buffer.cc",
+    "scope": "executes the pinned host constexpr planner only; not AscendC kernel compilation"
+  },
+  "independent_review": {
+    "status": "no blocking source-level defect found",
+    "checks": [
+      "all four tile/head-dimension buffer shape combinations",
+      "shared broadcast lifetimes and explicit barriers",
+      "single-key and final-tile masking",
+      "L0C budget including absence of GEMM-internal L0C temporary storage",
+      "host evaluation of the pinned reduction scratch planner",
+      "actual helper AST evaluated on ordinary Python objects for all supported width combinations"
+    ]
+  },
+  "local_validation": {
+    "pytest_passed": 124,
+    "test_files": [
+      "tests/test_tilelang_attention_npu.py",
+      "tests/test_tilelang_attention_npu_benchmark.py",
+      "tests/test_tilelang_attention_npu_setup.py",
+      "tests/test_ascend_soc_preflight.py"
+    ],
+    "python_syntax": "passed",
+    "bash_syntax": "passed",
+    "python": "3.10.16 | packaged by Anaconda, Inc. | (main, Dec 11 2024, 16:19:12) [MSC v.1929 64 bit (AMD64)]",
+    "cpu_recurrence_and_tail_math": {
+      "kind": "cpu_math_only",
+      "max_abs_error": 1.249000902703301e-16,
+      "rows_checked": 26,
+      "tail_key_lengths": [
+        1,
+        65,
+        73,
+        257
+      ],
+      "head_dimensions": [
+        64,
+        128
+      ],
+      "block_sizes": [
+        64,
+        128
+      ],
+      "default_shape": [
+        1,
+        28,
+        37741,
+        128
+      ],
+      "memory_plan_for_20_runtime_cores": {
+        "active_cube_cores": 20,
+        "input_padding_allocated_bytes": 811991040,
+        "padded_output_bytes": 270663680,
+        "score_workspace_bytes": 1310720,
+        "probability_workspace_bytes": 655360,
+        "pv_workspace_bytes": 1310720,
+        "workspace_bytes": 3276800,
+        "prepared_allocated_bytes": 1085931520,
+        "original_input_bytes": 811582464
+      },
+      "local_memory_plan": {
+        "ub_explicit_bytes_per_vector": 165632,
+        "ub_explicit_allocations": {
+          "scores": 32768,
+          "probabilities": 16384,
+          "running_output": 32768,
+          "partial_output": 32768,
+          "output_cast": 16384,
+          "row_statistics": 1024,
+          "shared_broadcast": 32768,
+          "narrow_broadcast": 256,
+          "tail_mask_row": 512
+        },
+        "ub_physical_allocation_alignment_bytes": 32,
+        "ub_statistics_row_padding_bytes": 0,
+        "ub_layout_policy": "full_tile_contiguous_stats_normal_broadcast_no_tail_pass",
+        "ub_capacity_bytes_per_vector": 196352,
+        "ub_headroom_before_compiler_tmp_bytes": 30720,
+        "compiler_shared_tmp_bytes_per_vector": 4672,
+        "compiler_tmp_policy": "pinned_fp32_reduce2d_v2_max_shared_arena",
+        "ub_total_static_bound_bytes_per_vector": 170304,
+        "ub_headroom_after_compiler_tmp_bytes": 26048,
+        "l1_explicit_bytes_per_cube": 131072,
+        "l1_capacity_bytes_per_cube": 524032,
+        "l0c_explicit_bytes_per_cube": 131072,
+        "l0c_capacity_bytes_per_cube": 131072,
+        "relies_on_automatic_buffer_aliasing": false
+      },
+      "npu_compile_or_run_performed": false
+    }
+  },
+  "planned_npu_validation": {
+    "small_cases": 36,
+    "dtypes": [
+      "float16",
+      "bfloat16"
+    ],
+    "head_dimensions": [
+      64,
+      128
+    ],
+    "added_random_queries_keys": [
+      [
+        129,
+        257
+      ],
+      [
+        128,
+        256
+      ]
+    ],
+    "main_query_samples": "first/last, center and both sides of the actual compiled block boundary",
+    "accuracy_gate": "independent CPU FP32 oracle, full output finiteness, exact repeated/full/prepared and separate-stream checks",
+    "timing": "only after every accuracy gate passes; existing adaptive repeat budget retained"
+  },
+  "v3_npu_source_generation": "not run locally",
+  "v3_npu_compile": "not run locally",
+  "v3_npu_execution": "not run locally",
+  "v3_latency_ms": null,
+  "v3_measured_speedup": null,
+  "launch": "bash scripts/run_tilelang_attention_npu.sh",
+  "source_sha256_normalized_lf": {
+    "scripts/tilelang_attention_npu.py": "05f2f940d388d073fee482d8f2954815f829af9e957a6b6da5771da09ca5fda1",
+    "scripts/benchmark_tilelang_attention_npu.py": "5f4ec2d49f07307dbf0bacf4901561d8dbb68eef05f16f6bcd4a48172eb347d6",
+    "scripts/run_tilelang_attention_npu.sh": "c2b7f3ac9a1399be6ecfdcb04b60b88e75627e8ca64535d2b272e6108db0e131",
+    "tests/test_tilelang_attention_npu.py": "a0258b22204c75847e1fdfd667fa16ff6d7acdf7cda9a66014460fafb135a75a",
+    "tests/test_tilelang_attention_npu_benchmark.py": "b06d05f68194496abb62313c52aa978e76f6dd65add73091f6f6ecddf47a65b0"
+  }
+}

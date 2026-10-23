@@ -55,7 +55,9 @@ SOURCE_COMMIT = "1d7525399141b242435e6e1c60cc006df0a3d7a6"
 SOURCE_REPOSITORY = "https://github.com/tile-ai/tilelang-ascend"
 SOURCE_URL = f"{SOURCE_REPOSITORY}/tree/{SOURCE_COMMIT}"
 DEFAULT_SHAPE = (1, 28, 37741, 128)
-IMPLEMENTATION_REVISION = "broadcast_softmax_tail_mask_v2"
+DEFAULT_BLOCK_M = 128
+DEFAULT_BLOCK_N = 128
+IMPLEMENTATION_REVISION = "tile128_shared_broadcast_v3"
 
 
 @dataclass(frozen=True)
@@ -66,8 +68,8 @@ class AttentionSpec:
     keys: int = 37741
     dim: int = 128
     dtype: str = "bfloat16"
-    block_m: int = 64
-    block_n: int = 64
+    block_m: int = DEFAULT_BLOCK_M
+    block_n: int = DEFAULT_BLOCK_N
 
     def __post_init__(self):
         for name in ("batch", "heads", "queries", "keys", "dim", "block_m", "block_n"):
@@ -78,9 +80,8 @@ class AttentionSpec:
             raise ValueError("dtype must be float16 or bfloat16; no implicit conversion")
         if self.dim not in (64, 128):
             raise ValueError("Only head dimensions 64 and 128 are supported")
-        # Fixed conservative tiles keep L1/L0C/UB usage within A2/A3 limits.
-        if (self.block_m, self.block_n) != (64, 64):
-            raise ValueError("This baseline supports block_m=64, block_n=64 only")
+        if (self.block_m, self.block_n) not in ((64, 64), (128, 128)):
+            raise ValueError("Supported tile pairs are 64x64 and 128x128")
 
     @property
     def padded_queries(self):
@@ -93,6 +94,55 @@ class AttentionSpec:
     @property
     def query_tiles(self):
         return self.batch * self.heads * (self.padded_queries // self.block_m)
+
+    def local_memory_plan(self):
+        """Conservative explicit per-core storage, without automatic aliasing.
+
+        The full-width broadcast tile is shared *explicitly* between row max,
+        alpha, final denominator and the last-block mask. A separate narrow
+        tile is required when score/output widths differ: strided views are
+        deliberately avoided. When widths match, its unused [half,1] placeholder
+        is still counted here; compiler removal only reduces this upper bound.
+        Compiler-added reduction/broadcast temporary storage is reported apart.
+        """
+        bm, bn, d, half = self.block_m, self.block_n, self.dim, self.block_m // 2
+        wide = max(bn, d)
+        narrow = min(bn, d) if bn != d else 1
+        ub_tiles = {
+            "scores": half * bn * 4,
+            "probabilities": half * bn * 2,
+            "running_output": half * d * 4,
+            "partial_output": half * d * 4,
+            "output_cast": half * d * 2,
+            "row_statistics": 4 * half * 4,
+            "shared_broadcast": half * wide * 4,
+            "narrow_broadcast": half * narrow * 4,
+            "tail_mask_row": bn * 4,
+        }
+        # Host-only evaluation of the pinned Reduce2DScratchElements helper:
+        # (32,64,64,true) -> 552 floats; (64,128,128,true) -> 1168.
+        # AllocateTmpBuffer shares one arena sized to the maximum operation.
+        # Both exceed Broadcast's axis-1 256B and axis-0 32B requirements.
+        compiler_tmp = 2208 if bm == 64 else 4672
+        ub_total = sum(ub_tiles.values()) + compiler_tmp
+        return {
+            "ub_explicit_bytes_per_vector": sum(ub_tiles.values()),
+            "ub_explicit_allocations": ub_tiles,
+            "ub_physical_allocation_alignment_bytes": 32,
+            "ub_statistics_row_padding_bytes": 0,
+            "ub_layout_policy": "full_tile_contiguous_stats_normal_broadcast_no_tail_pass",
+            "ub_capacity_bytes_per_vector": 196352,
+            "ub_headroom_before_compiler_tmp_bytes": 196352 - sum(ub_tiles.values()),
+            "compiler_shared_tmp_bytes_per_vector": compiler_tmp,
+            "compiler_tmp_policy": "pinned_fp32_reduce2d_v2_max_shared_arena",
+            "ub_total_static_bound_bytes_per_vector": ub_total,
+            "ub_headroom_after_compiler_tmp_bytes": 196352 - ub_total,
+            "l1_explicit_bytes_per_cube": 2 * (bm * d + 2 * bn * d + bm * bn),
+            "l1_capacity_bytes_per_cube": 524032,
+            "l0c_explicit_bytes_per_cube": 4 * bm * (bn + d),
+            "l0c_capacity_bytes_per_cube": 128 * 1024,
+            "relies_on_automatic_buffer_aliasing": False,
+        }
 
     def memory_plan(self, cube_cores):
         if isinstance(cube_cores, bool) or not isinstance(cube_cores, int) or cube_cores < 1:
@@ -224,6 +274,17 @@ def make_primfunc(spec, active_cores):
     qblocks, kblocks = qp // bm, kp // bn
     tasks = spec.query_tiles
     scale = 1.0 / math.sqrt(dim)
+    broadcast_width = max(bn, dim)
+    narrow_width = min(bn, dim) if bn != dim else 1
+
+    # Ordinary Python helpers run while the frontend constructs each intrinsic.
+    # No TIR conditional contains an invalid broadcast to the unused [half,1]
+    # placeholder, even if the frontend visits both sides of a constant `if`.
+    def score_broadcast_buffer(wide_buffer, narrow_buffer):
+        return wide_buffer if bn == broadcast_width else narrow_buffer
+
+    def output_broadcast_buffer(wide_buffer, narrow_buffer):
+        return wide_buffer if dim == broadcast_width else narrow_buffer
 
     @T.prim_func
     def attention(
@@ -256,9 +317,13 @@ def make_primfunc(spec, active_cores):
             prev_max_alpha = T.alloc_ub((half, 1), "float")
             row_sum = T.alloc_ub((half, 1), "float")
             tile_sum = T.alloc_ub((half, 1), "float")
-            score_broadcast = T.alloc_ub((half, bn), "float")
-            output_broadcast = T.alloc_ub((half, dim), "float")
-            tail_mask = T.alloc_ub((half, bn), "float")
+            # These uses are ordered: tail -> row max -> alpha -> final mass.
+            # Sharing this *one* buffer makes 128x128 fit without relying on
+            # planner aliasing. Different score/output widths use an additional
+            # contiguous narrow tile, never an incorrectly strided subview.
+            broadcast_ub = T.alloc_ub((half, broadcast_width), "float")
+            narrow_broadcast_ub = T.alloc_ub((half, narrow_width), "float")
+            tail_mask = T.alloc_ub((1, bn), "float")
 
             # Each Cube and its two Vector subblocks process the same sequence
             # of tasks. All cross-core signals are consumed before reuse.
@@ -296,10 +361,11 @@ def make_primfunc(spec, active_cores):
                 # Vector subblock, outside *both* attention loops. At this pin
                 # T.Parallel with if_then_else can lower to scalar Get/SetValue;
                 # it must never scan every score tile in the main KV loop.
-                # The hot tail path below is one native vector tile.add.
+                # Keep just one row persistently. The last-block path broadcasts
+                # it into the same temporary used later for rowwise scaling.
                 if keys != kp:
-                    for mask_i, mask_j in T.Parallel(half, bn):
-                        tail_mask[mask_i, mask_j] = T.if_then_else(
+                    for mask_j in T.Parallel(bn):
+                        tail_mask[0, mask_j] = T.if_then_else(
                             mask_j < keys % bn, 0.0, -T.infinity("float")
                         )
                     T.barrier_all()
@@ -323,7 +389,9 @@ def make_primfunc(spec, active_cores):
                         # valid logits and all earlier blocks are unchanged.
                         if keys != kp:
                             if kb == kblocks - 1:
-                                T.tile.add(scores_ub, scores_ub, tail_mask)
+                                T.tile.broadcast(score_broadcast_buffer(broadcast_ub, narrow_broadcast_ub), tail_mask, axis=0)
+                                T.barrier_all()
+                                T.tile.add(scores_ub, scores_ub, score_broadcast_buffer(broadcast_ub, narrow_broadcast_ub))
                                 T.barrier_all()
                         T.copy(row_max, prev_max_alpha)
                         T.barrier_all()
@@ -335,13 +403,13 @@ def make_primfunc(spec, active_cores):
                         T.barrier_all()
                         T.tile.exp(prev_max_alpha, prev_max_alpha)
                         T.barrier_all()
-                        T.tile.broadcast(score_broadcast, row_max, axis=1)
+                        T.tile.broadcast(score_broadcast_buffer(broadcast_ub, narrow_broadcast_ub), row_max, axis=1)
                         T.barrier_all()
-                        T.tile.sub(scores_ub, scores_ub, score_broadcast)
+                        T.tile.sub(scores_ub, scores_ub, score_broadcast_buffer(broadcast_ub, narrow_broadcast_ub))
                         T.barrier_all()
-                        T.tile.broadcast(output_broadcast, prev_max_alpha, axis=1)
+                        T.tile.broadcast(output_broadcast_buffer(broadcast_ub, narrow_broadcast_ub), prev_max_alpha, axis=1)
                         T.barrier_all()
-                        T.tile.mul(out_ub, out_ub, output_broadcast)
+                        T.tile.mul(out_ub, out_ub, output_broadcast_buffer(broadcast_ub, narrow_broadcast_ub))
                         T.barrier_all()
                         T.tile.exp(scores_ub, scores_ub)
                         T.barrier_all()
@@ -363,9 +431,9 @@ def make_primfunc(spec, active_cores):
                         T.barrier_all()
                         T.set_cross_flag("V", 3)
                         T.barrier_all()
-                    T.tile.broadcast(output_broadcast, row_sum, axis=1)
+                    T.tile.broadcast(output_broadcast_buffer(broadcast_ub, narrow_broadcast_ub), row_sum, axis=1)
                     T.barrier_all()
-                    T.tile.div(out_ub, out_ub, output_broadcast)
+                    T.tile.div(out_ub, out_ub, output_broadcast_buffer(broadcast_ub, narrow_broadcast_ub))
                     T.barrier_all()
                     T.copy(out_ub, output_ub)
                     T.barrier_all()
@@ -423,6 +491,7 @@ class AttentionKernel:
             "attention": "dense_noncausal_softmax(QK^T/sqrt(D))V",
             "layout": "BNSD",
             "spec": asdict(self.spec),
+            "effective_tiles": {"block_m": self.spec.block_m, "block_n": self.spec.block_n},
             "padded_queries": self.spec.padded_queries,
             "padded_keys": self.spec.padded_keys,
             "scale": 1.0 / math.sqrt(self.spec.dim),
@@ -432,7 +501,8 @@ class AttentionKernel:
             "implicit_input_conversion": False,
             "qk_pv_primitive": "T.gemm_v0",
             "row_ops": "whole_tile_fp32_broadcast_sub_mul_div",
-            "tail_mask_strategy": "constant_ub_additive_mask_last_kv_block_only",
+            "tail_mask_strategy": "single_row_mask_broadcast_last_kv_block_only",
+            "local_memory": self.spec.local_memory_plan(),
             "runtime": dict(self.runtime),
             "backend": dict(self.backend),
             "memory": self.spec.memory_plan(self.runtime["cube_core_num"]),
@@ -503,7 +573,7 @@ class AttentionKernel:
 
 
 def build_attention(batch=1, heads=28, queries=37741, keys=37741, dim=128,
-                    dtype="bfloat16", device=None, block_m=64, block_n=64):
+                    dtype="bfloat16", device=None, block_m=DEFAULT_BLOCK_M, block_n=DEFAULT_BLOCK_N):
     """Compile native FP16/BF16 attention for the selected actual A2/A3 SoC."""
     spec = AttentionSpec(batch, heads, queries, keys, dim, dtype, block_m, block_n)
     import torch
@@ -524,33 +594,42 @@ def cpu_math_self_test():
     import random
     rng = random.Random(1729)
     errors = []
-    for dim, queries, keys in ((64, 3, 1), (64, 5, 65), (128, 3, 73)):
-        q = [[rng.uniform(-1, 1) for _ in range(dim)] for _ in range(queries)]
-        k = [[rng.uniform(-1, 1) for _ in range(dim)] for _ in range(keys)]
-        v = [[rng.uniform(-1, 1) for _ in range(dim)] for _ in range(keys)]
-        for row in q:
-            logits = [sum(a * b for a, b in zip(row, key)) / math.sqrt(dim) for key in k]
-            maximum = max(logits)
-            weights = [math.exp(x - maximum) for x in logits]
-            mass = sum(weights)
-            reference = [sum(weights[j] * v[j][d] for j in range(keys)) / mass for d in range(dim)]
-            m, l, out = -math.inf, 0.0, [0.0] * dim
-            for start in range(0, math.ceil(keys / 64) * 64, 64):
-                scores = [logits[j] if j < keys else -math.inf for j in range(start, start + 64)]
-                new_max = max(m, max(scores))
-                alpha = math.exp(m - new_max)
-                p = [math.exp(x - new_max) for x in scores]
-                l = alpha * l + sum(p)
-                out = [alpha * out[d] + sum(p[j] * v[start + j][d] for j in range(64) if start + j < keys)
-                       for d in range(dim)]
-                m = new_max
-            errors.append(max(abs(out[d] / l - reference[d]) for d in range(dim)))
+    for block_n in (64, 128):
+        for dim, queries, keys in ((64, 3, 1), (64, 5, 65), (128, 3, 73), (128, 2, 257)):
+            q = [[rng.uniform(-1, 1) for _ in range(dim)] for _ in range(queries)]
+            k = [[rng.uniform(-1, 1) for _ in range(dim)] for _ in range(keys)]
+            v = [[rng.uniform(-1, 1) for _ in range(dim)] for _ in range(keys)]
+            # The device builds just this one mask row, broadcasts it only in
+            # the final block, then reuses the broadcast storage for row stats.
+            remainder = keys % block_n
+            tail_mask = [0.0 if j < remainder else -math.inf for j in range(block_n)]
+            padded_keys = ((keys + block_n - 1) // block_n) * block_n
+            for row in q:
+                logits = [sum(a * b for a, b in zip(row, key)) / math.sqrt(dim) for key in k]
+                maximum = max(logits)
+                weights = [math.exp(x - maximum) for x in logits]
+                mass = sum(weights)
+                reference = [sum(weights[j] * v[j][d] for j in range(keys)) / mass for d in range(dim)]
+                m, l, out = -math.inf, 0.0, [0.0] * dim
+                for start in range(0, padded_keys, block_n):
+                    scores = [logits[j] if j < keys else 0.0 for j in range(start, start + block_n)]
+                    if remainder and start + block_n == padded_keys:
+                        scores = [score + mask for score, mask in zip(scores, tail_mask)]
+                    new_max = max(m, max(scores))
+                    alpha = math.exp(m - new_max)
+                    p = [math.exp(x - new_max) for x in scores]
+                    l = alpha * l + sum(p)
+                    out = [alpha * out[d] + sum(p[j] * v[start + j][d] for j in range(block_n) if start + j < keys)
+                           for d in range(dim)]
+                    m = new_max
+                errors.append(max(abs(out[d] / l - reference[d]) for d in range(dim)))
     if max(errors) > 2e-14:
         raise AssertionError(f"Online softmax/tail recurrence failed: {max(errors)}")
     spec = AttentionSpec()
     return {"kind": "cpu_math_only", "max_abs_error": max(errors), "rows_checked": len(errors),
-            "tail_key_lengths": [1, 65, 73], "head_dimensions": [64, 128],
+            "tail_key_lengths": [1, 65, 73, 257], "head_dimensions": [64, 128], "block_sizes": [64, 128],
             "default_shape": list(DEFAULT_SHAPE), "memory_plan_for_20_runtime_cores": spec.memory_plan(20),
+            "local_memory_plan": spec.local_memory_plan(),
             "npu_compile_or_run_performed": False}
 
 

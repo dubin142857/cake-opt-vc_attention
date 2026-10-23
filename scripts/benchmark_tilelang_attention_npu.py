@@ -41,8 +41,8 @@ def parse_args(argv=None):
     parser.add_argument("--key-length", type=int, help="Defaults to the query length S")
     parser.add_argument("--dtype", choices=tuple(LIMITS), default="bfloat16")
     parser.add_argument("--device", type=int, default=0)
-    parser.add_argument("--block-m", type=int, default=64)
-    parser.add_argument("--block-n", type=int, default=64)
+    parser.add_argument("--block-m", type=int, default=128)
+    parser.add_argument("--block-n", type=int, default=128)
     parser.add_argument("--warmup", type=int, default=1,
                         help="Minimum untimed calls per provider, including already required validation calls")
     parser.add_argument("--repeats", type=int, default=5, help="Maximum repeats per calibrated timing trial")
@@ -64,8 +64,8 @@ def parse_args(argv=None):
     args.key_length = args.key_length if args.key_length is not None else args.shape[2]
     if min(*args.shape, args.key_length) <= 0 or args.shape[-1] not in (64, 128):
         parser.error("Require nonempty BNSD and D=64 or D=128")
-    if args.block_m != 64 or args.block_n != 64:
-        parser.error("The pinned AscendC attention implementation requires --block-m 64 --block-n 64")
+    if (args.block_m, args.block_n) not in ((64, 64), (128, 128)):
+        parser.error("Supported attention tiles are 128x128 (default) and explicit 64x64")
     if args.device < 0 or args.warmup < 0 or min(args.repeats, args.trials, args.check_queries, args.cpu_threads) <= 0:
         parser.error("Require nonnegative device/warmup and positive repeats/trials/check-queries/cpu-threads")
     if any(not math.isfinite(value) or value <= 0 for value in (args.target_trial_ms, args.timing_budget_seconds)):
@@ -73,12 +73,12 @@ def parse_args(argv=None):
     return args
 
 
-def sample_query_ids(length, count):
-    """Boundary rows first, including both sides of the 64-row tile boundary."""
-    if length <= 0 or count <= 0:
-        raise ValueError("length and count must be positive")
+def sample_query_ids(length, count, block_m=64):
+    """Boundary rows first, using the actual compiled query tile size."""
+    if length <= 0 or count <= 0 or block_m <= 0:
+        raise ValueError("length, count and block_m must be positive")
     wanted = min(length, count)
-    candidates = [0, length - 1, 63, 64, 65, length // 2, 1, length - 2]
+    candidates = [0, length - 1, block_m - 1, block_m, block_m + 1, length // 2, 1, length - 2]
     candidates += [round(i * (length - 1) / max(1, wanted - 1)) for i in range(wanted)]
     result = []
     for value in candidates:
@@ -192,7 +192,8 @@ def make_cpu_inputs(shape, keys, dtype, seed, pattern="random"):
 
 def small_cases():
     return [(pattern, queries, keys) for queries, keys in ((65, 129), (129, 65))
-            for pattern in ("random", "zero_q", "constant_v")] + [("random", 1, 1)]
+            for pattern in ("random", "zero_q", "constant_v")] + [
+                ("random", 1, 1), ("random", 129, 257), ("random", 128, 256)]
 
 
 def fusion_call(torch_npu, q, k, v):
@@ -446,12 +447,15 @@ def validate_small(torch, backend, providers, args, device, report, save, artifa
                 shape = (2, 3, queries, dim) if (queries, keys) == (1, 1) else (1, 2, queries, dim)
                 label = {"dtype": dtype_name, "shape_bnsd": list(shape), "keys": keys, "pattern": pattern,
                          "oracle": "independent CPU FP32; all query rows and all keys"}
-                print(f"Validate {dtype_name} BNSD={shape} K={keys} {pattern}", flush=True)
                 original = make_cpu_inputs(shape, keys, getattr(torch, dtype_name), args.seed + index, pattern)
                 expected = cpu_reference(*original)
                 q, k, v = [x.to(device) for x in original]
                 kernel = backend.build_attention(*shape[:3], keys, dim, dtype=dtype_name, device=device,
                                                  block_m=args.block_m, block_n=args.block_n)
+                spec = kernel.metadata()["spec"]
+                label["effective_tiles"] = {name: spec[name] for name in ("block_m", "block_n")}
+                print(f"Validate {dtype_name} BNSD={shape} K={keys} {pattern} "
+                      f"effective_tiles={spec['block_m']}x{spec['block_n']}", flush=True)
                 source_key = f"small_{dtype_name}_q{queries}_k{keys}_d{dim}"
                 if source_key not in report["kernel_sources"]:
                     report["kernel_sources"][source_key] = kernel.export_source(artifact_dir / source_key)
@@ -525,20 +529,24 @@ def run(args, report, save, artifact_dir):
         validate_small(torch, backend, providers, args, device, report, save, artifact_dir)
         shape, keys = args.shape, args.key_length
         print(f"Validate main {args.dtype} BNSD={shape} K={keys}; sampled Q, all K/V", flush=True)
+        kernel = backend.build_attention(*shape[:3], keys, shape[-1], dtype=args.dtype, device=device,
+                                         block_m=args.block_m, block_n=args.block_n)
+        report["kernel"] = kernel.metadata()
+        spec = report["kernel"]["spec"]
+        report["effective_tiles"] = {name: spec[name] for name in ("block_m", "block_n")}
+        print(f"Main effective_tiles={spec['block_m']}x{spec['block_n']}", flush=True)
         original = make_cpu_inputs(shape, keys, getattr(torch, args.dtype), args.seed)
-        ids = sample_query_ids(shape[2], args.check_queries)
+        ids = sample_query_ids(shape[2], args.check_queries, block_m=spec["block_m"])
         expected = cpu_reference(*original, query_ids=ids)
         q, k, v = [x.to(device) for x in original]
         del original
-        kernel = backend.build_attention(*shape[:3], keys, shape[-1], dtype=args.dtype, device=device,
-                                         block_m=args.block_m, block_n=args.block_n)
         prepared = kernel.prepare(q, k, v)
-        report["kernel"] = kernel.metadata()
         report["prepared"] = prepared.metadata()
         report["kernel_sources"]["main"] = kernel.export_source(artifact_dir / "generated_main")
         selection = torch.tensor(ids, device=device, dtype=torch.long)
         records = report["validation"]["main"]
         row = {"dtype": args.dtype, "shape_bnsd": list(shape), "keys": keys, "query_ids": ids,
+               "effective_tiles": dict(report["effective_tiles"]),
                "oracle": "independent CPU FP32; sampled Q, all K/V; no full S-by-S allocation"}
 
         def check_main(name, output):

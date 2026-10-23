@@ -45,10 +45,12 @@ export ACL_OP_COMPILER_CACHE_DIR="$cache_root/compiler"
 export TL_RUN_MODE=npu
 mkdir -p "$TILELANG_CACHE_DIR" "$ASCEND_CACHE_PATH" "$XDG_CACHE_HOME" "$ACL_OP_COMPILER_CACHE_DIR" results
 echo "Ordinary noncausal attention: BF16 BNSD=[1,28,37741,128], NPU=$NPU_DEVICE"
+echo "Candidate tiles requested=128x128; compiled effective tiles are printed and saved by the benchmark"
 echo "Validate all small outputs and sampled long Q against independent FP32 CPU oracle before timing"
 echo "Reuse verified calls for calibration/warmup; plan at most 10s/provider, except one non-preemptible NPU call"
 "$TILELANG_NPU_PYTHON" -u scripts/benchmark_tilelang_attention_npu.py \
   --device "$NPU_DEVICE" --shape 1 28 37741 128 --dtype bfloat16 \
+  --block-m 128 --block-n 128 \
   --warmup 1 --repeats 5 --trials 3 --target-trial-ms 200 --timing-budget-seconds 10 \
   --output results/tilelang_attention_npu.json \
   2>&1 | tee results/tilelang_attention_npu.log

@@ -38,23 +38,31 @@ def test_defaults_are_plain_bf16_main_shape(benchmark):
     assert args.dtype == "bfloat16" and args.key_length == 37741
     assert (args.warmup, args.repeats, args.trials) == (1, 5, 3)
     assert (args.target_trial_ms, args.timing_budget_seconds) == (200, 10)
+    assert (args.block_m, args.block_n) == (128, 128)
     assert not args.include_mindie_laser
     assert args.output == Path("results/tilelang_attention_npu.json")
     assert set(benchmark.small_cases()) == {
         (pattern, q, k) for pattern in ("random", "zero_q", "constant_v") for q, k in ((65, 129), (129, 65))
-    } | {("random", 1, 1)}
+    } | {("random", 1, 1), ("random", 129, 257), ("random", 128, 256)}
 
 
 @pytest.mark.parametrize("argv", [
     ["--shape", "1", "2", "0", "128"], ["--shape", "1", "2", "129", "32"],
     ["--key-length", "0"], ["--device", "-1"], ["--warmup", "-1"],
-    ["--repeats", "0"], ["--trials", "0"], ["--check-queries", "0"], ["--block-m", "128"],
+    ["--repeats", "0"], ["--trials", "0"], ["--check-queries", "0"], ["--block-m", "32"],
+    ["--block-m", "64", "--block-n", "128"],
     ["--target-trial-ms", "nan"], ["--target-trial-ms", "0"], ["--timing-budget-seconds", "inf"],
 ])
 def test_invalid_inputs_fail_before_backend_import(benchmark, argv):
     with pytest.raises(SystemExit) as error:
         benchmark.parse_args(argv)
     assert error.value.code == 2
+
+
+@pytest.mark.parametrize("block", [64, 128])
+def test_cli_supports_current_tiles_and_explicit_64_baseline(benchmark, block):
+    args = benchmark.parse_args(["--block-m", str(block), "--block-n", str(block)])
+    assert (args.block_m, args.block_n) == (block, block)
 
 
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
@@ -105,6 +113,12 @@ def test_sample_queries_are_distinct_in_bounds_and_cover_ends(benchmark, length,
     assert len(ids) == min(length, count)
     assert ids == sorted(set(ids))
     assert ids[0] == 0 and ids[-1] == length - 1
+
+
+def test_sample_queries_follow_actual_128_row_tile_boundary(benchmark):
+    ids = benchmark.sample_query_ids(37741, 8, block_m=128)
+    assert ids == [0, 1, 127, 128, 129, 18870, 37739, 37740]
+    assert benchmark.sample_query_ids(37741, 8) == [0, 1, 63, 64, 65, 18870, 37739, 37740]
 
 
 def test_nonfinite_and_inaccurate_outputs_are_saved_before_failure(benchmark):
@@ -283,6 +297,7 @@ def test_one_bash_entry_sources_setup_and_preserves_isolated_paths(benchmark, tm
     assert argv[:2] == ["-u", "scripts/benchmark_tilelang_attention_npu.py"]
     args = benchmark.parse_args(argv[2:])
     assert args.device == 2 and args.shape == benchmark.DEFAULT_SHAPE and args.dtype == "bfloat16"
+    assert (args.block_m, args.block_n) == (128, 128)
     cache = [line for line in process.stdout.splitlines() if line.startswith("CACHE_ROOT:")][0]
     assert cache.endswith("/.cache/tilelang-attention-npu/runtime")
     assert "RUN_MODE:npu" in process.stdout.splitlines()
