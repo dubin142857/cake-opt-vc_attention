@@ -43,7 +43,8 @@ def test_defaults_are_plain_bf16_main_shape(benchmark):
     assert args.output == Path("results/tilelang_attention_npu.json")
     assert set(benchmark.small_cases()) == {
         (pattern, q, k) for pattern in ("random", "zero_q", "constant_v") for q, k in ((65, 129), (129, 65))
-    } | {("random", 1, 1), ("random", 129, 257), ("random", 128, 256)}
+    } | {("random", 1, 1), ("random", 129, 257), ("random", 128, 256),
+         ("random", 129, 512), ("random", 129, 513)}
 
 
 @pytest.mark.parametrize("argv", [
@@ -63,6 +64,96 @@ def test_invalid_inputs_fail_before_backend_import(benchmark, argv):
 def test_cli_supports_current_tiles_and_explicit_64_baseline(benchmark, block):
     args = benchmark.parse_args(["--block-m", str(block), "--block-n", str(block)])
     assert (args.block_m, args.block_n) == (block, block)
+
+
+@pytest.mark.parametrize("cores", [1, 20, 24])
+def test_packet4_cases_then_one_persistent_case_use_actual_runtime_metadata(benchmark, cores):
+    queried = []
+
+    def actual_metadata():
+        queried.append(True)
+        return {"runtime": {"cube_core_num": cores}, "spec": {"block_m": 128}}
+
+    cases = benchmark.validation_cases(actual_metadata)
+    static = [next(cases) for _ in range(44)]
+    assert queried == []
+    for dtype in ("float16", "bfloat16"):
+        for dim in (64, 128):
+            for keys in (512, 513):
+                assert {"dtype": dtype, "shape_bnsd": [1, 2, 129, dim], "keys": keys, "pattern": "random"} in static
+    persistent = next(cases)
+    assert len(queried) == 1
+    assert persistent["shape_bnsd"] == [2, 3, (cores // 6) * 128 + 1, 128]
+    assert persistent["dtype"] == "bfloat16" and persistent["keys"] == 513
+    assert persistent["query_tiles"] > cores
+    with pytest.raises(StopIteration):
+        next(cases)
+
+
+def test_small_kernel_object_cache_keeps_all_patterns_and_fresh_payloads(benchmark, monkeypatch, tmp_path):
+    builds, payloads = [], []
+    monkeypatch.setattr(torch, "npu", SimpleNamespace(synchronize=lambda: None), raising=False)
+    # This test exercises orchestration, not attention arithmetic. Tiny tensors
+    # keep the fake CPU kernel separate from the production NPU implementation.
+    monkeypatch.setattr(benchmark, "make_cpu_inputs", lambda shape, keys, dtype, seed, pattern:
+                        tuple(torch.zeros(1, 1, 1, 1, dtype=dtype) for _ in range(3)))
+    monkeypatch.setattr(benchmark, "cpu_reference", lambda q, k, v: q.float())
+
+    def build(batch, heads, queries, keys, dim, *, dtype, device, block_m, block_n):
+        builds.append((batch, heads, queries, keys, dim, dtype, str(device), block_m, block_n))
+
+        class FakeKernel:
+            def metadata(self):
+                return {"spec": {"block_m": block_m, "block_n": block_n},
+                        "runtime": {"cube_core_num": 24}, "packet_size": 4}
+
+            def export_source(self, directory):
+                return {}
+
+            def prepare(self, q, k, v):
+                payload = SimpleNamespace(output=q.clone())
+                payloads.append(payload)
+                return payload
+
+            def run_prepared(self, payload):
+                return payload.output
+
+            def __call__(self, q, k, v):
+                return self.run_prepared(self.prepare(q, k, v))
+
+        return FakeKernel()
+
+    report = {"validation": {"small": []}, "kernel_sources": {}}
+    benchmark.validate_small(torch, SimpleNamespace(build_attention=build),
+                             {"comparison": lambda q, k, v: q.clone()}, benchmark.parse_args([]),
+                             torch.device("cpu"), report, lambda: None, tmp_path)
+    assert report["validation"]["small_cases_count"] == report["validation"]["small_cases_expected"] == 45
+    assert len(builds) == len(set(builds)) == 29
+    stats = report["validation"]["small_kernel_cache"]
+    assert (stats["requests"], stats["unique_kernel_builds"], stats["object_reuses"]) == (45, 29, 16)
+    assert len(payloads) == len({id(payload) for payload in payloads}) == 90
+    assert "current_small_case" not in report["validation"]
+    assert report["validation"]["small"][-1]["persistent_task_reuse"]
+    assert all(row["packet_size"] == 4 for row in report["validation"]["small"])
+
+
+def test_small_compile_failure_retains_current_case_label(benchmark, monkeypatch, tmp_path):
+    monkeypatch.setattr(torch, "npu", SimpleNamespace(synchronize=lambda: None), raising=False)
+    monkeypatch.setattr(benchmark, "make_cpu_inputs", lambda shape, keys, dtype, seed, pattern:
+                        tuple(torch.zeros(1, 1, 1, 1, dtype=dtype) for _ in range(3)))
+    monkeypatch.setattr(benchmark, "cpu_reference", lambda q, k, v: q.float())
+
+    def failed_build(*args, **kwargs):
+        raise RuntimeError("intentional compile failure")
+
+    report = {"validation": {"small": []}, "kernel_sources": {}}
+    with pytest.raises(RuntimeError, match="intentional compile failure"):
+        benchmark.validate_small(torch, SimpleNamespace(build_attention=failed_build), {}, benchmark.parse_args([]),
+                                 torch.device("cpu"), report, lambda: None, tmp_path)
+    pending = report["validation"]["current_small_case"]
+    assert pending["dtype"] == "float16" and pending["shape_bnsd"] == [1, 2, 65, 64]
+    assert pending["keys"] == 129 and pending["pattern"] == "random"
+    assert report["validation"]["small_cases_count"] == 0
 
 
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])

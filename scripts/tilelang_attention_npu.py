@@ -57,7 +57,8 @@ SOURCE_URL = f"{SOURCE_REPOSITORY}/tree/{SOURCE_COMMIT}"
 DEFAULT_SHAPE = (1, 28, 37741, 128)
 DEFAULT_BLOCK_M = 128
 DEFAULT_BLOCK_N = 128
-IMPLEMENTATION_REVISION = "tile128_shared_broadcast_v3"
+PACKET_SIZE = 4
+IMPLEMENTATION_REVISION = "packet4_delayed_output_v4"
 
 
 @dataclass(frozen=True)
@@ -118,6 +119,7 @@ class AttentionSpec:
             "shared_broadcast": half * wide * 4,
             "narrow_broadcast": half * narrow * 4,
             "tail_mask_row": bn * 4,
+            "packet_alpha_history": PACKET_SIZE * half * 4,
         }
         # Host-only evaluation of the pinned Reduce2DScratchElements helper:
         # (32,64,64,true) -> 552 floats; (64,128,128,true) -> 1168.
@@ -153,11 +155,12 @@ class AttentionSpec:
         q_copy = 2 * b * h * qp * d if qp != self.queries else 0
         kv_copy = 4 * b * h * kp * d if kp != self.keys else 0
         output = 2 * b * h * qp * d
-        scores = active * self.block_m * self.block_n * 4
-        probabilities = active * self.block_m * self.block_n * 2
-        partial_output = active * self.block_m * d * 4
+        scores = active * PACKET_SIZE * self.block_m * self.block_n * 4
+        probabilities = active * PACKET_SIZE * self.block_m * self.block_n * 2
+        partial_output = active * PACKET_SIZE * self.block_m * d * 4
         return {
             "active_cube_cores": active,
+            "packet_size": PACKET_SIZE,
             "input_padding_allocated_bytes": q_copy + kv_copy,
             "padded_output_bytes": output,
             "score_workspace_bytes": scores,
@@ -272,6 +275,7 @@ def make_primfunc(spec, active_cores):
     bm, bn, half = spec.block_m, spec.block_n, spec.block_m // 2
     qp, kp = spec.padded_queries, spec.padded_keys
     qblocks, kblocks = qp // bm, kp // bn
+    packets = (kblocks + PACKET_SIZE - 1) // PACKET_SIZE
     tasks = spec.query_tiles
     scale = 1.0 / math.sqrt(dim)
     broadcast_width = max(bn, dim)
@@ -292,9 +296,9 @@ def make_primfunc(spec, active_cores):
         K: T.Tensor((batch, heads, kp, dim), dtype),
         V: T.Tensor((batch, heads, kp, dim), dtype),
         O: T.Tensor((batch, heads, qp, dim), dtype),
-        Scores: T.Tensor((active_cores, bm, bn), "float"),
-        Prob: T.Tensor((active_cores, bm, bn), dtype),
-        PV: T.Tensor((active_cores, bm, dim), "float"),
+        Scores: T.Tensor((active_cores, PACKET_SIZE, bm, bn), "float"),
+        Prob: T.Tensor((active_cores, PACKET_SIZE, bm, bn), dtype),
+        PV: T.Tensor((active_cores, PACKET_SIZE, bm, dim), "float"),
     ):
         T.func_attr({"global_symbol": "tilelang_plain_attention_dav2201", "tir.noalias": True})
         with T.Kernel(active_cores, is_npu=True) as (cid, vid):
@@ -317,6 +321,7 @@ def make_primfunc(spec, active_cores):
             prev_max_alpha = T.alloc_ub((half, 1), "float")
             row_sum = T.alloc_ub((half, 1), "float")
             tile_sum = T.alloc_ub((half, 1), "float")
+            alpha_history = T.alloc_ub((PACKET_SIZE, half, 1), "float")
             # These uses are ordered: tail -> row max -> alpha -> final mass.
             # Sharing this *one* buffer makes 128x128 fit without relying on
             # planner aliasing. Different score/output widths use an additional
@@ -335,26 +340,40 @@ def make_primfunc(spec, active_cores):
                     b = task // (qblocks * heads)
                     T.copy(Q[b, h, qb * bm : (qb + 1) * bm, :], q_l1)
                     T.barrier_all()
-                    for kb in T.serial(kblocks):
-                        T.copy(K[b, h, kb * bn : (kb + 1) * bn, :], k_l1)
-                        T.barrier_all()
-                        T.gemm_v0(q_l1, k_l1, scores_l0c, transpose_B=True, init=True)
-                        T.barrier_all()
-                        T.copy(scores_l0c, Scores[cid, :, :])
-                        T.barrier_all()
+                    for packet in T.serial(packets):
+                        valid_slots = T.min(PACKET_SIZE, kblocks - packet * PACKET_SIZE)
+                        # Produce the whole packet before publishing scores.
+                        for slot in T.serial(valid_slots):
+                            kb = packet * PACKET_SIZE + slot
+                            T.copy(K[b, h, kb * bn : (kb + 1) * bn, :], k_l1)
+                            T.barrier_all()
+                            T.gemm_v0(q_l1, k_l1, scores_l0c, transpose_B=True, init=True)
+                            T.barrier_all()
+                            T.copy(scores_l0c, Scores[cid, slot, :, :])
+                            T.barrier_all()
                         T.set_cross_flag("FIX", 0)
                         T.wait_cross_flag(1)
                         T.barrier_all()
-                        T.copy(Prob[cid, :, :], p_l1)
-                        T.copy(V[b, h, kb * bn : (kb + 1) * bn, :], v_l1)
-                        T.barrier_all()
-                        T.gemm_v0(p_l1, v_l1, pv_l0c, init=True)
-                        T.barrier_all()
-                        T.copy(pv_l0c, PV[cid, :, :])
-                        T.barrier_all()
+                        # Only PV is still live from the previous packet. Its
+                        # completion credit is consumed before overwriting it,
+                        # allowing the QK packet above to overlap old V output.
+                        if packet > 0:
+                            T.wait_cross_flag(3)
+                            T.barrier_all()
+                        for slot in T.serial(valid_slots):
+                            kb = packet * PACKET_SIZE + slot
+                            T.copy(Prob[cid, slot, :, :], p_l1)
+                            T.copy(V[b, h, kb * bn : (kb + 1) * bn, :], v_l1)
+                            T.barrier_all()
+                            T.gemm_v0(p_l1, v_l1, pv_l0c, init=True)
+                            T.barrier_all()
+                            T.copy(pv_l0c, PV[cid, slot, :, :])
+                            T.barrier_all()
                         T.set_cross_flag("FIX", 2)
-                        T.wait_cross_flag(3)
-                        T.barrier_all()
+                    # Drain exactly the final packet's credit on every task,
+                    # including single-packet keys. No token crosses tasks.
+                    T.wait_cross_flag(3)
+                    T.barrier_all()
 
             with T.Scope("V"):
                 # Construct the constant additive mask once per physical
@@ -378,57 +397,63 @@ def make_primfunc(spec, active_cores):
                     T.tile.fill(row_sum, 0.0)
                     T.tile.fill(row_max, -T.infinity("float"))
                     T.barrier_all()
-                    for kb in T.serial(kblocks):
+                    for packet in T.serial(packets):
+                        valid_slots = T.min(PACKET_SIZE, kblocks - packet * PACKET_SIZE)
                         T.wait_cross_flag(0)
-                        T.copy(Scores[cid, vid * half : (vid + 1) * half, :], scores_ub)
-                        T.barrier_all()
-                        T.tile.mul(scores_ub, scores_ub, scale)
-                        T.barrier_all()
-                        # Only the last KV block contains padding. Native
-                        # vector add uses the prebuilt [0, ..., -inf] mask;
-                        # valid logits and all earlier blocks are unchanged.
-                        if keys != kp:
-                            if kb == kblocks - 1:
-                                T.tile.broadcast(score_broadcast_buffer(broadcast_ub, narrow_broadcast_ub), tail_mask, axis=0)
-                                T.barrier_all()
-                                T.tile.add(scores_ub, scores_ub, score_broadcast_buffer(broadcast_ub, narrow_broadcast_ub))
-                                T.barrier_all()
-                        T.copy(row_max, prev_max_alpha)
-                        T.barrier_all()
-                        T.reduce_max(scores_ub, row_max, dim=-1)
-                        T.barrier_all()
-                        T.tile.max(row_max, row_max, prev_max_alpha)
-                        T.barrier_all()
-                        T.tile.sub(prev_max_alpha, prev_max_alpha, row_max)
-                        T.barrier_all()
-                        T.tile.exp(prev_max_alpha, prev_max_alpha)
-                        T.barrier_all()
-                        T.tile.broadcast(score_broadcast_buffer(broadcast_ub, narrow_broadcast_ub), row_max, axis=1)
-                        T.barrier_all()
-                        T.tile.sub(scores_ub, scores_ub, score_broadcast_buffer(broadcast_ub, narrow_broadcast_ub))
-                        T.barrier_all()
-                        T.tile.broadcast(output_broadcast_buffer(broadcast_ub, narrow_broadcast_ub), prev_max_alpha, axis=1)
-                        T.barrier_all()
-                        T.tile.mul(out_ub, out_ub, output_broadcast_buffer(broadcast_ub, narrow_broadcast_ub))
-                        T.barrier_all()
-                        T.tile.exp(scores_ub, scores_ub)
-                        T.barrier_all()
-                        T.reduce_sum(scores_ub, tile_sum, dim=-1)
-                        T.barrier_all()
-                        T.tile.mul(row_sum, row_sum, prev_max_alpha)
-                        T.barrier_all()
-                        T.tile.add(row_sum, row_sum, tile_sum)
-                        T.barrier_all()
-                        T.copy(scores_ub, prob_ub)
-                        T.barrier_all()
-                        T.copy(prob_ub, Prob[cid, vid * half : (vid + 1) * half, :])
-                        T.barrier_all()
+                        # m/l and P do not depend on running O. Preserve every
+                        # FP32 alpha so O can be updated later in the same
+                        # original tile order after the Cube packet is ready.
+                        for slot in T.serial(valid_slots):
+                            kb = packet * PACKET_SIZE + slot
+                            T.copy(Scores[cid, slot, vid * half : (vid + 1) * half, :], scores_ub)
+                            T.barrier_all()
+                            T.tile.mul(scores_ub, scores_ub, scale)
+                            T.barrier_all()
+                            if keys != kp:
+                                if kb == kblocks - 1:
+                                    T.tile.broadcast(score_broadcast_buffer(broadcast_ub, narrow_broadcast_ub), tail_mask, axis=0)
+                                    T.barrier_all()
+                                    T.tile.add(scores_ub, scores_ub, score_broadcast_buffer(broadcast_ub, narrow_broadcast_ub))
+                                    T.barrier_all()
+                            T.copy(row_max, prev_max_alpha)
+                            T.barrier_all()
+                            T.reduce_max(scores_ub, row_max, dim=-1)
+                            T.barrier_all()
+                            T.tile.max(row_max, row_max, prev_max_alpha)
+                            T.barrier_all()
+                            T.tile.sub(prev_max_alpha, prev_max_alpha, row_max)
+                            T.barrier_all()
+                            T.tile.exp(prev_max_alpha, prev_max_alpha)
+                            T.barrier_all()
+                            T.copy(prev_max_alpha, alpha_history[slot, :, :])
+                            T.barrier_all()
+                            T.tile.broadcast(score_broadcast_buffer(broadcast_ub, narrow_broadcast_ub), row_max, axis=1)
+                            T.barrier_all()
+                            T.tile.sub(scores_ub, scores_ub, score_broadcast_buffer(broadcast_ub, narrow_broadcast_ub))
+                            T.barrier_all()
+                            T.tile.exp(scores_ub, scores_ub)
+                            T.barrier_all()
+                            T.reduce_sum(scores_ub, tile_sum, dim=-1)
+                            T.barrier_all()
+                            T.tile.mul(row_sum, row_sum, prev_max_alpha)
+                            T.barrier_all()
+                            T.tile.add(row_sum, row_sum, tile_sum)
+                            T.barrier_all()
+                            T.copy(scores_ub, prob_ub)
+                            T.barrier_all()
+                            T.copy(prob_ub, Prob[cid, slot, vid * half : (vid + 1) * half, :])
+                            T.barrier_all()
                         T.set_cross_flag("MTE3", 1)
                         T.wait_cross_flag(2)
-                        T.copy(PV[cid, vid * half : (vid + 1) * half, :], pv_ub)
-                        T.barrier_all()
-                        T.tile.add(out_ub, out_ub, pv_ub)
-                        T.barrier_all()
+                        for slot in T.serial(valid_slots):
+                            T.tile.broadcast(output_broadcast_buffer(broadcast_ub, narrow_broadcast_ub), alpha_history[slot, :, :], axis=1)
+                            T.barrier_all()
+                            T.tile.mul(out_ub, out_ub, output_broadcast_buffer(broadcast_ub, narrow_broadcast_ub))
+                            T.barrier_all()
+                            T.copy(PV[cid, slot, vid * half : (vid + 1) * half, :], pv_ub)
+                            T.barrier_all()
+                            T.tile.add(out_ub, out_ub, pv_ub)
+                            T.barrier_all()
                         T.set_cross_flag("V", 3)
                         T.barrier_all()
                     T.tile.broadcast(output_broadcast_buffer(broadcast_ub, narrow_broadcast_ub), row_sum, axis=1)
@@ -492,6 +517,10 @@ class AttentionKernel:
             "layout": "BNSD",
             "spec": asdict(self.spec),
             "effective_tiles": {"block_m": self.spec.block_m, "block_n": self.spec.block_n},
+            "packet_size": PACKET_SIZE,
+            "scheduling": "packet_qk_softmax_pv_then_ordered_output_delayed_pv_credit",
+            "packet_alpha_dtype": "float32",
+            "workspace_axes": "active_core,packet_slot,query_row,key_or_head_dim",
             "padded_queries": self.spec.padded_queries,
             "padded_keys": self.spec.padded_keys,
             "scale": 1.0 / math.sqrt(self.spec.dim),
@@ -537,9 +566,9 @@ class AttentionKernel:
                 return padded
             qp, kp, vp = pad(q, s.padded_queries), pad(k, s.padded_keys), pad(v, s.padded_keys)
             output = torch.empty_like(qp)
-            scores = torch.empty((self.active_cores, s.block_m, s.block_n), dtype=torch.float32, device=q.device)
+            scores = torch.empty((self.active_cores, PACKET_SIZE, s.block_m, s.block_n), dtype=torch.float32, device=q.device)
             probs = torch.empty_like(scores, dtype=q.dtype)
-            pv = torch.empty((self.active_cores, s.block_m, s.dim), dtype=torch.float32, device=q.device)
+            pv = torch.empty((self.active_cores, PACKET_SIZE, s.block_m, s.dim), dtype=torch.float32, device=q.device)
             stream = _stream_id(torch, index)
         return PreparedAttention(self, (qp, kp, vp, output, scores, probs, pv),
                                  output[:, :, :s.queries, :], stream)
@@ -595,7 +624,8 @@ def cpu_math_self_test():
     rng = random.Random(1729)
     errors = []
     for block_n in (64, 128):
-        for dim, queries, keys in ((64, 3, 1), (64, 5, 65), (128, 3, 73), (128, 2, 257)):
+        for dim, queries, keys in ((64, 3, 1), (64, 5, 65), (128, 3, 73),
+                                   (128, 2, 257), (128, 2, 512), (128, 2, 513)):
             q = [[rng.uniform(-1, 1) for _ in range(dim)] for _ in range(queries)]
             k = [[rng.uniform(-1, 1) for _ in range(dim)] for _ in range(keys)]
             v = [[rng.uniform(-1, 1) for _ in range(dim)] for _ in range(keys)]
@@ -611,6 +641,7 @@ def cpu_math_self_test():
                 mass = sum(weights)
                 reference = [sum(weights[j] * v[j][d] for j in range(keys)) / mass for d in range(dim)]
                 m, l, out = -math.inf, 0.0, [0.0] * dim
+                pending_output = []
                 for start in range(0, padded_keys, block_n):
                     scores = [logits[j] if j < keys else 0.0 for j in range(start, start + block_n)]
                     if remainder and start + block_n == padded_keys:
@@ -619,15 +650,21 @@ def cpu_math_self_test():
                     alpha = math.exp(m - new_max)
                     p = [math.exp(x - new_max) for x in scores]
                     l = alpha * l + sum(p)
-                    out = [alpha * out[d] + sum(p[j] * v[start + j][d] for j in range(block_n) if start + j < keys)
-                           for d in range(dim)]
+                    partial = [sum(p[j] * v[start + j][d] for j in range(block_n) if start + j < keys)
+                               for d in range(dim)]
+                    pending_output.append((alpha, partial))
+                    if len(pending_output) == PACKET_SIZE or start + block_n == padded_keys:
+                        for saved_alpha, saved_partial in pending_output:
+                            out = [saved_alpha * old + part for old, part in zip(out, saved_partial)]
+                        pending_output.clear()
                     m = new_max
                 errors.append(max(abs(out[d] / l - reference[d]) for d in range(dim)))
     if max(errors) > 2e-14:
         raise AssertionError(f"Online softmax/tail recurrence failed: {max(errors)}")
     spec = AttentionSpec()
     return {"kind": "cpu_math_only", "max_abs_error": max(errors), "rows_checked": len(errors),
-            "tail_key_lengths": [1, 65, 73, 257], "head_dimensions": [64, 128], "block_sizes": [64, 128],
+            "tail_key_lengths": [1, 65, 73, 257, 512, 513], "head_dimensions": [64, 128], "block_sizes": [64, 128],
+            "packet_size": PACKET_SIZE, "output_update": "delayed_ordered_per_packet",
             "default_shape": list(DEFAULT_SHAPE), "memory_plan_for_20_runtime_cores": spec.memory_plan(20),
             "local_memory_plan": spec.local_memory_plan(),
             "npu_compile_or_run_performed": False}

@@ -40,8 +40,9 @@ def test_default_long_shape_and_bounded_scratch(backend):
     assert (spec.block_m, spec.block_n) == (128, 128)
     assert spec.padded_queries == spec.padded_keys == 37760
     plan = spec.memory_plan(20)
+    assert plan["packet_size"] == 4
     # Scratch depends on physical cores and tile sizes, never S-by-S storage.
-    assert plan["workspace_bytes"] == 20 * (128 * 128 * (4 + 2) + 128 * 128 * 4)
+    assert plan["workspace_bytes"] == 20 * 4 * (128 * 128 * (4 + 2) + 128 * 128 * 4)
     assert plan["original_input_bytes"] == 3 * 1 * 28 * 37741 * 128 * 2
     twice = backend.AttentionSpec(queries=2 * 37741, keys=2 * 37741)
     assert twice.memory_plan(20)["workspace_bytes"] == plan["workspace_bytes"]
@@ -138,7 +139,8 @@ def test_matching_version_without_ascendc_language_is_rejected(backend, tmp_path
 def test_online_softmax_tail_math_has_independent_dense_reference(backend):
     result = backend.cpu_math_self_test()
     assert result["max_abs_error"] < 1e-14
-    assert result["rows_checked"] == 26
+    assert result["rows_checked"] == 34
     assert result["block_sizes"] == [64, 128]
-    assert 257 in result["tail_key_lengths"]
+    assert {257, 512, 513}.issubset(result["tail_key_lengths"])
+    assert result["packet_size"] == 4
     assert result["npu_compile_or_run_performed"] is False

@@ -1,0 +1,244 @@
+{
+  "date": "2026-10-23",
+  "status": "passed_local_checks_v4_npu_validation_pending",
+  "implementation_revision": "packet4_delayed_output_v4",
+  "attention": "ordinary dense noncausal native BF16/FP16 attention with FP32 online softmax and output accumulation",
+  "default_shape_bnsd": [
+    1,
+    28,
+    37741,
+    128
+  ],
+  "default_dtype": "bfloat16",
+  "default_tiles": [
+    128,
+    128
+  ],
+  "packet_size": 4,
+  "v3_user_reported_device_baseline": {
+    "source": "terminal output pasted by the user; original remote JSON not available locally",
+    "kernel_commit": "efa48ce593d9b3539b77e752a61f8870a0b343bb",
+    "result_status": "passed",
+    "timing_scope": "synchronized Python API wall time in milliseconds, not device-kernel durations",
+    "median_ms": {
+      "tilelang_full": 670.303,
+      "tilelang_prepared": 670.827,
+      "cann_fusion_attention": 130.422
+    },
+    "v2_over_v3_time_ratio": {
+      "tilelang_full": 2.4863531865439956,
+      "tilelang_prepared": 2.4669937256550494
+    },
+    "v3_over_cann_time_ratio": {
+      "tilelang_full": 5.139493337013694,
+      "tilelang_prepared": 5.14351106408428
+    },
+    "runtime_soc_and_physical_core_count": "not shown in pasted output; do not infer from machine labels"
+  },
+  "v4_schedule": {
+    "kv_tiles_per_query_tile": 295,
+    "packets_per_query_tile": 74,
+    "last_packet_valid_slots": 3,
+    "old_tile_handoffs": 2436700,
+    "new_packet_handoffs": 611240,
+    "cube": "produce up to four QK tiles; publish flag0; wait for Prob flag1; before overwriting PV wait for the previous flag3; produce valid PV slots; publish flag2; start the next QK packet; drain final flag3 at every task end",
+    "vector": "wait flag0; compute online m/l/P for valid slots and save each FP32 alpha; publish flag1; wait flag2; apply O=alpha_i*O+PV_i in original KV order; publish flag3",
+    "reused_slots": "Scores/Prob/PV have a packet-slot axis, while Q/K/V/output arguments and seven-buffer dispatch remain",
+    "math": "m/l do not depend on O; deferring O updates within the packet preserves their original arithmetic order",
+    "scope_limit": "explicit barriers retained; this does not overlap the softmax of one packet with its own dependent PV GEMM",
+    "performance_limit": "fewer handoffs and an overlap opportunity do not establish measured speedup"
+  },
+  "memory": {
+    "local": {
+      "ub_explicit_bytes_per_vector": 166656,
+      "ub_explicit_allocations": {
+        "scores": 32768,
+        "probabilities": 16384,
+        "running_output": 32768,
+        "partial_output": 32768,
+        "output_cast": 16384,
+        "row_statistics": 1024,
+        "shared_broadcast": 32768,
+        "narrow_broadcast": 256,
+        "tail_mask_row": 512,
+        "packet_alpha_history": 1024
+      },
+      "ub_physical_allocation_alignment_bytes": 32,
+      "ub_statistics_row_padding_bytes": 0,
+      "ub_layout_policy": "full_tile_contiguous_stats_normal_broadcast_no_tail_pass",
+      "ub_capacity_bytes_per_vector": 196352,
+      "ub_headroom_before_compiler_tmp_bytes": 29696,
+      "compiler_shared_tmp_bytes_per_vector": 4672,
+      "compiler_tmp_policy": "pinned_fp32_reduce2d_v2_max_shared_arena",
+      "ub_total_static_bound_bytes_per_vector": 171328,
+      "ub_headroom_after_compiler_tmp_bytes": 25024,
+      "l1_explicit_bytes_per_cube": 131072,
+      "l1_capacity_bytes_per_cube": 524032,
+      "l0c_explicit_bytes_per_cube": 131072,
+      "l0c_capacity_bytes_per_cube": 131072,
+      "relies_on_automatic_buffer_aliasing": false
+    },
+    "global_example_for_20_runtime_cube_cores": {
+      "active_cube_cores": 20,
+      "packet_size": 4,
+      "input_padding_allocated_bytes": 811991040,
+      "padded_output_bytes": 270663680,
+      "score_workspace_bytes": 5242880,
+      "probability_workspace_bytes": 2621440,
+      "pv_workspace_bytes": 5242880,
+      "workspace_bytes": 13107200,
+      "prepared_allocated_bytes": 1095761920,
+      "original_input_bytes": 811582464
+    },
+    "core_count_note": "20 is an accounting example, not a claim about the target device"
+  },
+  "independent_protocol_review": {
+    "status": "actual kernel source matched the reviewed schedule",
+    "model": "independent three-process ownership/credit model: one Cube and two Vector subblocks",
+    "random_interleavings_checked": 2700,
+    "query_tasks_per_run": 3,
+    "kv_block_counts_checked": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      7,
+      8,
+      9,
+      13
+    ],
+    "invariants": [
+      "consume a slot before overwriting it",
+      "never exceed one outstanding flag credit",
+      "consume every packet flag and drain all task-end credits",
+      "merge outputs in original global KV order",
+      "do not access unused final-packet slots"
+    ],
+    "scope": "independent analysis model and static source review, not a device trace or hardware synchronization proof",
+    "alpha_copy_and_broadcast": "FP32 BufferRegion copy and row broadcast, not scalar GetValue"
+  },
+  "local_validation": {
+    "pytest_passed": 129,
+    "test_files": [
+      "tests/test_tilelang_attention_npu.py",
+      "tests/test_tilelang_attention_npu_benchmark.py",
+      "tests/test_tilelang_attention_npu_setup.py",
+      "tests/test_ascend_soc_preflight.py"
+    ],
+    "python_syntax": "passed",
+    "bash_syntax": "passed",
+    "python": "3.10.16 | packaged by Anaconda, Inc. | (main, Dec 11 2024, 16:19:12) [MSC v.1929 64 bit (AMD64)]",
+    "cpu_delayed_output_math": {
+      "kind": "cpu_math_only",
+      "max_abs_error": 1.249000902703301e-16,
+      "rows_checked": 34,
+      "tail_key_lengths": [
+        1,
+        65,
+        73,
+        257,
+        512,
+        513
+      ],
+      "head_dimensions": [
+        64,
+        128
+      ],
+      "block_sizes": [
+        64,
+        128
+      ],
+      "packet_size": 4,
+      "output_update": "delayed_ordered_per_packet",
+      "default_shape": [
+        1,
+        28,
+        37741,
+        128
+      ],
+      "memory_plan_for_20_runtime_cores": {
+        "active_cube_cores": 20,
+        "packet_size": 4,
+        "input_padding_allocated_bytes": 811991040,
+        "padded_output_bytes": 270663680,
+        "score_workspace_bytes": 5242880,
+        "probability_workspace_bytes": 2621440,
+        "pv_workspace_bytes": 5242880,
+        "workspace_bytes": 13107200,
+        "prepared_allocated_bytes": 1095761920,
+        "original_input_bytes": 811582464
+      },
+      "local_memory_plan": {
+        "ub_explicit_bytes_per_vector": 166656,
+        "ub_explicit_allocations": {
+          "scores": 32768,
+          "probabilities": 16384,
+          "running_output": 32768,
+          "partial_output": 32768,
+          "output_cast": 16384,
+          "row_statistics": 1024,
+          "shared_broadcast": 32768,
+          "narrow_broadcast": 256,
+          "tail_mask_row": 512,
+          "packet_alpha_history": 1024
+        },
+        "ub_physical_allocation_alignment_bytes": 32,
+        "ub_statistics_row_padding_bytes": 0,
+        "ub_layout_policy": "full_tile_contiguous_stats_normal_broadcast_no_tail_pass",
+        "ub_capacity_bytes_per_vector": 196352,
+        "ub_headroom_before_compiler_tmp_bytes": 29696,
+        "compiler_shared_tmp_bytes_per_vector": 4672,
+        "compiler_tmp_policy": "pinned_fp32_reduce2d_v2_max_shared_arena",
+        "ub_total_static_bound_bytes_per_vector": 171328,
+        "ub_headroom_after_compiler_tmp_bytes": 25024,
+        "l1_explicit_bytes_per_cube": 131072,
+        "l1_capacity_bytes_per_cube": 524032,
+        "l0c_explicit_bytes_per_cube": 131072,
+        "l0c_capacity_bytes_per_cube": 131072,
+        "relies_on_automatic_buffer_aliasing": false
+      },
+      "npu_compile_or_run_performed": false
+    }
+  },
+  "npu_acceptance_planned": {
+    "small_cases": 45,
+    "static_cases": 44,
+    "dynamic_persistent_case": 1,
+    "added_static_random_queries_keys": [
+      [
+        129,
+        512
+      ],
+      [
+        129,
+        513
+      ]
+    ],
+    "persistent_case": {
+      "dtype": "bfloat16",
+      "batch": 2,
+      "heads": 3,
+      "dim": 128,
+      "keys": 513,
+      "queries": "(actual_cube_cores // 6) * actual_block_m + 1",
+      "purpose": "more query tasks than physical Cube cores, forcing a task/packet transition"
+    },
+    "kernel_object_reuse": "local validation-only cache, 45 requests and 29 distinct configurations; fresh inputs and prepared storage for every case",
+    "gates": "independent CPU FP32 oracle, repeated/full/prepared equality, separate-stream buffers, whole-output finiteness and sampled main rows",
+    "timing": "only after all accuracy gates pass; adaptive repeats retained"
+  },
+  "v4_npu_source_generation": "not run locally",
+  "v4_npu_compile": "not run locally",
+  "v4_npu_execution": "not run locally",
+  "v4_latency_ms": null,
+  "v4_measured_speedup": null,
+  "launch": "bash scripts/run_tilelang_attention_npu.sh",
+  "source_sha256_normalized_lf": {
+    "scripts/tilelang_attention_npu.py": "94355416848b608cca4f331c44da1eddee2daffee4539e1e53de3bd06c1b9d5d",
+    "scripts/benchmark_tilelang_attention_npu.py": "7591523cfd43d2386b40873ede588cda90555acddd2d67db44e87827b138d103",
+    "scripts/run_tilelang_attention_npu.sh": "eb8a76cb5b2c3d4f7b20bb0031039a5405d8c5f4c9a3bfba78d8c13ebbe2b950",
+    "tests/test_tilelang_attention_npu.py": "327360165634cd14428e424146ae85fed9e964b2f15cf55467fad91ae171ac46",
+    "tests/test_tilelang_attention_npu_benchmark.py": "442f6179c142a14509b047719d112c5ae3229b73238c09cd56ca900977280521"
+  }
+}

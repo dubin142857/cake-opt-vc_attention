@@ -193,7 +193,26 @@ def make_cpu_inputs(shape, keys, dtype, seed, pattern="random"):
 def small_cases():
     return [(pattern, queries, keys) for queries, keys in ((65, 129), (129, 65))
             for pattern in ("random", "zero_q", "constant_v")] + [
-                ("random", 1, 1), ("random", 129, 257), ("random", 128, 256)]
+                ("random", 1, 1), ("random", 129, 257), ("random", 128, 256),
+                ("random", 129, 512), ("random", 129, 513)]
+
+
+def validation_cases(metadata_for_persistent):
+    """Static dtype/D gates, then one task-reuse case based on actual cores."""
+    for dtype in ("float16", "bfloat16"):
+        for dim in (64, 128):
+            for pattern, queries, keys in small_cases():
+                shape = (2, 3, queries, dim) if (queries, keys) == (1, 1) else (1, 2, queries, dim)
+                yield {"dtype": dtype, "shape_bnsd": list(shape), "keys": keys, "pattern": pattern}
+    metadata = metadata_for_persistent()
+    cores = metadata["runtime"]["cube_core_num"]
+    block_m = metadata["spec"]["block_m"]
+    if type(cores) is not int or cores <= 0 or type(block_m) is not int or block_m <= 0:
+        raise ValueError("Persistent validation requires actual positive cube_core_num and block_m metadata")
+    queries = (cores // 6) * block_m + 1
+    yield {"dtype": "bfloat16", "shape_bnsd": [2, 3, queries, 128], "keys": 513, "pattern": "random",
+           "persistent_task_reuse": True, "runtime_cube_cores": cores,
+           "query_tiles": 6 * (cores // 6 + 1)}
 
 
 def fusion_call(torch_npu, q, k, v):
@@ -437,64 +456,83 @@ def validate_small(torch, backend, providers, args, device, report, save, artifa
     records = report["validation"]["small"]
     stream_supported = all(hasattr(torch.npu, attr) for attr in ("Stream", "stream", "current_stream"))
     report["validation"]["nondefault_stream"] = "supported" if stream_supported else "API unavailable; skipped"
-    index = 0
-    for dtype_name in ("float16", "bfloat16"):
-        for dim in (64, 128):
-            for pattern, queries, keys in small_cases():
-                index += 1
-                # One-key MHA has an exact V answer and separately exercises
-                # batch/head addressing and fewer tasks than physical cores.
-                shape = (2, 3, queries, dim) if (queries, keys) == (1, 1) else (1, 2, queries, dim)
-                label = {"dtype": dtype_name, "shape_bnsd": list(shape), "keys": keys, "pattern": pattern,
-                         "oracle": "independent CPU FP32; all query rows and all keys"}
-                original = make_cpu_inputs(shape, keys, getattr(torch, dtype_name), args.seed + index, pattern)
-                expected = cpu_reference(*original)
-                q, k, v = [x.to(device) for x in original]
-                kernel = backend.build_attention(*shape[:3], keys, dim, dtype=dtype_name, device=device,
-                                                 block_m=args.block_m, block_n=args.block_n)
-                spec = kernel.metadata()["spec"]
-                label["effective_tiles"] = {name: spec[name] for name in ("block_m", "block_n")}
-                print(f"Validate {dtype_name} BNSD={shape} K={keys} {pattern} "
-                      f"effective_tiles={spec['block_m']}x{spec['block_n']}", flush=True)
-                source_key = f"small_{dtype_name}_q{queries}_k{keys}_d{dim}"
-                if source_key not in report["kernel_sources"]:
-                    report["kernel_sources"][source_key] = kernel.export_source(artifact_dir / source_key)
-                    save()
-                prepared = kernel.prepare(q, k, v)
-                output = kernel.run_prepared(prepared)
-                torch.npu.synchronize()
-                validate_contract(output, q)
-                first = output.detach().cpu().clone()
-                enforce_metrics(first, expected, dtype_name, {**label, "provider": "tilelang", "path": "prepared"}, records, save)
-                for repeat in range(2):
-                    current = kernel.run_prepared(prepared)
-                    torch.npu.synchronize()
-                    exact_check(current, first, f"prepared_repeat_{repeat + 1}",
-                                {**label, "provider": "tilelang"}, records, save)
-                full = kernel(q, k, v)
-                torch.npu.synchronize()
-                validate_contract(full, q)
-                exact_check(full, first, "full_vs_prepared", {**label, "provider": "tilelang"}, records, save)
-                if stream_supported:
-                    stream = torch.npu.Stream(device=device)
-                    stream.wait_stream(torch.npu.current_stream(device))
-                    with torch.npu.stream(stream):
-                        # PreparedAttention owns stream-local scratch/output. A
-                        # different stream gets distinct storage, used serially.
-                        alternate_prepared = kernel.prepare(q, k, v)
-                        alternate = kernel.run_prepared(alternate_prepared)
-                    stream.synchronize()
-                    torch.npu.synchronize()
-                    exact_check(alternate, first, "nondefault_stream", {**label, "provider": "tilelang"}, records, save)
-                for name, call in providers.items():
-                    other = call(q, k, v)
-                    torch.npu.synchronize()
-                    validate_contract(other, q)
-                    enforce_metrics(other, expected, dtype_name, {**label, "provider": name, "path": "full"}, records, save)
-                    del other
-                del q, k, v, output, current, full, first, prepared, kernel, original, expected
-                if stream_supported:
-                    del alternate, alternate_prepared, stream
+    report["validation"]["small_cases_expected"] = 4 * len(small_cases()) + 1
+    report["validation"]["small_cases_count"] = 0
+    cache_stats = {"requests": 0, "unique_kernel_builds": 0, "object_reuses": 0,
+                   "scope": "this validate_small invocation only; fresh prepared storage for every case"}
+    report["validation"]["small_kernel_cache"] = cache_stats
+    kernel_cache, persistent_metadata = {}, {}
+    cases = validation_cases(lambda: persistent_metadata["value"])
+    for index, case in enumerate(cases, start=1):
+        dtype_name, shape, keys, pattern = case["dtype"], tuple(case["shape_bnsd"]), case["keys"], case["pattern"]
+        queries, dim = shape[2:]
+        label = {**case, "oracle": "independent CPU FP32; all query rows and all keys"}
+        # Publish this before input creation/compilation, so failures retain the
+        # exact pending case even when no output comparison was reached.
+        report["validation"]["current_small_case"] = label
+        save()
+        original = make_cpu_inputs(shape, keys, getattr(torch, dtype_name), args.seed + index, pattern)
+        expected = cpu_reference(*original)
+        q, k, v = [x.to(device) for x in original]
+        cache_key = (*shape[:3], keys, dim, dtype_name, str(device), args.block_m, args.block_n)
+        cache_stats["requests"] += 1
+        if cache_key not in kernel_cache:
+            kernel_cache[cache_key] = backend.build_attention(
+                *shape[:3], keys, dim, dtype=dtype_name, device=device, block_m=args.block_m, block_n=args.block_n)
+            cache_stats["unique_kernel_builds"] += 1
+        else:
+            cache_stats["object_reuses"] += 1
+        kernel = kernel_cache[cache_key]
+        metadata = kernel.metadata()
+        if dtype_name == "bfloat16" and dim == 128:
+            persistent_metadata["value"] = metadata
+        spec = metadata["spec"]
+        label["effective_tiles"] = {name: spec[name] for name in ("block_m", "block_n")}
+        label["packet_size"] = metadata["packet_size"]
+        print(f"Validate {index}/{report['validation']['small_cases_expected']} {dtype_name} "
+              f"BNSD={shape} K={keys} {pattern} effective_tiles={spec['block_m']}x{spec['block_n']} "
+              f"packet_size={metadata['packet_size']}", flush=True)
+        source_key = f"small_{dtype_name}_b{shape[0]}_h{shape[1]}_q{queries}_k{keys}_d{dim}"
+        if source_key not in report["kernel_sources"]:
+            report["kernel_sources"][source_key] = kernel.export_source(artifact_dir / source_key)
+            save()
+        prepared = kernel.prepare(q, k, v)
+        output = kernel.run_prepared(prepared)
+        torch.npu.synchronize()
+        validate_contract(output, q)
+        first = output.detach().cpu().clone()
+        enforce_metrics(first, expected, dtype_name, {**label, "provider": "tilelang", "path": "prepared"}, records, save)
+        for repeat in range(2):
+            current = kernel.run_prepared(prepared)
+            torch.npu.synchronize()
+            exact_check(current, first, f"prepared_repeat_{repeat + 1}",
+                        {**label, "provider": "tilelang"}, records, save)
+        full = kernel(q, k, v)
+        torch.npu.synchronize()
+        validate_contract(full, q)
+        exact_check(full, first, "full_vs_prepared", {**label, "provider": "tilelang"}, records, save)
+        if stream_supported:
+            stream = torch.npu.Stream(device=device)
+            stream.wait_stream(torch.npu.current_stream(device))
+            with torch.npu.stream(stream):
+                alternate_prepared = kernel.prepare(q, k, v)
+                alternate = kernel.run_prepared(alternate_prepared)
+            stream.synchronize()
+            torch.npu.synchronize()
+            exact_check(alternate, first, "nondefault_stream", {**label, "provider": "tilelang"}, records, save)
+        for name, call in providers.items():
+            other = call(q, k, v)
+            torch.npu.synchronize()
+            validate_contract(other, q)
+            enforce_metrics(other, expected, dtype_name, {**label, "provider": name, "path": "full"}, records, save)
+            del other
+        report["validation"]["small_cases_count"] += 1
+        save()
+        del q, k, v, output, current, full, first, prepared, kernel, original, expected
+        if stream_supported:
+            del alternate, alternate_prepared, stream
+    report["validation"].pop("current_small_case", None)
+    save()
 
 
 def run(args, report, save, artifact_dir):
@@ -523,7 +561,8 @@ def run(args, report, save, artifact_dir):
     report["runtime"] = runtime_metadata(torch, torch_npu, backend, device)
     print(f"Backend=tile-ai/tilelang-ascend target=ascendc "
           f"revision={getattr(backend, 'IMPLEMENTATION_REVISION', 'unspecified')} SoC={report['runtime']['soc']} "
-          f"dtype={args.dtype} BNSD={args.shape} K={args.key_length}", flush=True)
+          f"dtype={args.dtype} BNSD={args.shape} K={args.key_length} "
+          f"packet_size={getattr(backend, 'PACKET_SIZE', 'unspecified')}", flush=True)
     save()
     with torch.no_grad():
         validate_small(torch, backend, providers, args, device, report, save, artifact_dir)
@@ -534,7 +573,8 @@ def run(args, report, save, artifact_dir):
         report["kernel"] = kernel.metadata()
         spec = report["kernel"]["spec"]
         report["effective_tiles"] = {name: spec[name] for name in ("block_m", "block_n")}
-        print(f"Main effective_tiles={spec['block_m']}x{spec['block_n']}", flush=True)
+        report["packet_size"] = report["kernel"]["packet_size"]
+        print(f"Main effective_tiles={spec['block_m']}x{spec['block_n']} packet_size={report['packet_size']}", flush=True)
         original = make_cpu_inputs(shape, keys, getattr(torch, args.dtype), args.seed)
         ids = sample_query_ids(shape[2], args.check_queries, block_m=spec["block_m"])
         expected = cpu_reference(*original, query_ids=ids)
@@ -546,7 +586,7 @@ def run(args, report, save, artifact_dir):
         selection = torch.tensor(ids, device=device, dtype=torch.long)
         records = report["validation"]["main"]
         row = {"dtype": args.dtype, "shape_bnsd": list(shape), "keys": keys, "query_ids": ids,
-               "effective_tiles": dict(report["effective_tiles"]),
+               "effective_tiles": dict(report["effective_tiles"]), "packet_size": report["packet_size"],
                "oracle": "independent CPU FP32; sampled Q, all K/V; no full S-by-S allocation"}
 
         def check_main(name, output):
