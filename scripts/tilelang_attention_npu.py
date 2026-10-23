@@ -55,6 +55,7 @@ SOURCE_COMMIT = "1d7525399141b242435e6e1c60cc006df0a3d7a6"
 SOURCE_REPOSITORY = "https://github.com/tile-ai/tilelang-ascend"
 SOURCE_URL = f"{SOURCE_REPOSITORY}/tree/{SOURCE_COMMIT}"
 DEFAULT_SHAPE = (1, 28, 37741, 128)
+IMPLEMENTATION_REVISION = "broadcast_softmax_tail_mask_v2"
 
 
 @dataclass(frozen=True)
@@ -247,10 +248,17 @@ def make_primfunc(spec, active_cores):
             out_ub = T.alloc_ub((half, dim), "float")
             pv_ub = T.alloc_ub((half, dim), "float")
             output_ub = T.alloc_ub((half, dim), dtype)
-            row_max = T.alloc_ub((half,), "float")
-            prev_max_alpha = T.alloc_ub((half,), "float")
-            row_sum = T.alloc_ub((half,), "float")
-            tile_sum = T.alloc_ub((half,), "float")
+            # Match the official AscendC broadcast examples: one contiguous
+            # FP32 scalar per row, represented as [rows, 1]. Reading an
+            # individual row_max[i] as a tile-op scalar generates GetValue()
+            # and an implicit PIPE_ALL barrier for every row on this backend.
+            row_max = T.alloc_ub((half, 1), "float")
+            prev_max_alpha = T.alloc_ub((half, 1), "float")
+            row_sum = T.alloc_ub((half, 1), "float")
+            tile_sum = T.alloc_ub((half, 1), "float")
+            score_broadcast = T.alloc_ub((half, bn), "float")
+            output_broadcast = T.alloc_ub((half, dim), "float")
+            tail_mask = T.alloc_ub((half, bn), "float")
 
             # Each Cube and its two Vector subblocks process the same sequence
             # of tasks. All cross-core signals are consumed before reuse.
@@ -284,6 +292,17 @@ def make_primfunc(spec, active_cores):
                         T.barrier_all()
 
             with T.Scope("V"):
+                # Construct the constant additive mask once per physical
+                # Vector subblock, outside *both* attention loops. At this pin
+                # T.Parallel with if_then_else can lower to scalar Get/SetValue;
+                # it must never scan every score tile in the main KV loop.
+                # The hot tail path below is one native vector tile.add.
+                if keys != kp:
+                    for mask_i, mask_j in T.Parallel(half, bn):
+                        tail_mask[mask_i, mask_j] = T.if_then_else(
+                            mask_j < keys % bn, 0.0, -T.infinity("float")
+                        )
+                    T.barrier_all()
                 for task_iter in T.serial(T.ceildiv(tasks - cid, active_cores)):
                     task = task_iter * active_cores + cid
                     qb = task % qblocks
@@ -299,14 +318,13 @@ def make_primfunc(spec, active_cores):
                         T.barrier_all()
                         T.tile.mul(scores_ub, scores_ub, scale)
                         T.barrier_all()
-                        # Zero K padding alone is incorrect: its logits must be
-                        # -inf before max/exp/sum, or it changes normalization.
+                        # Only the last KV block contains padding. Native
+                        # vector add uses the prebuilt [0, ..., -inf] mask;
+                        # valid logits and all earlier blocks are unchanged.
                         if keys != kp:
-                            for i, j in T.Parallel(half, bn):
-                                scores_ub[i, j] = T.if_then_else(
-                                    kb * bn + j < keys, scores_ub[i, j], -T.infinity("float")
-                                )
-                            T.barrier_all()
+                            if kb == kblocks - 1:
+                                T.tile.add(scores_ub, scores_ub, tail_mask)
+                                T.barrier_all()
                         T.copy(row_max, prev_max_alpha)
                         T.barrier_all()
                         T.reduce_max(scores_ub, row_max, dim=-1)
@@ -317,10 +335,14 @@ def make_primfunc(spec, active_cores):
                         T.barrier_all()
                         T.tile.exp(prev_max_alpha, prev_max_alpha)
                         T.barrier_all()
-                        for i in T.serial(half):
-                            T.tile.sub(scores_ub[i, :], scores_ub[i, :], row_max[i])
-                            T.tile.mul(out_ub[i, :], out_ub[i, :], prev_max_alpha[i])
-                            T.barrier_all()
+                        T.tile.broadcast(score_broadcast, row_max, axis=1)
+                        T.barrier_all()
+                        T.tile.sub(scores_ub, scores_ub, score_broadcast)
+                        T.barrier_all()
+                        T.tile.broadcast(output_broadcast, prev_max_alpha, axis=1)
+                        T.barrier_all()
+                        T.tile.mul(out_ub, out_ub, output_broadcast)
+                        T.barrier_all()
                         T.tile.exp(scores_ub, scores_ub)
                         T.barrier_all()
                         T.reduce_sum(scores_ub, tile_sum, dim=-1)
@@ -341,9 +363,10 @@ def make_primfunc(spec, active_cores):
                         T.barrier_all()
                         T.set_cross_flag("V", 3)
                         T.barrier_all()
-                    for i in T.serial(half):
-                        T.tile.div(out_ub[i, :], out_ub[i, :], row_sum[i])
-                        T.barrier_all()
+                    T.tile.broadcast(output_broadcast, row_sum, axis=1)
+                    T.barrier_all()
+                    T.tile.div(out_ub, out_ub, output_broadcast)
+                    T.barrier_all()
                     T.copy(out_ub, output_ub)
                     T.barrier_all()
                     T.copy(output_ub, O[b, h, qb * bm + vid * half : qb * bm + (vid + 1) * half, :])
@@ -396,6 +419,7 @@ class AttentionKernel:
     def metadata(self):
         return {
             "implementation": "tilelang_native_float_online_attention",
+            "implementation_revision": IMPLEMENTATION_REVISION,
             "attention": "dense_noncausal_softmax(QK^T/sqrt(D))V",
             "layout": "BNSD",
             "spec": asdict(self.spec),
@@ -407,6 +431,8 @@ class AttentionKernel:
             "probability_rounding": self.spec.dtype,
             "implicit_input_conversion": False,
             "qk_pv_primitive": "T.gemm_v0",
+            "row_ops": "whole_tile_fp32_broadcast_sub_mul_div",
+            "tail_mask_strategy": "constant_ub_additive_mask_last_kv_block_only",
             "runtime": dict(self.runtime),
             "backend": dict(self.backend),
             "memory": self.spec.memory_plan(self.runtime["cube_core_num"]),

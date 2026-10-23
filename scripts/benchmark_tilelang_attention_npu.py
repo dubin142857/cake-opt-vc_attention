@@ -43,9 +43,14 @@ def parse_args(argv=None):
     parser.add_argument("--device", type=int, default=0)
     parser.add_argument("--block-m", type=int, default=64)
     parser.add_argument("--block-n", type=int, default=64)
-    parser.add_argument("--warmup", type=int, default=3)
-    parser.add_argument("--repeats", type=int, default=5)
+    parser.add_argument("--warmup", type=int, default=1,
+                        help="Minimum untimed calls per provider, including already required validation calls")
+    parser.add_argument("--repeats", type=int, default=5, help="Maximum repeats per calibrated timing trial")
     parser.add_argument("--trials", type=int, default=3)
+    parser.add_argument("--target-trial-ms", type=float, default=200,
+                        help="Target trial duration; repetitions are capped by --repeats")
+    parser.add_argument("--timing-budget-seconds", type=float, default=10,
+                        help="Per-provider planning budget; one in-flight NPU call cannot be preempted")
     parser.add_argument("--check-queries", type=int, default=8)
     parser.add_argument("--cpu-threads", type=int, default=4)
     parser.add_argument("--seed", type=int, default=91028)
@@ -63,6 +68,8 @@ def parse_args(argv=None):
         parser.error("The pinned AscendC attention implementation requires --block-m 64 --block-n 64")
     if args.device < 0 or args.warmup < 0 or min(args.repeats, args.trials, args.check_queries, args.cpu_threads) <= 0:
         parser.error("Require nonnegative device/warmup and positive repeats/trials/check-queries/cpu-threads")
+    if any(not math.isfinite(value) or value <= 0 for value in (args.target_trial_ms, args.timing_budget_seconds)):
+        parser.error("target-trial-ms and timing-budget-seconds must be finite and positive")
     return args
 
 
@@ -218,6 +225,89 @@ def synchronized_api_time(call, synchronize, warmup, repeats, trials, clock=time
             "synchronization": "device synchronize before and after every timed API call"}
 
 
+def timing_plan(calibration_ms, *, warmup, repeats_cap, trials, target_trial_ms, budget_seconds, verified_calls=1):
+    """Bound planned work using a required validation call, with no new call."""
+    if (not math.isfinite(calibration_ms) or calibration_ms <= 0 or warmup < 0
+            or min(repeats_cap, trials, verified_calls) <= 0
+            or any(not math.isfinite(value) or value <= 0 for value in (target_trial_ms, budget_seconds))):
+        raise ValueError("Invalid calibration or timing planning controls")
+    max_calls = max(1, int(budget_seconds * 1000 / calibration_ms))
+    repeats = min(max_calls, max(1, min(repeats_cap, int(target_trial_ms / calibration_ms))))
+    warmup_credit = min(warmup, verified_calls)
+    extra_warmup = min(max(0, warmup - warmup_credit), max(0, max_calls - repeats))
+    effective_trials = max(1, min(trials, (max_calls - extra_warmup) // repeats))
+    estimated_seconds = calibration_ms * (extra_warmup + repeats * effective_trials) / 1000
+    return {"calibration_ms": calibration_ms, "calibration_source": "already required main-shape validation call",
+            "calibration_in_final_statistics": False, "requested_warmup": warmup,
+            "validation_warmup_credit": warmup_credit, "extra_warmup": extra_warmup,
+            "requested_repeats_cap": repeats_cap, "effective_repeats": repeats,
+            "requested_trials": trials, "effective_trials": effective_trials,
+            "target_trial_ms": target_trial_ms, "budget_seconds": budget_seconds,
+            "estimated_timing_and_extra_warmup_seconds": estimated_seconds,
+            "minimum_one_call_exceeds_budget": calibration_ms > budget_seconds * 1000,
+            "budget_scope": "planning estimate excluding validation; cannot preempt one in-flight NPU call"}
+
+
+def time_providers(calls, report, args, synchronize, save, clock=time.perf_counter):
+    """Time only after all accuracy gates, rotating the remaining providers."""
+    if report["validation"]["status"] != "passed":
+        raise RuntimeError("Every validation must pass before provider timing")
+    plans = {name: timing_plan(report["calibration"][name]["ms"], warmup=args.warmup,
+                               repeats_cap=args.repeats, trials=args.trials,
+                               target_trial_ms=args.target_trial_ms, budget_seconds=args.timing_budget_seconds,
+                               verified_calls=report["calibration"][name].get("verified_calls", 1))
+             for name in calls}
+    report["timing_plans"] = plans
+    report["timing_trial_order"] = []
+    names = list(calls)
+    samples = {name: [] for name in names}
+    for name, plan in plans.items():
+        label = report["providers"].get(name, {}).get("label", name)
+        print(f"Plan {label}: calibration {plan['calibration_ms']:.3f} ms; "
+              f"extra warmup={plan['extra_warmup']}, repeats={plan['effective_repeats']}, "
+              f"trials={plan['effective_trials']} (requested {args.trials})", flush=True)
+        for _ in range(plan["extra_warmup"]):
+            output = calls[name][0]()
+            synchronize()
+            del output
+    save()
+    for trial in range(max(plan["effective_trials"] for plan in plans.values())):
+        shift = trial % len(names)
+        order = [name for name in names[shift:] + names[:shift] if trial < plans[name]["effective_trials"]]
+        report["timing_trial_order"].append(order)
+        for name in order:
+            plan = plans[name]
+            label = report["providers"].get(name, {}).get("label", name)
+            print(f"Time trial {trial + 1}/{plan['effective_trials']} {label}: {TIMING_SCOPE}", flush=True)
+            result = synchronized_api_time(calls[name][0], synchronize, 0, plan["effective_repeats"], 1, clock=clock)
+            samples[name].extend(result["trial_mean_ms"])
+            report["timings"][name] = {
+                **result, "trial_mean_ms": list(samples[name]), "median_ms": statistics.median(samples[name]),
+                "min_ms": min(samples[name]), "max_ms": max(samples[name]),
+                "warmup": plan["extra_warmup"], "trials": len(samples[name]), "plan": dict(plan),
+                "included_work": calls[name][1], "calibration_in_final_statistics": False,
+                "measured_api_seconds": sum(samples[name]) * plan["effective_repeats"] / 1000,
+                "provider_order": "rotated once per trial; providers stop at their planned trial count"}
+            save()
+    for name in names:
+        label = report["providers"].get(name, {}).get("label", name)
+        suffix = "; one measured trial" if len(samples[name]) == 1 else ""
+        print(f"  {label}: median {report['timings'][name]['median_ms']:.3f} ms{suffix}", flush=True)
+    reference = report["timings"].get("cann_fusion_attention")
+    if reference:
+        comparisons = {}
+        for name in ("tilelang_full", "tilelang_prepared"):
+            if name in report["timings"]:
+                measured_ms = report["timings"][name]["median_ms"]
+                comparisons[name] = {"reference": "CANN npu_fusion_attention API", "scope": TIMING_SCOPE,
+                                     "tilelang_ms": measured_ms, "cann_ms": reference["median_ms"],
+                                     "tilelang_over_cann_time_ratio": measured_ms / reference["median_ms"],
+                                     "cann_over_tilelang_speed_ratio": reference["median_ms"] / measured_ms}
+                print(f"  {name} / CANN API time ratio: "
+                      f"{comparisons[name]['tilelang_over_cann_time_ratio']:.3f}x", flush=True)
+        report["comparisons"] = comparisons
+
+
 def _version(package):
     try:
         return importlib.metadata.version(package)
@@ -239,6 +329,7 @@ def runtime_metadata(torch, torch_npu, backend, device):
             "torch_npu": getattr(torch_npu, "__version__", _version("torch-npu")),
             "tilelang": _version("tilelang"), "python": sys.version, "python_executable": sys.executable,
             "backend_source_commit": getattr(backend, "SOURCE_COMMIT", None),
+            "backend_implementation_revision": getattr(backend, "IMPLEMENTATION_REVISION", "unspecified"),
             "ascend_home_path": os.environ.get("ASCEND_HOME_PATH"),
             "provider_environment": {name: os.environ.get(name) for name in
                                      ("ASCEND_CUSTOM_OPP_PATH", "ASCEND_OPP_PATH", "LD_PRELOAD",
@@ -426,7 +517,8 @@ def run(args, report, save, artifact_dir):
             "existing nonquantized Laser API; upstream BF16 preprocessing converts to FP16 and output returns to BF16")
         report["providers"]["mindie_laser_installed"] = {"label": "installed MindIE-SD Laser API"}
     report["runtime"] = runtime_metadata(torch, torch_npu, backend, device)
-    print(f"Backend=tile-ai/tilelang-ascend target=ascendc SoC={report['runtime']['soc']} "
+    print(f"Backend=tile-ai/tilelang-ascend target=ascendc "
+          f"revision={getattr(backend, 'IMPLEMENTATION_REVISION', 'unspecified')} SoC={report['runtime']['soc']} "
           f"dtype={args.dtype} BNSD={args.shape} K={args.key_length}", flush=True)
     save()
     with torch.no_grad():
@@ -465,22 +557,42 @@ def run(args, report, save, artifact_dir):
                             "all_output_finite": True, "sample_artifact": str(sample_path)}, records, save)
             return sample
 
-        first_output = kernel.run_prepared(prepared)
-        check_main("tilelang_prepared", first_output)
+        def validated_call(name, call, checker):
+            # This call is required by correctness validation already. Reuse its
+            # synchronized API duration for planning instead of invoking a slow
+            # candidate again merely to calibrate or meet minimum warmup.
+            torch.npu.synchronize()
+            start = time.perf_counter()
+            output = call()
+            torch.npu.synchronize()
+            elapsed_ms = (time.perf_counter() - start) * 1000
+            calibration = report["calibration"].setdefault(name, {
+                "ms": elapsed_ms, "scope": TIMING_SCOPE, "source": "first required main-shape validation call",
+                "in_final_statistics": False, "verified_calls": 0, "required_validation_api_ms": []})
+            calibration["required_validation_api_ms"].append(elapsed_ms)
+            save()
+            checker(output)
+            calibration["verified_calls"] += 1
+            save()
+            return output
+
+        first_output = validated_call("tilelang_prepared", lambda: kernel.run_prepared(prepared),
+                                      lambda output: check_main("tilelang_prepared", output))
         # Oracle scores stay sampled, while complete output copies check for
         # workspace reuse, task scheduling, or uninitialized-tail regressions.
         torch.npu.synchronize()
         first_full_cpu = first_output.detach().cpu().clone()
-        full_output = kernel(q, k, v)
-        check_main("tilelang_full", full_output)
+        full_output = validated_call("tilelang_full", lambda: kernel(q, k, v),
+                                     lambda output: check_main("tilelang_full", output))
         torch.npu.synchronize()
         exact_check(full_output, first_full_cpu, "main_full_vs_prepared_all_output", row, records, save)
-        repeated_output = kernel.run_prepared(prepared)
-        torch.npu.synchronize()
-        exact_check(repeated_output, first_full_cpu, "main_prepared_repeat_all_output", row, records, save)
+        repeated_output = validated_call("tilelang_prepared", lambda: kernel.run_prepared(prepared),
+            lambda output: exact_check(output, first_full_cpu, "main_prepared_repeat_all_output", row, records, save))
         del first_full_cpu, full_output, repeated_output, first_output
         for name, call in providers.items():
-            check_main(name, call(q, k, v))
+            output = validated_call(name, lambda call=call: call(q, k, v),
+                                    lambda output, name=name: check_main(name, output))
+            del output
         report["runtime"]["torch_loaded_libraries_after_validation"] = sorted(str(path) for path in torch.ops.loaded_libraries)
         report["validation"]["status"] = "passed"
         save()
@@ -496,34 +608,7 @@ def run(args, report, save, artifact_dir):
                                       "reused padded Q/K/V, workspace/output; TileLang dispatch + output view")}
         calls.update({name: (lambda call=call: call(q, k, v), "full installed provider Python API")
                       for name, call in providers.items()})
-        names = list(calls)
-        report["timing_trial_order"] = []
-        samples = {name: [] for name in names}
-        for name in names:
-            for _ in range(args.warmup):
-                output = calls[name][0]()
-                torch.npu.synchronize()
-                del output
-        # Rotate the complete provider order for each trial to reduce drift
-        # from running all trials of a provider at one temperature/time.
-        for trial in range(args.trials):
-            shift = trial % len(names)
-            order = names[shift:] + names[:shift]
-            report["timing_trial_order"].append(order)
-            for name in order:
-                label = report["providers"].get(name, {}).get("label", name)
-                print(f"Time trial {trial + 1}/{args.trials} {label}: {TIMING_SCOPE}", flush=True)
-                result = synchronized_api_time(calls[name][0], torch.npu.synchronize, 0, args.repeats, 1)
-                samples[name].extend(result["trial_mean_ms"])
-                report["timings"][name] = {
-                    **result, "trial_mean_ms": list(samples[name]), "median_ms": statistics.median(samples[name]),
-                    "min_ms": min(samples[name]), "max_ms": max(samples[name]), "warmup": args.warmup,
-                    "trials": len(samples[name]), "included_work": calls[name][1],
-                    "provider_order": "rotated once per trial; no interleaving inside an API call"}
-                save()
-        for name in names:
-            label = report["providers"].get(name, {}).get("label", name)
-            print(f"  {label}: median {report['timings'][name]['median_ms']:.3f} ms", flush=True)
+        time_providers(calls, report, args, torch.npu.synchronize, save)
         report["status"] = "passed"
 
 
@@ -535,7 +620,7 @@ def main(argv=None):
               "dtype": args.dtype, "layout": "BNSD", "causal": False, "quantized": False,
               "attention": "softmax(QK^T / sqrt(D)) V", "timing_scope": TIMING_SCOPE,
               "artifact_dir": str(artifact_dir), "kernel_sources": {},
-              "validation": {"status": "running", "small": [], "main": []}, "timings": {},
+              "validation": {"status": "running", "small": [], "main": []}, "calibration": {}, "timings": {},
               "settings": {name: value for name, value in vars(args).items() if name not in ("output", "artifact_dir")}}
     save = lambda: write_json(args.output, report)
     save()

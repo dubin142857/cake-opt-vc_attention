@@ -1,0 +1,132 @@
+{
+  "date": "2026-10-23",
+  "status": "passed_local_checks_new_npu_validation_pending",
+  "implementation_revision": "broadcast_softmax_tail_mask_v2",
+  "scope": "ordinary noncausal native BF16/FP16 attention; default BNSD [1,28,37741,128]",
+  "baseline_user_reported": {
+    "evidence": "terminal output pasted by the user; original remote JSON was not available locally",
+    "kernel_introduced_in_commit": "076a7f9fcd4311465f151cd9146636be36e0aebb",
+    "result_status": "passed",
+    "dtype": "bfloat16",
+    "shape_bnsd": [
+      1,
+      28,
+      37741,
+      128
+    ],
+    "timing_scope": "synchronized Python API wall time; not device-kernel duration",
+    "median_ms": {
+      "tilelang_full": 39593.003,
+      "tilelang_prepared": 39597.879,
+      "cann_fusion_attention": 128.128
+    },
+    "tilelang_over_cann_time_ratio": {
+      "full": 309.0113246128871,
+      "prepared": 309.04938030719285
+    },
+    "runtime_soc": "not present in the pasted terminal output",
+    "physical_core_count": "not present in the pasted terminal output"
+  },
+  "source_level_diagnosis": {
+    "backend_repository": "https://github.com/tile-ai/tilelang-ascend",
+    "backend_commit": "1d7525399141b242435e6e1c60cc006df0a3d7a6",
+    "query_tiles": 16520,
+    "kv_tiles_per_query": 590,
+    "query_kv_tile_pairs": 9746800,
+    "old_tail_mask_elements_processed": 39922892800,
+    "mask_lowering": "if_then_else is unsupported by this pinned parallel-to-vector expression decomposer; serial fallback uses scalar UB GetValue/SetValue",
+    "mask_evidence": [
+      "src/transform/ascend_lower_parallel_to_vector.cc",
+      "src/target/codegen_ascend.cc"
+    ],
+    "row_scalar_lowering": "buffer scalar operands emit GetValue plus an implicit PIPE_ALL barrier per row operation",
+    "row_evidence": "src/target/codegen_ascend.cc: EmitSelectedRawScalar",
+    "attribution_limit": "source-level diagnosis; no device trace or measured per-phase attribution was supplied"
+  },
+  "changes": [
+    "Initialize a constant additive tail mask once per physical Vector subblock, outside persistent query and KV loops.",
+    "Only the last KV tile applies the mask, using a native vector tile.add.",
+    "Use [rows,1] statistics and whole-tile FP32 broadcast/sub/mul/div instead of row-indexed scalar tile operations.",
+    "Keep 64x64 tiles, all four cross-core flag exchanges, FP32 online-softmax recurrence and the seven-buffer API.",
+    "Reuse required validation calls for calibration/warmup; limit planned repeats and trials for slow providers without including calibration in final statistics."
+  ],
+  "static_review": {
+    "result": "independent source review found no blocking defect",
+    "broadcast_reference": "examples/flash_attention/paged_flash_attn_bhsd.py",
+    "broadcast_temporary_policy": "src/transform/allocate_tmp_buffer.cc; FP32 axis=1 temporary is 256 bytes",
+    "tail_mask_lifetime": "src/transform/ascend_memory_planning.cc has loop-aware kill-index extension",
+    "explicit_ub_bytes_per_vector_for_d128": 86528,
+    "memory_limit_note": "explicit sum excludes compiler temporaries; native compiler must validate the final allocation"
+  },
+  "local_checks": {
+    "pytest": {
+      "passed": 103,
+      "files": [
+        "tests/test_tilelang_attention_npu.py",
+        "tests/test_tilelang_attention_npu_benchmark.py",
+        "tests/test_tilelang_attention_npu_setup.py",
+        "tests/test_ascend_soc_preflight.py"
+      ]
+    },
+    "python_version": "3.10.16 | packaged by Anaconda, Inc. | (main, Dec 11 2024, 16:19:12) [MSC v.1929 64 bit (AMD64)]",
+    "python_syntax": "passed",
+    "bash_syntax": "passed",
+    "cpu_math": {
+      "kind": "cpu_math_only",
+      "max_abs_error": 8.326672684688674e-17,
+      "rows_checked": 11,
+      "tail_key_lengths": [
+        1,
+        65,
+        73
+      ],
+      "head_dimensions": [
+        64,
+        128
+      ],
+      "default_shape": [
+        1,
+        28,
+        37741,
+        128
+      ],
+      "memory_plan_for_20_runtime_cores": {
+        "active_cube_cores": 20,
+        "input_padding_allocated_bytes": 811991040,
+        "padded_output_bytes": 270663680,
+        "score_workspace_bytes": 327680,
+        "probability_workspace_bytes": 163840,
+        "pv_workspace_bytes": 655360,
+        "workspace_bytes": 1146880,
+        "prepared_allocated_bytes": 1083801600,
+        "original_input_bytes": 811582464
+      },
+      "npu_compile_or_run_performed": false
+    }
+  },
+  "new_revision_device_validation": {
+    "npu_source_generation": "not run locally",
+    "npu_compile": "not run locally",
+    "npu_execution": "not run locally",
+    "latency_ms": null,
+    "measured_speedup_over_baseline": null,
+    "required_next_check": "run the unchanged one-command launcher on NPU; all accuracy and reuse/stream checks must pass before timing",
+    "numerical_note": "whole-tile vector division can round differently from the previous scalar reciprocal-multiply path; use the independent CPU oracle, not bitwise equality to the old implementation"
+  },
+  "timing_policy": {
+    "warmup_validation_credit": true,
+    "target_trial_ms": 200,
+    "maximum_repeats_per_trial": 5,
+    "requested_trials": 3,
+    "planning_budget_seconds_per_provider": 10,
+    "budget_limit": "excludes validation and cannot preempt an in-flight call",
+    "single_trial_result_labelled": true
+  },
+  "launch": "bash scripts/run_tilelang_attention_npu.sh",
+  "source_sha256_normalized_lf": {
+    "scripts/tilelang_attention_npu.py": "0c025d5ac7ab126806f1d84ae9b88cf64b5d51ac0fe3708a2977ce1fd3f1e881",
+    "scripts/benchmark_tilelang_attention_npu.py": "bf5df6df2853532158b98c4197172bde4393a6a5edd181e23b8a380879076613",
+    "scripts/run_tilelang_attention_npu.sh": "98f1f9095704a545c7e7829322fdb03f857641e1d8808f00ab468e89a9913258",
+    "tests/test_tilelang_attention_npu_benchmark.py": "503cc729f79ed8ba1dbb6a0d8057657919426e05621c0c57bc86219ef09be597"
+  }
+}

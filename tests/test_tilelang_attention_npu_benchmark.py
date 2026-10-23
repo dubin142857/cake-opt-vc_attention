@@ -36,7 +36,8 @@ def test_defaults_are_plain_bf16_main_shape(benchmark):
     args = benchmark.parse_args([])
     assert args.shape == (1, 28, 37741, 128)
     assert args.dtype == "bfloat16" and args.key_length == 37741
-    assert (args.warmup, args.repeats, args.trials) == (3, 5, 3)
+    assert (args.warmup, args.repeats, args.trials) == (1, 5, 3)
+    assert (args.target_trial_ms, args.timing_budget_seconds) == (200, 10)
     assert not args.include_mindie_laser
     assert args.output == Path("results/tilelang_attention_npu.json")
     assert set(benchmark.small_cases()) == {
@@ -48,6 +49,7 @@ def test_defaults_are_plain_bf16_main_shape(benchmark):
     ["--shape", "1", "2", "0", "128"], ["--shape", "1", "2", "129", "32"],
     ["--key-length", "0"], ["--device", "-1"], ["--warmup", "-1"],
     ["--repeats", "0"], ["--trials", "0"], ["--check-queries", "0"], ["--block-m", "128"],
+    ["--target-trial-ms", "nan"], ["--target-trial-ms", "0"], ["--timing-budget-seconds", "inf"],
 ])
 def test_invalid_inputs_fail_before_backend_import(benchmark, argv):
     with pytest.raises(SystemExit) as error:
@@ -140,6 +142,51 @@ def test_timing_syncs_each_call_and_reports_ms_without_kernel_claim(benchmark):
     assert result["median_ms"] == pytest.approx(2)
     assert len(result["trial_mean_ms"]) == 2
     assert "Python API wall time" in result["scope"] and "not device-kernel" in result["scope"]
+
+
+def test_calibrated_plan_credits_validation_and_bounds_slow_provider_work(benchmark):
+    slow = benchmark.timing_plan(40000, warmup=1, repeats_cap=5, trials=3,
+                                 target_trial_ms=200, budget_seconds=10, verified_calls=2)
+    assert (slow["extra_warmup"], slow["effective_repeats"], slow["effective_trials"]) == (0, 1, 1)
+    assert slow["requested_trials"] == 3 and slow["validation_warmup_credit"] == 1
+    assert slow["minimum_one_call_exceeds_budget"]
+    assert slow["estimated_timing_and_extra_warmup_seconds"] == 40
+    assert not slow["calibration_in_final_statistics"]
+    fast = benchmark.timing_plan(1, warmup=1, repeats_cap=5, trials=3,
+                                 target_trial_ms=200, budget_seconds=10)
+    assert (fast["extra_warmup"], fast["effective_repeats"], fast["effective_trials"]) == (0, 5, 3)
+
+
+def test_provider_timing_adds_no_calibration_or_duplicate_warmup_calls(benchmark):
+    seconds = {"tilelang_full": 40.0, "tilelang_prepared": 39.5, "cann_fusion_attention": 0.128}
+    now, called = [0.0], []
+
+    def call(name):
+        called.append(name)
+        now[0] += seconds[name]
+
+    report = {"validation": {"status": "passed"}, "providers": {}, "timings": {},
+              "calibration": {name: {"ms": duration * 1000, "verified_calls": 1}
+                              for name, duration in seconds.items()}}
+    benchmark.time_providers({name: (lambda name=name: call(name), "test API") for name in seconds},
+                             report, benchmark.parse_args([]), lambda: None, lambda: None, clock=lambda: now[0])
+    assert called.count("tilelang_full") == called.count("tilelang_prepared") == 1
+    assert called.count("cann_fusion_attention") == 3
+    assert report["timings"]["tilelang_full"]["trial_mean_ms"] == [40000]
+    assert report["timings"]["tilelang_full"]["plan"]["effective_trials"] == 1
+    assert report["timings"]["tilelang_full"]["calibration_in_final_statistics"] is False
+    assert report["comparisons"]["tilelang_full"]["tilelang_over_cann_time_ratio"] == pytest.approx(312.5)
+    assert report["comparisons"]["tilelang_prepared"]["tilelang_over_cann_time_ratio"] == pytest.approx(39.5 / .128)
+    json.dumps(report, allow_nan=False)
+
+
+def test_provider_timing_cannot_run_after_failed_validation(benchmark):
+    called = []
+    with pytest.raises(RuntimeError, match="validation must pass"):
+        benchmark.time_providers({"candidate": (lambda: called.append(True), "test API")},
+                                 {"validation": {"status": "failed"}}, benchmark.parse_args([]),
+                                 lambda: None, lambda: None)
+    assert called == []
 
 
 def test_main_writes_failed_json_and_nonzero_without_device(benchmark, tmp_path, monkeypatch):
