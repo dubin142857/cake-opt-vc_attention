@@ -16,6 +16,10 @@ bash scripts/run_mindie_laser_stable.sh
 
 失败的 `run_mindie_laser_pv_phases.sh`、`run_mindie_laser_pv_const.sh` 已停用，仅输出恢复命令并退出；相关源码及失败报告仍保留。恢复入口不执行设备复位，也不证明先前超时的设备任务已取消。
 
+## 新实验：稳定流水上的 FP16 ExpCast
+
+运行 `bash scripts/run_mindie_laser_fp16_expcast.sh`，只构建独立的 FP16 ExpCast 概率 helper 变体；保留稳定 INT8 QK、Vector scale 和 FP16 PV。四组同进程对照包括原版 Laser、稳定版、新编译关闭组和开启组。该 binary16 适配不是旧 E4M3 解码实验，不依赖 FP8 矩阵乘。默认不启用内部探针，数值及性能等待远端验证，见 [数值契约、验收与运行方法](../../MINDIE_LASER_FP16_EXPCAST.md)。
+
 ## 历史：初始量化构建入口
 
 以下保留初始 INT8 和融合预处理的构建流程。后续优化及实机结果按实验顺序记录；已有上述成功构建时不需从这里重建。

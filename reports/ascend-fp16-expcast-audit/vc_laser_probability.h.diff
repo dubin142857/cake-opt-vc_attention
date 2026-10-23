@@ -1,0 +1,70 @@
+--- baseline/vc_laser_probability.h
++++ candidate/vc_laser_probability.h
+@@ -1,4 +1,4 @@
+-// Experimental probability transform for the pinned MindIE Laser vector kernel.
+-// QK, V, online-history scaling, denominator reduction and PV remain upstream.
+-#ifndef VC_LASER_PROBABILITY_H
+-#define VC_LASER_PROBABILITY_H
++// Experimental binary16 ExpCast probability transform. QK/PV, online history
++// and denominator reduction remain in the separately preserved Laser kernel.
++#ifndef VC_LASER_FP16_PROBABILITY_H
++#define VC_LASER_FP16_PROBABILITY_H
+@@ -7,6 +7,8 @@
+-// Old CCE interfaces (not Reg/SIMT APIs):
+-// https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/83RC1alpha002/API/cceintrinsicapi/cceapi_0049.html
+-// https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/83RC1alpha001/API/cceintrinsicapi/cceapi_0016.html
+-// https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/850alpha002/API/cceintrinsicapi/cceapi_0042.html
+-// Float -> int16 RINT is also listed for Atlas A2 in the CANN 8.0 Cast table.
+-// Intrinsic existence/documentation is not a substitute for remote CCE validation.
++// Legacy CCE signatures and RNE conversion:
++// https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/83RC1alpha001/API/cceintrinsicapi/cceapi_0049.html
++// Half/float vmuls signatures:
++// https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/83RC1alpha003/API/cceintrinsicapi/cceapi_0015.html
++// These declarations are documented, but this candidate still requires actual
++// CANN 9.0.1 compilation and device validation, including subnormal outputs.
++// ExpCast derivation: https://arxiv.org/html/2609.15810v1#S3.SS3
++// This binary16 adaptation is NOT the paper's E4M3 encoding or native FP8 PV.
+@@ -14,5 +16,4 @@
+-// Preconditions supplied by the pinned VectorForward patch:
+-// - count is a positive multiple of 128; shifted scores are FP16 S - online max.
+-// - scratch is the 32 KiB, 32-byte-aligned former row-max reduction region.
+-// - score and scratch do not overlap. Row max has finished; row sum rebuilds
+-//   its scratch after this function. No newly allocated UB or events are used.
++// Caller contract: count > 0 and divisible by 128, score contains FP16 values
++// <= 0 (finite or masked -inf). Scratch is the existing, now-dead 32 KiB
++// row-max region, aligned to 32 B and disjoint from score. The subsequent row
++// sum rebuilds its scratch. No new UB allocation, GM trace, or events are used.
+@@ -23,2 +24,3 @@
+-    constexpr float GAIN = 11.541560173034668f;
+-    constexpr float BIAS = 119.6500015258789f;
++    constexpr float GAIN = 1477.3197021484375f;
++    constexpr float BIAS = 27603.19921875f;
++    constexpr float CODE_MAX = 27648.0f;
+@@ -32,2 +34 @@
+-        // Wide conversion processes 64 elements/repeat. Source/destination
+-        // repeat strides are in 32-byte blocks: half 4, float 8.
++        // Conversions process 64 elements/repeat; strides are 32-byte blocks.
+@@ -37 +38,2 @@
+-        // Explicit two-round FP32 contract, unlike the CUDA FMA reference.
++        // CANN 9.0.1 legacy builtin matching requires an explicit float value
++        // here; ordinary host C++ accepts the constexpr lvalue but CCE did not.
+@@ -44 +46 @@
+-        vmins(scratch, scratch, 120.0f, repeats32, 1, 1, 8, 8);
++        vmins(scratch, scratch, static_cast<float>(CODE_MAX), repeats32, 1, 1, 8, 8);
+@@ -49,5 +51,5 @@
+-        // For EVERY E4M3 code c in [0,120], including subnormals:
+-        // bits_fp16(decode_e4m3(c) / 256) == uint16(c << 7).
+-        // Therefore the in-place bit shift is the complete FP16 decoder.
+-        // P <= 1 retains Laser's FP16 per-section row-sum range and the
+-        // unchanged online recurrence; no factor 256 enters PV or row sums.
++        // The int16 bytes ALREADY encode binary16 approx(exp(x) * 4096).
++        // Offset +12 keeps values contributing to a nonzero FP16 result in
++        // the normal encoded range. This multiply supplies rounded subnormal
++        // P instead of the premature cutoff from a bias-15 direct mapping.
++        // No integer-to-half numeric conversion, E4M3 decode, or byte shift.
+@@ -55 +57,2 @@
+-        vshl(codes, codes, 7, repeats16, 1, 1, 8, 8);
++        vmuls(score + offset, score + offset, static_cast<half>(0.000244140625f),
++              repeats16, 1, 1, 8, 8);
+@@ -58 +60,0 @@
+-    // Caller expects the full ordinary mask, including process_calc_sum.

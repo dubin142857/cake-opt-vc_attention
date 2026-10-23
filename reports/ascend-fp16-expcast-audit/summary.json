@@ -1,0 +1,38 @@
+[
+  {
+    "variant": "baseline",
+    "tool": "sync_audit",
+    "returncode": 0,
+    "files": 13,
+    "findings": 0,
+    "events": 0,
+    "operations": 0
+  },
+  {
+    "variant": "baseline",
+    "tool": "ascendc_flow_analyzer",
+    "returncode": 0,
+    "files": 13,
+    "findings": 0,
+    "events": null,
+    "operations": 0
+  },
+  {
+    "variant": "candidate",
+    "tool": "sync_audit",
+    "returncode": 0,
+    "files": 13,
+    "findings": 0,
+    "events": 0,
+    "operations": 0
+  },
+  {
+    "variant": "candidate",
+    "tool": "ascendc_flow_analyzer",
+    "returncode": 0,
+    "files": 13,
+    "findings": 0,
+    "events": null,
+    "operations": 0
+  }
+]

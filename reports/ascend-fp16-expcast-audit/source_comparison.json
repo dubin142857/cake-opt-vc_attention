@@ -1,0 +1,109 @@
+{
+  "upstream_commit": "71098c20ff90838d1fd1ca0a40515c751a3869b0",
+  "generated_files": {
+    "csrc/ops/vc_laser_quant_vscale_pv_prefetch_attention/op_host/CMakeLists.txt": {
+      "baseline_sha256": "d5e277e23a02a680868b2b3af1c44eb6db11dab8b493c716e0218b5091ef6f2f",
+      "candidate_sha256": "2df6564760690ee3950a6798881c6b2f49ee9da9972d7eb0f52432893a6273a7",
+      "inverse_rename_identical": true
+    },
+    "csrc/ops/vc_laser_quant_vscale_pv_prefetch_attention/op_host/vc_laser_quant_vscale_pv_prefetch_attention_def.cpp": {
+      "baseline_sha256": "fd67efa591c5bf84a249e4306d2996f8ae3d92b4766f5c9e16bbd08e24e395a9",
+      "candidate_sha256": "ef4c9c3bc2dddf1e55fe554764912da4553db345321ad7b0b595149c00df2861",
+      "inverse_rename_identical": true
+    },
+    "csrc/ops/vc_laser_quant_vscale_pv_prefetch_attention/op_host/vc_laser_quant_vscale_pv_prefetch_attention_proto.cpp": {
+      "baseline_sha256": "adccf900e3d6c7925562e8d06b4fad901fd7e3ad3d7c1c4e40dedcb7e896c250",
+      "candidate_sha256": "c2bbb0ee8aeb593e177c4f3a1941365850b18e0acfde97eb4e271bbe428da92b",
+      "inverse_rename_identical": true
+    },
+    "csrc/ops/vc_laser_quant_vscale_pv_prefetch_attention/op_host/vc_laser_quant_vscale_pv_prefetch_attention_tiling.cpp": {
+      "baseline_sha256": "850f6734c987a3657d455870c067680834d771181897f96158f5ad0a05c9e1c9",
+      "candidate_sha256": "cf338b7a66a08263daf40c6db3193be9e8da5480f1995d8aa469b5a54e0fb704",
+      "inverse_rename_identical": true
+    },
+    "csrc/ops/vc_laser_quant_vscale_pv_prefetch_attention/op_host/vc_laser_quant_vscale_pv_prefetch_attention_tiling.h": {
+      "baseline_sha256": "e78dce011ad7fac381ae20437374a99bfd41d03d14665e8abe1a236b522ba63f",
+      "candidate_sha256": "61db4a36f10f1804e66b6b921a85608f9a93dfa8a2996ee46db19cab3e5ba8fa",
+      "inverse_rename_identical": true
+    },
+    "csrc/ops/vc_laser_quant_vscale_pv_prefetch_attention/op_kernel/AddressMappingForwardOnline.h": {
+      "baseline_sha256": "b1c83a6078f9a3f41f1e5a46613583991e1dbf26844f1284e04813dbb4b5264d",
+      "candidate_sha256": "b1c83a6078f9a3f41f1e5a46613583991e1dbf26844f1284e04813dbb4b5264d",
+      "inverse_rename_identical": true
+    },
+    "csrc/ops/vc_laser_quant_vscale_pv_prefetch_attention/op_kernel/AddressMappingVectorForwardOnline.h": {
+      "baseline_sha256": "4d1c1b6df298172052db28e1b24ae4fa265268d5032c5e4fabee8553dc0d0360",
+      "candidate_sha256": "4d1c1b6df298172052db28e1b24ae4fa265268d5032c5e4fabee8553dc0d0360",
+      "inverse_rename_identical": true
+    },
+    "csrc/ops/vc_laser_quant_vscale_pv_prefetch_attention/op_kernel/CubeForward.h": {
+      "baseline_sha256": "2c5217f1f1911919d633d4d350c82b0bc632c47bf7cb8c430c70e03749bc36fe",
+      "candidate_sha256": "2c5217f1f1911919d633d4d350c82b0bc632c47bf7cb8c430c70e03749bc36fe",
+      "inverse_rename_identical": true
+    },
+    "csrc/ops/vc_laser_quant_vscale_pv_prefetch_attention/op_kernel/VectorForward.h": {
+      "baseline_sha256": "dd99b7089764d018668946e80d54a5c0900097a0fcdc94f48893e6a07259b997",
+      "candidate_sha256": "dd99b7089764d018668946e80d54a5c0900097a0fcdc94f48893e6a07259b997",
+      "inverse_rename_identical": true
+    },
+    "csrc/ops/vc_laser_quant_vscale_pv_prefetch_attention/op_kernel/address_const.h": {
+      "baseline_sha256": "8f16f692febd91fe3b8b3a4b7ac31a1351597823563a39aa269cc7a2e028b60c",
+      "candidate_sha256": "8f16f692febd91fe3b8b3a4b7ac31a1351597823563a39aa269cc7a2e028b60c",
+      "inverse_rename_identical": true
+    },
+    "csrc/ops/vc_laser_quant_vscale_pv_prefetch_attention/op_kernel/vc_laser_quant_vscale_pv_prefetch_attention.cpp": {
+      "baseline_sha256": "0ef28a3645ce97f8775365da74ff7bf4ce2f76bdf1221f4f594d4e02a4cae1a7",
+      "candidate_sha256": "457ec01d723a249ba5fdbead2bbd3de6cc6350ac2ae3b13efa5a98b8c2c5ae25",
+      "inverse_rename_identical": true
+    },
+    "csrc/ops/vc_laser_quant_vscale_pv_prefetch_attention/op_kernel/matmul_const.h": {
+      "baseline_sha256": "ac6bef6c468824bab498504b9b7b32588dba2d386e8c6979f122333ff52fcf52",
+      "candidate_sha256": "ac6bef6c468824bab498504b9b7b32588dba2d386e8c6979f122333ff52fcf52",
+      "inverse_rename_identical": true
+    },
+    "csrc/ops/vc_laser_quant_vscale_pv_prefetch_attention/op_host/vc_source_marker.h": {
+      "baseline_sha256": "7cf02f04566d99f3279bb1e2cf1c4d8b55b62f9eac1691d48561518c175902d3",
+      "candidate_sha256": "8535d1090fd7e6c81b2e965b68e4533f458e0d6795ddca9267b93739c4ae2dab",
+      "inverse_rename_identical": true
+    },
+    "csrc/ops/vc_laser_quant_vscale_pv_prefetch_attention/op_kernel/vc_laser_probability.h": {
+      "baseline_sha256": "e754ec92c000981bc8f75eb91fdf21d3c97285744bb9c09ae587f5170cf548c9",
+      "candidate_sha256": "5176954001852c2527561bd9e0d47e04659541587fee7cce01b65153ffef2ff1",
+      "inverse_rename_identical": false
+    },
+    "csrc/ops/cmake/scripts/prepare.sh": {
+      "baseline_sha256": "b2889c91404b8616c871f6671c3d1aed9a85fbdcbd36553e7646876c64a13a8d",
+      "candidate_sha256": "b2889c91404b8616c871f6671c3d1aed9a85fbdcbd36553e7646876c64a13a8d",
+      "inverse_rename_identical": true
+    }
+  },
+  "changed_after_identity_rename": [
+    "csrc/ops/vc_laser_quant_vscale_pv_expcast_attention/op_kernel/vc_laser_probability.h"
+  ],
+  "unchanged_cube": true,
+  "unchanged_vector_caller": true,
+  "original_exp_branch_count": 1,
+  "optional_helper_call_count": 1,
+  "diagnostic_instrumentation": false,
+  "probability_contract": {
+    "version": "laser_binary16_expcast_scaled12_v1",
+    "input": "FP16 shifted scores <= 0; finite or negative infinity",
+    "gain_fp32": 1477.3197021484375,
+    "bias_fp32": 27603.19921875,
+    "affine_rounding": "separate FP32 multiply then FP32 add, not FMA",
+    "integer_rounding": "round to nearest, ties to even",
+    "code_range": [
+      0,
+      27648
+    ],
+    "code_format": "positive IEEE binary16 bits, 5 exponent and 10 fraction bits",
+    "output_scale": 0.000244140625,
+    "output_rounding": "FP16 multiply by 2^-12, including rounded subnormals",
+    "bias_origin": "paper beta -0.35 / 8 adapted to 1024 codes per binade",
+    "paper_exact": false,
+    "fp8": false,
+    "history": "unchanged original Laser exponential rescaling",
+    "recurrence": "approximate map is not multiplicative; online partition matters",
+    "reference_scope": "CPU numerical specification; remote CCE/device validation required"
+  }
+}

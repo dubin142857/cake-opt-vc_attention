@@ -1,0 +1,43 @@
+{
+  "command": [
+    "D:\\codex\\算子\\.venv-tilelang-opt\\Scripts\\python.exe",
+    "-X",
+    "utf8",
+    "D:\\codex\\算子\\build\\cannbot-skills\\ops\\ascendc-sync-audit\\scripts\\sync_audit.py",
+    "D:\\codex\\算子\\build\\ascend_fp16_expcast_audit\\candidate\\op_host\\vc_laser_quant_vscale_pv_expcast_attention_def.cpp",
+    "D:\\codex\\算子\\build\\ascend_fp16_expcast_audit\\candidate\\op_host\\vc_laser_quant_vscale_pv_expcast_attention_proto.cpp",
+    "D:\\codex\\算子\\build\\ascend_fp16_expcast_audit\\candidate\\op_host\\vc_laser_quant_vscale_pv_expcast_attention_tiling.cpp",
+    "D:\\codex\\算子\\build\\ascend_fp16_expcast_audit\\candidate\\op_host\\vc_laser_quant_vscale_pv_expcast_attention_tiling.h",
+    "D:\\codex\\算子\\build\\ascend_fp16_expcast_audit\\candidate\\op_host\\vc_source_marker.h",
+    "D:\\codex\\算子\\build\\ascend_fp16_expcast_audit\\candidate\\op_kernel\\AddressMappingForwardOnline.h",
+    "D:\\codex\\算子\\build\\ascend_fp16_expcast_audit\\candidate\\op_kernel\\AddressMappingVectorForwardOnline.h",
+    "D:\\codex\\算子\\build\\ascend_fp16_expcast_audit\\candidate\\op_kernel\\CubeForward.h",
+    "D:\\codex\\算子\\build\\ascend_fp16_expcast_audit\\candidate\\op_kernel\\VectorForward.h",
+    "D:\\codex\\算子\\build\\ascend_fp16_expcast_audit\\candidate\\op_kernel\\address_const.h",
+    "D:\\codex\\算子\\build\\ascend_fp16_expcast_audit\\candidate\\op_kernel\\matmul_const.h",
+    "D:\\codex\\算子\\build\\ascend_fp16_expcast_audit\\candidate\\op_kernel\\vc_laser_probability.h",
+    "D:\\codex\\算子\\build\\ascend_fp16_expcast_audit\\candidate\\op_kernel\\vc_laser_quant_vscale_pv_expcast_attention.cpp",
+    "--format",
+    "json"
+  ],
+  "returncode": 0,
+  "tool_sha256": "af629036820e7765639df7379d94fde4c2b0aca63f54a295384005a015a181d4",
+  "files": {
+    "op_host/vc_laser_quant_vscale_pv_expcast_attention_def.cpp": "ef4c9c3bc2dddf1e55fe554764912da4553db345321ad7b0b595149c00df2861",
+    "op_host/vc_laser_quant_vscale_pv_expcast_attention_proto.cpp": "c2bbb0ee8aeb593e177c4f3a1941365850b18e0acfde97eb4e271bbe428da92b",
+    "op_host/vc_laser_quant_vscale_pv_expcast_attention_tiling.cpp": "cf338b7a66a08263daf40c6db3193be9e8da5480f1995d8aa469b5a54e0fb704",
+    "op_host/vc_laser_quant_vscale_pv_expcast_attention_tiling.h": "61db4a36f10f1804e66b6b921a85608f9a93dfa8a2996ee46db19cab3e5ba8fa",
+    "op_host/vc_source_marker.h": "8535d1090fd7e6c81b2e965b68e4533f458e0d6795ddca9267b93739c4ae2dab",
+    "op_kernel/AddressMappingForwardOnline.h": "b1c83a6078f9a3f41f1e5a46613583991e1dbf26844f1284e04813dbb4b5264d",
+    "op_kernel/AddressMappingVectorForwardOnline.h": "4d1c1b6df298172052db28e1b24ae4fa265268d5032c5e4fabee8553dc0d0360",
+    "op_kernel/CubeForward.h": "2c5217f1f1911919d633d4d350c82b0bc632c47bf7cb8c430c70e03749bc36fe",
+    "op_kernel/VectorForward.h": "dd99b7089764d018668946e80d54a5c0900097a0fcdc94f48893e6a07259b997",
+    "op_kernel/address_const.h": "8f16f692febd91fe3b8b3a4b7ac31a1351597823563a39aa269cc7a2e028b60c",
+    "op_kernel/matmul_const.h": "ac6bef6c468824bab498504b9b7b32588dba2d386e8c6979f122333ff52fcf52",
+    "op_kernel/vc_laser_probability.h": "5176954001852c2527561bd9e0d47e04659541587fee7cce01b65153ffef2ff1",
+    "op_kernel/vc_laser_quant_vscale_pv_expcast_attention.cpp": "457ec01d723a249ba5fdbead2bbd3de6cc6350ac2ae3b13efa5a98b8c2c5ae25"
+  },
+  "findings": 0,
+  "event_count": 0,
+  "operation_count": 0
+}
