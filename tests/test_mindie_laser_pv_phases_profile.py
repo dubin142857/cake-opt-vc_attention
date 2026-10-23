@@ -319,23 +319,16 @@ def test_launch_passes_every_manifest_and_calibration_setting(monkeypatch, tmp_p
     assert result["returncode"] == 7 and result["status"] == "missing_report"
 
 
-@pytest.mark.parametrize("failure", [None, "preflight", "build", "profile"])
-def test_one_click_only_builds_pv_probe_and_stops_on_error(tmp_path, failure):
+@pytest.mark.parametrize("name", ["run_mindie_laser_pv_phases.sh", "run_mindie_laser_pv_const.sh"])
+def test_retired_one_click_probe_stops_before_build_or_device_initialization(tmp_path, name):
     bash = Path("C:/Program Files/Git/bin/bash.exe") if os.name == "nt" else Path(shutil.which("bash") or "/missing")
     if not bash.is_file(): pytest.skip("Bash unavailable")
     root = tmp_path/"project with spaces"
-    for part in ("scripts", "results", "cann"): (root/part).mkdir(parents=True)
-    for name in ("mindie_laser_quant_vscale_pv_prefetch_build", "mindie_laser_quant_preprocess_build",
-                 "mindie_laser_build", "mindie_laser_bridge"):
-        (root/"results"/(name+".json")).write_text("{}")
-    driver = root/"scripts/run_mindie_laser_pv_phases.sh"
-    driver.write_bytes((ROOT/"scripts/run_mindie_laser_pv_phases.sh").read_bytes())
+    (root/"scripts").mkdir(parents=True)
+    driver = root/"scripts"/name
+    driver.write_bytes((ROOT/"scripts"/name).read_bytes())
     stub = root/"stub.py"
-    stub.write_text("import json,sys\nfrom pathlib import Path\na=sys.argv[1:]\n"
-        "s='preflight' if a[0]=='-' else 'metadata' if a[0]=='-c' else 'build' if 'build_' in a[1] else 'profile'\n"
-        "with Path('calls.jsonl').open('a') as f:f.write(json.dumps({'stage':s,'args':a})+'\\n')\n"
-        "if s=='metadata':print('cached V prefetch source' if 'source_dir' in a[-1] else 'ascend910_93')\n"
-        f"raise SystemExit(23 if s=={failure!r} else 0)\n", encoding="utf-8")
+    stub.write_text("from pathlib import Path\nPath('unexpected_python').touch()\nraise SystemExit(23)\n", encoding="utf-8")
     wrapper = root/"mock-python"
     wrapper.write_text(f'#!/usr/bin/env bash\nexec "{Path(sys.executable).as_posix()}" "{stub.as_posix()}" "$@"\n',
                        encoding="utf-8", newline="\n")
@@ -344,14 +337,6 @@ def test_one_click_only_builds_pv_probe_and_stops_on_error(tmp_path, failure):
     env.update(PYTHON_BIN=wrapper.as_posix(), ASCEND_HOME_PATH=(root/"cann").as_posix(), NPU_DEVICE="2")
     result = subprocess.run([str(bash), "--noprofile", "--norc", str(driver)], cwd=root, env=env,
         capture_output=True, text=True, encoding="utf-8", timeout=30)
-    assert result.returncode == (23 if failure else 0), result.stdout+result.stderr
-    calls = [json.loads(row) for row in (root/"calls.jsonl").read_text().splitlines()]
-    if failure: assert calls[-1]["stage"] == failure
-    else:
-        assert [c["stage"] for c in calls] == ["preflight", "metadata", "metadata", "build", "profile"]
-        build, measure = calls[-2]["args"], calls[-1]["args"]
-        assert build[1] == "scripts/build_mindie_laser_cube_probe.py"
-        assert build[build.index("--kind")+1] == "pv"
-        assert build[build.index("--reference-dir")+1] == "cached V prefetch source"
-        assert measure[1] == "scripts/profile_mindie_laser_pv_phases.py"
-        assert "--trace" not in measure
+    assert result.returncode == 2, result.stdout+result.stderr
+    assert "run_mindie_laser_stable.sh" in result.stdout+result.stderr
+    assert not (root/"unexpected_python").exists()

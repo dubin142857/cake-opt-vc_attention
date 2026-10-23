@@ -1,5 +1,7 @@
 # V-only PV 内部诊断
 
+**当前恢复入口：`bash scripts/run_mindie_laser_stable.sh`。** 直接复用已验证的 `vector_pv_prefetch`、Vector scale 与原版 FP16 Laser 产物，保留正确性检查及同进程 API 对照，不重新编译或采集内部探针。结果为 `results/mindie_laser_stable.json`。下文 `pv_phases` / `pv_const` 为失败实验记录，其一键启动脚本已停用，执行时只提示恢复命令并退出。
+
 本轮继续以已实测有效的 `vector_pv_prefetch` 为生产起点。P+V 预取的最新同进程配对结果没有新增收益，因此不将它带入探针。本次没有新的速度结果；目的是在可校准的条件下找出更值得修改的 PV 窗口。
 
 ## 来源与测量契约

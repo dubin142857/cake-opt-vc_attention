@@ -1,14 +1,14 @@
 # MiniMax-H3 / A5 VC-Attention 实验
 
-**当前 Ascend 主线：原生 INT8 QK + 原 Laser softmax + FP16 V/PV。** 执行 `bash scripts/run_mindie_laser_quant.sh`，默认比较 `installed`、`baseline`、`qk_int8`、`qk_int8_fused` 四组。后两组分别使用原有多算子 Q/K 量化和新融合 Ascend C 预处理，采用相同的 attention 内核；V 保留 FP16 转换，不做重排或平滑。融合候选需远端 CANN 编译及 NPU 正确性、性能验证。E4M3 V 解码和 ExpCast 保留为实验；设置 `LASER_QUANT_EXPERIMENTS=1` 追加两组。A2/A3 实验中的 E4M3 V 会解码为 FP16 执行 PV，不宣称原生 FP8 加速。分阶段同步调用计时用于定位开销，不能相加或解读为内核耗时占比，详见 [Laser 量化说明](ascend/laser_quant/README.md)。原入口 `bash scripts/run_mindie_laser_local.sh` 继续提供[不改算法的源码基线](MINDIE_LASER_REPRO.md)，[仅替换概率计算的旧 ExpCast 实验](MINDIE_LASER_EXPCAST.md)和此前 CANN FAS 构建均保留。
+**当前 Ascend 稳定入口（2026-10-23）：已在远端跑通的 `vector_pv_prefetch`。** 原生 INT8 QK、Vector 反量化、原 Laser softmax、FP16 V/PV 和 V-only 预取；关闭 ExpCast、V 重排/平滑及内部计时探针。在保留此前成功构建产物的远端仓库中运行：
 
-已有成功 Ascend 量化构建时，执行 `bash scripts/run_mindie_laser_quant_profile.sh`，复用产物做同进程、固定输入的 9 轮配对诊断，随后单独采集 NPU profiler；不重新编译。报告为 `results/mindie_laser_quant_profile.json`。它区分相同 payload 的原生调用、独立 payload 的原生调用以及完整调用，避免把跨进程波动解释成核心退化。运行范围和设备指标限制见 [Laser 量化说明](ascend/laser_quant/README.md)。
+```bash
+bash scripts/run_mindie_laser_stable.sh
+```
 
-scale 复用候选入口：`bash scripts/run_mindie_laser_scale_reuse.sh`。用户回传同轮配对结果：native 89.5797 → 87.5177 ms，full 93.0581 → 89.4787 ms，两项均 9/9 轮更快；这些是该次实验结果，不是所有形状的保证。
+该入口复用原版 FP16 Laser、Vector scale、V-only PV 预取和融合量化器已有产物，不重新编译、不下载源码。固定 BF16 BNSD `[1,28,37741,128]`、设备 0，先核对来源和输出，再同进程随机交错比较三者的 full/prepared/native API，9 轮；默认不启动 profiler。结果写入 `results/mindie_laser_stable.json`，不会覆盖先前实验报告。可用 `NPU_DEVICE` 选卡。
 
-gain 提前准备版未显示收益：用户回传 native/full 配对节省中位数为 −0.0221/−0.0545 ms，仍保留 scale 复用版作为基线。
-
-下一轮独立候选：`bash scripts/run_mindie_laser_score_prefetch.sh`，利用现有两块 Vector 分数缓冲区提前搬入下一批四行，尝试让 QK 分数传输与当前 max/exp/sum 重叠。只从本地缓存构建新候选，不联网、不重编旧基线；先验证全输出一致，再同进程配对比较，并补采原版 FP16 Laser 计数器。报告 `results/mindie_laser_score_prefetch.json`。新候选尚待远端 CANN 编译和 NPU 验证；[实验说明](ascend/laser_quant/README.md)和[同步审计材料](reports/ascend-score-prefetch-sync-audit/README.md)记录改动范围与限制。
+已失败的 `run_mindie_laser_pv_phases.sh` 和 `run_mindie_laser_pv_const.sh` 停用，直接提示上述入口并退出。恢复只涉及入口选择，生产内核保持此前实测代码，探针源码和失败证据保留。详见 [Laser 量化与历史实验](ascend/laser_quant/README.md)、[PV 诊断失败记录](reports/ascend-pv-internal-phase-audit/README.md)。首次构建的历史入口 `run_mindie_laser_quant.sh`、[原版 Laser 源码复现](MINDIE_LASER_REPRO.md)及[旧 ExpCast 实验](MINDIE_LASER_EXPCAST.md)仍保留。
 
 **当前 H200 主路线（2026-10-13）：`sageattn_vc`，INT8 QK + FP8 PV。**
 新候选 `bash scripts/run_tensor_mass_h200.sh`：针对概率分母求和，用无损解码后的 FP16 输入、FP32 累加的 Tensor Core 归约替代逐值升 FP32/相加。D128 编码/求和常规分支的本地静态指令从 325 降到 239，寄存器仍为 168；85 项检查通过，H200 整核性能待测。对比同次 scale-prefetch、installed、Sage、FA4，见 [CUDA 实验说明](SAGE_CUDA_EXPCAST.md)。

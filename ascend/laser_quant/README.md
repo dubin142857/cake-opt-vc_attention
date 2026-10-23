@@ -2,9 +2,23 @@
 
 当前主线为原生 INT8 QK + 原 Laser softmax + FP16 V/PV。QK 使用 INT8 Cube、INT32 累加，随后回到原 Laser 的 FP16 score、Vector softmax 和 FP16 PV 路径，V 直接由原输入转为 FP16。E4M3 V 解码和 ExpCast 保留为显式启用的实验。该实现从固定版本 MindIE-SD Laser 内核派生，没有调用旧的 `vc_ascend` attention 内核；上游固定为 [MindIE-SD `71098c20`](https://github.com/Ascend/MindIE-SD/tree/71098c20ff90838d1fd1ca0a40515c751a3869b0)。
 
-此前目标长形状的 INT8 QK 版本已跑通，但预处理约 16.94 ms、完整调用约 107.18 ms，慢于 Laser 源码基线约 85.98 ms。这一轮增加融合 Q/K 量化预处理，保持同一个 INT8 attention 内核作对照，并分别测量原生调用和输出处理。融合候选仅完成本地代码和 CPU 检查，仍需远端 CANN 编译及 NPU 正确性、性能验证；不能提前认定获得提速。
+## 当前恢复入口：复用已验证的 V-only PV 预取
 
-## 一条命令
+2026-10-23 恢复到远端已验证的 `vector_pv_prefetch`，保留融合 Q/K 量化、Vector 反量化和 V-only PV 预取；使用原 Laser softmax 与 FP16 PV。默认入口为：
+
+```bash
+bash scripts/run_mindie_laser_stable.sh
+```
+
+它复用此前成功构建的原版 FP16 Laser、`vector_scale`、`vector_pv_prefetch` 与融合量化器；从 V-only 构建清单读取 CANN 环境，不重编、不联网、不启动内部探针或 profiler。默认 BF16 BNSD `[1,28,37741,128]`、设备 0、warmup 5、每轮 10 次、9 轮，设备可通过 `NPU_DEVICE` 选择。先核验来源/产物和正确性，再进行原版 Laser 为主基线的三组同进程随机交错 API 比较，继续检查全部 padded INT8 native 输出精确一致。
+
+新结果为 `results/mindie_laser_stable.json` 和 `.log`，历史报告保留。缺少构建清单或产物校验失败时直接停止，不自动重编。该恢复入口未改变任何生产内核，不表示本地重新完成了 NPU 验证。原 `run_mindie_laser_pv_prefetch.sh` 保留为构建/复现实验入口；已经有产物时使用上面的 stable 命令即可。
+
+失败的 `run_mindie_laser_pv_phases.sh`、`run_mindie_laser_pv_const.sh` 已停用，仅输出恢复命令并退出；相关源码及失败报告仍保留。恢复入口不执行设备复位，也不证明先前超时的设备任务已取消。
+
+## 历史：初始量化构建入口
+
+以下保留初始 INT8 和融合预处理的构建流程。后续优化及实机结果按实验顺序记录；已有上述成功构建时不需从这里重建。
 
 在已配置 CANN 9.0.1、匹配的 PyTorch/torch_npu 和 MindIE-SD Laser 的 A2/A3 Linux 主机上，从仓库目录运行：
 
