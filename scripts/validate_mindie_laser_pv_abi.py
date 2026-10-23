@@ -284,6 +284,51 @@ def terminate_worker(process):
     return dict(actions=actions, host_returncode=process.poll(), device_tasks_stopped=None)
 
 
+def report_summary(report):
+    """Extract recorded host evidence only; do not infer a device failure from a deadline."""
+    if not isinstance(report, dict):
+        raise ValueError("Validation report must be a JSON object")
+    workers = report.get("workers")
+    child = workers.get("paired", {}) if isinstance(workers, dict) else report
+    if not isinstance(child, dict):
+        child = {}
+    failure = child.get("probe_validation_failure")
+    failure = failure if isinstance(failure, dict) else {}
+    active = child.get("active_probe_validation")
+    active = active if isinstance(active, dict) else {}
+    context = failure or active
+    summary = dict(status=report.get("status"), worker_status=child.get("status"),
+        timed_out=child.get("timed_out"), returncode=child.get("returncode"),
+        active={key: context.get(key) for key in ("mode", "stage", "shape_bnsd", "keys", "dtype")},
+        first_recorded_validation_error=failure.get("error"),
+        worker_error=child.get("error"), parent_error=report.get("error") if child is not report else None,
+        host_deadline_seconds=child.get("worker_timeout_seconds"),
+        host_timeout_error=child.get("host_timeout_error"), host_termination=child.get("termination"),
+        worker_log=child.get("worker_log"), worker_report=child.get("report_path"))
+    if child.get("timed_out"):
+        summary["deadline_scope"] = (
+            "Host worker deadline exceeded; this is not evidence of a device timeout. "
+            "Host termination does not prove queued device tasks stopped."
+        )
+    # A guard can also record a host validation error. Preserve its wording,
+    # rather than relabel every exception as a device fault.
+    return summary
+
+
+def print_report_summary(report, *, stream=None):
+    stream = sys.stderr if stream is None else stream
+    print("Host-only validation report summary (recorded evidence):", file=stream, flush=True)
+    print(json.dumps(report_summary(report), ensure_ascii=False, indent=2), file=stream, flush=True)
+
+
+def summarize_report(path):
+    """Read an existing JSON report without provider checks, builds, imports or NPU work."""
+    with Path(path).open(encoding="utf-8") as stream:
+        report = json.load(stream)
+    print_report_summary(report, stream=sys.stdout)
+    return 0
+
+
 def launch(args, providers):
     resolve_defaults(args)
     config = kind_config(args.kind)
@@ -314,8 +359,10 @@ def launch(args, providers):
     result.update(returncode=process.poll(), command=command, worker_log=str(logfile),
                   report_path=str(path), timed_out=timeout, worker_timeout_seconds=args.worker_timeout)
     if timeout:
+        deadline_error = "Host worker exceeded diagnostic timeout; no subsequent NPU task will be launched"
         result.update(status="timed_out", prior_worker_status=result["status"], termination=termination,
-                      error="Host worker exceeded diagnostic timeout; no subsequent NPU task will be launched")
+                      host_timeout_error=deadline_error)
+        result.setdefault("error", deadline_error)
     try: print(logfile.read_text(encoding="utf-8", errors="replace"), end="", flush=True)
     except OSError as error: result["log_read_error"] = str(error)
     return result
@@ -347,6 +394,7 @@ def parent(args):
         report.update(status="failed", error=f"{type(error).__name__}: {error}", no_additional_device_work=True)
         save()
         print(f"{config['label']} validation stopped: {error}\nReport: {output}", file=sys.stderr, flush=True)
+        print_report_summary(report)
         return 1
 
 
@@ -357,6 +405,8 @@ class IsolationParser(argparse.ArgumentParser):
 
 def parser():
     result = IsolationParser(description=__doc__)
+    result.add_argument("--summarize-report", metavar="PATH",
+        help="Read existing parent/worker JSON only; no build, provider checks, torch imports or device work")
     result.add_argument("--kind", choices=KINDS, default=ABI)
     for name, default in MANIFESTS.items():
         result.add_argument("--"+name.replace("_", "-"), default=None if name == "abi_build" else default)
@@ -372,6 +422,13 @@ def parser():
 def main(argv=None):
     cli = parser()
     args = cli.parse_args(argv)
+    if args.summarize_report:
+        if args._worker:
+            cli.error("--summarize-report cannot launch a worker")
+        try:
+            return summarize_report(args.summarize_report)
+        except (OSError, ValueError) as error:
+            cli.error(f"Cannot summarize existing report: {type(error).__name__}: {error}")
     if args.device < 0 or args.cpu_threads <= 0 or not 0 < args.worker_timeout < float("inf"):
         cli.error("Need nonnegative device, positive CPU threads and finite positive worker timeout")
     return worker(args) if args._worker else parent(args)

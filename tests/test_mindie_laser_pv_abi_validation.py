@@ -391,3 +391,114 @@ def test_fresh_malformed_or_foreign_marker_is_not_treated_as_cache_reuse(tmp_pat
         stream.write(json.dumps(dict(first, **changed)) + "\n")
     with pytest.raises(ValueError, match="Malformed or foreign"):
         validation.fresh_markers(path, offset, pid=5, token="abi")
+
+
+def test_report_summary_real_host_deadline_does_not_invent_device_exception():
+    child = dict(status="timed_out", prior_worker_status="running", timed_out=True,
+        returncode=-15, worker_timeout_seconds=180, probe_validation_failure=None, traceback=None,
+        active_probe_validation=dict(mode="pv_const", stage="awaiting_sync",
+            shape_bnsd=[1, 2, 1, 128], keys=1, dtype="torch.float16", native_q_dtype="torch.int8", isolated=True),
+        termination=dict(actions=["terminate", "terminate_wait_timeout", "kill"],
+            host_returncode=-15, device_tasks_stopped=None),
+        worker_log="retained/worker.log", report_path="retained/report.json")
+    report = dict(status="failed", workers={"paired": child})
+    original = json.dumps(report)
+    summary = validation.report_summary(report)
+    assert summary["status"] == "failed" and summary["worker_status"] == "timed_out"
+    assert summary["timed_out"] is True and summary["returncode"] == -15
+    assert summary["active"] == {key: child["active_probe_validation"][key]
+        for key in ("mode", "stage", "shape_bnsd", "keys", "dtype")}
+    assert summary["first_recorded_validation_error"] is None
+    assert summary["host_deadline_seconds"] == 180
+    assert summary["host_termination"]["device_tasks_stopped"] is None
+    assert "not evidence of a device timeout" in summary["deadline_scope"]
+    assert "507014" not in json.dumps(summary)
+    assert summary["worker_log"] == "retained/worker.log"
+    assert json.dumps(report) == original
+
+
+def test_report_summary_retains_first_error_and_distinguishes_host_assertion():
+    for error in ("RuntimeError: first aicore timeout 507014", "AssertionError: padded output mismatch"):
+        report = dict(status="failed", timed_out=False, returncode=1, error=error,
+            probe_validation_failure=dict(mode="pv_const", stage="trace_and_all_output_cpu", error=error),
+            active_probe_validation=dict(mode="different_mode", stage="later_stage"))
+        summary = validation.report_summary(report)
+        assert summary["first_recorded_validation_error"] == error
+        assert summary["active"]["mode"] == "pv_const"
+        assert summary["timed_out"] is False and summary["returncode"] == 1
+        assert "deadline_scope" not in summary
+
+
+def test_launch_host_deadline_preserves_already_recorded_exception(monkeypatch, tmp_path):
+    args = validation.parser().parse_args(["--kind", "pv_const"])
+    args._run_dir = str(tmp_path)
+    first = "RuntimeError: original launch exception"
+    class Process:
+        pid = 4242
+        def wait(self, timeout):
+            raise subprocess.TimeoutExpired("worker", timeout)
+        def poll(self): return -15
+    def popen(command, **kwargs):
+        path = tmp_path / "paired/local/report.json"
+        path.write_text(json.dumps(dict(status="failed", error=first,
+            probe_validation_failure=dict(error=first, mode="pv_const", stage="about_to_launch"))))
+        return Process()
+    monkeypatch.setattr(validation.subprocess, "Popen", popen)
+    monkeypatch.setattr(validation, "terminate_worker", lambda process:
+        dict(actions=["terminate"], host_returncode=-15, device_tasks_stopped=None))
+    report = validation.launch(args, providers(tmp_path, "pv_const"))
+    assert report["error"] == first
+    assert report["probe_validation_failure"]["error"] == first
+    assert report["timed_out"] and report["prior_worker_status"] == "failed"
+    assert "Host worker exceeded" in report["host_timeout_error"]
+
+
+def test_summary_cli_reads_existing_report_without_device_imports_or_provenance(tmp_path):
+    path = tmp_path / "result.json"
+    path.write_text(json.dumps(dict(status="failed", workers={"paired": dict(status="timed_out",
+        timed_out=True, returncode=-15, worker_log="retained/worker.log")})), encoding="utf-8")
+    before = {file: (file.read_bytes(), file.stat().st_mtime_ns) for file in tmp_path.iterdir()}
+    code = (
+        "import builtins, runpy, sys\n"
+        "original = builtins.__import__\n"
+        "def guarded(name, *args, **kwargs):\n"
+        "    if name.split('.')[0] in ('torch', 'torch_npu', 'mindiesd') or "
+        "name.startswith(('benchmark_mindie', 'prepare_mindie', 'profile_mindie', 'mindie_laser')):\n"
+        "        raise AssertionError('Device/provenance dependency imported: '+name)\n"
+        "    return original(name, *args, **kwargs)\n"
+        "builtins.__import__ = guarded\n"
+        f"sys.argv = ['validate_mindie_laser_pv_abi.py', '--summarize-report', {str(path)!r}]\n"
+        f"runpy.run_path({str(ROOT / 'scripts/validate_mindie_laser_pv_abi.py')!r}, run_name='__main__')\n"
+    )
+    result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=20, cwd=tmp_path)
+    assert result.returncode == 0, result.stderr
+    summary = json.loads(result.stdout.split("\n", 1)[1])
+    assert summary["worker_status"] == "timed_out" and summary["returncode"] == -15
+    assert summary["worker_log"] == "retained/worker.log"
+    assert {file: (file.read_bytes(), file.stat().st_mtime_ns) for file in tmp_path.iterdir()} == before
+
+
+@pytest.mark.parametrize("content", ("invalid JSON", "[]"))
+def test_invalid_summary_report_fails_read_only_without_falling_back_to_launch(monkeypatch, tmp_path, content):
+    path = tmp_path / "result.json"
+    path.write_text(content)
+    monkeypatch.setattr(validation, "parent", lambda args: pytest.fail("Summary cannot launch"))
+    monkeypatch.setattr(validation, "worker", lambda args: pytest.fail("Summary cannot launch"))
+    with pytest.raises(SystemExit) as caught:
+        validation.main(["--summarize-report", str(path)])
+    assert caught.value.code == 2 and path.read_text() == content
+
+
+def test_parent_failure_prints_recorded_child_context(monkeypatch, tmp_path, capsys):
+    args = validation.parser().parse_args(["--kind", "pv_const", "--output", str(tmp_path / "result.json")])
+    child = dict(status="timed_out", timed_out=True, returncode=-15, worker_timeout_seconds=180,
+        active_probe_validation=dict(mode="pv_const", stage="awaiting_sync", shape_bnsd=[1, 2, 1, 128], keys=1),
+        worker_log="retained/worker.log")
+    monkeypatch.setattr(validation, "resolve_providers", lambda args: providers(tmp_path, "pv_const"))
+    monkeypatch.setattr(validation, "verify_builds", lambda *args: {})
+    monkeypatch.setattr(validation, "launch", lambda *args: child)
+    assert validation.parent(args) == 1
+    output = capsys.readouterr().err
+    assert '"timed_out": true' in output and '"returncode": -15' in output
+    assert "awaiting_sync" in output and "retained/worker.log" in output
+    assert '"first_recorded_validation_error": null' in output

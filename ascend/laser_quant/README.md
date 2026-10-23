@@ -676,14 +676,16 @@ bash scripts/run_mindie_laser_pv_abi.sh
 
 只构建新 `VcLaserCubePvAbiProbeAttention`，复用 V-only 与融合量化器，从本地源码缓存准备，不联网。保留新增 trace 接口，但完全使用未插桩的 V-only Cube/Vector，只接受 mode 0，返回清零的 trace。小输入逐个单独同步，检查全部 padded 输出精确一致和 trace 全零；不运行失败的 v2 或长 shape 计时。worker 默认 180 秒上限只约束主机进程，不能视为设备任务已取消。结果为 `results/mindie_laser_pv_abi.json` 与 `.log`，详见 [ABI-only 隔离及结论边界](../../reports/ascend-pv-internal-phase-audit/README.md#反汇编不可用后独立-abi-only-隔离)。这一步是定位实验，尚未验证能够消除超时。
 
-**2026-10-23 后续结果：ABI-only 六个小输入远端全部通过，全部 padded 输出精确一致、trace 全零。** 这证明扩展接口在这些输入上可以工作，旧 runtime plain0 的故障仍未解决。下一步使用独立 constant-plain 对照：
+**2026-10-23 后续结果：ABI-only 六个小输入远端全部通过，全部 padded 输出精确一致、trace 全零。** 这证明扩展接口在这些输入上可以工作。随后尝试的 constant-plain 在首个 tiny 的同步阶段超过主机 180 秒限制；当前停止这套大探针，以下命令仅保留为实验记录，不再重跑：
 
 ```bash
 git pull origin master
 bash scripts/run_mindie_laser_pv_const.sh
 ```
 
-保留旧探针 header/数组/hooks，将设备入口的模式固定为字面量 0，检查编译期关闭条件是否能恢复执行；只接受关闭模式，不运行旧失败探针。脚本复用已有构建，只编新 provider，读取符号大小，并重复六个小输入的 exact/zero 检查。没有长序列或性能计时。结果为 `results/mindie_laser_pv_const.json` 与 `.log`，辅助符号证据为 `results/mindie_laser_pv_const_symbols.json`。详见 [通过结果及 constant-plain 对照](../../reports/ascend-pv-internal-phase-audit/README.md#abi-only-远端通过只改变编译期关闭条件)。尚不能承诺常量传播已消除插桩，也不能以通过结果直接断言原超时根因。
+该实验保留旧探针 header/数组/hooks，将设备入口的模式固定为字面量 0，只接受关闭模式。远端 AIC 大小为 43348 字节，旧 runtime 版为 43352，ABI-only 为 26680；常量实参未使整体代码规模恢复到原版。报告最后阶段为 `pv_const / awaiting_sync`，`probe_validation_failure=null`，没有捕获到设备首错，不能称为本次已确认 FIXP 超时或寄存器溢出。结果为 `results/mindie_laser_pv_const.json` 与 `.log`，符号证据为 `results/mindie_laser_pv_const_symbols.json`。详见 [constant-plain 失败与后续方向](../../reports/ascend-pv-internal-phase-audit/README.md#constant-plain-仍未返回停止大探针路线)。
+
+本轮同一输入的生产 V-only 已先完成同步，故障发生在新增诊断版。后续保留已验证的生产算子，使用外部 profiler/受控对照；如果需要内部时间窗口，应重新设计最小插桩，先验证再校准。无需为读取退出原因重新跑算子：`python3 scripts/validate_mindie_laser_pv_abi.py --summarize-report results/mindie_laser_pv_const.json` 仅读取主机 JSON。
 
 下面保留原诊断流程供后续修复验证，当前不运行：
 
