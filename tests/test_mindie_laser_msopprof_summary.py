@@ -5,6 +5,7 @@ import csv
 import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -208,12 +209,53 @@ def test_failed_collection_retains_partial_artifacts_and_offline_cli(tmp_path):
     assert report["status"] == "partial"
     assert (tmp_path / "summary.json").is_file() and (tmp_path / "summary.txt").is_file()
     text = (tmp_path / "summary.txt").read_text(encoding="utf-8")
-    assert "No register-spill diagnosis" in text and "max CSV rows=[3]" in text
+    details = (tmp_path / "summary_details.txt").read_text(encoding="utf-8")
+    assert "max CSV rows=[3]" not in text
+    assert "No register-spill diagnosis" in details and "max CSV rows=[3]" in details
     output = tmp_path / "nested/saved.json"
     result = subprocess.run([sys.executable, str(ROOT / "scripts/summarize_mindie_laser_msopprof.py"),
         str(tmp_path), "--output", str(output)], capture_output=True, text=True, timeout=15)
     assert result.returncode == 0 and output.is_file() and output.with_suffix(".txt").is_file()
     assert "evidence: partial" in result.stdout
+
+
+def test_existing_collector_report_can_be_resummarized_offline(tmp_path):
+    run_root = tmp_path / "recorded run"
+    run_root.mkdir()
+    directory = make_manifest(run_root)
+    basic(directory)
+    pipe(directory)
+    rest(directory)
+    metadata = tmp_path / "capture.json"
+    metadata.write_text(json.dumps(dict(run_root=str(run_root), status="passed")))
+    before = {path: path.read_bytes() for path in (metadata, run_root / "manifest.json")}
+    alias = tmp_path / "capture_summary.txt"
+    alias.write_text("old huge summary")
+    result = subprocess.run([sys.executable, str(ROOT / "scripts/summarize_mindie_laser_msopprof.py"),
+        "--report", str(metadata)], capture_output=True, text=True, encoding="utf-8",
+        env=dict(os.environ, PYTHONIOENCODING="utf-8"), timeout=15)
+    assert result.returncode == 0, result.stderr
+    assert "evidence: verified" in result.stdout
+    compact = alias.read_text(encoding="utf-8")
+    assert compact == (run_root / "summary.txt").read_text(encoding="utf-8")
+    assert len(result.stdout.splitlines()) < 40
+    assert all(path.read_bytes() == content for path, content in before.items())
+    full = json.loads((run_root / "summary.json").read_text(encoding="utf-8"))
+    assert full["manifest_sha256"] == hashlib.sha256(before[run_root / "manifest.json"]).hexdigest()
+    assert Path(full["summary_details_text"]).is_file()
+    detailed = subprocess.run([sys.executable, str(ROOT / "scripts/summarize_mindie_laser_msopprof.py"),
+        "--report", str(metadata), "--detailed"], capture_output=True, text=True, encoding="utf-8",
+        env=dict(os.environ, PYTHONIOENCODING="utf-8"), timeout=15)
+    assert detailed.returncode == 0 and "max CSV rows=[3]" in detailed.stdout
+
+
+def test_offline_missing_report_fails_without_creating_capture(tmp_path):
+    missing = tmp_path / "missing.json"
+    result = subprocess.run([sys.executable, str(ROOT / "scripts/summarize_mindie_laser_msopprof.py"),
+        "--report", str(missing)], capture_output=True, text=True, encoding="utf-8",
+        env=dict(os.environ, PYTHONIOENCODING="utf-8"), timeout=15)
+    assert result.returncode != 0 and "No NPU work performed" in result.stderr
+    assert not list(tmp_path.iterdir())
 
 
 def test_absent_manifest_and_absent_output_are_partial_not_exceptions(tmp_path):

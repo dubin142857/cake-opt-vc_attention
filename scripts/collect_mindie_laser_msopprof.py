@@ -249,6 +249,7 @@ def collect(args):
         summary = write_summary(run_root)
         report["summary_json"] = str(run_root/"summary.json")
         report["summary_text"] = str(run_root/"summary.txt")
+        report["summary_details_text"] = summary.get("summary_details_text")
         report["summary_status"] = summary["status"]
         report["status"] = "passed" if summary["status"] == "verified" else "partial"
         save()

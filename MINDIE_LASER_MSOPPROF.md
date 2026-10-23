@@ -33,13 +33,22 @@ msOpProf 使用精确的算子名前缀、`--launch-count=1`、`--warm-up=5` 和
 
 ## 把什么结果发回来
 
+如果已经采集成功，只需要离线重新生成精简摘要，**无需重新采集或启动 NPU**：
+
+```bash
+git pull origin master
+bash scripts/summarize_mindie_laser_msopprof.sh
+```
+
+该命令从已有 `results/mindie_laser_msopprof.json` 找到本次采集目录，读取已有 CSV，更新精简文本和完整 JSON。默认四组输出控制在约百行以内，主要保留任务时长、各核角色的关键流水、计算类型、搬运、缓存和冲突指标。相同角色内的时间保留最小/中位/最大值，其余关键指标显示中位数；没有的指标显示缺失，0 不会当作缺失。不会把不同任务或 counter pass 混合；超出展示范围会注明省略，详情仍保留。
+
 完成后执行：
 
 ```bash
 cat results/mindie_laser_msopprof_summary.txt
 ```
 
-先提供这份摘要。主报告为 `results/mindie_laser_msopprof.json`，其中 `run_root` 指向本轮独立目录。该目录保存工具 help、命令、构建来源、直接运行/采集日志、worker 输出检查，以及原始 OPPROF 文件和 CSV。采集命令完成后冻结该目录的 `manifest.json`，供摘要核对哈希；最终解析状态写入外层主报告。摘要逐任务、逐文件保留身份与字段，不把不同 kernel 或不同 counter pass 混为一个统计。
+先提供这份精简摘要。主报告为 `results/mindie_laser_msopprof.json`，其中 `run_root` 指向本轮独立目录。该目录保存工具 help、命令、构建来源、直接运行/采集日志、worker 输出检查，以及原始 OPPROF 文件和 CSV。采集命令完成后冻结该目录的 `manifest.json`，供摘要核对哈希；最终解析状态写入外层主报告。完整字段、所有核和行号继续保存为该目录的 `summary.json` 与 `summary_details.txt`，默认不再把明细打印到终端。需要时可用 `python3 scripts/summarize_mindie_laser_msopprof.py --detailed` 显式打印全部明细。
 
 如果只看到 `partial`，需要看缺失项及本轮日志，不能把工具退出 0 等同于成功采到目标 kernel。任何直接运行、采集或数值检查失败都会停止后续设备任务，不自动重试。每次主机调用有 600 秒上限；超时保留证据并停止后续采集，主机进程退出不证明设备任务已经结束。
 

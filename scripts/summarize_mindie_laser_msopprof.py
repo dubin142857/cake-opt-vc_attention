@@ -16,6 +16,7 @@ import json
 import math
 from pathlib import Path
 import re
+import shutil
 import statistics
 
 
@@ -307,7 +308,7 @@ def summarize(run_root: Path):
     return report
 
 
-def render_summary(report):
+def render_detailed_summary(report):
     lines = [f"msOpProf evidence: {report['status']}", report["scope"], report["aggregation"]]
     lines.extend("ERROR: " + error for error in report["errors"])
     for collection in report["collections"]:
@@ -335,8 +336,160 @@ def render_summary(report):
     return "\n".join(lines) + "\n"
 
 
+def _compact_text(value, limit=220):
+    """Bound long exported identities without making truncation invisible."""
+    value = str(value).replace("\n", " ").replace("\r", " ")
+    if len(value) <= limit:
+        return value
+    digest = hashlib.sha256(value.encode("utf-8")).hexdigest()[:10]
+    return value[:limit - 34] + f"... [sha={digest}; full in JSON]"
+
+
+def _compact_metric(entry, *, span=False):
+    if entry is None:
+        return "NA"
+    def number(value):
+        return format(value, ".6g") + entry.get("value_suffix", "")
+    values = (entry["minimum"], entry["median"], entry["maximum"]) if span else (entry["median"],)
+    return "/".join(number(value) for value in values) + f"[n={entry['count']}]"
+
+
+def _compact_line(label, tokens, limit=240):
+    line, shown = label + ": ", 0
+    for token in tokens:
+        addition = ("; " if shown else "") + token
+        # Reserve space for an explicit omitted-fields notice.
+        if len(line) + len(addition) > limit - 33:
+            break
+        line += addition
+        shown += 1
+    if shown != len(tokens):
+        line += f"; +{len(tokens) - shown} fields omitted (JSON)"
+    return _compact_text(line, limit)
+
+
+def _compact_file_view(item, kernel_names):
+    """Choose one exported context per role; never pool tasks or CSV passes."""
+    contexts, omitted = {}, 0
+    for entry in item.get("distributions", []):
+        context = entry["context"]
+        if kernel_names and context.get("attributed_kernel_names") != kernel_names:
+            omitted += 1
+            continue
+        role = next((str(v) for k, v in context.items() if _key(k) == "subblockid"), "task")
+        identity = json.dumps(context, sort_keys=True, ensure_ascii=False)
+        if role not in contexts:
+            contexts[role] = (identity, {})
+        if contexts[role][0] != identity:
+            omitted += 1
+            continue
+        # A duplicate field with a different suffix/representation is a
+        # different exported distribution, not a value to average together.
+        field = entry["field"].lower()
+        if field in contexts[role][1]:
+            omitted += 1
+            continue
+        contexts[role][1][field] = entry
+    return {role: fields for role, (_, fields) in contexts.items()}, omitted
+
+
+def render_summary(report):
+    """Bounded paste-friendly view; complete originals remain in JSON/details.
+
+    A normal four-variant, one-task capture is approximately 80 lines. Only
+    one task, one CSV per group and one context per core role are displayed.
+    Additional tasks/passes/contexts are explicitly counted as omitted.
+    """
+    lines = [f"msOpProf compact evidence: {report['status']}",
+        "Profiler/replay counters, not paired API timings. Values keep exported units; ratios are NOT multiplied by 100.",
+        "time(us)=min/median/max[n]; other metrics=median[n]. f# indexes collection.files; NA is missing, not zero.",
+        "Pipe/Arithmetic/Conflict labels omit the aic_/aiv_ field prefix identified by cube/vector role; units are unchanged."]
+    if report.get("errors"):
+        lines.append(_compact_text("Report errors: " + "; ".join(report["errors"])))
+    for collection in report.get("collections", [])[:4]:
+        files = collection.get("files", [])
+        tasks = sorted({item["task_directory"] for item in files})
+        preferred = collection.get("verified_task_directories", [])
+        task = next(iter(preferred or tasks), None)
+        lines += ["", _compact_text(f"{collection['variant']}: {collection['status']}; target/basic+pipe={collection['target_verification']}"),
+                  _compact_text(f"  task={task if task is not None else 'NA'}; other tasks omitted={max(0, len(tasks) - 1)}")]
+        selected, extra_files = {}, 0
+        for index, item in enumerate(files):
+            if item["task_directory"] != task:
+                continue
+            group = item["metric_group"]
+            if group not in GROUPS:
+                extra_files += 1
+            elif group in selected:
+                extra_files += 1
+            else:
+                selected[group] = (index, item)
+        basic = selected.get("OpBasicInfo", (None, {}))[1]
+        kernel_names = next((entry["context"]["attributed_kernel_names"] for entry in basic.get("distributions", [])
+                             if entry["context"].get("attributed_kernel_names")), [])
+        lines.append(_compact_text("  kernel=" + (" | ".join(kernel_names) or "NA (identity unconfirmed)")))
+        views, context_omitted = {}, 0
+        for group, (index, item) in selected.items():
+            views[group], omitted = _compact_file_view(item, kernel_names)
+            context_omitted += omitted
+        def source(group):
+            return "f" + str(selected[group][0]) if group in selected else "missing"
+        def metric(group, role, field, span=False):
+            return _compact_metric(views.get(group, {}).get(role, {}).get(field.lower()), span=span)
+        def row(group, role, fields, label=None):
+            def displayed(field):
+                return re.sub(r"^ai[cv]_", "", field) if label in {"Pipe", "Arithmetic", "Conflict"} else field
+            return _compact_line(f"  {label or group}[{source(group)}] {role}",
+                [f"{displayed(field)}={metric(group, role, field, span)}" for field, span in fields])
+        lines.append(row("OpBasicInfo", "task", [(field, False) for field in
+            ("Task Duration(us)", "Block Dim", "Mix Block Dim", "Current Freq", "Rated Freq")], "Basic"))
+        pipe_roles = list(views.get("PipeUtilization", {}))
+        aic_roles = [role for role in pipe_roles if any(field.startswith("aic_") for field in views["PipeUtilization"][role])]
+        aiv_roles = [role for role in pipe_roles if any(field.startswith("aiv_") for field in views["PipeUtilization"][role])]
+        # Preserve the actual sub_block_id text (normally cube0/vector0/vector1).
+        # Do not silently replace a missing vector1 with vector0.
+        cube = aic_roles[0] if aic_roles else "cube?"
+        vectors = aiv_roles[:2] or ["vector?"]
+        omitted_roles = max(0, len(aic_roles) - 1) + max(0, len(aiv_roles) - 2)
+        lines.append(row("PipeUtilization", cube, [("aic_time(us)", True)] + [(field, False) for field in
+            ("aic_cube_ratio", "aic_mte1_ratio", "aic_mte2_ratio", "aic_fixpipe_ratio", "aic_scalar_ratio")], "Pipe"))
+        for role in vectors:
+            lines.append(row("PipeUtilization", role, [("aiv_time(us)", True)] + [(field, False) for field in
+                ("aiv_vec_ratio", "aiv_mte2_ratio", "aiv_mte3_ratio", "aiv_scalar_ratio")], "Pipe"))
+        lines.append(_compact_line(f"  Wait/stall[{source('PipeUtilization')}]", [
+            f"{cube} aic_scalar_mte1_stall_time(us)={metric('PipeUtilization', cube, 'aic_scalar_mte1_stall_time(us)')}"
+        ] + [f"{role} aiv_scalar_wait_time(us)={metric('PipeUtilization', role, 'aiv_scalar_wait_time(us)')}" for role in vectors]))
+        lines.append(row("ArithmeticUtilization", cube, [(field, False) for field in
+            ("aic_cube_fp16_ratio", "aic_cube_int8_ratio")], "Arithmetic"))
+        for role in vectors:
+            lines.append(row("ArithmeticUtilization", role, [(field, False) for field in
+                ("aiv_vec_fp16_ratio", "aiv_vec_fp32_ratio", "aiv_vec_misc_ratio")], "Arithmetic"))
+        lines.append(_compact_line(f"  Memory[{source('Memory')}] {cube}", [
+            f"aic_l1_read_bw(GB/s)={metric('Memory', cube, 'aic_l1_read_bw(GB/s)')}",
+            f"aic_main_mem_read_bw(GB/s)={metric('Memory', cube, 'aic_main_mem_read_bw(GB/s)')}",
+            f"L0[{source('MemoryL0')}] aic_l0a_read_bw(GB/s)={metric('MemoryL0', cube, 'aic_l0a_read_bw(GB/s)')}" ]))
+        for role in vectors:
+            lines.append(_compact_line(f"  Memory[{source('Memory')}] {role}", [
+                f"aiv_gm_to_ub_bw(GB/s)={metric('Memory', role, 'aiv_gm_to_ub_bw(GB/s)')}",
+                f"UB[{source('MemoryUB')}] aiv_ub_read_bw_vector(GB/s)={metric('MemoryUB', role, 'aiv_ub_read_bw_vector(GB/s)')}",
+                f"aiv_ub_write_bw_vector(GB/s)={metric('MemoryUB', role, 'aiv_ub_write_bw_vector(GB/s)')}" ]))
+        lines.append(_compact_line(f"  L2[{source('L2Cache')}]", [
+            f"{cube} aic_total_hit_rate(%)={metric('L2Cache', cube, 'aic_total_hit_rate(%)')}"
+        ] + [f"{role} aiv_total_hit_rate(%)={metric('L2Cache', role, 'aiv_total_hit_rate(%)')}" for role in vectors]))
+        for role in vectors:
+            lines.append(row("ResourceConflictRatio", role, [(field, False) for field in
+                ("aiv_vec_total_cflt_ratio", "aiv_vec_bankgroup_cflt_ratio", "aiv_vec_bank_cflt_ratio")], "Conflict"))
+        lines.append(_compact_text("  coverage: missing=" + (",".join(collection.get("missing_groups", [])) or "none")
+            + "; partial=" + (",".join(collection.get("partial_groups", [])) or "none")
+            + f"; extra files={extra_files}, contexts/fields={context_omitted}, roles={omitted_roles} omitted; errors={len(collection.get('errors', []))}"))
+    if len(report.get("collections", [])) > 4:
+        lines.append(f"Collections omitted={len(report['collections']) - 4}; see JSON/details.")
+    lines.append("All omitted fields, exact values, per-core IDs, CSV paths and errors remain in JSON/details; no automatic bottleneck verdict.")
+    return "\n".join(lines) + "\n"
+
+
 def write_summary(run_root: Path, output: Path | None = None):
-    """Write summary JSON + sibling .txt and return the report dictionary."""
+    """Write full JSON, compact text and a separate detailed text artifact."""
     report = summarize(run_root)
     target = Path(output) if output is not None else Path(run_root) / "summary.json"
     if target.suffix.lower() != ".json":
@@ -344,19 +497,43 @@ def write_summary(run_root: Path, output: Path | None = None):
     target.parent.mkdir(parents=True, exist_ok=True)
     report["summary_json"] = str(target.resolve())
     report["summary_text"] = str(target.with_suffix(".txt").resolve())
+    details = target.with_name(target.stem + "_details.txt")
+    report["summary_details_text"] = str(details.resolve())
     target.write_text(json.dumps(report, indent=2, ensure_ascii=False, allow_nan=False) + "\n", encoding="utf-8")
     target.with_suffix(".txt").write_text(render_summary(report), encoding="utf-8")
+    details.write_text(render_detailed_summary(report), encoding="utf-8")
     return report
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("run_root", type=Path)
+    parser.add_argument("run_root", type=Path, nargs="?", help="Existing capture directory; no new device work")
+    parser.add_argument("--report", type=Path, help="Existing collector report; default results/mindie_laser_msopprof.json")
     parser.add_argument("--output", type=Path, help="JSON path or output directory; default RUN_ROOT/summary.json")
+    parser.add_argument("--detailed", action="store_true", help="Explicitly print every counter; default is compact")
     args = parser.parse_args()
-    report = write_summary(args.run_root, args.output)
-    print(render_summary(report), end="")
+    if args.run_root is not None and args.report is not None:
+        parser.error("Choose run_root or --report, not both")
+    source_report = None
+    if args.run_root is None:
+        source_report = (args.report or Path(__file__).resolve().parents[1]/"results/mindie_laser_msopprof.json").resolve()
+        try:
+            metadata = json.loads(source_report.read_text(encoding="utf-8"))
+            run_root = Path(metadata["run_root"])
+            if not run_root.is_absolute():
+                run_root = source_report.parent/run_root
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            parser.error(f"Cannot read existing capture location from {source_report}: {error}. No NPU work performed.")
+    else:
+        run_root = args.run_root
+    report = write_summary(run_root, args.output)
+    if source_report is not None:
+        alias = source_report.with_name(source_report.stem+"_summary.txt")
+        if alias.resolve() != Path(report["summary_text"]).resolve():
+            shutil.copyfile(report["summary_text"], alias)
+    print(render_detailed_summary(report) if args.detailed else render_summary(report), end="")
     print("Summary:", report["summary_json"])
+    print("All counters:", report["summary_details_text"])
     # A partial summary is a successful offline read, NOT a successful capture.
     # Collection drivers must inspect status rather than infer it from this exit.
 
