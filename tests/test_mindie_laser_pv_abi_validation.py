@@ -39,13 +39,15 @@ def test_module_and_help_do_not_import_torch_or_touch_device():
     assert "--worker-timeout" in result.stdout
 
 
-def test_defaults_select_two_distinct_providers_and_bounded_small_only_run(monkeypatch, tmp_path):
+@pytest.mark.parametrize("kind", validation.KINDS)
+def test_defaults_select_two_distinct_providers_and_bounded_small_only_run(monkeypatch, tmp_path, kind):
     import benchmark_mindie_laser_quant as quant
-    args = validation.parser().parse_args([])
+    args = validation.parser().parse_args([] if kind == validation.ABI else ["--kind", kind])
     args._run_dir = str(tmp_path)
     assert args.worker_timeout == 180 and args.device == 0
-    assert args.output == "results/mindie_laser_pv_abi.json"
-    assert args.abi_build == "results/mindie_laser_cube_pv_abi_probe_build.json"
+    assert args.output == f"results/mindie_laser_{kind}.json"
+    assert args.abi_build == f"results/mindie_laser_cube_{kind}_probe_build.json"
+    assert validation.resolve_defaults(args) is args and args.kind == kind
     assert not hasattr(args, "shape") and not hasattr(args, "trials")
     selected = []
     def resolve(options, name):
@@ -53,7 +55,7 @@ def test_defaults_select_two_distinct_providers_and_bounded_small_only_run(monke
         return SimpleNamespace(vendor_root=str(tmp_path / Path(options.quant_build).stem))
     monkeypatch.setattr(quant, "build_arguments", resolve)
     providers = validation.resolve_providers(args)
-    assert tuple(providers) == (validation.PRODUCTION, validation.ABI)
+    assert tuple(providers) == (validation.PRODUCTION, kind)
     assert selected == [(args.production_build, "qk_int8_fused"), (args.abi_build, "qk_int8_fused")]
     assert len({p.marker_env for p in providers.values()}) == 2
     assert len({p.marker_token for p in providers.values()}) == 2
@@ -62,7 +64,28 @@ def test_defaults_select_two_distinct_providers_and_bounded_small_only_run(monke
         validation.resolve_providers(args)
 
 
-def test_provenance_uses_exact_identities_and_source_validation(monkeypatch):
+@pytest.mark.parametrize("kind", validation.KINDS)
+def test_explicit_paths_are_preserved_but_do_not_change_selected_identity(kind):
+    args = validation.parser().parse_args(["--kind", kind, "--abi-build", "custom-build.json",
+                                          "--output", "custom-result.json"])
+    assert validation.resolve_defaults(args) is args
+    assert args.kind == kind and args.abi_build == "custom-build.json"
+    assert args.output == "custom-result.json"
+    minimal = validation.resolve_defaults(SimpleNamespace(kind=kind))
+    assert minimal.abi_build == f"results/mindie_laser_cube_{kind}_probe_build.json"
+    with pytest.raises(ValueError, match="Unsupported isolation"):
+        validation.resolve_defaults(SimpleNamespace(kind="pv"))
+
+
+def test_old_instrumented_provider_cannot_be_selected_by_cli():
+    with pytest.raises(SystemExit) as caught:
+        validation.parser().parse_args(["--kind", "pv"])
+    assert caught.value.code == 2
+
+
+@pytest.mark.parametrize("kind,op", [("pv_abi", "VcLaserCubePvAbiProbeAttention"),
+                                     ("pv_const", "VcLaserCubePvConstProbeAttention")])
+def test_provenance_uses_exact_identities_and_source_validation(monkeypatch, kind, op):
     import benchmark_mindie_laser_quant as quant
     import prepare_mindie_laser_quant_vscale_pv_prefetch_source as production
     import prepare_mindie_laser_cube_probe_source as abi
@@ -74,14 +97,15 @@ def test_provenance_uses_exact_identities_and_source_validation(monkeypatch):
         return {"op_type": identity["op_type"]}
     monkeypatch.setattr(quant, "quant_provenance", provenance)
     monkeypatch.setattr(production, "validate_prepared_source", lambda *a: production.IDENTITY["op_type"])
+    selected_kind = kind
     def check_abi(*args, kind):
-        assert kind == "pv_abi"
+        assert kind == selected_kind
         return abi.identity(kind)["op_type"]
     monkeypatch.setattr(abi, "validate_prepared_source", check_abi)
     monkeypatch.setattr(prep, "validate_preprocess_manifest", lambda path: {"path": path})
-    args = validation.parser().parse_args([])
-    result = validation.verify_builds(args, {validation.PRODUCTION: object(), validation.ABI: object()})
-    assert [c["op_type"] for c in calls] == ["VcLaserQuantVscalePvPrefetchAttention", "VcLaserCubePvAbiProbeAttention"]
+    args = validation.parser().parse_args(["--kind", kind])
+    result = validation.verify_builds(args, {validation.PRODUCTION: object(), kind: object()})
+    assert [c["op_type"] for c in calls] == ["VcLaserQuantVscalePvPrefetchAttention", op]
     assert result["preprocessor"]["path"] == args.preprocess_build
 
 
@@ -100,7 +124,8 @@ def test_native_schema_is_checked_including_outputs_and_mode(abi):
 
 class Runtime:
     """CPU tensors with explicit launch/sync/read failures and access tracking."""
-    def __init__(self, failure=None, target=validation.ABI):
+    def __init__(self, failure=None, target=validation.ABI, kind=validation.ABI):
+        self.kind = kind
         self.failure, self.target, self.mode = failure, target, "prepare"
         self.error = RuntimeError("first aicore timeout 507014")
         self.poisoned, self.after_failure = False, []
@@ -136,7 +161,7 @@ class Runtime:
         return torch.zeros_like(payload.q, dtype=torch.float32)
 
     def native(self, *args):
-        self.mode = validation.ABI
+        self.mode = self.kind
         self.touch("native")
         for value, name in zip(args[:5], ("q", "k", "v", "q_scale", "k_scale")):
             assert value is getattr(self.payload, name)
@@ -155,11 +180,12 @@ class Runtime:
         self.touch("sync")
 
 
-def test_six_cases_start_with_original_failing_tiny_for_both_dtypes_and_share_payloads():
-    runtime, report, snapshots, markers = Runtime(), {}, [], []
+@pytest.mark.parametrize("kind", validation.KINDS)
+def test_six_cases_start_with_original_failing_tiny_for_both_dtypes_and_share_payloads(kind):
+    runtime, report, snapshots, markers = Runtime(kind=kind), {}, [], []
     validation.validate_cases(runtime, runtime.native, "cpu", report,
         lambda: snapshots.append(json.loads(json.dumps(report))), runtime.synchronize,
-        after_call=lambda name, row: markers.append((name, row["name"], row["dtype"])))
+        after_call=lambda name, row: markers.append((name, row["name"], row["dtype"])), kind=kind)
     rows = report["cases"]
     assert [(r["queries"], r["keys"], r["dim"]) for r in rows] == [
         (1, 1, 128), (1, 1, 128), (17, 129, 64), (17, 129, 64), (65, 257, 128), (65, 257, 128)]
@@ -169,9 +195,9 @@ def test_six_cases_start_with_original_failing_tiny_for_both_dtypes_and_share_pa
     assert rows[0]["all_padded_output"]["elements"] == 1 * 2 * 256 * 128
     expected_events = [("prepare", "prepare"), ("prepare", "sync"),
         (validation.PRODUCTION, "native"), (validation.PRODUCTION, "sync"),
-        (validation.ABI, "native"), (validation.ABI, "sync"), (validation.ABI, "trace_cpu")]
+        (kind, "native"), (kind, "sync"), (kind, "trace_cpu")]
     assert runtime.events == expected_events * 6
-    assert [name for name, _, _ in markers] == [validation.PRODUCTION, validation.ABI] * 6
+    assert [name for name, _, _ in markers] == [validation.PRODUCTION, kind] * 6
     assert any(s["active_probe_validation"]["stage"] == "awaiting_sync" for s in snapshots)
 
 
@@ -182,17 +208,20 @@ def test_six_cases_start_with_original_failing_tiny_for_both_dtypes_and_share_pa
     (validation.ABI, "native", "about_to_launch"), (validation.ABI, "sync", "awaiting_sync"),
     (validation.ABI, "trace_cpu", "trace_and_all_output_cpu"),
 ])
-def test_first_error_preserved_and_failure_save_is_host_only(target, failure, stage):
-    runtime, report, snapshots = Runtime(failure, target), {}, []
+@pytest.mark.parametrize("kind", validation.KINDS)
+def test_first_error_preserved_and_failure_save_is_host_only(target, failure, stage, kind):
+    target = kind if target == validation.ABI else target
+    runtime, report, snapshots = Runtime(failure, target, kind), {}, []
     with pytest.raises(RuntimeError) as caught:
         validation.validate_cases(runtime, runtime.native, "cpu", report,
-            lambda: snapshots.append(json.loads(json.dumps(report))), runtime.synchronize)
+            lambda: snapshots.append(json.loads(json.dumps(report))), runtime.synchronize, kind=kind)
     assert caught.value is runtime.error
     assert runtime.after_failure == []
     error = report["probe_validation_failure"]
     assert error["mode"] == target and error["stage"] == stage and error["isolated"]
     assert error["shape_bnsd"] == [1, 2, 1, 128] and error["keys"] == 1
     assert error["further_device_access_aborted"]
+    assert error["origin"] == validation.kind_config(kind)["failure_origin"]
     assert len(report["cases"]) == 1 and report["cases"][0]["status"] == "failed"
     assert snapshots[-1]["probe_validation_failure"]["error"] == "RuntimeError: first aicore timeout 507014"
 
@@ -230,20 +259,21 @@ def test_zero_trace_and_all_padded_output_require_exact_finite_values():
             validation.check_result(invalid, payload, expected)
 
 
-def providers(tmp_path):
+def providers(tmp_path, kind=validation.ABI):
     return {name: SimpleNamespace(vendor_root=str(tmp_path / name / "vendors" / name),
         bridge_path=str(tmp_path / name / "bridge.so"), marker_env=f"VC_{name.upper()}_MARKER_FILE")
-        for name in (validation.PRODUCTION, validation.ABI)}
+        for name in (validation.PRODUCTION, kind)}
 
 
 @pytest.mark.parametrize("timed_out", (False, True))
-def test_launch_retains_partial_context_markers_logs_and_enforces_host_deadline(monkeypatch, tmp_path, timed_out):
-    args = validation.parser().parse_args(["--device", "2"])
+@pytest.mark.parametrize("kind", validation.KINDS)
+def test_launch_retains_partial_context_markers_logs_and_enforces_host_deadline(monkeypatch, tmp_path, timed_out, kind):
+    args = validation.parser().parse_args(["--device", "2", "--kind", kind])
     args._run_dir = str(tmp_path)
-    group = providers(tmp_path)
+    group = providers(tmp_path, kind)
     process_calls, signals = [], []
     partial = dict(status="running" if timed_out else "passed", active_probe_validation=dict(
-        mode=validation.ABI, stage="awaiting_sync", shape_bnsd=[1, 2, 1, 128], keys=1))
+        mode=kind, stage="awaiting_sync", shape_bnsd=[1, 2, 1, 128], keys=1))
     class Process:
         pid = 4242
         returncode = None
@@ -261,7 +291,7 @@ def test_launch_retains_partial_context_markers_logs_and_enforces_host_deadline(
     def popen(command, **kwargs):
         process_calls.append((command, kwargs))
         directory = Path(args._run_dir) / "paired/local"
-        kwargs["stdout"].write(b"ABI-only pv_abi awaiting sync\n")
+        kwargs["stdout"].write(f"{kind} awaiting sync\n".encode())
         (directory / "report.json").write_text(json.dumps(partial), encoding="utf-8")
         for provider in group.values():
             Path(kwargs["env"][provider.marker_env]).write_text("host marker retained\n")
@@ -272,13 +302,14 @@ def test_launch_retains_partial_context_markers_logs_and_enforces_host_deadline(
     result = validation.launch(args, group)
     assert len(process_calls) == 1 and child.waits[0] == 180
     command, kwargs = process_calls[0]
-    for name, path in validation.MANIFESTS.items():
-        assert command[command.index("--" + name.replace("_", "-")) + 1] == path
+    for name in validation.MANIFESTS:
+        assert command[command.index("--" + name.replace("_", "-")) + 1] == getattr(args, name)
+    assert command[command.index("--kind") + 1] == kind
     assert command[command.index("--device") + 1] == "2"
     assert kwargs["env"]["ASCEND_CUSTOM_OPP_PATH"].split(os.pathsep) == [str(Path(p.vendor_root).resolve()) for p in group.values()]
     assert "mindie_laser_cube_pv_probe" not in " ".join(command)
     assert result["active_probe_validation"] == partial["active_probe_validation"]
-    assert Path(result["worker_log"]).read_text() == "ABI-only pv_abi awaiting sync\n"
+    assert Path(result["worker_log"]).read_text() == f"{kind} awaiting sync\n"
     assert all(Path(kwargs["env"][p.marker_env]).read_text() == "host marker retained\n" for p in group.values())
     assert result["timed_out"] is timed_out
     if timed_out:
@@ -309,16 +340,18 @@ def test_host_termination_escalates_after_bounded_wait_without_claiming_device_s
 
 @pytest.mark.parametrize("child", [dict(status="passed", returncode=2), dict(status="failed", returncode=0),
     dict(status="missing_report", returncode=0), dict(status="timed_out", returncode=-15, timed_out=True)])
-def test_parent_keeps_failure_report_and_never_retries_new_device_work(monkeypatch, tmp_path, child):
-    args = validation.parser().parse_args(["--output", str(tmp_path / "result.json")])
+@pytest.mark.parametrize("kind", validation.KINDS)
+def test_parent_keeps_failure_report_and_never_retries_new_device_work(monkeypatch, tmp_path, child, kind):
+    args = validation.parser().parse_args(["--kind", kind, "--output", str(tmp_path / "result.json")])
     launches = []
-    monkeypatch.setattr(validation, "resolve_providers", lambda args: providers(tmp_path))
+    monkeypatch.setattr(validation, "resolve_providers", lambda args: providers(tmp_path, kind))
     monkeypatch.setattr(validation, "verify_builds", lambda *args: {"offline": True})
     monkeypatch.setattr(validation, "launch", lambda *args: launches.append(args) or child)
     assert validation.parent(args) == 1
     result = json.loads(Path(args.output).read_text(encoding="utf-8"))
     assert len(launches) == 1 and result["no_additional_device_work"]
     assert result["workers"]["paired"] == child and result["status"] == "failed"
+    assert result["kind"] == kind and kind in Path(result["run_dir"]).name
 
 
 @pytest.mark.parametrize("timeout", ("0", "-1", "nan", "inf"))

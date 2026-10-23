@@ -28,6 +28,12 @@ SCOPE = (
     "or a diagnosis. FIXP and other unknown error bitfields are not decoded. Resource values retain exported "
     "names and units; missing values are unknown, not zero or inferred spills."
 )
+SYMBOL_SCOPE = (
+    "Offline build-object symbols only; no fault log, PC mapping, disassembly, NPU calls or network. "
+    "Objects must match recorded build hashes. Function size differences are auxiliary code-generation "
+    "evidence, not proof of dead-code elimination, identical instructions, register spills or a fault cause. "
+    "Build SHA agreement does not identify a runtime-loaded object. Missing resource values stay unknown."
+)
 RESOURCE_KEY = re.compile(r"stack|local|smem|lmem|shared|register|spill|(^|_)ub($|_)|ubsize|ub_size", re.I)
 PC_RE = re.compile(
     r"\bpc[ _]+start\s*[:=]\s*(0x[0-9a-f]+).*?\b(?:current(?:[ _]+pc)?)\s*[:=]\s*(0x[0-9a-f]+)",
@@ -423,15 +429,20 @@ def _new_report():
 
 def collect(args, *, runner=None, report=None):
     report = _new_report() if report is None else report
-    report["requested_inputs"] = {key: str(getattr(args, key)) for key in ("profile", "probe_build", "baseline_build")}
+    symbols_only = getattr(args, "symbols_only", False)
+    report["symbols_only"] = symbols_only
+    if symbols_only:
+        report["scope"] = SYMBOL_SCOPE
+    input_keys = ("probe_build", "baseline_build") if symbols_only else ("profile", "probe_build", "baseline_build")
+    report["requested_inputs"] = {key: str(getattr(args, key)) for key in input_keys}
     runner = subprocess.run if runner is None else runner
     output = Path(args.output).resolve()
     base = Path(args.artifact_dir).resolve() if args.artifact_dir else output.parent
     base.mkdir(parents=True, exist_ok=True)
-    directory = Path(tempfile.mkdtemp(prefix="mindie_laser_pv_failure_", dir=base))
+    directory = Path(tempfile.mkdtemp(prefix="mindie_laser_pv_symbols_" if symbols_only else "mindie_laser_pv_failure_", dir=base))
     report["artifact_dir"] = str(directory)
-    profile_path = Path(args.profile).resolve()
-    report["profile"] = _profile(profile_path, directory, report)
+    report["profile"] = ({"status": "not_requested", "pc_records": []} if symbols_only else
+                         _profile(Path(args.profile).resolve(), directory, report))
     for label, source in (("probe", args.probe_build), ("baseline", args.baseline_build)):
         path = Path(source).resolve()
         destination = directory / label
@@ -491,7 +502,7 @@ def collect(args, *, runner=None, report=None):
                 if "error" in version:
                     _error(report, label+" objdump version", version["error"])
             tool["version_command"] = report["tool_versions"][tool["path"]]
-            for flag in ("--syms", "--disassemble"):
+            for flag in (("--syms",) if symbols_only else ("--syms", "--disassemble")):
                 # Recheck immediately before each command, in case the build tree changed.
                 try:
                     if _sha(object_path) != obj["actual_sha256"]:
@@ -531,7 +542,8 @@ def collect(args, *, runner=None, report=None):
                     raw_output_preview(item) for item in obj["commands"]
                     if item["command"][1] == "--disassemble"]
             diagnostic_status = obj.get("disassembly_diagnostics", {}).get("status")
-            obj["inspection_status"] = ("disassembly_unavailable" if diagnostic_status == "unavailable" else
+            obj["inspection_status"] = ("symbols_collected" if symbols_only and "--syms" in successful and obj["symbols"] else
+                "disassembly_unavailable" if diagnostic_status == "unavailable" else
                 "collected" if len(successful) == 2 and obj["symbols"] and diagnostic_status == "parsed" else "partial")
     report["resource_comparison"] = [
         {"provider": label, "object": obj["path"], "sha256_matches": obj["sha256_matches"],
@@ -546,6 +558,7 @@ def collect(args, *, runner=None, report=None):
 
 def parser():
     result = argparse.ArgumentParser(description=__doc__)
+    result.add_argument("--symbols-only", action="store_true", help="Inspect build symbol sizes only; ignore --profile and do not request disassembly or PC mapping")
     result.add_argument("--profile", type=Path, default=ROOT / "results/mindie_laser_pv_phases.json")
     result.add_argument("--probe-build", type=Path, default=ROOT / "results/mindie_laser_cube_pv_probe_build.json")
     result.add_argument("--baseline-build", type=Path, default=ROOT / "results/mindie_laser_quant_vscale_pv_prefetch_build.json")
@@ -573,7 +586,10 @@ def main(argv=None):
     except OSError as error:
         print(f"Could not save offline evidence: {error}", file=sys.stderr)
         return 1
-    print(f"Offline PV evidence: {report['status']}; errors={len(report['errors'])}; runtime object identity UNCONFIRMED")
+    label = "symbols" if report.get("symbols_only") else "evidence"
+    print(f"Offline PV {label}: {report['status']}; errors={len(report['errors'])}; runtime object identity UNCONFIRMED")
+    if report.get("symbols_only"):
+        print("Function sizes do not prove instruction equality, eliminated instrumentation, spills or a fault cause.")
     for label, provider in report.get("providers", {}).items():
         print(f"  {label} llvm-objdump: {provider.get('tool', {}).get('path') or 'unavailable'}")
         for obj in provider.get("objects", []):

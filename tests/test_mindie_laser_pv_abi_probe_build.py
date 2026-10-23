@@ -152,8 +152,9 @@ def test_independent_bridge_cache_and_defaults(tmp_path, monkeypatch):
         ["--kind", kind, "--cann-root", "cann", "--soc", "ascend910_93"])) for kind in prep.KINDS]
     for field in ("source_dir", "source_manifest", "install_dir", "bridge_dir", "output"):
         assert len({getattr(option, field) for option in options}) == len(prep.KINDS)
-        assert "cube_pv_abi_probe" in getattr(options[-1], field).name
-        assert "cube_pv_probe_v2" in getattr(options[-2], field).name or field == "output"
+        by_kind = dict(zip(prep.KINDS, options))
+        assert "cube_pv_abi_probe" in getattr(by_kind["pv_abi"], field).name
+        assert "cube_pv_probe_v2" in getattr(by_kind["pv"], field).name or field == "output"
 
 
 def test_all_four_existing_sources_identities_and_bridges_unchanged():

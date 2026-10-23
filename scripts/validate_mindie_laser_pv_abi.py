@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Small isolated ABI-only Laser checks; no device probes or performance timing."""
+"""Small isolated Laser ABI/constant-mode checks; no device timing or old probe launch."""
 from __future__ import annotations
 
 import argparse
@@ -15,6 +15,7 @@ import traceback
 from types import SimpleNamespace
 
 PRODUCTION, ABI = "vector_pv_prefetch", "pv_abi"
+KINDS = (ABI, "pv_const")
 TRACE_SHAPE = (4, 3, 3, 64)
 SCOPE = (
     "ABI-only isolation: original V-only Cube/Vector, extra host-zeroed trace output, mode 0 only. "
@@ -29,23 +30,51 @@ MANIFESTS = {
 }
 
 
+def kind_config(kind):
+    if kind not in KINDS:
+        raise ValueError(f"Unsupported isolation kind: {kind}")
+    if kind == ABI:
+        return dict(label="ABI-only", scope=SCOPE, failure_origin="abi_only_validation")
+    return dict(label="constant-mode", failure_origin="constant_mode_validation", scope=(
+        "Constant-mode isolation: device initializer gets literal mode 0; host ABI retains mode 0 only. "
+        "No timing collection or old runtime-mode probe launch. Small deterministic cases; shared payload; "
+        "production sync then candidate sync; ALL padded outputs exact and host-zeroed trace remains zero. "
+        "No long-shape timing, performance, root-cause or fixed-device-kernel claim. "
+        "Worker timeout bounds a host diagnostic process only; termination does not prove device tasks stopped."
+    ))
+
+
+def resolve_defaults(args):
+    """Resolve kind-dependent paths without importing torch or accessing a device."""
+    kind = getattr(args, "kind", ABI)
+    kind_config(kind)
+    args.kind = kind
+    if getattr(args, "abi_build", None) is None:
+        args.abi_build = f"results/mindie_laser_cube_{kind}_probe_build.json"
+    if getattr(args, "output", None) is None:
+        args.output = f"results/mindie_laser_{kind}.json"
+    return args
+
+
 def resolve_providers(args):
+    resolve_defaults(args)
     import benchmark_mindie_laser_quant as quant
     import prepare_mindie_laser_quant_vscale_pv_prefetch_source as source
     import prepare_mindie_laser_cube_probe_source as abi_source
     providers = {}
-    for name, build in ((PRODUCTION, args.production_build), (ABI, args.abi_build)):
+    for name, build in ((PRODUCTION, args.production_build), (args.kind, args.abi_build)):
         options = SimpleNamespace(**vars(args), quant_build=build, warmup=0, repeats=1, trials=1)
         provider = quant.build_arguments(options, "qk_int8_fused")
-        provider.marker_env = source.MARKER_ENV if name == PRODUCTION else abi_source.marker_environment("pv_abi")
-        provider.marker_token = source.MARKER_TOKEN if name == PRODUCTION else abi_source.marker_token("pv_abi")
+        provider.marker_env = source.MARKER_ENV if name == PRODUCTION else abi_source.marker_environment(args.kind)
+        provider.marker_token = source.MARKER_TOKEN if name == PRODUCTION else abi_source.marker_token(args.kind)
         providers[name] = provider
     if len({str(Path(p.vendor_root).resolve()) for p in providers.values()}) != 2:
-        raise ValueError("Production and ABI-only need two distinct vendor roots")
+        raise ValueError("Production and isolation candidate need two distinct vendor roots")
     return providers
 
 
 def verify_builds(args, providers):
+    resolve_defaults(args)
     import benchmark_mindie_laser_quant as quant
     import prepare_mindie_laser_quant_vscale_pv_prefetch_source as source
     import prepare_mindie_laser_cube_probe_source as abi_source
@@ -53,8 +82,8 @@ def verify_builds(args, providers):
     return {
         PRODUCTION: quant.quant_provenance(providers[PRODUCTION], identity=source.IDENTITY,
                                            source_validator=source.validate_prepared_source),
-        ABI: quant.quant_provenance(providers[ABI], identity=abi_source.identity("pv_abi"),
-            source_validator=lambda path, manifest: abi_source.validate_prepared_source(path, manifest, kind="pv_abi")),
+        args.kind: quant.quant_provenance(providers[args.kind], identity=abi_source.identity(args.kind),
+            source_validator=lambda path, manifest: abi_source.validate_prepared_source(path, manifest, kind=args.kind)),
         "preprocessor": validate_preprocess_manifest(args.preprocess_build),
     }
 
@@ -95,31 +124,33 @@ def fresh_markers(path, offset, *, pid, token):
                     scope="Host tiling markers; no fresh marker means no per-call identity proof")
 
 
-def check_result(result, payload, expected):
+def check_result(result, payload, expected, *, kind=ABI):
     import torch
     from profile_mindie_laser_quant import compare_all_rows
     from profile_mindie_laser_vector_scale_bulk import require_exact
+    label = kind_config(kind)["label"]
     if not isinstance(result, (tuple, list)) or len(result) != 2:
-        raise RuntimeError("ABI-only must return (attention, trace)")
+        raise RuntimeError(f"{label} must return (attention, trace)")
     out, trace = result
     if (not isinstance(out, torch.Tensor) or out.shape != payload.q.shape or
             out.dtype != torch.float32 or out.device != payload.q.device):
-        raise RuntimeError("ABI-only must return padded FP32 attention on the payload device")
+        raise RuntimeError(f"{label} must return padded FP32 attention on the payload device")
     if (not isinstance(trace, torch.Tensor) or tuple(trace.shape) != TRACE_SHAPE or
             trace.dtype != torch.int64 or trace.device != payload.q.device):
-        raise RuntimeError("ABI-only trace must be int64 [4,3,3,64] on the payload device")
+        raise RuntimeError(f"{label} trace must be int64 [4,3,3,64] on the payload device")
     host_trace = trace.cpu()
     if bool(host_trace.any()):
-        raise AssertionError("ABI-only trace must be entirely zero")
+        raise AssertionError(f"{label} trace must be entirely zero")
     error = compare_all_rows(out, expected)
     require_exact(error)
     return dict(all_padded_output=error, trace_shape=list(TRACE_SHAPE), trace_dtype=str(trace.dtype), trace_all_zero=True)
 
 
-def validate_cases(production, native, device, report, save, synchronize, *, after_call=None):
+def validate_cases(production, native, device, report, save, synchronize, *, after_call=None, kind=ABI):
     import torch
     from mindie_laser_vscale_reference import _mapping_inputs
     from profile_mindie_laser_pv_phases import ProbeValidationGuard
+    config = kind_config(kind)
     guard = ProbeValidationGuard(report, save)
     report["cases"] = []
     try:
@@ -143,21 +174,21 @@ def validate_cases(production, native, device, report, save, synchronize, *, aft
                 if after_call:
                     guard.mark(payload, PRODUCTION, "host_marker_check", isolated=True)
                     after_call(PRODUCTION, row)
-                guard.mark(payload, ABI, "about_to_launch", isolated=True)
+                guard.mark(payload, kind, "about_to_launch", isolated=True)
                 result = abi_call(native, payload)
-                guard.mark(payload, ABI, "awaiting_sync", isolated=True)
+                guard.mark(payload, kind, "awaiting_sync", isolated=True)
                 synchronize()
                 if after_call:
-                    guard.mark(payload, ABI, "host_marker_check", isolated=True)
-                    after_call(ABI, row)
-                guard.mark(payload, ABI, "trace_and_all_output_cpu", isolated=True)
-                row.update(check_result(result, payload, expected), status="passed", probe_mode=0, expcast=False)
-                guard.mark(payload, ABI, "completed", isolated=True)
-                print(f"ABI-only passed: {dtype} B{case['batch']} H{case['heads']} "
+                    guard.mark(payload, kind, "host_marker_check", isolated=True)
+                    after_call(kind, row)
+                guard.mark(payload, kind, "trace_and_all_output_cpu", isolated=True)
+                row.update(check_result(result, payload, expected, kind=kind), status="passed", probe_mode=0, expcast=False)
+                guard.mark(payload, kind, "completed", isolated=True)
+                print(f"{config['label']} passed: {dtype} B{case['batch']} H{case['heads']} "
                       f"Q{case['queries']} K{case['keys']} D{case['dim']}; ALL padded outputs exact; trace zero", flush=True)
                 del inputs, payload, expected, result
     except Exception as error:
-        guard.fail(error, origin="abi_only_validation")
+        guard.fail(error, origin=config["failure_origin"])
         if report["cases"]:
             report["cases"][-1].update(status="failed", error=f"{type(error).__name__}: {error}")
         guard.save_failure()
@@ -165,10 +196,12 @@ def validate_cases(production, native, device, report, save, synchronize, *, aft
 
 
 def worker(args):
+    resolve_defaults(args)
+    config = kind_config(args.kind)
     import benchmark_mindie_laser_quant as quant
     directory = Path(args._run_dir)/"paired"/"local"
     directory.mkdir(parents=True, exist_ok=True)
-    report = dict(status="running", stage="provenance", pid=os.getpid(), scope=SCOPE, cases=[])
+    report = dict(status="running", stage="provenance", pid=os.getpid(), kind=args.kind, scope=config["scope"], cases=[])
     save = lambda: quant.common.write_json(directory/"report.json", report)
     save()
     try:
@@ -188,8 +221,8 @@ def worker(args):
         production = load_quant_laser(providers[PRODUCTION].bridge_path, preprocessing="fused",
             preprocess_build=args.preprocess_build, torch_namespace="vc_laser_quant_vscale_pv_prefetch",
             v_quantize=False, expcast=False, check_finite=False)
-        torch.ops.load_library(providers[ABI].bridge_path)
-        native = torch.ops.vc_laser_cube_pv_abi_probe.la.default
+        torch.ops.load_library(providers[args.kind].bridge_path)
+        native = getattr(torch.ops, f"vc_laser_cube_{args.kind}_probe").la.default
         check_schema(production.native, abi=False)
         check_schema(native, abi=True)
         acl = ctypes.CDLL("libascendcl.so")
@@ -212,10 +245,10 @@ def worker(args):
         save()
         with torch.no_grad():
             validate_cases(production, native, f"npu:{args.device}", report, save,
-                           torch.npu.synchronize, after_call=marker_check)
+                           torch.npu.synchronize, after_call=marker_check, kind=args.kind)
         inspect_providers(providers, report, directory, cann_root=cann, soc=evidence[PRODUCTION]["build_manifest"]["soc"])
         quant.inspect_fused_preprocessor(providers[PRODUCTION], report)
-        report.update(status="passed", stage="complete", conclusion="Small ABI-only checks passed; no conclusion about old probe failure cause")
+        report.update(status="passed", stage="complete", conclusion=f"Small {config['label']} checks passed; no conclusion about old probe failure cause")
         save()
         return 0
     except Exception as error:
@@ -252,6 +285,8 @@ def terminate_worker(process):
 
 
 def launch(args, providers):
+    resolve_defaults(args)
+    config = kind_config(args.kind)
     from mindie_laser_scale_reuse_checks import paired_environment
     directory = Path(args._run_dir)/"paired"/"local"
     directory.mkdir(parents=True, exist_ok=True)
@@ -259,11 +294,11 @@ def launch(args, providers):
     for key in ("ACL_OP_COMPILER_CACHE_DIR", "ASCEND_CACHE_PATH", "XDG_CACHE_HOME"):
         Path(env[key]).mkdir(parents=True, exist_ok=True)
     command = [sys.executable, "-u", str(Path(__file__).resolve()), "--_worker", "--_run-dir", args._run_dir]
-    for key in (*MANIFESTS, "device", "cpu_threads"):
+    for key in (*MANIFESTS, "device", "cpu_threads", "kind"):
         command += ["--"+key.replace("_", "-"), str(getattr(args, key))]
     logfile, path = directory/"worker.log", directory/"report.json"
     timeout, termination = False, None
-    print(f"Starting ABI-only worker (host timeout {args.worker_timeout:g}s); log: {logfile}", flush=True)
+    print(f"Starting {config['label']} worker (host timeout {args.worker_timeout:g}s); log: {logfile}", flush=True)
     with logfile.open("wb") as log:
         process = subprocess.Popen(command, env=env, stdout=log, stderr=subprocess.STDOUT,
                                    start_new_session=os.name == "posix")
@@ -287,11 +322,13 @@ def launch(args, providers):
 
 
 def parent(args):
+    resolve_defaults(args)
+    config = kind_config(args.kind)
     import benchmark_mindie_laser_quant as quant
     output = Path(args.output).resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
-    args._run_dir = tempfile.mkdtemp(prefix="mindie_laser_pv_abi_", dir=output.parent)
-    report = dict(status="running", scope=SCOPE, run_dir=args._run_dir, workers={})
+    args._run_dir = tempfile.mkdtemp(prefix=f"mindie_laser_{args.kind}_", dir=output.parent)
+    report = dict(status="running", kind=args.kind, scope=config["scope"], run_dir=args._run_dir, workers={})
     save = lambda: quant.common.write_json(output, report)
     save()
     try:
@@ -301,22 +338,29 @@ def parent(args):
         report["workers"]["paired"] = result = launch(args, providers)
         save()
         if result.get("timed_out") or result.get("returncode") != 0 or result.get("status") != "passed":
-            raise RuntimeError("ABI-only validation failed; retain report/worker log and stop device work")
+            raise RuntimeError(f"{config['label']} validation failed; retain report/worker log and stop device work")
         report["status"] = "passed"
         save()
-        print(f"Small ABI-only validation passed; no performance or old-probe fix claim. Report: {output}", flush=True)
+        print(f"Small {config['label']} validation passed; no performance or old-probe fix claim. Report: {output}", flush=True)
         return 0
     except Exception as error:
         report.update(status="failed", error=f"{type(error).__name__}: {error}", no_additional_device_work=True)
         save()
-        print(f"ABI-only validation stopped: {error}\nReport: {output}", file=sys.stderr, flush=True)
+        print(f"{config['label']} validation stopped: {error}\nReport: {output}", file=sys.stderr, flush=True)
         return 1
 
 
+class IsolationParser(argparse.ArgumentParser):
+    def parse_args(self, args=None, namespace=None):
+        return resolve_defaults(super().parse_args(args, namespace))
+
+
 def parser():
-    result = argparse.ArgumentParser(description=__doc__)
-    for name, default in MANIFESTS.items(): result.add_argument("--"+name.replace("_", "-"), default=default)
-    result.add_argument("--output", default="results/mindie_laser_pv_abi.json")
+    result = IsolationParser(description=__doc__)
+    result.add_argument("--kind", choices=KINDS, default=ABI)
+    for name, default in MANIFESTS.items():
+        result.add_argument("--"+name.replace("_", "-"), default=None if name == "abi_build" else default)
+    result.add_argument("--output", default=None)
     result.add_argument("--device", type=int, default=0)
     result.add_argument("--cpu-threads", type=int, default=4)
     result.add_argument("--worker-timeout", type=float, default=180)

@@ -124,6 +124,37 @@ def fake_runner(commands):
     return run
 
 
+def test_symbols_only_ignores_failed_profile_and_never_disassembles(evidence, monkeypatch):
+    args = options(evidence)
+    args.symbols_only = True
+    args.profile = evidence.directory / "missing-failure-report.json"
+    monkeypatch.setattr(inspect, "_profile", lambda *args: pytest.fail("Must not read old failure context"))
+    commands = []
+    result = inspect.collect(args, runner=fake_runner(commands))
+    assert result["status"] == "collected" and not result["errors"]
+    assert result["symbols_only"] and "profile" not in result["requested_inputs"]
+    assert result["profile"] == {"status": "not_requested", "pc_records": []}
+    assert [command[1] for command in commands] == ["--version", "--syms", "--syms"]
+    for provider in result["providers"].values():
+        obj = provider["objects"][0]
+        assert obj["inspection_status"] == "symbols_collected"
+        assert [symbol["size"] for symbol in obj["symbols"]] == [0x6000, 0x1000]
+        assert not obj["pc_candidates"]["windows"]
+        assert "disassembly_diagnostics" not in obj
+
+
+def test_symbols_only_still_requires_matching_build_and_metadata_hashes(evidence):
+    args = options(evidence)
+    args.symbols_only = True
+    record = json.loads(evidence.metadata.read_text(encoding="utf-8"))
+    record["sha256"] = "0" * 64
+    write_json(evidence.metadata, record)
+    commands = []
+    result = inspect.collect(args, runner=fake_runner(commands))
+    assert result["status"] == "partial" and not commands
+    assert all(not obj["symbols"] for p in result["providers"].values() for obj in p["objects"])
+
+
 def test_hash_mismatch_never_executes_disassembler(evidence):
     record = json.loads(evidence.manifest.read_text(encoding="utf-8"))
     record["device_binaries"][0]["sha256"] = "0" * 64

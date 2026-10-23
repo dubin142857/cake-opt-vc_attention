@@ -26,7 +26,7 @@ from scripts.prepare_cann_fas_source import PreparationError, ensure_checkout, c
 SOURCE_LOCK = original.SOURCE_LOCK
 OP_ROOT = original.OP_ROOT
 PREPARE_SCRIPT = original.PREPARE_SCRIPT
-KINDS = ("int8", "fp16", "vscale", "pv", "pv_abi")
+KINDS = ("int8", "fp16", "vscale", "pv", "pv_abi", "pv_const")
 TRACE_SHAPE = [4, 2, 3, 24]
 PROBE_CONTRACT = {
     "output_index": 2, "dtype": "int64", "shape": TRACE_SHAPE,
@@ -54,13 +54,23 @@ PV_ABI_CONTRACT = {
     "kernel_scope": "V-only parent Cube/Vector/mapping bytes retained after identity rename; no probe header, member or hooks",
     "purpose": "Small-input ABI isolation only; no performance measurements or claimed timeout fix",
 }
+PV_CONST_CONTRACT = {
+    **PV_PROBE_CONTRACT,
+    "modes": {"0": "constant plain; original v2 probe source retained"},
+    "entry_mode": "SetupCubeProbe(cube_trace_gm, 0); literal device-entry mode",
+    "allocation": "fresh host-requested zero-filled trace; disabled probe must leave it zero",
+    "kernel_scope": "Original v2 PV probe header/member/hooks retained; entry mode is literal zero instead of a tiling load",
+    "purpose": "Small-input constant-mode isolation only; no timing, proven dead-code elimination, or timeout root-cause claim",
+    "calibration": "Exact ALL padded output comparison against V-only production in the same run; zero trace required",
+}
 
 
 def identity(kind):
     if kind not in KINDS:
         raise PreparationError(f"Unknown Cube-probe kind: {kind}")
     name = f"vc_laser_cube_{kind}_probe"
-    op_type = f"VcLaserCube{'PvAbi' if kind == 'pv_abi' else kind.capitalize()}ProbeAttention"
+    suffix = {"pv_abi": "PvAbi", "pv_const": "PvConst"}.get(kind, kind.capitalize())
+    op_type = f"VcLaserCube{suffix}ProbeAttention"
     return dict(op_name=name + "_attention", op_type=op_type,
                 native_api="aclnn" + op_type, vendor=name)
 
@@ -75,12 +85,12 @@ def marker_environment(kind):
 
 def quantized(kind):
     identity(kind)
-    return kind in ("int8", "vscale", "pv", "pv_abi")
+    return kind in ("int8", "vscale", "pv", "pv_abi", "pv_const")
 
 
 def baseline_module(kind):
     identity(kind)
-    return {"int8": quant, "fp16": original, "vscale": vscale, "pv": pv, "pv_abi": pv}[kind]
+    return {"int8": quant, "fp16": original, "vscale": vscale, "pv": pv, "pv_abi": pv, "pv_const": pv}[kind]
 
 
 def _rename(data, kind):
@@ -146,7 +156,7 @@ def patch_abi(path, data, kind):
 static ge::graphStatus''')
         data = once(data, b"    context->SetOutputDataType(1, ge::DT_FLOAT);",
                     b"    context->SetOutputDataType(1, ge::DT_FLOAT);\n    context->SetOutputDataType(2, ge::DT_INT64);")
-        if kind in ("pv", "pv_abi"):
+        if kind in ("pv", "pv_abi", "pv_const"):
             data = once(data, b"    traceOut->SetDim(1, 2);", b"    traceOut->SetDim(1, 3);")
             data = once(data, b"    traceOut->SetDim(3, 24);", b"    traceOut->SetDim(3, 64);")
     elif path.endswith(f"/op_host/{name}_tiling.h"):
@@ -154,7 +164,7 @@ static ge::graphStatus''')
     elif path.endswith(f"/op_host/{name}_tiling.cpp"):
         attr_index = 8 if quantized(kind) else 7
         anchor = b"    tilingData.set_isHighPrecision(*isHighPrecision);"
-        invalid_mode = "*probeMode != 0" if kind == "pv_abi" else "*probeMode < 0 || *probeMode > 2"
+        invalid_mode = "*probeMode != 0" if kind in ("pv_abi", "pv_const") else "*probeMode < 0 || *probeMode > 2"
         data = once(data, anchor, anchor + f'''
     const auto probeMode = context->GetAttrs()->GetAttrPointer<int64_t>({attr_index});
     if (probeMode == nullptr || {invalid_mode}) return ge::GRAPH_FAILED;
@@ -171,7 +181,8 @@ static ge::graphStatus''')
             raise PreparationError("Expected exactly one Cube and one Vector entry")
         # Instrument only the Cube instance. The Vector branch remains byte-for-byte unchanged.
         if kind != "pv_abi":
-            data = data.replace(b"    op.Run();", b"    op.SetupCubeProbe(cube_trace_gm, tiling_data->probeMode);\n    op.Run();", 1)
+            mode = b"0" if kind == "pv_const" else b"tiling_data->probeMode"
+            data = data.replace(b"    op.Run();", b"    op.SetupCubeProbe(cube_trace_gm, " + mode + b");\n    op.Run();", 1)
     return data
 
 
@@ -179,7 +190,7 @@ def expected_files(source, kind="int8"):
     if kind == "pv_abi":
         apply = lambda path, data: data
         header_basename = None
-    elif kind == "pv":
+    elif kind in ("pv", "pv_const"):
         from scripts.mindie_laser_pv_probe_patch import apply
         header_basename = "vc_laser_pv_probe.h"
     else:
@@ -217,7 +228,8 @@ def _manifest_identity(source, kind):
                   marker_token=marker_token(kind), marker_environment=marker_environment(kind),
                   upstream={"url": SOURCE_LOCK.url, "commit": SOURCE_LOCK.commit, "tag": SOURCE_LOCK.tag},
                   diagnostic_instrumentation=kind != "pv_abi",
-                  probe_contract=(PV_ABI_CONTRACT if kind == "pv_abi" else
+                  probe_contract=(PV_CONST_CONTRACT if kind == "pv_const" else
+                                  PV_ABI_CONTRACT if kind == "pv_abi" else
                                   PV_PROBE_CONTRACT if kind == "pv" else PROBE_CONTRACT), probe_kind=kind)
     if kind == "int8":
         record.update(qk_scale_contract=quant.SCALE_CONTRACT, scale_reuse_contract=quant.REUSE_CONTRACT)
@@ -233,7 +245,7 @@ def _manifest_identity(source, kind):
                           "Parent contracts record provenance; vector_scale_contract defines "
                           "the current scale ownership and arithmetic. Diagnostic hooks do "
                           "not alter the fixed vector_scale parent math."))
-    elif kind in ("pv", "pv_abi"):
+    elif kind in ("pv", "pv_abi", "pv_const"):
         parent_identity = pv._identity(source)
         record.update({key: value for key, value in parent_identity.items() if key.endswith("_contract")})
         record.update(baseline_variant=parent_identity["variant"],
@@ -244,11 +256,15 @@ def _manifest_identity(source, kind):
             record["inherited_contract_scope"] = (
                 "V-only parent contracts and device schedule are unchanged; the additional interface "
                 "trace is allocated and zeroed by the host, with no device probe code.")
+        elif kind == "pv_const":
+            record["inherited_contract_scope"] = (
+                "V-only parent math/schedule and v2 diagnostic source hooks are retained; "
+                "the device entry passes literal zero. Compiler elimination is not established.")
     return record
 
 
 def cached_references(reference, kind):
-    if kind in ("pv", "pv_abi"):
+    if kind in ("pv", "pv_abi", "pv_const"):
         return pv.cached_references(reference)
     if kind != "vscale":
         return quant.cached_references(reference)
@@ -277,7 +293,7 @@ def prepare(source_dir, reference_dir, manifest, *, kind="int8", offline=True):
     records = _audit(source, patches, kind)
     report = {"schema_version": 1, **_manifest_identity(source, kind), "original_operator": OP_ROOT,
               "algorithm_scope": ("Original pinned FP16 QK/PV Laser" if kind == "fp16" else
-                                  pv.ALGORITHM if kind in ("pv", "pv_abi") else
+                                  pv.ALGORITHM if kind in ("pv", "pv_abi", "pv_const") else
                                   vscale.ALGORITHM if kind == "vscale" else
                                   "Scale-reuse INT8 QK/INT32/FIX DEQF16; original FP16 PV"),
               "kernel_inverse_rename_equivalent": False, "source_files": records,

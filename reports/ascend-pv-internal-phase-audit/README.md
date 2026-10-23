@@ -6,7 +6,7 @@
 
 固定上游 MindIE-SD commit `71098c20ff90838d1fd1ca0a40515c751a3869b0`。诊断为独立 kind `pv`、op `VcLaserCubePvProbeAttention`、vendor/namespace `vc_laser_cube_pv_probe`。生产 V-only、原版 FP16 和融合量化器的既有构建保持可用；准备源码只读取本地固定 Git objects。
 
-原诊断入口为 `bash scripts/run_mindie_laser_pv_phases.sh`；**v2 已在远端失败，当前先使用下述离线检查入口，不重复运行探针**。原计划默认 BF16 BNSD `[1,28,37741,128]`：先逐模式同步 tiny smoke，再保留原有异步排队输出检查；通过后独立测量原版和 V-only 的 full/prepared/native，随后在相同 INT8 payload 上校准生产、plain、issue、detail，最后采样。没有将诊断版当优化候选，没有把 ticks 当生产百分比。
+原诊断入口为 `bash scripts/run_mindie_laser_pv_phases.sh`；**v2 已在远端失败，不重复运行旧探针。当前 ABI-only 六个小场景已通过，下一步为下述 constant-plain 隔离**。原计划默认 BF16 BNSD `[1,28,37741,128]`：先逐模式同步 tiny smoke，再保留原有异步排队输出检查；通过后独立测量原版和 V-only 的 full/prepared/native，随后在相同 INT8 payload 上校准生产、plain、issue、detail，最后采样。没有将诊断版当优化候选，没有把 ticks 当生产百分比。
 
 2026-10-23 远端 v1 的首个 FP16 B1/H2/Q1/K1/D128 检查发生 `507014 / aicore timeout`，设备报 FIXP timeout/trap，尚未进入计时。因三模式连续提交，v1 日志不能唯一定位失败模式，更不能确认屏障或私有数组就是根因。已证实的主机缺陷是异常后的 `finally: save()` 再次 flush/读取 trace，覆盖原始异常。schema v2 修复首次错误保留与模式定位，同时移除新增全流水 drain。旧 probe 编译产物保留；v2 在独立 `*_v2_*` 缓存中从本地固定 Git 对象构建。后续 v2 仍失败，详见下节。
 
@@ -47,6 +47,27 @@ bash scripts/run_mindie_laser_pv_abi.sh
 若通过，可缩小到“这些小输入上的扩展接口可工作”，随后再隔离插桩编译结构；若失败，保留生产/候选各自的 launch/sync 阶段和首个错误，继续检查扩展接口及其编译执行。两者均不能单独证明旧 v2 的超时根因。本地无 CCE/NPU，本轮没有性能或设备修复结论。
 
 本轮相关本地回归共 **206 passed**：离线检查器、新 ABI 构建与既有 Cube/PV 回归 175 项，ABI-only 验证流程 31 项。覆盖设备主体源码等价、旧四族生成内容与身份不变、首次异常不被后续设备访问覆盖、超时保留证据、首调用 marker 及后续缓存复用。Python 编译、Bash 语法和 diff 检查通过；这些检查不替代远端 CCE 编译与 NPU 执行。
+
+## ABI-only 远端通过：只改变编译期关闭条件
+
+2026-10-23 用户回传 `results/mindie_laser_pv_abi.json` 的终端摘要：独立 bridge 编译成功，六个小输入全部通过；FP16/BF16 的 Q1/K1/D128、Q17/K129/D64、Q65/K257/D128 均为 B1/H2，全部 padded native 输出精确一致、trace 全零。包括此前 runtime plain0 超时的原 tiny 输入。`allow_internel_format=False` 提示后验证继续并通过，不是本次失败。
+
+该结果证明扩展接口和未插桩设备主体在这些小输入上可以工作；不证明长序列正确性、速度、旧 v2 已修复，或动态数组就是根因。本地没有用户完整 JSON，以上是终端回传事实。结合旧 AIC 函数增大的证据，下一步检查运行时关闭模式的编译结构，而不是继续修改接口或放宽精度门限。
+
+新增独立 kind `pv_const`、op `VcLaserCubePvConstProbeAttention`、vendor/namespace `vc_laser_cube_pv_const_probe`。它保留 v2 的原始 `PvProbe` header、成员数组及全部 hooks，只把 kernel 入口中的 `SetupCubeProbe(cube_trace_gm, tiling_data->probeMode)` 改为 `SetupCubeProbe(cube_trace_gm, 0)`。bridge 和 tiling 只接受 mode 0，ExpCast 关闭。`Init`、`SetupCubeProbe`、`Run` 和采样方法是 inline，常量实参可为编译器删除未执行分支提供条件；不能提前保证 CCE 已删除全部状态或生成了原版机器码。不能同时删数组或换空类，否则不再是这次对照。
+
+```bash
+git pull origin master
+bash scripts/run_mindie_laser_pv_const.sh
+```
+
+入口先核验已有 ABI-only 通过报告与生产/ABI-only/融合量化器构建，只从本地 Git objects 构建新 provider，缓存独立为 `mindie_laser_cube_pv_const_probe_*`。随后读取新 provider 与 ABI-only 的 `llvm-objdump --syms` 输出，核对构建 SHA 并记录实际 AIC/AIV 大小。`--symbols-only` 不读旧故障日志、不尝试反汇编或 PC 映射；工具或资源字段缺失只留下部分辅助证据。符号大小相等不证明指令相等，大小减小不证明数组或全部分支已消除。
+
+验证仍只跑原六个小输入，共用 production payload、逐调用单独同步、全部 padded 输出 exact、trace 全零；不启动旧 runtime0，不进入长 shape 或性能计时。沿用首错停止和 180 秒主机进程超时限制，主机终止不代表设备任务取消。输出为 `results/mindie_laser_pv_const.json`、`.log`；符号证据为 `results/mindie_laser_pv_const_symbols.json`、`.log`。
+
+若通过，说明固定关闭条件的编译版本可以在这些输入执行，可进一步改用单窗口、少量具名标量的最小 active 探针；若失败，说明仅传常量不足以恢复执行，仍需考虑常量传播是否发生及其他编译差异。两种结果都不能单独指认寄存器溢出、编译器缺陷或某条 FIXP 指令。当前没有 constant-plain 的远端结果。
+
+本次相关本地测试 **148 passed**：符号/离线检查 42 项、共享小输入验证流程 50 项、新 constant-plain 与 ABI-only 构建 22 项、既有 Cube/PV 构建和 patch 回归 34 项。测试确认五种旧 provider 的生成内容/身份/路径不变，新增源码在身份归一化后仅入口常量和 mode0 guard 与 v2 不同。Python、Bash 及内嵌 Python 语法检查通过。本地无 CCE/NPU，仍需远端验证。
 
 ## 同步及观测边界
 
