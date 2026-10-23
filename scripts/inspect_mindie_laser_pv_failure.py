@@ -147,6 +147,20 @@ def parse_instructions(text):
     return result
 
 
+def disassembly_diagnostics(text, instructions):
+    """Distinguish absent tool mnemonics from an unsupported text layout."""
+    address_lines = [line for line in text.splitlines()
+                     if re.match(r"\s*[0-9a-fA-F]+:\s+", line)]
+    unavailable = sum("<not available>" in line.lower() for line in address_lines)
+    unknown = sum("<unknown>" in line.lower() for line in address_lines)
+    status = ("unavailable" if unavailable and not instructions else
+              "partial" if unavailable or unknown else
+              "parsed" if instructions else "unparsed")
+    return dict(status=status, address_rows=len(address_lines), parsed_rows=len(instructions),
+                not_available_rows=unavailable, unknown_rows=unknown,
+                scope="Address placeholders are not instructions. Output alone does not explain why decoding is unavailable.")
+
+
 def candidate_windows(pc_records, symbols, instructions):
     """Bound/check each hypothesis, without choosing an unproven AIC/AIV side."""
     windows, rejected = [], []
@@ -211,7 +225,8 @@ def discover_objdump(documents, override=None):
             result["error"] = f"Explicit llvm-objdump path is not a file: {candidate}"
         return result
     directories = ("compiler/ccec_compiler/bin", "compiler/bin", "compiler/bisheng/bin",
-                   "tools/ccec_compiler/bin", "tools/bisheng/bin", "bin",
+                   "compiler/bisheng_compiler/bin", "tools/ccec_compiler/bin",
+                   "tools/bisheng_compiler/bin", "tools/bisheng/bin", "bin",
                    "aarch64-linux/compiler/ccec_compiler/bin", "x86_64-linux/compiler/ccec_compiler/bin")
     for root in roots:
         for directory in directories:
@@ -241,6 +256,38 @@ def _run_objdump(tool, flag, object_path, directory, runner):
     except (OSError, subprocess.SubprocessError) as error:
         evidence["error"] = f"{type(error).__name__}: {error}"
     return evidence
+
+
+def raw_output_preview(command, *, lines=45, line_chars=300):
+    """Bounded verbatim evidence when a tool succeeds but yields no parsed ISA.
+
+    This is deliberately not a second instruction parser: headers, raw words,
+    unknown opcodes and error messages remain uninterpreted text.
+    """
+    result = {"command": command["command"], "returncode": command["returncode"],
+              "interpretation": "Raw tool output only; no instruction or PC mapping implied."}
+    for key in ("stdout_path", "stderr_path"):
+        path = Path(command[key])
+        item = result[key] = {"path": str(path), "lines": []}
+        try:
+            item["bytes"] = path.stat().st_size
+            with path.open(encoding="utf-8", errors="replace") as stream:
+                for _ in range(lines):
+                    line = stream.readline(line_chars+2)
+                    if not line:
+                        break
+                    content = line.rstrip("\r\n")
+                    if len(content) > line_chars:
+                        item["lines"].append(content[:line_chars]+" ... [line truncated]")
+                        # Do not scan an arbitrarily large single line to skip it.
+                        item["truncated"] = True
+                        break
+                    item["lines"].append(content)
+                else:
+                    item["truncated"] = bool(stream.read(1))
+        except OSError as error:
+            item["error"] = f"{type(error).__name__}: {error}"
+    return result
 
 
 def _profile(path, directory, report):
@@ -465,14 +512,27 @@ def collect(args, *, runner=None, report=None):
                     if not obj["symbols"]:
                         _error(report, label+" symbols", "No sized function symbol table rows parsed; raw output retained")
                 if "--disassemble" in successful:
-                    instructions = parse_instructions(Path(successful["--disassemble"]["stdout_path"]).read_text(encoding="utf-8", errors="replace"))
+                    raw_disassembly = Path(successful["--disassemble"]["stdout_path"]).read_text(encoding="utf-8", errors="replace")
+                    instructions = parse_instructions(raw_disassembly)
+                    obj["disassembly_diagnostics"] = disassembly_diagnostics(raw_disassembly, instructions)
                     obj["instruction_count"] = len(instructions)
-                    if not instructions:
+                    diagnostic = obj["disassembly_diagnostics"]
+                    if diagnostic["status"] == "unavailable":
+                        _error(report, label+" disassembly", "llvm-objdump emitted <not available> address placeholders, not instructions; changing the parser cannot decode them")
+                    elif diagnostic["status"] == "partial":
+                        _error(report, label+" disassembly", "Some addresses have unavailable/unknown instructions; only actual decoded instructions can form static candidates")
+                    elif not instructions:
                         _error(report, label+" disassembly", "No instruction rows parsed; raw output retained")
                     obj["pc_candidates"] = candidate_windows(report["profile"]["pc_records"], obj["symbols"], instructions)
             except OSError as error:
                 _error(report, label+" objdump output", error)
-            obj["inspection_status"] = "collected" if len(successful) == 2 and obj["symbols"] and instructions else "partial"
+            if not instructions or obj.get("disassembly_diagnostics", {}).get("status") == "partial":
+                obj["unparsed_disassembly_preview"] = [
+                    raw_output_preview(item) for item in obj["commands"]
+                    if item["command"][1] == "--disassemble"]
+            diagnostic_status = obj.get("disassembly_diagnostics", {}).get("status")
+            obj["inspection_status"] = ("disassembly_unavailable" if diagnostic_status == "unavailable" else
+                "collected" if len(successful) == 2 and obj["symbols"] and diagnostic_status == "parsed" else "partial")
     report["resource_comparison"] = [
         {"provider": label, "object": obj["path"], "sha256_matches": obj["sha256_matches"],
          "resource_status": obj["metadata"]["resource_status"], "exported_fields": obj["metadata"]["resource_fields"],
@@ -522,6 +582,10 @@ def main(argv=None):
             windows = len(candidates)
             print(f"  {label}: {Path(obj['path']).name}; SHA match={obj['sha256_matches']}; "
                   f"symbols={len(symbols)}; static PC candidates={windows}; resources={metadata.get('resource_status', 'unknown')}")
+            if obj.get("disassembly_diagnostics"):
+                print("    disassembly_diagnostics="+json.dumps(obj["disassembly_diagnostics"], ensure_ascii=True))
+                if obj["disassembly_diagnostics"]["status"] == "unavailable":
+                    print("    Tool did not provide instructions (<not available>); no parser fix or PC instruction mapping is possible from these placeholders.")
             for field in metadata.get("resource_fields", [])[:8]:
                 value = json.dumps(field["value"], ensure_ascii=True)
                 print(f"    exported {field['path']}={value[:180]}{' ... (see JSON)' if len(value)>180 else ''}")
@@ -533,6 +597,18 @@ def main(argv=None):
                 hit = next(i for i, row in enumerate(rows) if row["address"] == window["target_address"])
                 for row in rows[max(0, hit-3):hit+4]:
                     print(f"      {'>' if row['address'] == window['target_address'] else ' '} {row['text'].strip()}")
+            for preview in obj.get("unparsed_disassembly_preview", []):
+                print(f"    RAW disassembler output (uninterpreted); returncode={preview['returncode']}")
+                print(f"    command={json.dumps(preview['command'], ensure_ascii=True)}")
+                for key in ("stdout_path", "stderr_path"):
+                    item = preview[key]
+                    print(f"    {key}: {item['path']}; bytes={item.get('bytes', 'unknown')}")
+                    for line in item["lines"]:
+                        print("      "+line)
+                    if item.get("error"):
+                        print("      "+item["error"])
+                    if item.get("truncated"):
+                        print("      [preview truncated; full raw output retained]")
     for pc in report.get("profile", {}).get("pc_records", [])[:4]:
         print(f"  reported PC delta={pc['direct_delta_hex']} (hypothesis only)")
     for error in report["errors"][:8]:

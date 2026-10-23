@@ -25,9 +25,28 @@ bash scripts/inspect_mindie_laser_pv_failure.sh
 
 结果摘要为 `results/mindie_laser_pv_failure.log`，结构化结果为 `results/mindie_laser_pv_failure.json`；原始工具输出保存在独立 artifact 目录。编译资源按实际导出的字段记录，缺少 stack/register 信息即为未知，不能凭源码数组大小断言寄存器溢出。日志中 `current_pc - start_pc = 0x50b4` 仅为直接相减值；运行时载入基址、MIX AIC/AIV 物理符号和对象身份尚未全部确认。检查器的符号内候选窗口是显式假设，不能作为已经锁定的故障指令，更不能从未知 FIXP 位域推算根因。
 
-下一步根据二进制证据决定隔离实验：保留新增接口而彻底使用原版 Cube 源码，可区分 ABI 链路与插桩编译结构；通过后再设计更小的编译期探针。尚不把这一隔离设想当作修复，也不要求当前再次等待 v2 超时。
+离线检查器本地回归 **40 passed**：覆盖构建/元数据哈希冲突、嵌套哈希不误判、工具缺失/超时、意外解析错误保留已采证据、不同 section 的同地址隔离、PC 边界及未知指令拒绝，并增加下述实际格式的不可用分类与有界原始输出预览。测试使用合成工具输出，不代表本地有 CANN/NPU 或已经确认故障指令。
 
-离线检查器本地回归 **30 passed**：覆盖构建/元数据哈希冲突、嵌套哈希不误判、工具缺失/超时、意外解析错误保留已采证据、不同 section 的同地址隔离、PC 边界及未知指令拒绝；真实回传日志已核对提取 core 20 和 `0x50b4`。Python 编译、Bash 语法及 diff 检查通过。测试使用合成工具输出，不代表本地有 CANN/NPU 或已经确认故障指令。
+## 反汇编不可用后：独立 ABI-only 隔离
+
+2026-10-23 用户回传实际 `llvm-objdump --disassemble` 输出前 45 行：probe 和 baseline 的 ELF 格式均为 `elf64-hiipu`，回传片段的地址行均为 `<not available>`，stderr 为空。这些占位没有提供可解码的指令，不能靠放宽解析器得到指令，也不能据此断言对象损坏或寄存器溢出。检查器现在将只有这类占位、无实际指令的情形标为 `disassembly_unavailable`，保留原始输出；未知地址行不参与 PC 候选定位。不要求安装工具或重编已有内核来重试这个检查。
+
+符号表给出的 probe/baseline AIC 函数大小分别为 43352/26680 字节，增加 16672 字节（约 62.5%）；AIV 均为 10036 字节。这证明两个 AIC 编译体的大小不同，不能把 plain 当成原版机器码。它不能证明大小增长就是 FIXP 超时根因；AIV 同大小也不等于机器码完全一致。资源字段仍未知，`0x50b4` 仍是未确认映射的 PC 相减值。
+
+新增独立 kind `pv_abi`、op `VcLaserCubePvAbiProbeAttention`、vendor/namespace `vc_laser_cube_pv_abi_probe`。它保留 probe 的第三个 native 输出、`probe_mode` attr/tiling 字段与 PyTorch 二输出接口，但设备 Cube/Vector/mapping 使用 V-only 的原始源码，不引入探针头文件、成员数组或计时/写记录钩子。kernel 入口仅保留额外 trace 指针且不使用它；bridge 分配并清零 int64 `[4,3,3,64]` trace，只接受 mode 0、ExpCast 关闭。身份重命名外的设备主体逐字节等价由本地测试验证，**不声称编译后机器码等价**。
+
+```bash
+git pull origin master
+bash scripts/run_mindie_laser_pv_abi.sh
+```
+
+脚本核验并复用现有 V-only 和融合量化器，只从本地 Git objects 构建新的 ABI-only provider；源码、安装和 bridge 使用独立 `mindie_laser_cube_pv_abi_probe_*` 路径。它不运行旧 v2，也不测长序列性能。独立进程依次检查 FP16/BF16 的 B1/H2/Q1/K1/D128、Q17/K129/D64、Q65/K257/D128；每个输入共用同一量化 payload，先运行并单独同步 V-only，再运行并单独同步 ABI-only，要求全部 padded native 输出精确一致、trace 全零。
+
+结果保存到 `results/mindie_laser_pv_abi.json`、日志同名 `.log`。首次错误后只保存主机证据，不继续读取设备或发射后续用例。worker 默认 180 秒超时；超时会尝试终止主机进程组，但**不证明 NPU 任务已停止，也不自动继续其他设备测试**。
+
+若通过，可缩小到“这些小输入上的扩展接口可工作”，随后再隔离插桩编译结构；若失败，保留生产/候选各自的 launch/sync 阶段和首个错误，继续检查扩展接口及其编译执行。两者均不能单独证明旧 v2 的超时根因。本地无 CCE/NPU，本轮没有性能或设备修复结论。
+
+本轮相关本地回归共 **206 passed**：离线检查器、新 ABI 构建与既有 Cube/PV 回归 175 项，ABI-only 验证流程 31 项。覆盖设备主体源码等价、旧四族生成内容与身份不变、首次异常不被后续设备访问覆盖、超时保留证据、首调用 marker 及后续缓存复用。Python 编译、Bash 语法和 diff 检查通过；这些检查不替代远端 CCE 编译与 NPU 执行。
 
 ## 同步及观测边界
 

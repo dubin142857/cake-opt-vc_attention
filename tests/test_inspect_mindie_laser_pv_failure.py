@@ -25,6 +25,22 @@ SYMBOLS = """SYMBOL TABLE:
 0000000000008000 g     F .text 0000000000001000 vc_laser_cube_pv_probe_attention_mix_aiv
 """
 
+TOOL_VERSION = "LLVM version fixture\n  Registered Targets:\n    hiipu - fixture target\n"
+
+# Minimized from the remote CANN display: address rows contain this placeholder,
+# not encoded bytes or decoded mnemonics. Addresses are sparse for a small test.
+HIIPU_UNAVAILABLE = """Kernel_hash.bin: file format elf64-hiipu
+
+Disassembly of section .text:
+
+0000000000000000 <vc_laser_cube_pv_probe_attention_mix_aic>:
+       0: <not available>
+       4: <not available>
+       8: <not available>
+       c: <not available>
+    50b4: <not available>
+"""
+
 DISASSEMBLY = """Disassembly of section .text:
 0000000000000000 <vc_laser_cube_pv_probe_attention_mix_aic>:
     50ac: 00 00 00 00    fixture_before
@@ -101,7 +117,8 @@ def fake_runner(commands):
         assert Path(command[0]).name == "llvm-objdump.exe"
         assert kwargs.get("shell", False) is False
         assert kwargs.get("check", False) is False
-        kwargs["stdout"].write((SYMBOLS + "\n" + DISASSEMBLY).encode())
+        outputs = {"--version": TOOL_VERSION, "--syms": SYMBOLS, "--disassemble": DISASSEMBLY}
+        kwargs["stdout"].write(outputs[command[1]].encode())
         kwargs["stderr"].write(b"fixture stderr retained\n")
         return SimpleNamespace(returncode=0)
     return run
@@ -432,3 +449,132 @@ def test_nested_source_digest_is_not_mistaken_for_whole_object_sha(evidence):
     assert metadata["declared_sha256_matches"] is True
     assert len(metadata["declared_object_sha256"]) == 1
     assert metadata["as_exported"]["source"]["sha256"] == "0" * 64
+
+
+def unavailable_runner(commands, *, disassembly=HIIPU_UNAVAILABLE):
+    def run(command, **kwargs):
+        commands.append(command)
+        outputs = {"--version": TOOL_VERSION, "--syms": SYMBOLS, "--disassemble": disassembly}
+        kwargs["stdout"].write(outputs[command[1]].encode())
+        # The real tool returned success with empty stderr and no instructions.
+        return SimpleNamespace(returncode=0)
+    return run
+
+
+def test_real_hiipu_not_available_rows_never_become_machine_instructions(evidence):
+    assert inspect.parse_instructions(HIIPU_UNAVAILABLE) == []
+    commands = []
+    report = inspect.collect(options(evidence), runner=unavailable_runner(commands))
+    assert report["status"] == "partial"
+    for provider in report["providers"].values():
+        obj = provider["objects"][0]
+        assert obj["sha256_matches"] is True
+        assert len(obj["symbols"]) == 2
+        assert obj["instruction_count"] == 0
+        assert obj["inspection_status"] == "disassembly_unavailable"
+        assert obj["pc_candidates"]["windows"] == []
+        diag = obj["disassembly_diagnostics"]
+        assert diag["status"] == "unavailable"
+        assert diag["address_rows"] == diag["not_available_rows"] == 5
+        assert diag["unknown_rows"] == diag["parsed_rows"] == 0
+        assert all(command["returncode"] == 0 for command in obj["commands"])
+        preview = obj["unparsed_disassembly_preview"][0]
+        assert preview["stdout_path"]["lines"][0].endswith("file format elf64-hiipu")
+        assert preview["stderr_path"]["bytes"] == 0
+        assert preview["stderr_path"]["lines"] == []
+
+
+def test_partly_unavailable_disassembly_is_partial_without_fake_pc_hit(evidence):
+    mixed = HIIPU_UNAVAILABLE.replace("       4: <not available>",
+                                     "       4: 00 00 00 00 fixture_available")
+    report = inspect.collect(options(evidence), runner=unavailable_runner([], disassembly=mixed))
+    assert report["status"] == "partial"
+    obj = report["providers"]["probe"]["objects"][0]
+    assert obj["inspection_status"] == "partial"
+    assert obj["instruction_count"] == 1
+    assert obj["pc_candidates"]["windows"] == []
+    assert obj["disassembly_diagnostics"]["status"] == "partial"
+    assert obj["disassembly_diagnostics"]["not_available_rows"] == 4
+    assert obj["disassembly_diagnostics"]["parsed_rows"] == 1
+
+
+def test_unavailable_cli_reports_limitation_and_bounded_raw_preview(evidence, monkeypatch, capsys):
+    long_raw = ("Kernel_hash.bin: file format elf64-hiipu\nDisassembly of section .text:\n"
+                "00000000 <vc_laser_cube_pv_probe_attention_mix_aic>:\n" +
+                "".join(f"{i * 4:8x}: <not available>\n" for i in range(100)) +
+                "TAIL_SHOULD_NOT_PRINT\n")
+    monkeypatch.setattr(inspect.subprocess, "run", unavailable_runner([], disassembly=long_raw))
+    args = options(evidence)
+    assert inspect.main(["--profile", str(args.profile), "--probe-build", str(args.probe_build),
+                         "--baseline-build", str(args.baseline_build), "--output", str(args.output),
+                         "--objdump", str(args.objdump)]) == 0
+    output = capsys.readouterr().out
+    assert "unavailable" in output.lower()
+    assert "RAW disassembler output" in output
+    assert "elf64-hiipu" in output
+    assert "preview truncated" in output
+    assert "TAIL_SHOULD_NOT_PRINT" not in output
+    report = json.loads(Path(args.output).read_text(encoding="utf-8"))
+    preview = report["providers"]["probe"]["objects"][0]["unparsed_disassembly_preview"][0]
+    assert preview["stdout_path"]["truncated"] is True
+    assert len(preview["stdout_path"]["lines"]) == 45
+    assert Path(preview["stdout_path"]["path"]).read_text(encoding="utf-8") == long_raw
+
+
+def preview_command(tmp_path, stdout, stderr=b""):
+    out, err = tmp_path / "raw.stdout.txt", tmp_path / "raw.stderr.txt"
+    out.write_bytes(stdout)
+    err.write_bytes(stderr)
+    return {"command": ["llvm-objdump", "--disassemble", "kernel.bin"], "returncode": 0,
+            "stdout_path": str(out), "stderr_path": str(err)}
+
+
+def test_raw_preview_reports_exact_bytes_paths_and_bounds_lines(tmp_path):
+    raw = "".join(f"original row {i}\n" for i in range(70)).encode()
+    command = preview_command(tmp_path, raw, "工具stderr原样保留\n".encode())
+    preview = inspect.raw_output_preview(command)
+    stdout, stderr = preview["stdout_path"], preview["stderr_path"]
+    assert stdout["path"] == command["stdout_path"]
+    assert stdout["bytes"] == len(raw)
+    assert stdout["lines"] == [f"original row {i}" for i in range(45)]
+    assert stdout["truncated"] is True
+    assert stderr["path"] == command["stderr_path"]
+    assert stderr["bytes"] == len("工具stderr原样保留\n".encode())
+    assert stderr["lines"] == ["工具stderr原样保留"]
+    assert Path(command["stdout_path"]).read_bytes() == raw
+
+
+@pytest.mark.parametrize("chars", [299, 300, 301, 4096])
+def test_raw_preview_bounds_line_characters_even_with_terminating_newline(tmp_path, chars):
+    command = preview_command(tmp_path, ("x" * chars + "\nNEXT\n").encode())
+    preview = inspect.raw_output_preview(command)["stdout_path"]
+    if chars <= 300:
+        assert preview["lines"] == ["x" * chars, "NEXT"]
+        assert not preview.get("truncated", False)
+    else:
+        assert preview["truncated"] is True
+        assert preview["lines"][0] == "x" * 300 + " ... [line truncated]"
+        assert len(preview["lines"]) == 1
+
+
+def test_raw_preview_missing_file_keeps_path_and_error(tmp_path):
+    command = preview_command(tmp_path, b"retained\n")
+    Path(command["stderr_path"]).unlink()
+    preview = inspect.raw_output_preview(command)
+    assert preview["stdout_path"]["lines"] == ["retained"]
+    assert preview["stderr_path"]["path"] == command["stderr_path"]
+    assert preview["stderr_path"]["lines"] == []
+    assert "FileNotFoundError" in preview["stderr_path"]["error"]
+
+
+def test_discovery_finds_recorded_cann_tools_bisheng_compiler(evidence):
+    manifest = json.loads(evidence.manifest.read_text(encoding="utf-8"))
+    root = Path(manifest["cann_root"])
+    tool = root / "tools" / "bisheng_compiler" / "bin" / "llvm-objdump.exe"
+    tool.parent.mkdir(parents=True)
+    tool.write_bytes(b"fixture tool, runner intercepted")
+    commands = []
+    report = inspect.collect(options(evidence, tool=False), runner=fake_runner(commands))
+    assert report["status"] == "collected"
+    assert report["providers"]["probe"]["tool"]["path"] == str(tool.resolve())
+    assert commands and all(Path(command[0]) == tool for command in commands)

@@ -667,7 +667,16 @@ bash scripts/inspect_mindie_laser_pv_failure.sh
 
 读取已有失败日志、构建清单、device ELF 与编译元数据，不编译、不联网、不启动 NPU。输出 `results/mindie_laser_pv_failure.log` 和 `.json`，工具缺失时也保存部分证据。当前尚未确定超时根因，不把动态插桩的 plain 等同于原版机器码，也不将 PC 直接相减值当成已确认的 ELF 故障地址。详见 [v2 失败分析与离线检查](../../reports/ascend-pv-internal-phase-audit/README.md#v2-远端失败先检查已有编译产物)。
 
-下面保留原诊断流程供后续修复验证：
+用户回传的原始反汇编只有 `<not available>` 地址占位，没有指令；这不是需要放宽解析规则的格式问题。下一步入口为独立 ABI-only 隔离：
+
+```bash
+git pull origin master
+bash scripts/run_mindie_laser_pv_abi.sh
+```
+
+只构建新 `VcLaserCubePvAbiProbeAttention`，复用 V-only 与融合量化器，从本地源码缓存准备，不联网。保留新增 trace 接口，但完全使用未插桩的 V-only Cube/Vector，只接受 mode 0，返回清零的 trace。小输入逐个单独同步，检查全部 padded 输出精确一致和 trace 全零；不运行失败的 v2 或长 shape 计时。worker 默认 180 秒上限只约束主机进程，不能视为设备任务已取消。结果为 `results/mindie_laser_pv_abi.json` 与 `.log`，详见 [ABI-only 隔离及结论边界](../../reports/ascend-pv-internal-phase-audit/README.md#反汇编不可用后独立-abi-only-隔离)。这一步是定位实验，尚未验证能够消除超时。
+
+下面保留原诊断流程供后续修复验证，当前不运行：
 
 ```bash
 git pull origin master
