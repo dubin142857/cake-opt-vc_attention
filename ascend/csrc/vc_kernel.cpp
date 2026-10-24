@@ -54,6 +54,13 @@ public:
         sg.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(localWs), M * N);
         pg.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(localWs + M * N * 4), M * N);
         og.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(localWs + M * N * 6), M * t.dim);
+        // H6a: O_USED is awaited just before the PV that would overwrite `og`,
+        // not at the end of the tile that produced it. The next tile's QK then
+        // runs while the Vector halves are still reading `og` and accumulating.
+        // Flag counts are unchanged (one wait per O_READY), so the Set/Wait
+        // pairing that detsync_lint H7 checks still balances; the outstanding
+        // wait is drained after both loops.
+        bool o_outstanding = false;
         for (uint64_t task = core; task < t.tasks; task += t.cores) {
             const uint64_t head = task / (t.qpad / M);
             const uint32_t qr = (task % (t.qpad / M)) * M;
@@ -69,6 +76,13 @@ public:
                 CrossCoreSetFlag<2, PIPE_FIX>(S_READY);
                 CrossCoreWaitFlag(P_READY);  // both AIV halves published P
                 probe.Mark(1); // exposed wait, not the duration of all Vector work
+                if (o_outstanding) {
+                    // Deferred from the previous tile. `og` must be free before PV
+                    // writes it again. By this point the Vector halves have already
+                    // published P for this tile, so the flag is normally already set.
+                    CrossCoreWaitFlag(O_USED);
+                    o_outstanding = false;
+                }
 
                 // A[P] stride=N; B[V] stride=D. Four-argument form is intentional.
                 mmv.SetOrgShape(M, t.dim, N, t.dim);
@@ -79,10 +93,13 @@ public:
                 mmv.End();
                 probe.MarkAll(2); // PV API, including completed GM writeback
                 CrossCoreSetFlag<2, PIPE_FIX>(O_READY);
-                CrossCoreWaitFlag(O_USED);  // protect scratch from next tile/task
+                o_outstanding = true;  // awaited before the next PV, see H6a note
                 probe.Mark(3);
                 probe.Finish();
             }
+        }
+        if (o_outstanding) {
+            CrossCoreWaitFlag(O_USED);  // drain the last tile before the kernel ends
         }
     }
 private:
