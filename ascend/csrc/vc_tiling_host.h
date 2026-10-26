@@ -13,8 +13,9 @@ constexpr uint32_t VectorBytes(uint32_t reduce_bytes, uint32_t tile_m = M) {
     // int32 scores/indices, FP32 scores, FP16 P, accumulator, PV output,
     // channel scales, eight state/metadata vectors, LUT, reduction scratch.
     const uint32_t rows = tile_m / 2;
+    // Two per-row Brcb broadcast buffers (rowmax, alpha) of ROWS blocks each.
     return rows * N * (4 + 4 + 2) + 2 * rows * MAX_D * 4
-         + MAX_D * 4 + 8 * rows * 4 + 128 * 4 + reduce_bytes;
+         + MAX_D * 4 + 8 * rows * 4 + 128 * 4 + 2 * rows * 8 * 4 + reduce_bytes;
 }
 static_assert(WorkspaceBytes(64) == 32768 && WorkspaceBytes(128) == 40960,
               "Workspace must cover INT32 S, FP16 P and FP32 PV tiles");

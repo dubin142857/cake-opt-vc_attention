@@ -123,6 +123,9 @@ public:
         pipe.InitBuffer(vsBuf, MAX_D * 4);
         pipe.InitBuffer(stateBuf, 8 * ROWS * 4);
         pipe.InitBuffer(lutBuf, 128 * 4);
+        // H8: two per-row broadcast buffers. Brcb expands one value into a full
+        // 32B block, so ROWS values occupy ROWS blocks = ROWS * 8 floats each.
+        pipe.InitBuffer(brcbBuf, 2 * ROWS * 8 * 4);
         pipe.InitBuffer(tmpBuf, t.reduce_bytes);
         const int32_t taskDoneEvent = static_cast<int32_t>(pipe.FetchEventID(HardEvent::MTE3_S));
         auto raw = rawBuf.Get<int32_t>();
@@ -136,7 +139,16 @@ public:
         auto rowmax = states[3 * ROWS], mass = states[4 * ROWS];
         auto qscale = states[5 * ROWS], kscale = states[6 * ROWS];
         auto table = lutBuf.Get<float>();
+        auto brcb = brcbBuf.Get<float>();
+        auto bmax = brcb[0], balpha = brcb[ROWS * 8];
         auto tmp = tmpBuf.Get<uint8_t>();
+        static_assert(ROWS % 8 == 0, "Brcb consumes 8 source values per repeat");
+        static_assert(N % 64 == 0, "One fp32 repeat covers 64 elements");
+        // src1BlkStride = 0 makes all eight blocks of a repeat read the same
+        // broadcast block; src1RepStride = 1 advances one block (one row) per
+        // repeat. dst/src0 walk whole rows, hence a repeat stride of cols/8.
+        const BinaryRepeatParams rowBrc(1, 1, 0, N / 8, N / 8, 1);
+        const BinaryRepeatParams accBrc(1, 1, 0, uint8_t(t.dim / 8), uint8_t(t.dim / 8), 1);
         GlobalTensor<float> qsg, ksg, vsg, lg, out;
         qsg.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(qs));
         ksg.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(ks));
@@ -206,12 +218,15 @@ public:
                 Sub(alpha, m, rowmax, ROWS);
                 PipeBarrier<PIPE_V>();
                 Exp(alpha, alpha, ROWS);  // one history exponential per query row
-                SetFlag<HardEvent::V_S>(EVENT_ID0);
-                WaitFlag<HardEvent::V_S>(EVENT_ID0);
-                float max_scalar[ROWS];
-                for (uint32_t r = 0; r < ROWS; ++r) max_scalar[r] = rowmax.GetValue(r);
-                for (uint32_t r = 0; r < ROWS; ++r)
-                    Adds(score[r * N], score[r * N], -max_scalar[r], N);
+                // H8: broadcast rowmax per row instead of reading ROWS scalars back
+                // and issuing ROWS short Adds. x + (-m) and x - m agree bit for bit
+                // on every finite value and on both signed zeros, so the numerical
+                // contract is unchanged. The V_S round trip disappears with it.
+                PipeBarrier<PIPE_V>();
+                Brcb(bmax, rowmax, ROWS / 8, BrcbRepeatParams(1, 8));
+                PipeBarrier<PIPE_V>();
+                for (uint32_t off = 0; off < N; off += 64)
+                    Sub(score[off], score[off], bmax, uint64_t(64), ROWS, rowBrc);
                 PipeBarrier<PIPE_V>();
                 if (t.expcast) {
                     // Separate FP32 multiply/add is part of the numerical contract.
@@ -248,12 +263,14 @@ public:
                 Add(l, l, mass, ROWS);
                 PipeBarrier<PIPE_V>();
                 Adds(m, rowmax, 0.0f, ROWS);
-                SetFlag<HardEvent::V_S>(EVENT_ID0);
-                WaitFlag<HardEvent::V_S>(EVENT_ID0);
-                float alpha_scalar[ROWS];
-                for (uint32_t r = 0; r < ROWS; ++r) alpha_scalar[r] = alpha.GetValue(r);
-                for (uint32_t r = 0; r < ROWS; ++r)
-                    Muls(acc[r * t.dim], acc[r * t.dim], alpha_scalar[r], t.dim);
+                // H8: same broadcast treatment for the history rescale. Muls by a
+                // scalar and Mul by a vector holding that scalar are the same FP32
+                // multiply, so the result is bit identical.
+                PipeBarrier<PIPE_V>();
+                Brcb(balpha, alpha, ROWS / 8, BrcbRepeatParams(1, 8));
+                PipeBarrier<PIPE_V>();
+                for (uint32_t off = 0; off < t.dim; off += 64)
+                    Mul(acc[off], acc[off], balpha, uint64_t(64), ROWS, accBrc);
                 probe.template MarkEvent<HardEvent::V_S>(4, pipe);
                 CrossCoreWaitFlag(O_READY);
                 probe.Mark(5); // only PV wait still exposed after history work
@@ -292,7 +309,7 @@ public:
     }
 private:
     TBuf<TPosition::VECCALC> rawBuf, scoreBuf, pBuf, accBuf, pvBuf;
-    TBuf<TPosition::VECCALC> vsBuf, stateBuf, lutBuf, tmpBuf;
+    TBuf<TPosition::VECCALC> vsBuf, stateBuf, lutBuf, tmpBuf, brcbBuf;
 };
 
 template <uint32_t TileM, bool Profile>
