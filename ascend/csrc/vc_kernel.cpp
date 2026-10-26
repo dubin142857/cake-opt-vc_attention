@@ -67,27 +67,30 @@ public:
         for (uint64_t task = core; task < t.tasks; task += t.cores) {
             const uint64_t head = task / (t.qpad / M);
             const uint32_t qr = (task % (t.qpad / M)) * M;
-            //  H10: 本 task 的第一块 QK 先发出去, 之后每轮在等 P_READY **之前**
-            //  先把下一块 QK 发到另一个槽 —— 那段时间 AIV 正在算本块的概率, 这就是重叠。
-            //  sg[(i+1)&1] 此刻必定空闲: 它上次用于第 i-1 块, 而 AIV 在置 P_READY(i-1)
-            //  之前已读完它, AIC 又在上一轮迭代消费了该标志。
-            auto issueQk = [&](uint32_t key, uint32_t slot) {
-                mmq.SetOrgShape(M, N, t.dim, t.dim);
-                mmq.SetSingleShape(M, N, t.dim);
-                mmq.SetTensorA(qg[head * t.qpad * t.dim + uint64_t(qr) * t.dim], false);
-                mmq.SetTensorB(kg[head * t.kpad * t.dim + uint64_t(key) * t.dim], true);
-                mmq.template IterateAll<true>(sgs[slot], 0);
-                mmq.End();
-                CrossCoreSetFlag<2, PIPE_FIX>(S_READY);
-            };
-            issueQk(0, 0);
-            uint32_t tile = 0;
-            for (uint32_t key = 0; key < t.kpad; key += N, ++tile) {
-                probe.Begin(task, key, t);
-                if (key + N < t.kpad) {
-                    issueQk(key + N, (tile + 1) & 1);
+            //  H10: 把循环移位一拍 —— 第 i 轮先**发出**第 i 块的 QK, 再**消费**第 i-1 块。
+            //  于是 QK(i) 与 AIV 处理第 i-1 块重叠, 这就是收益来源。
+            //  移位写法使 QK 与 PV 的代码各只出现一次; 设备侧不能用 lambda 包装
+            //  (__aicore__ 上下文里设备重载对 lambda 体不可见, 本次实撞编译失败)。
+            //  sgs[i&1] 在发 QK(i) 时必定空闲: 该槽上次用于第 i-2 块, AIV 在置 P_READY(i-2)
+            //  之前已读完它, 而 AIC 在第 i-1 轮消费了该标志。
+            const uint32_t tiles = t.kpad / N;
+            for (uint32_t i = 0; i <= tiles; ++i) {
+                probe.Begin(task, i ? (i - 1) * N : 0, t);
+                if (i < tiles) {
+                    mmq.SetOrgShape(M, N, t.dim, t.dim);
+                    mmq.SetSingleShape(M, N, t.dim);
+                    mmq.SetTensorA(qg[head * t.qpad * t.dim + uint64_t(qr) * t.dim], false);
+                    mmq.SetTensorB(kg[head * t.kpad * t.dim + uint64_t(i) * N * t.dim], true);
+                    mmq.template IterateAll<true>(sgs[i & 1], 0);
+                    mmq.End();
+                    CrossCoreSetFlag<2, PIPE_FIX>(S_READY);
                 }
-                probe.MarkAll(0); // ★H10 后这一段量的是**下一块**的 QK, 不是本块
+                probe.MarkAll(0); // ★H10 后这一段量的是**下一块**的 QK, 不是被消费的那块
+                if (i == 0) {
+                    probe.Finish();
+                    continue;      // 第 0 轮只发不消费
+                }
+                const uint32_t key = (i - 1) * N;
                 CrossCoreWaitFlag(P_READY);  // both AIV halves published P
                 probe.Mark(1); // exposed wait, not the duration of all Vector work
                 if (o_outstanding) {
