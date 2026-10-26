@@ -190,19 +190,37 @@ public:
                 CrossCoreWaitFlag(S_READY);
                 probe.Mark(0);
                 DataCopy(raw, sg, ROWS * N);
-                DataCopy(kscale, ksg[(head * (t.kpad / N) + key / N) * 8], 8);
+                //  一个 tile 覆盖 KSB_PER_TILE 个 K 量化块, 各有自己的 scale, 连续取。
+                DataCopy(kscale, ksg[(head * (t.kpad / K_SCALE_BLOCK) + key / K_SCALE_BLOCK) * 8],
+                         8 * KSB_PER_TILE);
                 SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
                 WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
                 SetFlag<HardEvent::MTE2_S>(EVENT_ID0);
                 WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);
-                const float scale = (qscale.GetValue(0) * kscale.GetValue(0)) * t.scale;
+                float seg_scale[KSB_PER_TILE];
+                for (uint32_t sb = 0; sb < KSB_PER_TILE; ++sb)
+                    seg_scale[sb] = (qscale.GetValue(0) * kscale.GetValue(sb * 8)) * t.scale;
                 probe.Mark(1); // MTE2_S above completed raw scores and scale loads
                 Cast(score, raw, RoundMode::CAST_NONE, ROWS * N);
                 PipeBarrier<PIPE_V>();
-                Muls(score, score, scale, ROWS * N);
+                //  按列半区施加 scale: 一个 repeat 覆盖 64 个 fp32, K_SCALE_BLOCK 是 64 的整数倍,
+                //  故量化块边界落在 repeat 边界上, 每块用 K_SCALE_BLOCK/64 次调用,
+                //  repeatTimes = ROWS 走完所有行, 行间步长 N/8 个 block。不回到逐行短调用。
+                static_assert(K_SCALE_BLOCK % 64 == 0, "量化块边界必须落在 repeat 边界上");
+                static_assert(N / 8 <= 255, "行间 repeat 步长超出 uint8");
+                {
+                    const UnaryRepeatParams rp(1, 1, uint8_t(N / 8), uint8_t(N / 8));
+                    for (uint32_t sb = 0; sb < KSB_PER_TILE; ++sb)
+                        for (uint32_t off = 0; off < K_SCALE_BLOCK; off += 64)
+                            Muls(score[sb * K_SCALE_BLOCK + off], score[sb * K_SCALE_BLOCK + off],
+                                 seg_scale[sb], uint64_t(64), ROWS, rp);
+                }
                 PipeBarrier<PIPE_V>();
                 // Tail masks live in UB. No unaligned GM access or all-masked row.
-                const uint32_t valid = t.keys - key < N ? t.keys - key : N;
+                //  ★key 可能整块越过真实 key 数 (当 K 的填充粒度宽于 N 时)。
+                //  t.keys - key 是无符号减法, 越界时会下溢成巨大值而绕过掩码, 故先判。
+                const uint32_t remain = key >= t.keys ? 0u : t.keys - key;
+                const uint32_t valid = remain < N ? remain : N;
                 if (valid < N) {
                     SetFlag<HardEvent::V_S>(EVENT_ID0);
                     WaitFlag<HardEvent::V_S>(EVENT_ID0);

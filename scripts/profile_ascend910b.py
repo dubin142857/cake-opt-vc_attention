@@ -14,6 +14,7 @@ import time
 
 import torch
 from validate_ascend910b import error, reuse_inputs, to_cpu
+from vc_attention_ascend.reference import K_TILE
 from mindie_laser_backend import load_mindie_laser, validate_laser
 
 
@@ -45,12 +46,15 @@ def summarize_records(records):
             if row[0] == 0:
                 result["invalid_slots"] += 1
                 continue
-            if row[0] != 1 or row[1] < 0 or row[2] < 0 or row[2] % 128 or not 1 <= row[3] <= 128:
+            #  tile 起始 key 必须是 tile 宽度的倍数, 有效 key 数落在 1..宽度。
+            #  ★宽度取自 reference.K_TILE, 不写死 —— 它是内核 vc_tiling.h 的 N。
+            if (row[0] != 1 or row[1] < 0 or row[2] < 0 or row[2] % K_TILE
+                    or not 1 <= row[3] <= K_TILE):
                 raise ValueError(f"Malformed valid probe record: {row[:4]}")
             if any(value < 0 for value in row[4:4 + len(phases)]):
                 raise ValueError("Negative elapsed system tick count")
             result["valid_samples"] += 1
-            kind = "main" if row[3] == 128 else "tail"
+            kind = "main" if row[3] == K_TILE else "tail"
             for phase, value in zip(phases, row[4:]):
                 buckets[kind][phase].append(value)
         result["roles"][role] = {

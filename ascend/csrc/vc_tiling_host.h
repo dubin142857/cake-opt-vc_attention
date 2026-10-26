@@ -17,8 +17,8 @@ constexpr uint32_t VectorBytes(uint32_t reduce_bytes, uint32_t tile_m = M) {
     return rows * N * (4 + 4 + 2) + 2 * rows * MAX_D * 4
          + MAX_D * 4 + 8 * rows * 4 + 128 * 4 + 2 * rows * 8 * 4 + reduce_bytes;
 }
-static_assert(WorkspaceBytes(64) == 32768 && WorkspaceBytes(128) == 40960,
+static_assert(WorkspaceBytes(64) == 57344 && WorkspaceBytes(128) == 65536,
               "Workspace must cover INT32 S, FP16 P and FP32 PV tiles");
-static_assert(WorkspaceBytes(64, 64) == 65536 && WorkspaceBytes(128, 64) == 81920,
+static_assert(WorkspaceBytes(64, 64) == 114688 && WorkspaceBytes(128, 64) == 131072,
               "M64 requires twice the scratch; Q quantization remains Q32");
 }

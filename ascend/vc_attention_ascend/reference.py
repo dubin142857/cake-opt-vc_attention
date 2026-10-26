@@ -5,6 +5,10 @@ import torch
 
 Q_BLOCK = 32
 K_BLOCK = 128
+#  内核的 K 方向 matmul tile 宽度。必须与 ascend/csrc/vc_tiling.h 的 N 一致,
+#  且为 K_BLOCK 的整数倍 —— K/V 按它填充, 而量化块仍按 K_BLOCK 切。
+K_TILE = 256
+assert K_TILE % K_BLOCK == 0
 EXPCAST_GAIN = 11.541560173034668  # FP32(8 * log2(e))
 
 
@@ -32,8 +36,16 @@ def quantize_e4m3_decoded(x):
 
 
 @torch.no_grad()
-def payload_reference(payload, *, expcast=True, query_indices=None):
-    """All keys, optionally selected queries; decoded operands and FP32 matmuls."""
+def payload_reference(payload, *, expcast=True, query_indices=None, tile_width=None):
+    """All keys, optionally selected queries; decoded operands and FP32 matmuls.
+
+    tile_width 是**在线更新的粒度**, 默认取 K_TILE, 即内核的 K 方向 matmul tile 宽度。
+    ★它不是自由参数: ExpCast 的 E4M3 编码相对**当前 tile 的行最大值**定义
+    (低于 -120/EXPCAST_GAIN 的分数一律压成索引 0), 所以换一个宽度就是换一个数值契约。
+    本函数要作为内核的同契约 oracle, 宽度必须与 vc_tiling.h 的 N 相同。
+    量化块仍是 K_BLOCK: 一个 tile 覆盖 tile_width/K_BLOCK 个块, 各自的 scale 按列分段施加,
+    与内核一致。普通 exp 路径对宽度不变, 故只有 ExpCast 受影响。
+    """
     q, k, v = payload["q"].float(), payload["k"].float(), payload["v"].float()
     qs, ks, vs = payload["q_scale"], payload["k_scale"], payload["v_scale"]
     n, d = payload["queries"], q.shape[-1]
@@ -44,12 +56,21 @@ def payload_reference(payload, *, expcast=True, query_indices=None):
     m = torch.full(shape, -float("inf"), device=q.device)
     mass = torch.zeros(shape, device=q.device)
     out = torch.zeros_like(q)
-    for tile, begin in enumerate(range(0, payload["keys"], K_BLOCK)):
-        count = min(K_BLOCK, payload["keys"] - begin)
+    width = K_TILE if tile_width is None else tile_width
+    if width % K_BLOCK:
+        raise ValueError("tile_width must cover whole K quantization blocks")
+    for begin in range(0, payload["keys"], width):
+        count = min(width, payload["keys"] - begin)
         scores = q @ k[:, :, begin:begin + count].transpose(-1, -2)
         # Match native scalar multiplication order; QK dot product is exact.
-        gain = (qscale * ks[:, :, tile, 0].unsqueeze(-1)) * payload["scale"]
-        scores *= gain.unsqueeze(-1)
+        # 一个 tile 可跨多个量化块, 逐块取自己的 scale 并按列拼接, 与内核的列分段施加一致。
+        segments = []
+        for sub in range(0, count, K_BLOCK):
+            block = (begin + sub) // K_BLOCK
+            span = min(K_BLOCK, count - sub)
+            g = (qscale * ks[:, :, block, 0].unsqueeze(-1)) * payload["scale"]
+            segments.append(g.unsqueeze(-1).expand(*g.shape, span))
+        scores *= torch.cat(segments, dim=-1)
         new_m = torch.maximum(m, scores.amax(-1, keepdim=True))
         alpha = torch.exp(m - new_m)
         shifted = scores - new_m

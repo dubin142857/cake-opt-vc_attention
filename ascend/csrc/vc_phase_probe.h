@@ -35,7 +35,9 @@ public:
             values_[0] = 1;
             values_[1] = task;
             values_[2] = key;
-            values_[3] = t.keys - key < N ? t.keys - key : N;
+            //  与内核尾块掩码同一处理: key 可能整块越过真实 key 数, 无符号减法会下溢。
+            const uint32_t remain = key >= t.keys ? 0u : t.keys - key;
+            values_[3] = remain < N ? remain : N;
             AscendC::PipeBarrier<PIPE_ALL>();
             last_ = uint64_t(AscendC::GetSystemCycle());
             values_[12] = last_;

@@ -4,7 +4,7 @@ from pathlib import Path
 import math
 import torch
 import torch.nn.functional as F
-from .reference import Q_BLOCK, K_BLOCK, e4m3_table, quantize_e4m3_decoded
+from .reference import Q_BLOCK, K_BLOCK, K_TILE, e4m3_table, quantize_e4m3_decoded
 
 _loaded = False
 
@@ -43,9 +43,16 @@ def _check_inputs(q, k, v, layout, require_npu):
         raise ValueError("Inference-only operator: backward is not implemented")
 
 
-def _quantize_blocks(x, block):
+def _quantize_blocks(x, block, pad_to=None):
+    """按 block 做分块量化; pad_to 给定时填充到它的倍数 (须为 block 的整数倍)。
+
+    填充粒度与量化粒度分开: 内核的 matmul tile 可以宽于量化块, 此时张量要按 tile
+    宽度填充, 而 scale 仍按量化块产出 —— 多出来的那些块覆盖的全是填充出的零 token,
+    由内核的尾块掩码置 -inf, 不进入结果。
+    """
     b, h, n, d = x.shape
-    padded = F.pad(x.float(), (0, 0, 0, (-n) % block))
+    pad_to = block if pad_to is None else pad_to
+    padded = F.pad(x.float(), (0, 0, 0, (-n) % pad_to))
     blocks = padded.reshape(b, h, -1, block, d)
     amax = blocks.abs().amax(dim=(-2, -1), keepdim=True)
     scale = torch.where(amax > 0, (amax / 127.0).clamp_min(torch.finfo(torch.float32).tiny), torch.ones_like(amax))
@@ -76,7 +83,7 @@ def prepare(q, k, v, *, layout="NHD", v_quantize=True, check_finite=True, _refer
     if check_finite and not bool(torch.isfinite(kf).all().item()):
         raise ValueError("Centered K exceeds the FP32 preprocessing contract")
     qi, qs = _quantize_blocks(q, Q_BLOCK)
-    ki, ks = _quantize_blocks(kf, K_BLOCK)
+    ki, ks = _quantize_blocks(kf, K_BLOCK, pad_to=K_TILE)
     vf = v.float()
     vmax = vf.abs().amax(dim=2, keepdim=True)
     # Keep PV operands finite in FP16 even for large BF16 values.
@@ -85,7 +92,7 @@ def prepare(q, k, v, *, layout="NHD", v_quantize=True, check_finite=True, _refer
     normalized_v = vf / vs
     if v_quantize:
         normalized_v = quantize_e4m3_decoded(normalized_v)
-    vh = F.pad(normalized_v.half(), (0, 0, 0, (-v.shape[2]) % K_BLOCK)).contiguous()
+    vh = F.pad(normalized_v.half(), (0, 0, 0, (-v.shape[2]) % K_TILE)).contiguous()
     payload = {"q": qi, "k": ki, "v": vh, "q_scale": qs, "k_scale": ks,
             "v_scale": vs.squeeze(2).contiguous(), "lut": e4m3_table(q.device),
             "queries": q.shape[2], "keys": k.shape[2], "scale": 1 / math.sqrt(q.shape[-1]),

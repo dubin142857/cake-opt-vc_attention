@@ -49,7 +49,9 @@ void Check(const at::Tensor& q, const at::Tensor& k, const at::Tensor& v,
                 "Q/K padding or MHA shape mismatch");
     TORCH_CHECK(v.sizes() == k.sizes(), "K/V shape mismatch");
     TORCH_CHECK(qs.sizes() == at::IntArrayRef({b, h, qp / M, 8}), "Q scales must be [B,H,Qpad/32,8]");
-    TORCH_CHECK(ks.sizes() == at::IntArrayRef({b, h, kp / N, 8}), "K scales must be [B,H,Kpad/128,8]");
+    //  K 的量化块是 K_SCALE_BLOCK, 与 matmul tile 宽度 N 解耦; scale 数按前者算。
+    TORCH_CHECK(ks.sizes() == at::IntArrayRef({b, h, kp / K_SCALE_BLOCK, 8}),
+                "K scales must be [B,H,Kpad/K_SCALE_BLOCK,8]");
     TORCH_CHECK(vs.sizes() == at::IntArrayRef({b, h, d}), "V scales must be [B,H,D]");
     TORCH_CHECK(lut.dim() == 1 && lut.numel() == 128, "LUT must contain 128 FP32 entries");
     TORCH_CHECK(std::isfinite(scale) && scale > 0 && scale <= std::numeric_limits<float>::max(), "Invalid scale");

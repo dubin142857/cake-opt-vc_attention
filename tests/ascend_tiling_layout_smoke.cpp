@@ -25,7 +25,7 @@ int main() {
             std::memcpy(&device, serialized, sizeof(device));
             assert(device.tasks == host.tasks && device.dim == dim);
             assert(device.workspace_bytes == (dim == 64 ? 32768u : 40960u) * (tile_m / 32));
-            assert(vc910::VectorBytes(0, tile_m) == (tile_m == 32 ? 39424u : 77824u));
+            assert(vc910::VectorBytes(0, tile_m) == (tile_m == 32 ? 59904u : 118784u));
 
             // Every byte is claimed exactly once by S, P, or one AIV's PV half.
             // Independent tile sizes verify no gap/overlap across cores/halves.
