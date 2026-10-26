@@ -42,7 +42,6 @@ public:
         mmv.Init(&pvt, &pipe);
         GlobalTensor<int8_t> qg, kg;
         GlobalTensor<half> vg, pg;
-        GlobalTensor<int32_t> sg;
         GlobalTensor<float> og;
         qg.SetGlobalBuffer(reinterpret_cast<__gm__ int8_t*>(q));
         kg.SetGlobalBuffer(reinterpret_cast<__gm__ int8_t*>(k));
@@ -51,9 +50,13 @@ public:
         PhaseProbe<Profile> probe;
         probe.Init(trace, core, 0);
         auto localWs = ws + uint64_t(core) * t.workspace_bytes;
-        sg.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(localWs), M * N);
-        pg.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(localWs + M * N * 4), M * N);
-        og.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(localWs + M * N * 6), M * t.dim);
+        //  H10 布局: sg0 在 0, sg1 在 M*N*4, pg 在 M*N*8, og 在 M*N*10。
+        //  只有 S 双缓冲, 理由见 vc_tiling_host.h 的 WorkspaceBytes 注释。
+        GlobalTensor<int32_t> sgs[2];
+        sgs[0].SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(localWs), M * N);
+        sgs[1].SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(localWs + M * N * 4), M * N);
+        pg.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(localWs + M * N * 8), M * N);
+        og.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(localWs + M * N * 10), M * t.dim);
         // H6a: O_USED is awaited just before the PV that would overwrite `og`,
         // not at the end of the tile that produced it. The next tile's QK then
         // runs while the Vector halves are still reading `og` and accumulating.
@@ -64,16 +67,27 @@ public:
         for (uint64_t task = core; task < t.tasks; task += t.cores) {
             const uint64_t head = task / (t.qpad / M);
             const uint32_t qr = (task % (t.qpad / M)) * M;
-            for (uint32_t key = 0; key < t.kpad; key += N) {
-                probe.Begin(task, key, t);
+            //  H10: 本 task 的第一块 QK 先发出去, 之后每轮在等 P_READY **之前**
+            //  先把下一块 QK 发到另一个槽 —— 那段时间 AIV 正在算本块的概率, 这就是重叠。
+            //  sg[(i+1)&1] 此刻必定空闲: 它上次用于第 i-1 块, 而 AIV 在置 P_READY(i-1)
+            //  之前已读完它, AIC 又在上一轮迭代消费了该标志。
+            auto issueQk = [&](uint32_t key, uint32_t slot) {
                 mmq.SetOrgShape(M, N, t.dim, t.dim);
                 mmq.SetSingleShape(M, N, t.dim);
                 mmq.SetTensorA(qg[head * t.qpad * t.dim + uint64_t(qr) * t.dim], false);
                 mmq.SetTensorB(kg[head * t.kpad * t.dim + uint64_t(key) * t.dim], true);
-                mmq.template IterateAll<true>(sg, 0);
+                mmq.template IterateAll<true>(sgs[slot], 0);
                 mmq.End();
-                probe.MarkAll(0); // QK API, including completed GM writeback
                 CrossCoreSetFlag<2, PIPE_FIX>(S_READY);
+            };
+            issueQk(0, 0);
+            uint32_t tile = 0;
+            for (uint32_t key = 0; key < t.kpad; key += N, ++tile) {
+                probe.Begin(task, key, t);
+                if (key + N < t.kpad) {
+                    issueQk(key + N, (tile + 1) & 1);
+                }
+                probe.MarkAll(0); // ★H10 后这一段量的是**下一块**的 QK, 不是本块
                 CrossCoreWaitFlag(P_READY);  // both AIV halves published P
                 probe.Mark(1); // exposed wait, not the duration of all Vector work
                 if (o_outstanding) {
@@ -160,12 +174,14 @@ public:
         PhaseProbe<Profile> probe;
         probe.Init(trace, core, 1 + sub);
         auto localWs = ws + uint64_t(core) * t.workspace_bytes;
-        GlobalTensor<int32_t> sg;
         GlobalTensor<half> pg;
         GlobalTensor<float> og;
-        sg.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(localWs) + sub * ROWS * N, ROWS * N);
-        pg.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(localWs + M * N * 4) + sub * ROWS * N, ROWS * N);
-        og.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(localWs + M * N * 6) + sub * ROWS * t.dim, ROWS * t.dim);
+        //  H10: 与 AIC 侧同一布局; AIV 按本块序号的奇偶读对应的 S 槽。
+        GlobalTensor<int32_t> sgs[2];
+        sgs[0].SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(localWs) + sub * ROWS * N, ROWS * N);
+        sgs[1].SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(localWs + M * N * 4) + sub * ROWS * N, ROWS * N);
+        pg.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(localWs + M * N * 8) + sub * ROWS * N, ROWS * N);
+        og.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(localWs + M * N * 10) + sub * ROWS * t.dim, ROWS * t.dim);
         DataCopy(table, lg, 128);
         SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
         WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
@@ -185,11 +201,12 @@ public:
             Duplicate(l, 0.0f, ROWS);
             Duplicate(acc, 0.0f, ROWS * t.dim);
             PipeBarrier<PIPE_V>();
-            for (uint32_t key = 0; key < t.kpad; key += N) {
+            uint32_t tile = 0;
+            for (uint32_t key = 0; key < t.kpad; key += N, ++tile) {
                 probe.Begin(task, key, t);
                 CrossCoreWaitFlag(S_READY);
                 probe.Mark(0);
-                DataCopy(raw, sg, ROWS * N);
+                DataCopy(raw, sgs[tile & 1], ROWS * N);
                 //  一个 tile 覆盖 KSB_PER_TILE 个 K 量化块, 各有自己的 scale, 连续取。
                 DataCopy(kscale, ksg[(head * (t.kpad / K_SCALE_BLOCK) + key / K_SCALE_BLOCK) * 8],
                          8 * KSB_PER_TILE);
