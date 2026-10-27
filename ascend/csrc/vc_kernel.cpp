@@ -44,7 +44,9 @@ public:
         GlobalTensor<half> vg;
         //  H11: P 双槽 —— PV(i) 读 pgs[i & 1], 与 AIV 正在写的 pgs[(i+1) & 1] 错开。
         GlobalTensor<half> pgs[2];
-        GlobalTensor<float> og;
+        //  H15: O 双缓冲 —— AIC 等 O_USED 的唯一原因是 og 只有一个槽。两槽之后
+        //  PV(i-1) 写 ogs[(i-1) & 1] 与 AIV 读另一槽互不相干, AIC 可以先跑一步。
+        GlobalTensor<float> ogs[2];
         qg.SetGlobalBuffer(reinterpret_cast<__gm__ int8_t*>(q));
         kg.SetGlobalBuffer(reinterpret_cast<__gm__ int8_t*>(k));
         vg.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(v));
@@ -59,14 +61,17 @@ public:
         sgs[1].SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(localWs + M * N * 4), M * N);
         pgs[0].SetGlobalBuffer(reinterpret_cast<__gm__ half*>(localWs + M * N * 8), M * N);
         pgs[1].SetGlobalBuffer(reinterpret_cast<__gm__ half*>(localWs + M * N * 10), M * N);
-        og.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(localWs + M * N * 12), M * t.dim);
+        ogs[0].SetGlobalBuffer(reinterpret_cast<__gm__ float*>(localWs + M * N * 12), M * t.dim);
+        ogs[1].SetGlobalBuffer(reinterpret_cast<__gm__ float*>(localWs + M * N * 12) + M * t.dim, M * t.dim);
         // H6a: O_USED is awaited just before the PV that would overwrite `og`,
         // not at the end of the tile that produced it. The next tile's QK then
         // runs while the Vector halves are still reading `og` and accumulating.
         // Flag counts are unchanged (one wait per O_READY), so the Set/Wait
         // pairing that detsync_lint H7 checks still balances; the outstanding
         // wait is drained after both loops.
-        bool o_outstanding = false;
+        //  H15: 最多两个在途, 对应 og 的两个槽。标志计数不变 (每个 O_READY 仍对应
+        //  恰好一次 O_USED 等待), 在途的那些在两层循环结束后排空。
+        uint32_t o_outstanding = 0;
         for (uint64_t task = core; task < t.tasks; task += t.cores) {
             const uint64_t head = task / (t.qpad / M);
             const uint32_t qr = (task % (t.qpad / M)) * M;
@@ -96,12 +101,11 @@ public:
                 const uint32_t key = (i - 1) * N;
                 CrossCoreWaitFlag(P_READY);  // both AIV halves published P
                 probe.Mark(1); // exposed wait, not the duration of all Vector work
-                if (o_outstanding) {
-                    // Deferred from the previous tile. `og` must be free before PV
-                    // writes it again. By this point the Vector halves have already
-                    // published P for this tile, so the flag is normally already set.
+                if (o_outstanding >= 2) {
+                    //  H15: 两个槽都在途时才必须等 —— 要覆写的那个槽 (ogs[(i-1)&1])
+                    //  上一次装的是第 i-3 块的 O, AIV 早已读完。常见情形下这里不阻塞。
                     CrossCoreWaitFlag(O_USED);
-                    o_outstanding = false;
+                    --o_outstanding;
                 }
 
                 // A[P] stride=N; B[V] stride=D. Four-argument form is intentional.
@@ -110,17 +114,18 @@ public:
                 //  H11: 被消费的是第 i-1 块, 其 P 在 pgs[(i-1) & 1]。
                 mmv.SetTensorA(pgs[(i - 1) & 1], false);
                 mmv.SetTensorB(vg[head * t.kpad * t.dim + uint64_t(key) * t.dim], false);
-                mmv.template IterateAll<true>(og, 0);
+                mmv.template IterateAll<true>(ogs[(i - 1) & 1], 0);
                 mmv.End();
                 probe.MarkAll(2); // PV API, including completed GM writeback
                 CrossCoreSetFlag<2, PIPE_FIX>(O_READY);
-                o_outstanding = true;  // awaited before the next PV, see H6a note
+                ++o_outstanding;  // awaited before the PV that reuses this slot
                 probe.Mark(3);
                 probe.Finish();
             }
         }
-        if (o_outstanding) {
-            CrossCoreWaitFlag(O_USED);  // drain the last tile before the kernel ends
+        while (o_outstanding) {
+            CrossCoreWaitFlag(O_USED);  // drain the outstanding tiles before the kernel ends
+            --o_outstanding;
         }
     }
 private:
@@ -186,7 +191,7 @@ public:
         PhaseProbe<Profile> probe;
         probe.Init(trace, core, 1 + sub);
         auto localWs = ws + uint64_t(core) * t.workspace_bytes;
-        GlobalTensor<float> og;
+        GlobalTensor<float> ogs[2];
         //  H10/H11: 与 AIC 侧同一布局; AIV 按本块序号的奇偶选 S 槽与 P 槽。
         GlobalTensor<int32_t> sgs[2];
         GlobalTensor<half> pgs[2];
@@ -194,7 +199,8 @@ public:
         sgs[1].SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(localWs + M * N * 4) + sub * ROWS * N, ROWS * N);
         pgs[0].SetGlobalBuffer(reinterpret_cast<__gm__ half*>(localWs + M * N * 8) + sub * ROWS * N, ROWS * N);
         pgs[1].SetGlobalBuffer(reinterpret_cast<__gm__ half*>(localWs + M * N * 10) + sub * ROWS * N, ROWS * N);
-        og.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(localWs + M * N * 12) + sub * ROWS * t.dim, ROWS * t.dim);
+        ogs[0].SetGlobalBuffer(reinterpret_cast<__gm__ float*>(localWs + M * N * 12) + sub * ROWS * t.dim, ROWS * t.dim);
+        ogs[1].SetGlobalBuffer(reinterpret_cast<__gm__ float*>(localWs + M * N * 12) + M * t.dim + sub * ROWS * t.dim, ROWS * t.dim);
         DataCopy(table, lg, 128);
         SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
         WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
@@ -343,7 +349,7 @@ public:
                 const uint32_t prev = j - 1;
                 CrossCoreWaitFlag(O_READY);
                 probe.Mark(5); // only PV wait still exposed after the next tile's probability
-                DataCopy(pv, og, ROWS * t.dim);
+                DataCopy(pv, ogs[prev & 1], ROWS * t.dim);
                 SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
                 WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
                 probe.template MarkEvent<HardEvent::MTE2_S>(6, pipe);

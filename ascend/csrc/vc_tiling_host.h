@@ -15,8 +15,9 @@ constexpr uint64_t WorkspaceBytes(uint32_t dim, uint32_t tile_m = M) {
     //  可能仍在读 pg。安全性: AIV 要覆写 pgs[j&1] 发生在第 j+2 轮, 而第 j+1 轮已等过
     //  O_READY(j), 该标志在 PV(j) 之后置位, 故覆写时 PV(j) 必已读完。
     //  O 仍单槽: AIC 的 PV(i+1) 之前有推迟的 wait O_USED(i) 把关 (h6a)。
+    //  H15: O 也改双槽 —— AIC 等 O_USED 的唯一原因是 og 只有一个槽。
     return uint64_t(tile_m) * N * (2 * sizeof(int32_t) + 2 * sizeof(uint16_t))
-         + uint64_t(tile_m) * dim * sizeof(float);
+         + 2 * uint64_t(tile_m) * dim * sizeof(float);
 }
 constexpr uint32_t VectorBytes(uint32_t reduce_bytes, uint32_t tile_m = M) {
     // int32 scores/indices, FP32 scores, FP16 P, accumulator, PV output,
@@ -27,8 +28,8 @@ constexpr uint32_t VectorBytes(uint32_t reduce_bytes, uint32_t tile_m = M) {
     return rows * N * (4 + 4 + 2) + 2 * rows * MAX_D * 4
          + MAX_D * 4 + 10 * rows * 4 + 128 * 4 + 2 * rows * 8 * 4 + reduce_bytes;
 }
-static_assert(WorkspaceBytes(64) == 106496 && WorkspaceBytes(128) == 114688,
+static_assert(WorkspaceBytes(64) == 114688 && WorkspaceBytes(128) == 131072,
               "Workspace must cover two INT32 S slots, two FP16 P slots and the FP32 PV tile");
-static_assert(WorkspaceBytes(64, 64) == 212992 && WorkspaceBytes(128, 64) == 229376,
+static_assert(WorkspaceBytes(64, 64) == 229376 && WorkspaceBytes(128, 64) == 262144,
               "M64 requires twice the scratch; Q quantization remains Q32");
 }
