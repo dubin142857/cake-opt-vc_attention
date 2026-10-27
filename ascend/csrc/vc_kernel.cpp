@@ -139,11 +139,6 @@ public:
         pipe.InitBuffer(rawBuf, ROWS * N * 4);
         pipe.InitBuffer(scoreBuf, ROWS * N * 4);
         pipe.InitBuffer(pBuf, ROWS * N * 2);
-        //  H11: 给 S 独立的接收缓冲, 不再与 raw 共用。
-        //  raw 同时承担两件事: 接收 S (MTE2 写) 与存 ExpCast 的 gather 字节偏移 (向量读)。
-        //  移位循环把 Gather 与下一轮的 DataCopy(raw, ...) 拉近, 两者之间缺一条 V->MTE2 的序,
-        //  在 expcast 且 tiles>=2 时触发 aivector 异常。h12 基座恰好有独立的 S 缓冲, 故不复现。
-        pipe.InitBuffer(sIntBuf, ROWS * N * 4);
         pipe.InitBuffer(accBuf, ROWS * MAX_D * 4);
         pipe.InitBuffer(pvBuf, ROWS * MAX_D * 4);
         pipe.InitBuffer(vsBuf, MAX_D * 4);
@@ -158,7 +153,6 @@ public:
         pipe.InitBuffer(tmpBuf, t.reduce_bytes);
         const int32_t taskDoneEvent = static_cast<int32_t>(pipe.FetchEventID(HardEvent::MTE3_S));
         auto raw = rawBuf.Get<int32_t>();
-        auto sraw = sIntBuf.Get<int32_t>();
         auto score = scoreBuf.Get<float>();
         auto ph = pBuf.Get<half>();
         auto acc = accBuf.Get<float>();
@@ -232,7 +226,14 @@ public:
                 const uint32_t tile = j;
                 CrossCoreWaitFlag(S_READY);
                 probe.Mark(0);
-                DataCopy(sraw, sgs[tile & 1], ROWS * N);
+                //  ★raw 身兼两职: 这里由 MTE2 接收 S, 到 ExpCast 段又存 gather 的字节偏移
+                //  供向量单元读。移位循环把上一轮的 Gather 与本轮这次 DataCopy 拉得很近,
+                //  缺这条 V->MTE2 的序就会在 expcast 且 tiles>=2 时触发 aicore exception
+                //  (plog: fftsplus aivector error)。此前是用一块独立缓冲绕开的 ——
+                //  那是拿 ROWS*N*4 的 UB 换一条同步, 这里把它换回来。
+                SetFlag<HardEvent::V_MTE2>(EVENT_ID0);
+                WaitFlag<HardEvent::V_MTE2>(EVENT_ID0);
+                DataCopy(raw, sgs[tile & 1], ROWS * N);
                 //  一个 tile 覆盖 KSB_PER_TILE 个 K 量化块, 各有自己的 scale, 连续取。
                 DataCopy(kscale, ksg[(head * (t.kpad / K_SCALE_BLOCK) + key / K_SCALE_BLOCK) * 8],
                          8 * KSB_PER_TILE);
@@ -244,7 +245,7 @@ public:
                 for (uint32_t sb = 0; sb < KSB_PER_TILE; ++sb)
                     seg_scale[sb] = (qscale.GetValue(0) * kscale.GetValue(sb * 8)) * t.scale;
                 probe.Mark(1); // MTE2_S above completed raw scores and scale loads
-                Cast(score, sraw, RoundMode::CAST_NONE, ROWS * N);
+                Cast(score, raw, RoundMode::CAST_NONE, ROWS * N);
                 PipeBarrier<PIPE_V>();
                 //  按列半区施加 scale: 一个 repeat 覆盖 64 个 fp32, K_SCALE_BLOCK 是 64 的整数倍,
                 //  故量化块边界落在 repeat 边界上, 每块用 K_SCALE_BLOCK/64 次调用,
@@ -382,7 +383,7 @@ public:
         }
     }
 private:
-    TBuf<TPosition::VECCALC> rawBuf, scoreBuf, pBuf, sIntBuf, accBuf, pvBuf;
+    TBuf<TPosition::VECCALC> rawBuf, scoreBuf, pBuf, accBuf, pvBuf;
     TBuf<TPosition::VECCALC> vsBuf, stateBuf, lutBuf, tmpBuf, brcbBuf;
 };
 
