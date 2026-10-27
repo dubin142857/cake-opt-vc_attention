@@ -29,52 +29,6 @@ VARIANTS = {f"{mode}_m{tile}": (cast, tile)
             for mode, cast in (("control", False), ("expcast", True))
             for tile in (32, 64)}
 
-#  ====================================================================================
-#  decoded_reference 闸门的修订 (2026-10-27, 经用户确认)
-#  ------------------------------------------------------------------------------------
-#  原判据: 内核输出与同契约 oracle (payload_reference) 的相对 RMSE < 1%, control 与
-#  expcast 一视同仁。该判据在 S 为 int32 时工作良好 (实测 control 6.8e-5 / expcast 4.3e-5)。
-#
-#  **为什么必须改**: 当 QK 改为经 fixpipe 反量化直出 fp16 (S 由 int32 变 fp16) 后,
-#  expcast 路径的该指标升到 1.1089%, 越过 1% 闸门。逐项排查后确认这**不是质量退化**:
-#
-#    1. S 本身是吻合的。用 V=单位阵把内核实际算出的 S 提取出来逐元素比对, 单 tile 下
-#       与 oracle 的差分 RMS 仅 3.6e-4 (相对 S 的跨度 5.5 是 6.6e-5), 与 fp16 舍入噪声一致。
-#    2. 失配不随 tile 数累积。keys 由 256 到 32768 (1 到 128 个 tile) 全程平坦。
-#    3. 机理是 **ExpCast 的 E4M3 硬量化放大 S 的末位扰动**: E4M3 只有 121 个离散码,
-#       相邻码相对步长 6.2%。把 S 扰动一个 fp16 ulp, 1.662% 的码发生跳变, 输出相对 RMSE
-#       被放大 11.3 倍 (半个 ulp 时 16.8 倍); 普通 exp 是光滑函数, 几乎不受影响
-#       (同一扰动下 exp 路径只有 5.7e-4)。
-#    4. 对**真实 dense attention** 的质量未退: 9 个点 (keys 1024/2048/4096 x 种子 1/2/3,
-#       每点 256 个 query 行) 实测 expcast 由 0.043676 变为 0.043786, 即误差预算的 +0.25%;
-#       control 为 +0.01%。而该误差预算由 E4M3 的 ExpCast 量化主导 (4.37%)。
-#
-#  已逐一排除的其它解释: 舍入次数 (fp32 两次 / fp64 一次 / 完全不舍入三者几乎相同)、
-#  按通道反量化向量的编码 (SetQuantScalar 与 SetQuantVector 给出完全相同的数字)、
-#  反量化系数的尾数截断 (scale 取 2 的幂后失配只降到 0.001498 而非消失)、
-#  尾数受限的中间表示 (中间尾数降到 11/10/9/8/7 位时失配单调变差, fp32 中间为最优拟合)。
-#
-#  结论: 该闸门在 fp16-S 契约下**实质要求逐位复现 S**, 而硬件 fixpipe 的舍入与
-#  torch 的 .half() 在最后一位偶有分歧, ExpCast 恰好把这些分歧放大 —— 结构上不可达。
-#
-#  **为什么不能直接删掉**: 它同时负责抓真实缺陷 (错的 scale、错位的块索引、算错的 tile)。
-#  故改为三条合取, 真实缺陷仍会被其中至少一条抓住:
-#
-#    (a) control 路径仍守 1% —— 它是光滑路径, 不受 ExpCast 放大影响, 判据原样不动;
-#    (b) expcast 路径改守"相对 control 的放大倍数 <= 15" —— 机理给出 11.3 至 16.8 倍,
-#        留约一倍余量。真实缺陷会同时破坏 control 与该比值;
-#    (c) 新增 dense_fp32 对既有基线的回归检查 —— 这是唯一直接对应模型质量的量。
-#
-#  ★留痕要求来自用户 (2026-10-27): "放宽可以, 但是务必留痕, 说明愿意与必要性"。
-#  ★本修订**只针对 expcast 路径的 decoded_reference**; control 的 1% 与其余所有闸门不动。
-#  ====================================================================================
-DECODED_LIMIT = .01          # control 路径: 与同契约 oracle 的相对 RMSE 上限 (未改动)
-EXPCAST_AMPLIFY_LIMIT = 15.  # expcast 路径: 相对 control 的放大倍数上限 (机理 11.3-16.8 倍)
-#  dense_fp32 的回归基线: int32-S 实现 (h10/h11) 实测值。超过 1.05 倍即判回归。
-#  实测离散度 (9 个点): control 0.029105-0.030419, expcast 0.043084-0.044468。
-DENSE_BASELINE = {"control": .029799, "expcast": .043645}
-DENSE_REGRESSION_FACTOR = 1.05
-
 
 def summarize_records(records):
     """Aggregate valid sampled records only; keep AIC and both AIVs separate."""
@@ -280,11 +234,6 @@ def main():
             full["mindie_laser"] = lambda: laser(q, k, v)
             core["mindie_laser"] = lambda: laser.run_prepared(lp)
         core_outputs = {}
-        #  control 的 decoded_reference 要先测出来, 才能判 expcast 的放大倍数;
-        #  full 的迭代顺序由 VARIANTS 决定, control 在前。此处显式断言该前提。
-        decoded_control = {}
-        assert list(VARIANTS).index("control_m32") < list(VARIANTS).index("expcast_m32"), \
-            "VARIANTS 的顺序必须让 control 先于 expcast"
         for name, fn in full.items():
             report["current"] = {"phase": "long_shape_accuracy", "variant": name}
             save()
@@ -299,39 +248,8 @@ def main():
             save()
             if name in VARIANTS:
                 cast, tile = VARIANTS[name]
-                mode = "expcast" if cast else "control"
-                #  (a) control 仍守 1%; (b) expcast 改守相对 control 的放大倍数。
-                #  判据的来由与必要性见文件头 VARIANTS 之后的注释块。
-                if not cast:
-                    metric = gate(output.index_select(2, ids), refs[cast], limit=DECODED_LIMIT,
-                                  label="decoded_reference", row=row, save=save)
-                    decoded_control[f"m{tile}"] = metric["relative_rmse"]
-                else:
-                    metric = error(output.index_select(2, ids), refs[cast])
-                    row["decoded_reference"] = metric
-                    base = decoded_control.get(f"m{tile}")
-                    if base is None:
-                        raise AssertionError(
-                            f"{name}: control 的 decoded_reference 尚未测得, 无法判放大倍数 —— "
-                            "control 必须先于 expcast 跑")
-                    ratio = metric["relative_rmse"] / max(base, 1e-12)
-                    row["decoded_amplification"] = {"ratio": ratio, "control": base,
-                                                    "limit": EXPCAST_AMPLIFY_LIMIT}
-                    save()
-                    if ratio > EXPCAST_AMPLIFY_LIMIT:
-                        raise AssertionError(
-                            f"{name}: ExpCast 相对 control 的放大倍数 {ratio:.1f} 超过 "
-                            f"{EXPCAST_AMPLIFY_LIMIT:g} (control {base:.6f}, expcast "
-                            f"{metric['relative_rmse']:.6f}): {metric}")
-                #  (c) dense_fp32 对既有基线的回归检查 —— 唯一直接对应模型质量的量。
-                dense_limit = DENSE_BASELINE[mode] * DENSE_REGRESSION_FACTOR
-                row["dense_regression"] = {"baseline": DENSE_BASELINE[mode], "limit": dense_limit}
-                save()
-                if row["dense_fp32"]["relative_rmse"] > dense_limit:
-                    raise AssertionError(
-                        f"{name}: dense_fp32 {row['dense_fp32']['relative_rmse']:.6f} 超过基线 "
-                        f"{DENSE_BASELINE[mode]:.6f} 的 {DENSE_REGRESSION_FACTOR} 倍 "
-                        f"({dense_limit:.6f}) —— 这是对真实 dense attention 的质量回归")
+                gate(output.index_select(2, ids), refs[cast], limit=.01,
+                     label="decoded_reference", row=row, save=save)
             elif row["dense_fp32"]["relative_rmse"] > .01:
                 raise AssertionError(f"{name} failed dense FP32 implementation gate: {row}")
             if name in core:
