@@ -23,6 +23,9 @@ using QType = MatmulType<TPosition::GM, CubeFormat::ND, int8_t>;
 using KType = MatmulType<TPosition::GM, CubeFormat::ND, int8_t, true>;
 using IType = MatmulType<TPosition::GM, CubeFormat::ND, int32_t>;
 using HType = MatmulType<TPosition::GM, CubeFormat::ND, half>;
+//  H16: PV 的 B (即 V) 改由调用方自管 L1。TSCM 只接受 NZ ——
+//  CANN 安装包里 TSCM 的全部内建用例均为 CubeFormat::NZ。
+using VType = MatmulType<TPosition::TSCM, CubeFormat::NZ, half>;
 using FType = MatmulType<TPosition::GM, CubeFormat::ND, float>;
 
 // Local Cube implementation: no KFC Matmul client and no REGIST_MATMUL_OBJ.
@@ -40,6 +43,11 @@ public:
         mmv.SetSubBlockIdx(0);
         mmq.Init(&qkt, &pipe);
         mmv.Init(&pvt, &pipe);
+        //  H16: V 的两个 L1 槽。B 位于 TSCM 时 matmul 自己不再为 B 分配 L1
+        //  (GetCopyCubeInType 走 FROM_L1 分支, 其 Init/Reset 为空体), 故这 128 KB 是**搬家**不是新增。
+        //  每槽 N*MAX_D*2 = 65536 B; dim=64 时只用前半, 不另设尺寸免得两条路径。
+        TSCM<TPosition::GM, VSCM_SLOTS> vScm;
+        pipe.InitBuffer(vScm, VSCM_SLOTS, VSCM_SLOT_BYTES);
         GlobalTensor<int8_t> qg, kg;
         GlobalTensor<half> vg;
         //  H11: P 双槽 —— PV(i) 读 pgs[i & 1], 与 AIV 正在写的 pgs[(i+1) & 1] 错开。
@@ -84,6 +92,25 @@ public:
             const uint32_t tiles = t.kpad / N;
             for (uint32_t i = 0; i <= tiles; ++i) {
                 probe.Begin(task, i ? (i - 1) * N : 0, t);
+                //  H16: V(i) 的装入与 P 毫无依赖 —— 它只由 (head, i) 决定。放在
+                //  CrossCoreWaitFlag(P_READY) **之前**发起, 本轮消费的是另一槽里上一轮
+                //  装好的 V(i-1), 于是预装有整整一轮的时间落地。
+                //  深度 2 的 TQue 自带 WAR 互锁: 两槽都在途时 AllocTensor 自己会挡住,
+                //  不必手写 MTE1->MTE2 的序 (F89/F96 那类先写后读在这里由队列负责)。
+                if (i < tiles) {
+                    LocalTensor<half> vl1 = vScm.AllocTensor<half>();
+                    Nd2NzParams nd;
+                    nd.ndNum = 1;
+                    nd.nValue = N;                 // K 方向: 本 tile 的 key 数
+                    nd.dValue = t.dim;
+                    nd.srcNdMatrixStride = 0;
+                    nd.srcDValue = t.dim;          // 源 ND 相邻行起始地址的元素步长
+                    nd.dstNzC0Stride = N;          // CeilDiv(N,16)*16; N 已是 16 的倍数
+                    nd.dstNzNStride = 1;
+                    nd.dstNzMatrixStride = 0;
+                    DataCopy(vl1, vg[head * t.kpad * t.dim + uint64_t(i) * N * t.dim], nd);
+                    vScm.EnQue(vl1);
+                }
                 if (i < tiles) {
                     mmq.SetOrgShape(M, N, t.dim, t.dim);
                     mmq.SetSingleShape(M, N, t.dim);
@@ -98,7 +125,6 @@ public:
                     probe.Finish();
                     continue;      // 第 0 轮只发不消费
                 }
-                const uint32_t key = (i - 1) * N;
                 CrossCoreWaitFlag(P_READY);  // both AIV halves published P
                 probe.Mark(1); // exposed wait, not the duration of all Vector work
                 if (o_outstanding >= 2) {
@@ -112,10 +138,13 @@ public:
                 mmv.SetOrgShape(M, t.dim, N, t.dim);
                 mmv.SetSingleShape(M, t.dim, N);
                 //  H11: 被消费的是第 i-1 块, 其 P 在 pgs[(i-1) & 1]。
+                //  H16: V(i-1) 已在上一轮预装进 L1; DeQue 只做等待与取槽, 不再有 GM 搬运。
+                LocalTensor<half> vl1prev = vScm.DeQue<half>();
                 mmv.SetTensorA(pgs[(i - 1) & 1], false);
-                mmv.SetTensorB(vg[head * t.kpad * t.dim + uint64_t(key) * t.dim], false);
+                mmv.SetTensorB(vl1prev, false);
                 mmv.template IterateAll<true>(ogs[(i - 1) & 1], 0);
                 mmv.End();
+                vScm.FreeTensor(vl1prev);
                 probe.MarkAll(2); // PV API, including completed GM writeback
                 CrossCoreSetFlag<2, PIPE_FIX>(O_READY);
                 ++o_outstanding;  // awaited before the PV that reuses this slot
@@ -130,7 +159,7 @@ public:
     }
 private:
     MatmulImpl<QType, KType, IType, IType, MM_CONFIG> mmq;
-    MatmulImpl<HType, HType, FType, FType, MM_CONFIG> mmv;
+    MatmulImpl<HType, VType, FType, FType, MM_CONFIG> mmv;
 };
 
 template <uint32_t M, bool Profile>

@@ -62,7 +62,16 @@ at::Tensor CubeTiling(platform_ascendc::PlatformAscendC* platform, bool qk, int 
     using namespace matmul_tiling;
     MatmulApiTiling api(*platform);
     api.SetAType(TPosition::GM, CubeFormat::ND, qk ? DataType::DT_INT8 : DataType::DT_FLOAT16, false);
-    api.SetBType(TPosition::GM, CubeFormat::ND, qk ? DataType::DT_INT8 : DataType::DT_FLOAT16, qk);
+    //  H16: PV 的 B (即 V) 改由内核自管 L1。TSCM 只接受 NZ ——
+    //  CANN 安装包里 TSCM 的全部内建用例均为 CubeFormat::NZ。
+    //  实测 (本机 CANN 9.0.0, /tmp/tscmprobe): TSCM/NZ 与 GM/ND 的切分参数完全相同
+    //  (baseM/baseN/baseK/stepM/stepN/stepKa/stepKb/depthA1/depthB1 逐项一致),
+    //  把 L1 预算再扣掉内核那 128 KB 后仍然相同, GetTiling 均返回 0。
+    if (qk) {
+        api.SetBType(TPosition::GM, CubeFormat::ND, DataType::DT_INT8, true);
+    } else {
+        api.SetBType(TPosition::TSCM, CubeFormat::NZ, DataType::DT_FLOAT16, false);
+    }
     api.SetCType(TPosition::GM, CubeFormat::ND, qk ? DataType::DT_INT32 : DataType::DT_FLOAT);
     api.SetBiasType(TPosition::GM, CubeFormat::ND, qk ? DataType::DT_INT32 : DataType::DT_FLOAT);
     const int n = qk ? N : d, k = qk ? d : N;
@@ -71,13 +80,15 @@ at::Tensor CubeTiling(platform_ascendc::PlatformAscendC* platform, bool qk, int 
     api.SetFixSplit(tile_m, n, k);
     api.SetBias(false);
     // Two sequential local matmul objects share the physical Cube memories.
-    api.SetBufferSpace(l1 / 2, l0c / 2, -1);
+    //  H16: 非 qk 的那一路把 V 的两个 L1 槽从预算里扣掉 (见 vc_tiling.h 的 VSCM_BYTES)。
+    const uint64_t l1_share = qk ? l1 / 2 : l1 / 2 - vc910::VSCM_BYTES;
+    api.SetBufferSpace(l1_share, l0c / 2, -1);
     optiling::TCubeTiling t;
     TORCH_CHECK(api.GetTiling(t) == 0, "CANN MatmulApiTiling failed for ", qk ? "INT8 QK" : "FP16 PV");
     t.set_usedCoreNum(1);
     t.set_singleCoreM(tile_m); t.set_singleCoreN(n); t.set_singleCoreK(k);
     t.set_dbL0A(1); t.set_dbL0B(1); t.set_dbL0C(1);
-    t.set_shareMode(0); t.set_shareL1Size(l1 / 2); t.set_shareL0CSize(l0c / 2);
+    t.set_shareMode(0); t.set_shareL1Size(l1_share); t.set_shareL0CSize(l0c / 2);
     auto host = at::empty({int64_t(t.GetDataSize())}, at::TensorOptions().dtype(at::kByte).device(at::kCPU));
     t.SaveToBuffer(host.data_ptr(), host.numel());
     return host.to(options.device());

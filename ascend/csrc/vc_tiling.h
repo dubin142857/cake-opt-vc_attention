@@ -13,6 +13,12 @@ static_assert(N % K_SCALE_BLOCK == 0, "tile 宽度必须覆盖整数个 K 量化
 constexpr uint32_t KSB_PER_TILE = N / K_SCALE_BLOCK;
 constexpr uint32_t ROWS = M / 2;
 constexpr uint32_t MAX_D = 128;
+//  H16: PV 的 B (V) 由内核自管 L1 的两个槽。主机侧必须把这块从 PV matmul 的 L1
+//  预算里扣掉, 否则两个 matmul 各占 l1/2 已把 L1 占满, 再加这 128 KB 就溢出。
+//  这是**跨文件约定**: 内核的 InitBuffer 与主机的 SetBufferSpace 必须用同一个常量。
+constexpr uint32_t VSCM_SLOT_BYTES = N * MAX_D * 2;   // 每槽一个 V tile (NZ, half)
+constexpr uint32_t VSCM_SLOTS = 2;
+constexpr uint32_t VSCM_BYTES = VSCM_SLOTS * VSCM_SLOT_BYTES;
 constexpr uint16_t S_READY = 8, P_READY = 9, O_READY = 10, O_USED = 15;
 constexpr float EXPCAST_GAIN = 11.541560173034668f;
 constexpr uint32_t PROFILE_ROLES = 3, PROFILE_SAMPLES = 4, PROFILE_FIELDS = 16;
