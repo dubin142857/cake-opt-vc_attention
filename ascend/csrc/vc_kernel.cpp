@@ -335,10 +335,17 @@ public:
                     PipeBarrier<PIPE_V>();
                     Adds(score, score, 120.0f, ROWS * N);
                     PipeBarrier<PIPE_V>();
+                    //  Maxs(0) 是承担越界防护的那一条: 负下标会真的读到表外。
                     Maxs(score, score, 0.0f, ROWS * N);
                     PipeBarrier<PIPE_V>();
-                    Mins(score, score, 120.0f, ROWS * N);
-                    PipeBarrier<PIPE_V>();
+                    //  H25: 上界夹持 Mins(score, 120) **恒不生效**, 已删。
+                    //  不变式: 本段入口处 score 已是 `Sub(score, score, bmax)` 的结果,
+                    //  而 bmax 是 rowmax = Max(ReduceMax(本 tile), m) 的广播, 故 bmax >= 本 tile
+                    //  每一个元素; IEEE754 的 a-b 在 b>=a 时**精确** <= 0, 不存在舍入成正数。于是
+                    //      score <= 0 -> score*EXPCAST_GAIN <= 0 (GAIN=11.5415... 为正) -> +120 <= 120
+                    //  上界永远不会被触到。全掩码行给出 score-rowmax == 0, 结果恰为 120, 仍在界内。
+                    //  ★若将来改动 rowmax 的定义使 score 可能大于 rowmax, 这条删除就不再成立 ——
+                    //  不变式的来源就是上面那次 Sub, 改它时请一并复核此处。
                     Cast(raw, score, RoundMode::CAST_RINT, ROWS * N);
                     PipeBarrier<PIPE_V>();
                     // Gather offsets are BYTES. E4M3 decode is exact in FP32/FP16.
