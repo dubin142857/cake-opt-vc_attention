@@ -18,7 +18,7 @@ preflight 的 `compiler_soc` 导出它。
 
 ```bash
 sha256sum "$(python3 -c 'import vc_attention_ascend,pathlib;print(pathlib.Path(vc_attention_ascend.__file__).with_name("libvc_ascend_ops.so"))')"
-# 本交付应为 89386a98f399247d93b0...
+# 本交付应为 fb843e46aadc30b184a2558bac1155a8...
 ```
 
 我们两次被误导过：一次是 `pip install ... | tail -5` 后取 `$?`（拿到的是 `tail` 的退出码，

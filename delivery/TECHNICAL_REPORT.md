@@ -119,10 +119,14 @@ P 改双槽   AIV 写 p(j) 时 AIC 的 PV(j-1) 可能仍在读 pg。安全性来
            该标志在 PV(j) 之后置位, 故覆写时 PV(j) 必已读完。
 acc 推迟   acc 的 rescale 要等拿到对应的 pv 才能施加, 故 alpha 按 tile 存两槽;
            l 与 m 只依赖 rowmax 与 mass, 与 pv 无关, 仍立即更新。
-S 独立缓冲 原先的 raw 身兼两职 —— MTE2 接收 S, 以及存 ExpCast 的 gather 字节偏移
-           供向量单元读。移位循环把 Gather 与下一轮的 DataCopy(raw, ...) 拉近,
-           两者之间缺一条 V->MTE2 的序, 在 expcast 且 tiles>=2 时触发 aicore
-           exception (plog: fftsplus aivector error)。给 S 独立的 sIntBuf 即解除。
+补一条序   raw 身兼两职 —— MTE2 接收 S, 以及存 ExpCast 的 gather 字节偏移供向量
+           单元读。两者在一个 tile 内生命周期并不相交 (S 在 Cast 之后即死, gather
+           偏移到 ExpCast 段才出生), 冲突只发生在**跨轮**: 移位循环把上一轮的
+           Gather 与本轮的 DataCopy(raw, ...) 拉近, 中间缺一条 V->MTE2 的序,
+           在 expcast 且 tiles>=2 时触发 aicore exception
+           (plog: fftsplus aivector error)。补上 HardEvent::V_MTE2 的 Set/Wait 对即解除。
+           ★我们先用一块 ROWS*N*4 的独立缓冲绕开过 —— 那是拿 UB 换一条同步, 已改回。
+           M64 的 VectorBytes 因此为 119040 B 而非 151808 B。
 ```
 
 ★**在线 softmax 的不变式先于编码在 CPU 上核对过**：推迟累加与即时累加**逐位相同**
