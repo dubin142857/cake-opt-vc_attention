@@ -185,6 +185,9 @@ public:
         //  VectorBytes 的账 (主机的 UB 预算检查就对不上)。
         pipe.InitBuffer(stateBuf, 10 * ROWS * 4);
         pipe.InitBuffer(lutBuf, 128 * 4);
+        //  H26: 位运算解码用的两块。subBuf 存 e=0 支的 c/512, cmpBuf 存逐元素掩码 (1 bit/元素)。
+        pipe.InitBuffer(subBuf, ROWS * N * 4);
+        pipe.InitBuffer(cmpBuf, ROWS * N / 8);
         // H8: two per-row broadcast buffers. Brcb expands one value into a full
         // 32B block, so ROWS values occupy ROWS blocks = ROWS * 8 floats each.
         pipe.InitBuffer(brcbBuf, 2 * ROWS * 8 * 4);
@@ -206,6 +209,8 @@ public:
         auto brcb = brcbBuf.Get<float>();
         auto bmax = brcb[0], balpha = brcb[ROWS * 8];
         auto tmp = tmpBuf.Get<uint8_t>();
+        auto e0val = subBuf.Get<float>();
+        auto cmp = cmpBuf.Get<uint8_t>();
         static_assert(ROWS % 8 == 0, "Brcb consumes 8 source values per repeat");
         static_assert(N % 64 == 0, "One fp32 repeat covers 64 elements");
         // src1BlkStride = 0 makes all eight blocks of a repeat read the same
@@ -348,10 +353,30 @@ public:
                     //  不变式的来源就是上面那次 Sub, 改它时请一并复核此处。
                     Cast(raw, score, RoundMode::CAST_RINT, ROWS * N);
                     PipeBarrier<PIPE_V>();
-                    // Gather offsets are BYTES. E4M3 decode is exact in FP32/FP16.
-                    Muls(raw, raw, int32_t(4), ROWS * N);
+                    //  H26: 用位运算直接构造 E4M3 的解码值, 替掉查表。
+                    //  码 c = 8e + f 且 f < 8, 故 `c << 20` 本身就等于 `e<<23 | f<<20`;
+                    //  再加常量 `120 << 23` (= 127-7 的指数偏置) 得到的 int32, 按 fp32 读出
+                    //  恰好是 (1 + f/8) * 2^(e-7) —— 与表里 e>=1 的那 113 项**逐位相同**。
+                    //  ★e == 0 (即 c < 8) 那一支例外: E4M3 在指数域为 0 时没有隐含的前导 1,
+                    //  值是 f/512, 与位模式不符, 必须单独算再按掩码选。这一支**不能按出现频率
+                    //  省掉** —— 尾块掩码的无效列必然落在 c = 0, 而行内跨度超过 9.7041 的
+                    //  分布 (实测 q 尺度放大 1.5 倍即 20/20 命中) 在正常列上也会落进来。
+                    Cast(e0val, raw, RoundMode::CAST_NONE, ROWS * N);
                     PipeBarrier<PIPE_V>();
-                    Gather(score, table, raw.ReinterpretCast<uint32_t>(), uint32_t(0), ROWS * N);
+                    //  ★比较走 **fp32** 而不是 int32: 向量比较单元在本机只对浮点给出
+                    //  正确结果, 用 int32 实测使 c<8 这一支选错 (逐位 16/32 不符,
+                    //  相对 RMSE 0.0432% —— 小而弥散, 正是少数元素错经 softmax 归一化
+                    //  传播的形态)。c 在 fp32 里是精确整数 0..120, 故 `c < 8.0f` 精确。
+                    CompareScalar(cmp, e0val, 8.0f, CMPMODE::LT, ROWS * N);
+                    PipeBarrier<PIPE_V>();
+                    Muls(e0val, e0val, 1.0f / 512.0f, ROWS * N);
+                    PipeBarrier<PIPE_V>();
+                    ShiftLeft(raw, raw, int32_t(20), ROWS * N);
+                    PipeBarrier<PIPE_V>();
+                    Adds(raw, raw, int32_t(120) << 23, ROWS * N);
+                    PipeBarrier<PIPE_V>();
+                    Select(score, cmp, e0val, raw.ReinterpretCast<float>(),
+                           SELMODE::VSEL_TENSOR_TENSOR_MODE, ROWS * N);
                 } else {
                     Exp(score, score, ROWS * N);
                 }
@@ -431,6 +456,7 @@ public:
 private:
     TBuf<TPosition::VECCALC> rawBuf, scoreBuf, pBuf, accBuf, pvBuf;
     TBuf<TPosition::VECCALC> vsBuf, stateBuf, lutBuf, tmpBuf, brcbBuf;
+    TBuf<TPosition::VECCALC> subBuf, cmpBuf;
 };
 
 template <uint32_t TileM, bool Profile>

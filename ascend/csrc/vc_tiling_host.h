@@ -25,7 +25,10 @@ constexpr uint32_t VectorBytes(uint32_t reduce_bytes, uint32_t tile_m = M) {
     // LUT, reduction scratch.
     const uint32_t rows = tile_m / 2;
     // Two per-row Brcb broadcast buffers (rowmax, alpha) of ROWS blocks each.
-    return rows * N * (4 + 4 + 2) + 2 * rows * MAX_D * 4
+    //  H26: 位运算解码新增 subBuf (rows*N*4) 与 cmpBuf (rows*N/8) ——
+    //  与 vc_kernel.cpp 的两次 InitBuffer 是同一个量的两处写法, 改一处必须改另一处
+    //  (hangdiag 的 C14 会在给定点上比对两侧的数值)。
+    return rows * N * (4 + 4 + 2 + 4) + rows * N / 8 + 2 * rows * MAX_D * 4
          + MAX_D * 4 + 10 * rows * 4 + 128 * 4 + 2 * rows * 8 * 4 + reduce_bytes;
 }
 static_assert(WorkspaceBytes(64) == 114688 && WorkspaceBytes(128) == 131072,
