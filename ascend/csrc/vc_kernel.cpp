@@ -92,9 +92,22 @@ public:
             const uint32_t tiles = t.kpad / N;
             for (uint32_t i = 0; i <= tiles; ++i) {
                 probe.Begin(task, i ? (i - 1) * N : 0, t);
-                //  H16: V(i) 的装入与 P 毫无依赖 —— 它只由 (head, i) 决定。放在
-                //  CrossCoreWaitFlag(P_READY) **之前**发起, 本轮消费的是另一槽里上一轮
-                //  装好的 V(i-1), 于是预装有整整一轮的时间落地。
+                if (i < tiles) {
+                    mmq.SetOrgShape(M, N, t.dim, t.dim);
+                    mmq.SetSingleShape(M, N, t.dim);
+                    mmq.SetTensorA(qg[head * t.qpad * t.dim + uint64_t(qr) * t.dim], false);
+                    mmq.SetTensorB(kg[head * t.kpad * t.dim + uint64_t(i) * N * t.dim], true);
+                    mmq.template IterateAll<true>(sgs[i & 1], 0);
+                    mmq.End();
+                    CrossCoreSetFlag<2, PIPE_FIX>(S_READY);
+                }
+                //  H16b: V(i) 的装入与 P 毫无依赖 —— 它只由 (head, i) 决定, 放在
+                //  CrossCoreWaitFlag(P_READY) **之前**即可; 本轮消费的是另一槽里上一轮
+                //  装好的 V(i-1), 预装有整整一轮时间落地。
+                //  ★位置必须在 QK 与 S_READY **之后**: H16 把它放在 QK 之前, 与 QK 自己的
+                //  MTE2 争用, 实测 S_READY 等待 25.4% -> 40.1% (AIV 等 QK 等得更久),
+                //  抵掉了 O_READY 的 47.9% -> 34.3%, 端到端净亏 +0.35%。放到这里,
+                //  它占用的是 AIC 等 P_READY 的那段空闲 (h15 实测 50.6%), 不再推迟 S_READY。
                 //  深度 2 的 TQue 自带 WAR 互锁: 两槽都在途时 AllocTensor 自己会挡住,
                 //  不必手写 MTE1->MTE2 的序 (F89/F96 那类先写后读在这里由队列负责)。
                 if (i < tiles) {
@@ -110,15 +123,6 @@ public:
                     nd.dstNzMatrixStride = 0;
                     DataCopy(vl1, vg[head * t.kpad * t.dim + uint64_t(i) * N * t.dim], nd);
                     vScm.EnQue(vl1);
-                }
-                if (i < tiles) {
-                    mmq.SetOrgShape(M, N, t.dim, t.dim);
-                    mmq.SetSingleShape(M, N, t.dim);
-                    mmq.SetTensorA(qg[head * t.qpad * t.dim + uint64_t(qr) * t.dim], false);
-                    mmq.SetTensorB(kg[head * t.kpad * t.dim + uint64_t(i) * N * t.dim], true);
-                    mmq.template IterateAll<true>(sgs[i & 1], 0);
-                    mmq.End();
-                    CrossCoreSetFlag<2, PIPE_FIX>(S_READY);
                 }
                 probe.MarkAll(0); // ★H10 后这一段量的是**下一块**的 QK, 不是被消费的那块
                 if (i == 0) {
