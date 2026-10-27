@@ -41,7 +41,9 @@ public:
         mmq.Init(&qkt, &pipe);
         mmv.Init(&pvt, &pipe);
         GlobalTensor<int8_t> qg, kg;
-        GlobalTensor<half> vg, pg;
+        GlobalTensor<half> vg;
+        //  H11: P 双槽 —— PV(i) 读 pgs[i & 1], 与 AIV 正在写的 pgs[(i+1) & 1] 错开。
+        GlobalTensor<half> pgs[2];
         GlobalTensor<float> og;
         qg.SetGlobalBuffer(reinterpret_cast<__gm__ int8_t*>(q));
         kg.SetGlobalBuffer(reinterpret_cast<__gm__ int8_t*>(k));
@@ -50,13 +52,14 @@ public:
         PhaseProbe<Profile> probe;
         probe.Init(trace, core, 0);
         auto localWs = ws + uint64_t(core) * t.workspace_bytes;
-        //  H10 布局: sg0 在 0, sg1 在 M*N*4, pg 在 M*N*8, og 在 M*N*10。
-        //  只有 S 双缓冲, 理由见 vc_tiling_host.h 的 WorkspaceBytes 注释。
+        //  H11 布局: sg0 在 0, sg1 在 M*N*4, pg0 在 M*N*8, pg1 在 M*N*10, og 在 M*N*12。
+        //  S 与 P 双缓冲, O 单槽, 理由见 vc_tiling_host.h 的 WorkspaceBytes 注释。
         GlobalTensor<int32_t> sgs[2];
         sgs[0].SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(localWs), M * N);
         sgs[1].SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(localWs + M * N * 4), M * N);
-        pg.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(localWs + M * N * 8), M * N);
-        og.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(localWs + M * N * 10), M * t.dim);
+        pgs[0].SetGlobalBuffer(reinterpret_cast<__gm__ half*>(localWs + M * N * 8), M * N);
+        pgs[1].SetGlobalBuffer(reinterpret_cast<__gm__ half*>(localWs + M * N * 10), M * N);
+        og.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(localWs + M * N * 12), M * t.dim);
         // H6a: O_USED is awaited just before the PV that would overwrite `og`,
         // not at the end of the tile that produced it. The next tile's QK then
         // runs while the Vector halves are still reading `og` and accumulating.
@@ -104,7 +107,8 @@ public:
                 // A[P] stride=N; B[V] stride=D. Four-argument form is intentional.
                 mmv.SetOrgShape(M, t.dim, N, t.dim);
                 mmv.SetSingleShape(M, t.dim, N);
-                mmv.SetTensorA(pg, false);
+                //  H11: 被消费的是第 i-1 块, 其 P 在 pgs[(i-1) & 1]。
+                mmv.SetTensorA(pgs[(i - 1) & 1], false);
                 mmv.SetTensorB(vg[head * t.kpad * t.dim + uint64_t(key) * t.dim], false);
                 mmv.template IterateAll<true>(og, 0);
                 mmv.End();
@@ -135,10 +139,18 @@ public:
         pipe.InitBuffer(rawBuf, ROWS * N * 4);
         pipe.InitBuffer(scoreBuf, ROWS * N * 4);
         pipe.InitBuffer(pBuf, ROWS * N * 2);
+        //  H11: 给 S 独立的接收缓冲, 不再与 raw 共用。
+        //  raw 同时承担两件事: 接收 S (MTE2 写) 与存 ExpCast 的 gather 字节偏移 (向量读)。
+        //  移位循环把 Gather 与下一轮的 DataCopy(raw, ...) 拉近, 两者之间缺一条 V->MTE2 的序,
+        //  在 expcast 且 tiles>=2 时触发 aivector 异常。h12 基座恰好有独立的 S 缓冲, 故不复现。
+        pipe.InitBuffer(sIntBuf, ROWS * N * 4);
         pipe.InitBuffer(accBuf, ROWS * MAX_D * 4);
         pipe.InitBuffer(pvBuf, ROWS * MAX_D * 4);
         pipe.InitBuffer(vsBuf, MAX_D * 4);
-        pipe.InitBuffer(stateBuf, 8 * ROWS * 4);
+        //  H11: 由 8 槽扩到 10 槽 —— 第 8/9 槽存 alpha 的两份暂存。放进同一缓冲而不是
+        //  另开一个 ROWS*4 的小 TBuf: 小缓冲既容易被向量指令的读取粒度越界, 又会漏进
+        //  VectorBytes 的账 (主机的 UB 预算检查就对不上)。
+        pipe.InitBuffer(stateBuf, 10 * ROWS * 4);
         pipe.InitBuffer(lutBuf, 128 * 4);
         // H8: two per-row broadcast buffers. Brcb expands one value into a full
         // 32B block, so ROWS values occupy ROWS blocks = ROWS * 8 floats each.
@@ -146,6 +158,7 @@ public:
         pipe.InitBuffer(tmpBuf, t.reduce_bytes);
         const int32_t taskDoneEvent = static_cast<int32_t>(pipe.FetchEventID(HardEvent::MTE3_S));
         auto raw = rawBuf.Get<int32_t>();
+        auto sraw = sIntBuf.Get<int32_t>();
         auto score = scoreBuf.Get<float>();
         auto ph = pBuf.Get<half>();
         auto acc = accBuf.Get<float>();
@@ -155,6 +168,8 @@ public:
         auto m = states[0 * ROWS], l = states[1 * ROWS], alpha = states[2 * ROWS];
         auto rowmax = states[3 * ROWS], mass = states[4 * ROWS];
         auto qscale = states[5 * ROWS], kscale = states[6 * ROWS];
+        //  H11: acc 的 rescale 推迟到拿到对应 pv 的那一刻, 故 alpha 必须按 tile 暂存两槽。
+        LocalTensor<float> alphaHold[2] = {states[8 * ROWS], states[9 * ROWS]};
         auto table = lutBuf.Get<float>();
         auto brcb = brcbBuf.Get<float>();
         auto bmax = brcb[0], balpha = brcb[ROWS * 8];
@@ -177,14 +192,15 @@ public:
         PhaseProbe<Profile> probe;
         probe.Init(trace, core, 1 + sub);
         auto localWs = ws + uint64_t(core) * t.workspace_bytes;
-        GlobalTensor<half> pg;
         GlobalTensor<float> og;
-        //  H10: 与 AIC 侧同一布局; AIV 按本块序号的奇偶读对应的 S 槽。
+        //  H10/H11: 与 AIC 侧同一布局; AIV 按本块序号的奇偶选 S 槽与 P 槽。
         GlobalTensor<int32_t> sgs[2];
+        GlobalTensor<half> pgs[2];
         sgs[0].SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(localWs) + sub * ROWS * N, ROWS * N);
         sgs[1].SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(localWs + M * N * 4) + sub * ROWS * N, ROWS * N);
-        pg.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(localWs + M * N * 8) + sub * ROWS * N, ROWS * N);
-        og.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(localWs + M * N * 10) + sub * ROWS * t.dim, ROWS * t.dim);
+        pgs[0].SetGlobalBuffer(reinterpret_cast<__gm__ half*>(localWs + M * N * 8) + sub * ROWS * N, ROWS * N);
+        pgs[1].SetGlobalBuffer(reinterpret_cast<__gm__ half*>(localWs + M * N * 10) + sub * ROWS * N, ROWS * N);
+        og.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(localWs + M * N * 12) + sub * ROWS * t.dim, ROWS * t.dim);
         DataCopy(table, lg, 128);
         SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
         WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
@@ -204,12 +220,19 @@ public:
             Duplicate(l, 0.0f, ROWS);
             Duplicate(acc, 0.0f, ROWS * t.dim);
             PipeBarrier<PIPE_V>();
-            uint32_t tile = 0;
-            for (uint32_t key = 0; key < t.kpad; key += N, ++tile) {
-                probe.Begin(task, key, t);
+            //  H11: 移位循环 —— 第 j 轮先算第 j 块的概率并发布, 再消费第 j-1 块的 PV。
+            //  这样 AIV 在等 O_READY(j-1) 之前已经把下一块的概率算完,
+            //  原本大头的等待被真实工作填上。设备侧不能用 lambda 做结构抽象 (见 F54),
+            //  故与 AIC 侧同样采用移位而非复制代码。
+            const uint32_t tiles = t.kpad / N;
+            for (uint32_t j = 0; j <= tiles; ++j) {
+                const uint32_t key = j < tiles ? j * N : (tiles - 1) * N;
+                probe.Begin(task, j ? (j - 1) * N : 0, t);
+                if (j < tiles) {
+                const uint32_t tile = j;
                 CrossCoreWaitFlag(S_READY);
                 probe.Mark(0);
-                DataCopy(raw, sgs[tile & 1], ROWS * N);
+                DataCopy(sraw, sgs[tile & 1], ROWS * N);
                 //  一个 tile 覆盖 KSB_PER_TILE 个 K 量化块, 各有自己的 scale, 连续取。
                 DataCopy(kscale, ksg[(head * (t.kpad / K_SCALE_BLOCK) + key / K_SCALE_BLOCK) * 8],
                          8 * KSB_PER_TILE);
@@ -221,7 +244,7 @@ public:
                 for (uint32_t sb = 0; sb < KSB_PER_TILE; ++sb)
                     seg_scale[sb] = (qscale.GetValue(0) * kscale.GetValue(sb * 8)) * t.scale;
                 probe.Mark(1); // MTE2_S above completed raw scores and scale loads
-                Cast(score, raw, RoundMode::CAST_NONE, ROWS * N);
+                Cast(score, sraw, RoundMode::CAST_NONE, ROWS * N);
                 PipeBarrier<PIPE_V>();
                 //  按列半区施加 scale: 一个 repeat 覆盖 64 个 fp32, K_SCALE_BLOCK 是 64 的整数倍,
                 //  故量化块边界落在 repeat 边界上, 每块用 K_SCALE_BLOCK/64 次调用,
@@ -292,33 +315,46 @@ public:
                 probe.template MarkEvent<HardEvent::V_S>(2, pipe);
                 SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
                 WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
-                DataCopy(pg, ph, ROWS * N);
+                DataCopy(pgs[tile & 1], ph, ROWS * N);
                 CrossCoreSetFlag<2, PIPE_MTE3>(P_READY);
                 probe.template MarkEvent<HardEvent::MTE3_S>(3, pipe);
-                // History update uses only private UB, while Cube computes PV.
+                //  l 与 m 只依赖 rowmax 与 mass, 与 pv 无关, 故立即更新。
                 Mul(l, l, alpha, ROWS);
                 PipeBarrier<PIPE_V>();
                 Add(l, l, mass, ROWS);
                 PipeBarrier<PIPE_V>();
                 Adds(m, rowmax, 0.0f, ROWS);
-                // H8: same broadcast treatment for the history rescale. Muls by a
-                // scalar and Mul by a vector holding that scalar are the same FP32
-                // multiply, so the result is bit identical.
                 PipeBarrier<PIPE_V>();
-                Brcb(balpha, alpha, ROWS / 8, BrcbRepeatParams(1, 8));
-                PipeBarrier<PIPE_V>();
-                for (uint32_t off = 0; off < t.dim; off += 64)
-                    Mul(acc[off], acc[off], balpha, uint64_t(64), ROWS, accBrc);
+                //  ★acc 的 rescale **不在此处施加** —— acc 此刻仍停在第 j-1 块的尺度,
+                //  它要等拿到 pv(j-1) 之后才能前进一格。把 alpha(j) 存起来, 到第 j+1 轮再用。
+                Adds(alphaHold[tile & 1], alpha, 0.0f, ROWS);
                 probe.template MarkEvent<HardEvent::V_S>(4, pipe);
-                CrossCoreWaitFlag(O_READY);
-                probe.Mark(5); // only PV wait still exposed after history work
-                // ph cannot be overwritten until its MTE3 completes.
+                }
+                //  ★ph 的 MTE3 必须在**下一轮重写 ph 之前**排空, 故这一对 Flag 要无条件执行 ——
+                //  原写法把它放在 j==0 的 continue 之后, 于是第 0 轮发起的 DataCopy(pgs[0], ph)
+                //  还在飞行中, 第 1 轮的 Cast(ph, ...) 就把它覆写了 (先写后读冲突)。
                 SetFlag<HardEvent::MTE3_V>(EVENT_ID0);
                 WaitFlag<HardEvent::MTE3_V>(EVENT_ID0);
+                if (j == 0) {
+                    probe.Finish();
+                    continue;      // 第 0 轮只发布概率, 没有可消费的 PV
+                }
+                const uint32_t prev = j - 1;
+                CrossCoreWaitFlag(O_READY);
+                probe.Mark(5); // only PV wait still exposed after the next tile's probability
                 DataCopy(pv, og, ROWS * t.dim);
                 SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
                 WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
                 probe.template MarkEvent<HardEvent::MTE2_S>(6, pipe);
+                PipeBarrier<PIPE_V>();
+                //  acc = acc * alpha(prev) + pv(prev)。两项独立, 与即时累加**逐位相同** ——
+                //  每一项的浮点运算顺序未变, 只是施加时刻推迟。
+                // H8: Muls by a scalar and Mul by a vector holding that scalar are the
+                // same FP32 multiply, so the result is bit identical.
+                Brcb(balpha, alphaHold[prev & 1], ROWS / 8, BrcbRepeatParams(1, 8));
+                PipeBarrier<PIPE_V>();
+                for (uint32_t off = 0; off < t.dim; off += 64)
+                    Mul(acc[off], acc[off], balpha, uint64_t(64), ROWS, accBrc);
                 PipeBarrier<PIPE_V>();
                 Add(acc, acc, pv, ROWS * t.dim);
                 probe.template MarkEvent<HardEvent::V_S>(7, pipe);
@@ -346,7 +382,7 @@ public:
         }
     }
 private:
-    TBuf<TPosition::VECCALC> rawBuf, scoreBuf, pBuf, accBuf, pvBuf;
+    TBuf<TPosition::VECCALC> rawBuf, scoreBuf, pBuf, sIntBuf, accBuf, pvBuf;
     TBuf<TPosition::VECCALC> vsBuf, stateBuf, lutBuf, tmpBuf, brcbBuf;
 };
 
