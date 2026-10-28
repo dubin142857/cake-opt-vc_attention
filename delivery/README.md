@@ -124,9 +124,34 @@ ASCEND_OPP_PATH=<隔离的 opp> ASCEND_RT_VISIBLE_DEVICES=<非 0 卡> \
     --device 0 --warmup 2 --repeats 5 --trials 3
 ```
 
-★`--jobs 1`：并行构建会报 `ld.lld: error: unknown emulation: aicorelinux`，
-串行可过。该现象的归因**未完成**（串行日志里仍有该错误，且此前已手动编出过中间产物，
-不能干净归因于串行），要确认须做一次全新清理构建。
+★**构建需要一次绕行**（2026-10-28 已用全新清理构建的受控对照查实）：
+无论 `--jobs 16` 还是 `--jobs 1`，从干净状态起都会在 FATBIN 阶段报
+`ld.lld: error: unknown emulation: aicorelinux`（两臂 `build_rc` 均为 1）。
+**`--jobs 1` 并不足够**——此前文档里写的"串行可过"是错的，那次成功是复用了
+手动编出的中间产物，现已更正。
+
+已排除：并行、环境变量（把构建脚本算出的完整 44 个变量原样喂给生成的编译脚本，
+手动跑 `rc=0` 且零错误）、ccache（`ENABLE_CCACHE=OFF`，`CMakeCache` 里
+`COMPILER_LAUNCHER` 为空）、链接器本身（CANN 的两个 `ld.lld` 是同一个二进制，
+实测接受 `-m aicorelinux`）。**在 make 下究竟差什么，尚未查出。**
+
+可复现的绕行路径：
+
+```bash
+# 1) 先跑一次构建：它会在 configure 阶段生成 gen 脚本，随后在 FATBIN 阶段失败
+python3 scripts/build_mindie_laser_local.py --cann-root /usr/local/Ascend/cann-9.0.0 --soc ascend910b --jobs 16
+# 2) 用构建脚本算出的完整环境，手动跑那几条生成脚本（实测各 rc=0）
+cd build/mindie_laser_source/build/build/binary/ascend910b/gen
+for f in VcLaserAttention-vc_laser_attention-*.sh; do
+    ASCEND_CUSTOM_OPP_PATH=$(cd ../../../custom && pwd) HI_PYTHON=python3 \
+    TILINGKEY_PAR_COMPILE=1 BIN_FILENAME_HASHED=1 \
+    bash "$f" ../src/vc_laser_attention/VcLaserAttention.py ../bin/vc_laser_attention
+done
+# 3) 再跑一次整体构建 —— 实测 rc=0，产物与 manifest 齐全
+cd - && python3 scripts/build_mindie_laser_local.py --cann-root /usr/local/Ascend/cann-9.0.0 --soc ascend910b --jobs 16
+```
+
+★这是**绕行，不是修复**。
 
 ★`ASCEND_OPP_PATH`：该基准脚本对"进程里加载了非本次 vendor 的库"是 **fail closed** 的。
 共用机器上装着他人的 vendor 时会直接拒跑。做法是用符号链接拼一棵隔离的 `opp`
