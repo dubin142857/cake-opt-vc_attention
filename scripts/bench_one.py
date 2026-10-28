@@ -51,7 +51,9 @@ def main() -> int:
                    "timed": "run_prepared() only; prepare() excluded"},
         "t": time.time(),
     }
-    for mode, cast in (("control_m64", False), ("expcast_m64", True)):
+    #  ★指标名必须由实际的 tile_m 生成。此前写死成 _m64, 传 --tile-m 32 时
+    #  输出的键仍叫 control_m64 —— 标签与口径不符, 日后无法归属。
+    for mode, cast in ((f"control_m{a.tile_m}", False), (f"expcast_m{a.tile_m}", True)):
         for _ in range(a.warmup):
             vc.run_prepared(payload, expcast=cast, tile_m=a.tile_m)
             torch.npu.synchronize()

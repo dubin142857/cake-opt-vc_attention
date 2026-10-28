@@ -93,6 +93,12 @@ public:
             for (uint32_t i = 0; i <= tiles; ++i) {
                 probe.Begin(task, i ? (i - 1) * N : 0, t);
                 if (i < tiles) {
+                    //  ★另一侧 (上一轮 mmv -> 本轮 mmq) 曾试过也加一道同样的屏障
+                    //  (诊断构建 h31, 产物 aa7345d80f067136): tile_m=64 上 ABBA 实测
+                    //  control 319.15 -> 397.17 (**+24%**) —— 这个方向上的重叠正是
+                    //  H10 "先发 QK(i) 再消费第 i-1 块" 的收益本身。而最高暴露配置
+                    //  (tile_m=32, control) 上只留下面那一道时已是 0/47 (两会话),
+                    //  所以这一侧不加。留痕: 这是**有代价证据的取舍**, 不是忘了。
                     mmq.SetOrgShape(M, N, t.dim, t.dim);
                     mmq.SetSingleShape(M, N, t.dim);
                     mmq.SetTensorA(qg[head * t.qpad * t.dim + uint64_t(qr) * t.dim], false);
@@ -138,6 +144,12 @@ public:
                     --o_outstanding;
                 }
 
+                //  ★H30 诊断构建 (不是候选): 在 mmq 与 mmv 之间强制全流水串行。
+                //  目的是判定"两个 matmul 在时间上重叠"是否为竞态的必要条件 ——
+                //  mmq.End() 只做 FIX_M (挡 M 流水), 不挡 MTE1, 所以 mmv 的
+                //  L0A/L0B 装载可以在 mmq 仍在读 L0 时发出, 而两者共用物理 L0。
+                //  若加这条后触发率归零, 则机理确认在 L0 共用; 若不变则排除。
+                PipeBarrier<PIPE_ALL>();
                 // A[P] stride=N; B[V] stride=D. Four-argument form is intentional.
                 mmv.SetOrgShape(M, t.dim, N, t.dim);
                 mmv.SetSingleShape(M, t.dim, N);
