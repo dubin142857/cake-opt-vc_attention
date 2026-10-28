@@ -12,15 +12,35 @@
 
 ## 当前进展
 
-交付分支 **`h26-bitdecode`**。**内核改动止于 `0979605`**，产物哈希对应的就是它；
+交付分支 **`h26-bitdecode`**。**内核改动止于 `53ec7af`**，产物哈希对应的就是它；
 分支顶端在其之上只有交付文档与复现脚本（不碰 `ascend/`，不影响产物）。
 在甲方基线 `9e3a550d399c560cc7c7d9e25cbbc4157e82c0d5` 上叠加**九级**数据流、同步时序与
-向量指令的改动。长形状固定核心用时下降 **74.4%**（`control`）/ **75.8%**（`expcast`）。
+向量指令的改动，外加**一处正确性修复**（第十项，见下）。
+长形状固定核心用时下降 **74.4%**（`control`）/ **75.8%**（`expcast`）。
+
+> ### ★先读这一条：2026-10-28 发现并修复了一个竞态
+>
+> 此前交付的产物 `4d20b857d25f3541` 在 **`tile_m=32`**（即 `run_prepared()` 与
+> `attention()` 的**默认值**）长形状上**不确定**：同一输入连调 24 次，23 次结果不同。
+> 512×4 小形状上偶发 aicore 507015，`plog` 的 `errorStr` 为
+> `L0B read/write conflict in the MTE (same address)`。
+>
+> **成因**：同一 AIC 上的两个 `MatmulImpl`（`mmq` 算 QK、`mmv` 算 PV）共用物理
+> L0A/L0B，并共用 `M_MTE1` 事件号。这是**最初的 Ascend 移植（`da6026b`）就带的结构**，
+> 两个实例的声明此后从未被改动过；本次九级优化把 AIV 侧提速，才把触发率从
+> 9%（h15）推到 100%（h26b）。**这意味着 h11 时期交付的版本大概率同样带这个缺陷。**
+>
+> **修法**：在两个 matmul 的发射点之间串行一次。`tile_m=64` 输出与修复前**逐位相同**，
+> 即只改时序不改值；代价 `tile_m=64` 上 +1.14%(control)/+0.41%(expcast)，
+> `tile_m=32` 上无代价。
+>
+> **本文「收益」一节的数字全部在 `tile_m=64` 上测**，不受此缺陷影响；
+> 受影响的是按默认 `tile_m=32` 调用的那条路径。
 
 构建产物应为：
 
 ```
-4d20b857d25f35414ed8090a5a441d07129796f3d9bb4f09b1ece1304eab602d  libvc_ascend_ops.so
+3494c48d2ce2b73ed7292dac3e26ce6e6d084fa83f77c2b777cae42ddf04cf55  libvc_ascend_ops.so
 ```
 
 ★**构建后先核对这个 sha256 再进入验收。** 我们两次被误导过：一次是 `pip install ... | tail -5`
@@ -98,14 +118,29 @@ NPU_DEVICE=<空闲卡号> bash scripts/bench_pairwise.sh 9e3a550 h26-bitdecode
 
 ### 3. 逐位重复性
 
+★**此前本节写的是「6 组形状各连发 8 次，全部 8/8 相同」。该结论当时不成立** ——
+那 6 组形状都短，而竞态只在长形状 + `tile_m=32` 上暴露。连发次数从 2 次提到 8 次
+不足以补救：**决定能否测到的不是次数，而是有没有跑在最高暴露的那个配置上。**
+
+正确的判法是先找出最高暴露配置，再在那个配置上复测：
+
 ```bash
-python3 scripts/profile_ascend910b.py --device <卡号> --trials 8
-#  6 组形状各连发 8 次，期望全部 8/8 相同
+cd <cake-toolkit>
+ASCEND_RT_VISIBLE_DEVICES=<卡号> python3 -m core.detrace rate \
+    --repro cases/vc_attention/repro.py \
+    --knobs "tile_m=32,64;expcast=0,1" --repeats 24 --tile 32 --lane-axis 1
+#  期望: 四格触发率全为 0.0%
+#  它同时打印损坏粒度与「触发率随旋钮的单调律」—— 修复前在
+#  tile_m=32/expcast=0 这一格是 100%，另外三格是 0%。
 ```
 
-★用 **8 次而非 2 次** —— 2 次正是漏掉同类竞态的原因。
+短形状的那一组仍可跑，作为补充而非主判据：
 
-## 九级改动
+```bash
+python3 scripts/profile_ascend910b.py --device <卡号> --trials 8
+```
+
+## 九级改动 + 一处正确性修复
 
 | # | 改动 | commit |
 | --- | --- | --- |
@@ -118,6 +153,7 @@ python3 scripts/profile_ascend910b.py --device <卡号> --trials 8
 | 7 | V 预装进调用方自管的 L1（TSCM/NZ），并移到 `S_READY` 置位之后 | `b70354f`、`8568973` |
 | 8 | 删掉 ExpCast 链里**恒不生效**的上界夹持 | `9256a40` |
 | 9 | 用位运算直接构造 E4M3 的解码值，替掉查表 `Gather` | `0979605` |
+| 10 | **正确性修复**：在 `mmq` 与 `mmv` 之间串行，去掉两个 Matmul 实例对共用 L0A/L0B 的重叠访问 | `53ec7af` |
 
 机理与逐级证据见 `TECHNICAL_REPORT.md`。表中每个 commit 都在 `h26-bitdecode` 的祖先链上，
 `git checkout <commit>` 可直接取到那一级。
