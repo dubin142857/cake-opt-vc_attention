@@ -83,6 +83,56 @@ NPU_DEVICE=<空闲卡号> bash scripts/run_ascend910b.sh --long-shape
 同机 CANN `npu_fusion_attention` 为 142 ms；差距由基线的 7.8 倍收窄到 **2.0 倍**。
 ★这是两个不同数值契约的算子，该比值只作背景参照，**不是加速比**。
 
+### 与官方 MindIE Laser Attention 的对比（2026-10-28 实测）
+
+甲方要求的对比已完成。**原版 Laser 从上游固定提交 `71098c20` 的源码在本机编译**
+（不需华为账号；`mindiesd` 安装包仍需账号，但本对比不依赖它）。
+同一台机器、同一张卡、同一形状 `[1, 28, 37741, 128]`，两者在数分钟内先后测得：
+
+| | 核心耗时 | `dense_fp32` 相对 RMSE |
+| --- | ---: | ---: |
+| **原版 Laser**（不量化） | **95.30 ms** | **0.191 %** |
+| 同机 CANN 融合算子 | — | 0.234 % |
+| 本交付 `control`（`tile_m=64`） | 285.46 ms | 2.98 % |
+| 本交付 `expcast`（`tile_m=64`） | 299.89 ms | 4.36 % |
+
+**结论：在这台机器、这个形状上，原版 Laser 比本交付快 3.0 倍，且 `dense_fp32`
+相对 RMSE 小约 16 倍。** 两项必须同时看：只报耗时比会误导，因为两条路线的
+数值契约不同——Laser 走 FP16 不量化，本交付走 INT8 QK + E4M3 V 的量化路线。
+
+口径边界：
+
+- 两侧的精度是**同一个字段名、同一种口径**（对 FP32 稠密参考的 `relative_rmse`），
+  单位已逐项核对（Laser 报表里的 `dense RMSE %` 即 json 中 `relative_rmse × 100`）。
+- Laser 的精度采样覆盖至多 32 个 query 行（其脚本自述），本交付为长形状全量；
+  但两者相差约一个量级以上，远超采样差异所能解释。
+- 计时协议不同（Laser 为进程分组同步墙钟，本交付为 `bench_one.py` 的重复中位），
+  两者都排除预处理。3.0 倍的差距同样远超协议差异。
+- 未跑 `qkv_int8_e4m3_expcast` 等变体——那回答的是"把本路线搬进 Laser 框架会怎样"，
+  与"本交付 vs Laser"不是同一个问题。
+
+复现（`vendors` 隔离见下）：
+
+```bash
+python3 scripts/prepare_mindie_laser_source.py --reference-dir <含该提交的 MindIE-SD 仓库> --variant baseline
+python3 scripts/build_mindie_laser_local.py --cann-root /usr/local/Ascend/cann-9.0.0 --soc ascend910b --jobs 1
+python3 scripts/build_mindie_laser_bridge.py --source-dir build/mindie_laser_source --cann-root /usr/local/Ascend/cann-9.0.0 --jobs 16
+ASCEND_OPP_PATH=<隔离的 opp> ASCEND_RT_VISIBLE_DEVICES=<非 0 卡> \
+  python3 scripts/benchmark_mindie_laser_quant.py --variants baseline \
+    --baseline-build results/mindie_laser_build.json \
+    --bridge-manifest results/mindie_laser_bridge.json \
+    --device 0 --warmup 2 --repeats 5 --trials 3
+```
+
+★`--jobs 1`：并行构建会报 `ld.lld: error: unknown emulation: aicorelinux`，
+串行可过。该现象的归因**未完成**（串行日志里仍有该错误，且此前已手动编出过中间产物，
+不能干净归因于串行），要确认须做一次全新清理构建。
+
+★`ASCEND_OPP_PATH`：该基准脚本对"进程里加载了非本次 vendor 的库"是 **fail closed** 的。
+共用机器上装着他人的 vendor 时会直接拒跑。做法是用符号链接拼一棵隔离的 `opp`
+（`built-in` 等软链回原树，只把 `vendors/` 换成真目录并将 `load_priority` 置空），
+**不修改共用的 CANN 安装包**，也不降低该闸的标准。
+
 ## 验证手段
 
 三件事各有各的脚本，**都在仓里，不需要另找**：
@@ -178,6 +228,14 @@ AIV 向量 2.03 us/tile。**任何跨核协议的改动都降不到 2.03 以下*
 同机 CANN FA 做着 1.63 倍的 matmul 却只用 142 ms —— 它的 AIV 向量工作量不到我们的一半，
 差距主要在 ExpCast 这条 E4M3 量化 softmax 的**数值契约**上，不在实现效率。
 若要继续，这是需要双方先谈契约的部分。
+
+★**2026-10-28 的 Laser 实测使这段结论更紧**：本设计的硬下界约 207 ms，而原版 Laser
+在同机同形状上是 **95.30 ms**，且精度好约 16 倍。也就是说，**即便把本路线的实现
+效率做到极限（207 ms），仍比原版 Laser 慢一倍以上，精度也仍差一个量级**。
+这不是实现层面还能追回来的差距，它来自数值契约本身：量化换来的收益在这个形状上
+没有被测到，而代价（耗时与精度）两项都被测到了。
+继续投入之前，应当先确认**这条量化路线要解决的到底是什么问题**——
+若目标是显存或带宽，需要给出该维度的测量；若目标是速度或精度，本轮数据不支持。
 
 ## 环境
 
