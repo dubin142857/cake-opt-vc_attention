@@ -6,6 +6,7 @@ NPU_DEVICE="${NPU_DEVICE:-0}"
 skip_build=0
 long_shape=0
 profile=0
+require_a3=0
 laser_args=()
 benchmark_args=()
 while (($#)); do
@@ -13,13 +14,16 @@ while (($#)); do
     --skip-build) skip_build=1; shift ;;
     --long-shape) long_shape=1; shift ;;
     --profile) profile=1; shift ;;
+    --require-a3) require_a3=1; shift ;;
     --with-laser) laser_args=(--require-laser); shift ;;
     --) shift; benchmark_args=("$@"); break ;;
-    *) echo "Usage: bash scripts/run_ascend910b.sh [--skip-build] [--long-shape] [--with-laser] [--profile] [-- benchmark options]" >&2; exit 2 ;;
+    *) echo "Usage: bash scripts/run_ascend910b.sh [--skip-build] [--long-shape] [--with-laser] [--profile] [--require-a3] [-- benchmark options]" >&2; exit 2 ;;
   esac
 done
 mkdir -p results
-"$PYTHON_BIN" scripts/check_ascend910b.py --device "$NPU_DEVICE" "${laser_args[@]}" --output results/ascend910b_environment.json
+a3_args=()
+if ((require_a3)); then a3_args=(--require-a3); fi
+"$PYTHON_BIN" scripts/check_ascend910b.py --device "$NPU_DEVICE" "${laser_args[@]}" "${a3_args[@]}" --output results/ascend910b_environment.json
 # Preflight is authoritative: an inherited value can name a different SKU.
 SOC_VERSION="$("$PYTHON_BIN" -c 'import json; print(json.load(open("results/ascend910b_environment.json"))["compiler_soc"])')"
 export SOC_VERSION

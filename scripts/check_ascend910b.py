@@ -62,10 +62,11 @@ def resolve_soc(runtime_soc, inherited_soc, cann):
     return result
 
 
-def inspect(device=0, require_laser=False):
+def inspect(device=0, require_laser=False, require_a3=False):
     report = {"python": sys.version, "platform": platform.platform(), "device_index": device,
               "target_label": "auto: DAV-2201 A2/A3", "native_fp8_matmul": False,
-              "require_laser": require_laser, "errors": [], "warnings": []}
+              "require_laser": require_laser, "require_a3": require_a3,
+              "errors": [], "warnings": []}
     try:
         report["mindiesd_installed_version"] = importlib.metadata.version("mindiesd")
     except importlib.metadata.PackageNotFoundError:
@@ -111,6 +112,9 @@ def inspect(device=0, require_laser=False):
         report["errors"].extend(selection.pop("errors"))
         report["warnings"].extend(selection.pop("warnings"))
         report.update(selection)
+        if require_a3 and not compiler_soc_is_a3(report["compiler_soc"]):
+            report["errors"].append(
+                f"Selected device is {report['compiler_soc']}, not an A3/910C Ascend910_93xx SKU")
         x = torch.arange(16, dtype=torch.float32, device=f"npu:{device}")
         if not torch.equal((x + 1).cpu(), torch.arange(1, 17, dtype=torch.float32)):
             report["errors"].append("Basic NPU execution check failed")
@@ -121,13 +125,20 @@ def inspect(device=0, require_laser=False):
     return report
 
 
+def compiler_soc_is_a3(soc):
+    return bool(re.fullmatch(r"Ascend910_93[0-9]{2}", soc))
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--device", type=int, default=0)
     parser.add_argument("--require-laser", action="store_true")
+    parser.add_argument("--require-a3", action="store_true",
+                        help="Reject A2/910B devices for a 910C/A3 run")
     parser.add_argument("--output", default="results/ascend910b_environment.json")
     args = parser.parse_args()
-    report = inspect(args.device, require_laser=args.require_laser)
+    report = inspect(args.device, require_laser=args.require_laser,
+                     require_a3=args.require_a3)
     target = Path(args.output)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
