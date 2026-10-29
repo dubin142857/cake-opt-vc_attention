@@ -47,11 +47,17 @@ void Check(const at::Tensor& q, const at::Tensor& k, const at::Tensor& v,
     TORCH_CHECK(d == 64 || d == 128, "D must be 64 or 128");
     TORCH_CHECK(queries > 0 && keys > 0 && queries < INT32_MAX - M && keys < INT32_MAX - N,
                 "Sequence length outside supported range");
-    const auto qp = (queries + M - 1) / M * M, kp = (keys + N - 1) / N * N;
+    //  ★这里的填充单位是**客户端的量化块** Q_SCALE_BLOCK, 不是我们内部的计算 tile M。
+    //    原文写的是 M —— M=32 时两者恰好重合所以一直没暴露, 而 M 改 64 后会错误地
+    //    要求客户端按 64 行填充并按 qp/64 给 scale。注释里本来就写着 "Qpad/32",
+    //    即本意一直是量化块。计算 tile 的填充另有一处 (下方的 extra_q), 两者互不相干。
+    const auto qp = (queries + Q_SCALE_BLOCK - 1) / Q_SCALE_BLOCK * Q_SCALE_BLOCK,
+               kp = (keys + N - 1) / N * N;
     TORCH_CHECK(q.size(2) == qp && k.size(0) == b && k.size(1) == h && k.size(2) == kp && k.size(3) == d,
                 "Q/K padding or MHA shape mismatch");
     TORCH_CHECK(v.sizes() == k.sizes(), "K/V shape mismatch");
-    TORCH_CHECK(qs.sizes() == at::IntArrayRef({b, h, qp / M, 8}), "Q scales must be [B,H,Qpad/32,8]");
+    TORCH_CHECK(qs.sizes() == at::IntArrayRef({b, h, qp / Q_SCALE_BLOCK, 8}),
+                "Q scales must be [B,H,Qpad/32,8]");
     //  K 的量化块是 K_SCALE_BLOCK, 与 matmul tile 宽度 N 解耦; scale 数按前者算。
     TORCH_CHECK(ks.sizes() == at::IntArrayRef({b, h, kp / K_SCALE_BLOCK, 8}),
                 "K scales must be [B,H,Kpad/K_SCALE_BLOCK,8]");
@@ -101,7 +107,9 @@ std::tuple<at::Tensor, at::Tensor> ForwardImpl(const at::Tensor& q, const at::Te
     const at::Tensor& qs, const at::Tensor& ks, const at::Tensor& vs, const at::Tensor& lut,
     int64_t queries, int64_t keys, double scale, bool expcast, int64_t tile_m, bool profile) {
     Check(q, k, v, qs, ks, vs, lut, queries, keys, scale);
-    TORCH_CHECK(tile_m == 32 || tile_m == 64, "tile_m must be 32 or 64; Q quantization stays Q32");
+    //  ★只剩 64: 手写 cube 的几何是 M=64 x N=128 (vc_l1l0_map.h 的断言守着 L0 预算),
+    //    且 ROWS=M/2=32 恰好是一个 Q_SCALE_BLOCK, 向量侧的 scale 逻辑依赖这一条。
+    TORCH_CHECK(tile_m == 64, "tile_m must be 64 (手写 cube 的几何); Q 量化仍是 Q32");
     TORCH_CHECK(queries < INT32_MAX - tile_m, "Query padding exceeds the native indexing contract");
     TORCH_CHECK(q.is_privateuseone(), "NPU payload required");
     c10::OptionalDeviceGuard guard(q.device());
@@ -143,7 +151,8 @@ std::tuple<at::Tensor, at::Tensor> ForwardImpl(const at::Tensor& q, const at::Te
     Tiling t{uint32_t(q.size(0)), uint32_t(q.size(1)), uint32_t(queries), uint32_t(keys),
              uint32_t(qp.size(2)), uint32_t(k.size(2)), uint32_t(q.size(3)), cores,
              reduce_bytes, uint32_t(expcast), float(scale), 0, tasks};
-    t.workspace_bytes = uint32_t(WorkspaceBytes(t.dim, uint32_t(tile_m)));
+    //  ★改用 V2 布局 (S/P 各 2xCHUNK 槽 + O 双槽) —— 与 CubeV2 和向量侧的 chunk 分阶段配套。
+    t.workspace_bytes = uint32_t(WorkspaceBytesV2(t.dim, uint32_t(tile_m), N, map::CHUNK));
     auto qt = CubeTiling(platform, true, t.dim, int(tile_m), l1, l0c, q.options());
     auto vt = CubeTiling(platform, false, t.dim, int(tile_m), l1, l0c, q.options());
     auto meta_cpu = at::empty({int64_t(sizeof(t))}, at::TensorOptions().dtype(at::kByte).device(at::kCPU));

@@ -31,153 +31,14 @@ using FType = MatmulType<TPosition::GM, CubeFormat::ND, float>;
 
 // Local Cube implementation: no KFC Matmul client and no REGIST_MATMUL_OBJ.
 // Explicit mode-2 flags belong exclusively to this kernel.
-template <uint32_t M, bool Profile>
-class Cube {
-public:
-    __aicore__ inline void RunCube(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR ws,
-                              GM_ADDR qt, GM_ADDR vt, GM_ADDR trace, const Tiling& t) {
-        TPipe pipe;
-        TCubeTiling qkt, pvt;
-        ReadControl(qt, qkt);
-        ReadControl(vt, pvt);
-        mmq.SetSubBlockIdx(0);
-        mmv.SetSubBlockIdx(0);
-        mmq.Init(&qkt, &pipe);
-        mmv.Init(&pvt, &pipe);
-        //  H16: V 的两个 L1 槽。B 位于 TSCM 时 matmul 自己不再为 B 分配 L1
-        //  (GetCopyCubeInType 走 FROM_L1 分支, 其 Init/Reset 为空体), 故这 128 KB 是**搬家**不是新增。
-        //  每槽 N*MAX_D*2 = 65536 B; dim=64 时只用前半, 不另设尺寸免得两条路径。
-        TSCM<TPosition::GM, VSCM_SLOTS> vScm;
-        pipe.InitBuffer(vScm, VSCM_SLOTS, VSCM_SLOT_BYTES);
-        GlobalTensor<int8_t> qg, kg;
-        GlobalTensor<half> vg;
-        //  H11: P 双槽 —— PV(i) 读 pgs[i & 1], 与 AIV 正在写的 pgs[(i+1) & 1] 错开。
-        GlobalTensor<half> pgs[2];
-        //  H15: O 双缓冲 —— AIC 等 O_USED 的唯一原因是 og 只有一个槽。两槽之后
-        //  PV(i-1) 写 ogs[(i-1) & 1] 与 AIV 读另一槽互不相干, AIC 可以先跑一步。
-        GlobalTensor<float> ogs[2];
-        qg.SetGlobalBuffer(reinterpret_cast<__gm__ int8_t*>(q));
-        kg.SetGlobalBuffer(reinterpret_cast<__gm__ int8_t*>(k));
-        vg.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(v));
-        const uint32_t core = GetBlockIdx();
-        PhaseProbe<Profile> probe;
-        probe.Init(trace, core, 0);
-        auto localWs = ws + uint64_t(core) * t.workspace_bytes;
-        //  H11 布局: sg0 在 0, sg1 在 M*N*4, pg0 在 M*N*8, pg1 在 M*N*10, og 在 M*N*12。
-        //  S 与 P 双缓冲, O 单槽, 理由见 vc_tiling_host.h 的 WorkspaceBytes 注释。
-        GlobalTensor<int32_t> sgs[2];
-        sgs[0].SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(localWs), M * N);
-        sgs[1].SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(localWs + M * N * 4), M * N);
-        pgs[0].SetGlobalBuffer(reinterpret_cast<__gm__ half*>(localWs + M * N * 8), M * N);
-        pgs[1].SetGlobalBuffer(reinterpret_cast<__gm__ half*>(localWs + M * N * 10), M * N);
-        ogs[0].SetGlobalBuffer(reinterpret_cast<__gm__ float*>(localWs + M * N * 12), M * t.dim);
-        ogs[1].SetGlobalBuffer(reinterpret_cast<__gm__ float*>(localWs + M * N * 12) + M * t.dim, M * t.dim);
-        // H6a: O_USED is awaited just before the PV that would overwrite `og`,
-        // not at the end of the tile that produced it. The next tile's QK then
-        // runs while the Vector halves are still reading `og` and accumulating.
-        // Flag counts are unchanged (one wait per O_READY), so the Set/Wait
-        // pairing that detsync_lint H7 checks still balances; the outstanding
-        // wait is drained after both loops.
-        //  H15: 最多两个在途, 对应 og 的两个槽。标志计数不变 (每个 O_READY 仍对应
-        //  恰好一次 O_USED 等待), 在途的那些在两层循环结束后排空。
-        uint32_t o_outstanding = 0;
-        for (uint64_t task = core; task < t.tasks; task += t.cores) {
-            const uint64_t head = task / (t.qpad / M);
-            const uint32_t qr = (task % (t.qpad / M)) * M;
-            //  H10: 把循环移位一拍 —— 第 i 轮先**发出**第 i 块的 QK, 再**消费**第 i-1 块。
-            //  于是 QK(i) 与 AIV 处理第 i-1 块重叠, 这就是收益来源。
-            //  移位写法使 QK 与 PV 的代码各只出现一次; 设备侧不能用 lambda 包装
-            //  (__aicore__ 上下文里设备重载对 lambda 体不可见, 本次实撞编译失败)。
-            //  sgs[i&1] 在发 QK(i) 时必定空闲: 该槽上次用于第 i-2 块, AIV 在置 P_READY(i-2)
-            //  之前已读完它, 而 AIC 在第 i-1 轮消费了该标志。
-            const uint32_t tiles = t.kpad / N;
-            for (uint32_t i = 0; i <= tiles; ++i) {
-                probe.Begin(task, i ? (i - 1) * N : 0, t);
-                if (i < tiles) {
-                    //  ★另一侧 (上一轮 mmv -> 本轮 mmq) 曾试过也加一道同样的屏障
-                    //  (诊断构建 h31, 产物 aa7345d80f067136): tile_m=64 上 ABBA 实测
-                    //  control 319.15 -> 397.17 (**+24%**) —— 这个方向上的重叠正是
-                    //  H10 "先发 QK(i) 再消费第 i-1 块" 的收益本身。而最高暴露配置
-                    //  (tile_m=32, control) 上只留下面那一道时已是 0/47 (两会话),
-                    //  所以这一侧不加。留痕: 这是**有代价证据的取舍**, 不是忘了。
-                    mmq.SetOrgShape(M, N, t.dim, t.dim);
-                    mmq.SetSingleShape(M, N, t.dim);
-                    mmq.SetTensorA(qg[head * t.qpad * t.dim + uint64_t(qr) * t.dim], false);
-                    mmq.SetTensorB(kg[head * t.kpad * t.dim + uint64_t(i) * N * t.dim], true);
-                    mmq.template IterateAll<true>(sgs[i & 1], 0);
-                    mmq.End();
-                    CrossCoreSetFlag<2, PIPE_FIX>(S_READY);
-                }
-                //  H16b: V(i) 的装入与 P 毫无依赖 —— 它只由 (head, i) 决定, 放在
-                //  CrossCoreWaitFlag(P_READY) **之前**即可; 本轮消费的是另一槽里上一轮
-                //  装好的 V(i-1), 预装有整整一轮时间落地。
-                //  ★位置必须在 QK 与 S_READY **之后**: H16 把它放在 QK 之前, 与 QK 自己的
-                //  MTE2 争用, 实测 S_READY 等待 25.4% -> 40.1% (AIV 等 QK 等得更久),
-                //  抵掉了 O_READY 的 47.9% -> 34.3%, 端到端净亏 +0.35%。放到这里,
-                //  它占用的是 AIC 等 P_READY 的那段空闲 (h15 实测 50.6%), 不再推迟 S_READY。
-                //  深度 2 的 TQue 自带 WAR 互锁: 两槽都在途时 AllocTensor 自己会挡住,
-                //  不必手写 MTE1->MTE2 的序 (F89/F96 那类先写后读在这里由队列负责)。
-                if (i < tiles) {
-                    LocalTensor<half> vl1 = vScm.AllocTensor<half>();
-                    Nd2NzParams nd;
-                    nd.ndNum = 1;
-                    nd.nValue = N;                 // K 方向: 本 tile 的 key 数
-                    nd.dValue = t.dim;
-                    nd.srcNdMatrixStride = 0;
-                    nd.srcDValue = t.dim;          // 源 ND 相邻行起始地址的元素步长
-                    nd.dstNzC0Stride = N;          // CeilDiv(N,16)*16; N 已是 16 的倍数
-                    nd.dstNzNStride = 1;
-                    nd.dstNzMatrixStride = 0;
-                    DataCopy(vl1, vg[head * t.kpad * t.dim + uint64_t(i) * N * t.dim], nd);
-                    vScm.EnQue(vl1);
-                }
-                probe.MarkAll(0); // ★H10 后这一段量的是**下一块**的 QK, 不是被消费的那块
-                if (i == 0) {
-                    probe.Finish();
-                    continue;      // 第 0 轮只发不消费
-                }
-                CrossCoreWaitFlag(P_READY);  // both AIV halves published P
-                probe.Mark(1); // exposed wait, not the duration of all Vector work
-                if (o_outstanding >= 2) {
-                    //  H15: 两个槽都在途时才必须等 —— 要覆写的那个槽 (ogs[(i-1)&1])
-                    //  上一次装的是第 i-3 块的 O, AIV 早已读完。常见情形下这里不阻塞。
-                    CrossCoreWaitFlag(O_USED);
-                    --o_outstanding;
-                }
-
-                //  ★H30 诊断构建 (不是候选): 在 mmq 与 mmv 之间强制全流水串行。
-                //  目的是判定"两个 matmul 在时间上重叠"是否为竞态的必要条件 ——
-                //  mmq.End() 只做 FIX_M (挡 M 流水), 不挡 MTE1, 所以 mmv 的
-                //  L0A/L0B 装载可以在 mmq 仍在读 L0 时发出, 而两者共用物理 L0。
-                //  若加这条后触发率归零, 则机理确认在 L0 共用; 若不变则排除。
-                PipeBarrier<PIPE_ALL>();
-                // A[P] stride=N; B[V] stride=D. Four-argument form is intentional.
-                mmv.SetOrgShape(M, t.dim, N, t.dim);
-                mmv.SetSingleShape(M, t.dim, N);
-                //  H11: 被消费的是第 i-1 块, 其 P 在 pgs[(i-1) & 1]。
-                //  H16: V(i-1) 已在上一轮预装进 L1; DeQue 只做等待与取槽, 不再有 GM 搬运。
-                LocalTensor<half> vl1prev = vScm.DeQue<half>();
-                mmv.SetTensorA(pgs[(i - 1) & 1], false);
-                mmv.SetTensorB(vl1prev, false);
-                mmv.template IterateAll<true>(ogs[(i - 1) & 1], 0);
-                mmv.End();
-                vScm.FreeTensor(vl1prev);
-                probe.MarkAll(2); // PV API, including completed GM writeback
-                CrossCoreSetFlag<2, PIPE_FIX>(O_READY);
-                ++o_outstanding;  // awaited before the PV that reuses this slot
-                probe.Mark(3);
-                probe.Finish();
-            }
-        }
-        while (o_outstanding) {
-            CrossCoreWaitFlag(O_USED);  // drain the outstanding tiles before the kernel ends
-            --o_outstanding;
-        }
-    }
-private:
-    MatmulImpl<QType, KType, IType, IType, MM_CONFIG> mmq;
-    MatmulImpl<HType, VType, FType, FType, MM_CONFIG> mmv;
-};
+//  ★旧 Cube 类已删 (2026-10-29)。它用两个 MatmulImpl 逐 tile 交替, 而那正是
+//    F188 查实的瓶颈成因: L0B 需 2x(32+64)=192 KB > 64 KB -> 两相不能共存 ->
+//    dbL0A/B/C 全关 -> 流水不重叠 -> 标量卡在矩乘内部 flag 上空转, scalar 成 binding
+//    (AIC 238019 us, 窗口/binding 1.164; 单 tile 252.5 ticks 里 matmul API 占 251.5,
+//     而 cube 真算只要 49.2 —— API 开销 80%)。
+//  ★留它当对照没有意义且有害: 跨核旗标会与 CubeV2 的 chunk 级置位混在一起,
+//    detsync_lint 的 H6 永远红, 看不出真正的不平衡。对照用 git tag
+//    delivery-h26-bitdecode (e2fc535, 产物 3494c48d), 那才是可复现的基线。
 
 template <uint32_t M, bool Profile>
 class Vector {
@@ -188,7 +49,9 @@ public:
                               GM_ADDR output, GM_ADDR ws, GM_ADDR trace, const Tiling& t) {
         TPipe pipe;
         pipe.InitBuffer(rawBuf, ROWS * N * 4);
-        pipe.InitBuffer(scoreBuf, ROWS * N * 4);
+        //  ★score 由单块扩到**整个 chunk**: 两趟法要求全 chunk 用同一归一化基准,
+        //    故第一趟算出的分数必须留着给第二趟用 (重读 GM 会让 AIV 读由 186 涨到 335 GB)。
+        pipe.InitBuffer(scoreBuf, map::CHUNK * ROWS * N * 4);
         pipe.InitBuffer(pBuf, ROWS * N * 2);
         pipe.InitBuffer(accBuf, ROWS * MAX_D * 4);
         pipe.InitBuffer(pvBuf, ROWS * MAX_D * 4);
@@ -196,7 +59,9 @@ public:
         //  H11: 由 8 槽扩到 10 槽 —— 第 8/9 槽存 alpha 的两份暂存。放进同一缓冲而不是
         //  另开一个 ROWS*4 的小 TBuf: 小缓冲既容易被向量指令的读取粒度越界, 又会漏进
         //  VectorBytes 的账 (主机的 UB 预算检查就对不上)。
-        pipe.InitBuffer(stateBuf, 10 * ROWS * 4);
+        //  10 -> 12 槽: 第 10 槽存 chunk 内逐块的 ReduceMax 中间量 tmax,
+        //  第 11 槽存 chunk 的质量累加 massAcc (原来每 tile 一次, 现在每 chunk 一次)。
+        pipe.InitBuffer(stateBuf, 12 * ROWS * 4);
         pipe.InitBuffer(lutBuf, 128 * 4);
         //  H26: 位运算解码用的两块。subBuf 存 e=0 支的 c/512, cmpBuf 存逐元素掩码 (1 bit/元素)。
         pipe.InitBuffer(subBuf, ROWS * N * 4);
@@ -207,7 +72,7 @@ public:
         pipe.InitBuffer(tmpBuf, t.reduce_bytes);
         const int32_t taskDoneEvent = static_cast<int32_t>(pipe.FetchEventID(HardEvent::MTE3_S));
         auto raw = rawBuf.Get<int32_t>();
-        auto score = scoreBuf.Get<float>();
+        auto chunkScore = scoreBuf.Get<float>();   // CHUNK 块连续排布, 第 j 块在 [j*ROWS*NB]
         auto ph = pBuf.Get<half>();
         auto acc = accBuf.Get<float>();
         auto pv = pvBuf.Get<float>();
@@ -218,6 +83,7 @@ public:
         auto qscale = states[5 * ROWS], kscale = states[6 * ROWS];
         //  H11: acc 的 rescale 推迟到拿到对应 pv 的那一刻, 故 alpha 必须按 tile 暂存两槽。
         LocalTensor<float> alphaHold[2] = {states[8 * ROWS], states[9 * ROWS]};
+        auto tmax = states[10 * ROWS], massAcc = states[11 * ROWS];
         auto table = lutBuf.Get<float>();
         auto brcb = brcbBuf.Get<float>();
         auto bmax = brcb[0], balpha = brcb[ROWS * 8];
@@ -244,18 +110,31 @@ public:
         auto localWs = ws + uint64_t(core) * t.workspace_bytes;
         GlobalTensor<float> ogs[2];
         //  H10/H11: 与 AIC 侧同一布局; AIV 按本块序号的奇偶选 S 槽与 P 槽。
-        GlobalTensor<int32_t> sgs[2];
-        GlobalTensor<half> pgs[2];
-        sgs[0].SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(localWs) + sub * ROWS * N, ROWS * N);
-        sgs[1].SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(localWs + M * N * 4) + sub * ROWS * N, ROWS * N);
-        pgs[0].SetGlobalBuffer(reinterpret_cast<__gm__ half*>(localWs + M * N * 8) + sub * ROWS * N, ROWS * N);
-        pgs[1].SetGlobalBuffer(reinterpret_cast<__gm__ half*>(localWs + M * N * 10) + sub * ROWS * N, ROWS * N);
-        ogs[0].SetGlobalBuffer(reinterpret_cast<__gm__ float*>(localWs + M * N * 12) + sub * ROWS * t.dim, ROWS * t.dim);
-        ogs[1].SetGlobalBuffer(reinterpret_cast<__gm__ float*>(localWs + M * N * 12) + M * t.dim + sub * ROWS * t.dim, ROWS * t.dim);
+        //  ★V2 布局 (与 CubeV2::RunCube 和 WorkspaceBytesV2 是同一个量的三处写法,
+        //    改一处必须改另外两处)。S/P 各 2*CHUNK 槽供错位, O 双槽。
+        //  ★原来是 sgs[2]/pgs[2] 的旧布局, 而新循环按 sgs[slot + j] 索引 (0..2*CHUNK-1) ——
+        //    数组越界读野指针, 实测表现为输出近乎为零 (relative_rmse 1.0)。
+        constexpr uint32_t NSLOT = 2 * map::CHUNK;
+        GlobalTensor<int32_t> sgs[NSLOT];
+        GlobalTensor<half> pgs[NSLOT];
+        const uint64_t S_BYTES = uint64_t(NSLOT) * M * N * 4;
+        const uint64_t P_BYTES = uint64_t(NSLOT) * M * N * 2;
+        for (uint32_t z = 0; z < NSLOT; ++z) {
+            sgs[z].SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(localWs)
+                                   + uint64_t(z) * M * N + sub * ROWS * N, ROWS * N);
+            pgs[z].SetGlobalBuffer(reinterpret_cast<__gm__ half*>(localWs + S_BYTES)
+                                   + uint64_t(z) * M * N + sub * ROWS * N, ROWS * N);
+        }
+        ogs[0].SetGlobalBuffer(reinterpret_cast<__gm__ float*>(localWs + S_BYTES + P_BYTES)
+                               + sub * ROWS * t.dim, ROWS * t.dim);
+        ogs[1].SetGlobalBuffer(reinterpret_cast<__gm__ float*>(localWs + S_BYTES + P_BYTES)
+                               + M * t.dim + sub * ROWS * t.dim, ROWS * t.dim);
         DataCopy(table, lg, 128);
         SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
         WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
-        uint32_t shape[2] = {ROWS, N};
+        constexpr uint32_t NB = N;        // 向量侧的键块宽度, 与 map::NBLK 同值 (有断言守)
+        constexpr uint32_t CHUNK = map::CHUNK;
+        uint32_t shape[2] = {ROWS, NB};
         for (uint64_t task = core; task < t.tasks; task += t.cores) {
             const uint64_t head = task / (t.qpad / M);
             const uint32_t qb = task % (t.qpad / M);
@@ -276,12 +155,32 @@ public:
             //  原本大头的等待被真实工作填上。设备侧不能用 lambda 做结构抽象 (见 F54),
             //  故与 AIC 侧同样采用移位而非复制代码。
             const uint32_t tiles = t.kpad / N;
-            for (uint32_t j = 0; j <= tiles; ++j) {
-                const uint32_t key = j < tiles ? j * N : (tiles - 1) * N;
-                probe.Begin(task, j ? (j - 1) * N : 0, t);
-                if (j < tiles) {
-                const uint32_t tile = j;
+            //  ---- 按 chunk 分阶段 (与 CubeV2 配对) --------------------------------
+            //  ★为什么要两趟: chunk 内跨 key 块在 L0C 上累加 O, 要求整个 chunk 的 P
+            //    用**同一个**归一化基准。单趟只能用运行最大值, 基准逐块变, 累加就不成立。
+            //    不把 chunk 的 S 留在 UB 而改成重读 GM 的话, AIV 读由 186 GB 涨到 335 GB,
+            //    **比基线 224.4 还差** —— 所以留 UB (+48 KB, 预算内 141.1/192 KB)。
+            //  ★基准取 newm = max(chunk 最大, m), 与原来的 max(tile 最大, m) 同形,
+            //    故 acc = acc*alpha + O_chunk 的形式不变, 只是频次由每 tile 一次变每 chunk 一次,
+            //    也不需要额外的 beta 因子。
+            //  ★精度: newm >= chunk 最大 >= 各 tile 最大, 与原来一样是上界, 不会溢出;
+            //    但对 chunk 内靠前、自身最大值偏小的块, exp 会比原来更小 —— 下溢风险按闸实测,
+            //    decoded_reference 当前余量 143 倍 (7e-5 对 1% 闸)。
+            const uint32_t chunks = (tiles + CHUNK - 1) / CHUNK;
+            for (uint32_t c = 0; c <= chunks; ++c) {
+                probe.Begin(task, c ? (c - 1) * CHUNK * NB : 0, t);
+                if (c < chunks) {
+                const uint32_t slot = (c & 1) * CHUNK;
+                const uint32_t base_i = c * CHUNK;
+                const uint32_t n_in = (tiles - base_i) < CHUNK ? (tiles - base_i) : CHUNK;
                 CrossCoreWaitFlag(S_READY);
+                probe.Mark(0);
+                //  ---- 趟 1: 读本 chunk 的全部 S, 施加 scale, 求 chunk 最大 ----
+                Adds(rowmax, m, 0.0f, ROWS);       // 以历史最大起算
+                PipeBarrier<PIPE_V>();
+                for (uint32_t j = 0; j < n_in; ++j) {
+                    const uint32_t key = (base_i + j) * NB;
+                    auto sc = chunkScore[j * ROWS * NB];
                 probe.Mark(0);
                 //  ★raw 身兼两职: 这里由 MTE2 接收 S, 到 ExpCast 段又存 gather 的字节偏移
                 //  供向量单元读。移位循环把上一轮的 Gather 与本轮这次 DataCopy 拉得很近,
@@ -290,7 +189,7 @@ public:
                 //  那是拿 ROWS*N*4 的 UB 换一条同步, 这里把它换回来。
                 SetFlag<HardEvent::V_MTE2>(EVENT_ID0);
                 WaitFlag<HardEvent::V_MTE2>(EVENT_ID0);
-                DataCopy(raw, sgs[tile & 1], ROWS * N);
+                DataCopy(raw, sgs[slot + j], ROWS * NB);
                 //  一个 tile 覆盖 KSB_PER_TILE 个 K 量化块, 各有自己的 scale, 连续取。
                 DataCopy(kscale, ksg[(head * (t.kpad / K_SCALE_BLOCK) + key / K_SCALE_BLOCK) * 8],
                          8 * KSB_PER_TILE);
@@ -301,8 +200,8 @@ public:
                 float seg_scale[KSB_PER_TILE];
                 for (uint32_t sb = 0; sb < KSB_PER_TILE; ++sb)
                     seg_scale[sb] = (qscale.GetValue(0) * kscale.GetValue(sb * 8)) * t.scale;
-                probe.Mark(1); // MTE2_S above completed raw scores and scale loads
-                Cast(score, raw, RoundMode::CAST_NONE, ROWS * N);
+                probe.Mark(1); // MTE2_S above completed raw scs and scale loads
+                Cast(sc, raw, RoundMode::CAST_NONE, ROWS * NB);
                 PipeBarrier<PIPE_V>();
                 //  按列半区施加 scale: 一个 repeat 覆盖 64 个 fp32, K_SCALE_BLOCK 是 64 的整数倍,
                 //  故量化块边界落在 repeat 边界上, 每块用 K_SCALE_BLOCK/64 次调用,
@@ -313,7 +212,7 @@ public:
                     const UnaryRepeatParams rp(1, 1, uint8_t(N / 8), uint8_t(N / 8));
                     for (uint32_t sb = 0; sb < KSB_PER_TILE; ++sb)
                         for (uint32_t off = 0; off < K_SCALE_BLOCK; off += 64)
-                            Muls(score[sb * K_SCALE_BLOCK + off], score[sb * K_SCALE_BLOCK + off],
+                            Muls(sc[sb * K_SCALE_BLOCK + off], sc[sb * K_SCALE_BLOCK + off],
                                  seg_scale[sb], uint64_t(64), ROWS, rp);
                 }
                 PipeBarrier<PIPE_V>();
@@ -326,45 +225,48 @@ public:
                     SetFlag<HardEvent::V_S>(EVENT_ID0);
                     WaitFlag<HardEvent::V_S>(EVENT_ID0);
                     for (uint32_t r = 0; r < ROWS; ++r)
-                        for (uint32_t j = valid; j < N; ++j) score.SetValue(r * N + j, -3.402823466e38f);
+                        for (uint32_t j = valid; j < N; ++j) sc.SetValue(r * N + j, -3.402823466e38f);
                     SetFlag<HardEvent::S_V>(EVENT_ID0);
                     WaitFlag<HardEvent::S_V>(EVENT_ID0);
                 }
-                ReduceMax<float, Pattern::Reduce::AR, false>(rowmax, score, tmp, shape, true);
-                PipeBarrier<PIPE_V>();
-                Max(rowmax, rowmax, m, ROWS);
-                PipeBarrier<PIPE_V>();
+                    ReduceMax<float, Pattern::Reduce::AR, false>(tmax, sc, tmp, shape, true);
+                    PipeBarrier<PIPE_V>();
+                    Max(rowmax, rowmax, tmax, ROWS);
+                    PipeBarrier<PIPE_V>();
+                }
                 Sub(alpha, m, rowmax, ROWS);
                 PipeBarrier<PIPE_V>();
-                Exp(alpha, alpha, ROWS);  // one history exponential per query row
-                // H8: broadcast rowmax per row instead of reading ROWS scalars back
-                // and issuing ROWS short Adds. x + (-m) and x - m agree bit for bit
-                // on every finite value and on both signed zeros, so the numerical
-                // contract is unchanged. The V_S round trip disappears with it.
+                Exp(alpha, alpha, ROWS);
                 PipeBarrier<PIPE_V>();
+                // H8: broadcast rowmax per row instead of reading ROWS scalars back.
                 Brcb(bmax, rowmax, ROWS / 8, BrcbRepeatParams(1, 8));
                 PipeBarrier<PIPE_V>();
-                for (uint32_t off = 0; off < N; off += 64)
-                    Sub(score[off], score[off], bmax, uint64_t(64), ROWS, rowBrc);
+                //  ---- 趟 2: 归一化 + exp + 写 P ----
+                Duplicate(massAcc, 0.0f, ROWS);
                 PipeBarrier<PIPE_V>();
+                for (uint32_t j = 0; j < n_in; ++j) {
+                    auto sc = chunkScore[j * ROWS * NB];
+                    for (uint32_t off = 0; off < NB; off += 64)
+                        Sub(sc[off], sc[off], bmax, uint64_t(64), ROWS, rowBrc);
+                    PipeBarrier<PIPE_V>();
                 if (t.expcast) {
                     // Separate FP32 multiply/add is part of the numerical contract.
-                    Muls(score, score, EXPCAST_GAIN, ROWS * N);
+                    Muls(sc, sc, EXPCAST_GAIN, ROWS * NB);
                     PipeBarrier<PIPE_V>();
-                    Adds(score, score, 120.0f, ROWS * N);
+                    Adds(sc, sc, 120.0f, ROWS * NB);
                     PipeBarrier<PIPE_V>();
                     //  Maxs(0) 是承担越界防护的那一条: 负下标会真的读到表外。
-                    Maxs(score, score, 0.0f, ROWS * N);
+                    Maxs(sc, sc, 0.0f, ROWS * NB);
                     PipeBarrier<PIPE_V>();
-                    //  H25: 上界夹持 Mins(score, 120) **恒不生效**, 已删。
-                    //  不变式: 本段入口处 score 已是 `Sub(score, score, bmax)` 的结果,
+                    //  H25: 上界夹持 Mins(sc, 120) **恒不生效**, 已删。
+                    //  不变式: 本段入口处 sc 已是 `Sub(sc, sc, bmax)` 的结果,
                     //  而 bmax 是 rowmax = Max(ReduceMax(本 tile), m) 的广播, 故 bmax >= 本 tile
                     //  每一个元素; IEEE754 的 a-b 在 b>=a 时**精确** <= 0, 不存在舍入成正数。于是
-                    //      score <= 0 -> score*EXPCAST_GAIN <= 0 (GAIN=11.5415... 为正) -> +120 <= 120
-                    //  上界永远不会被触到。全掩码行给出 score-rowmax == 0, 结果恰为 120, 仍在界内。
-                    //  ★若将来改动 rowmax 的定义使 score 可能大于 rowmax, 这条删除就不再成立 ——
+                    //      sc <= 0 -> sc*EXPCAST_GAIN <= 0 (GAIN=11.5415... 为正) -> +120 <= 120
+                    //  上界永远不会被触到。全掩码行给出 sc-rowmax == 0, 结果恰为 120, 仍在界内。
+                    //  ★若将来改动 rowmax 的定义使 sc 可能大于 rowmax, 这条删除就不再成立 ——
                     //  不变式的来源就是上面那次 Sub, 改它时请一并复核此处。
-                    Cast(raw, score, RoundMode::CAST_RINT, ROWS * N);
+                    Cast(raw, sc, RoundMode::CAST_RINT, ROWS * NB);
                     PipeBarrier<PIPE_V>();
                     //  H26: 用位运算直接构造 E4M3 的解码值, 替掉查表。
                     //  码 c = 8e + f 且 f < 8, 故 `c << 20` 本身就等于 `e<<23 | f<<20`;
@@ -374,60 +276,55 @@ public:
                     //  值是 f/512, 与位模式不符, 必须单独算再按掩码选。这一支**不能按出现频率
                     //  省掉** —— 尾块掩码的无效列必然落在 c = 0, 而行内跨度超过 9.7041 的
                     //  分布 (实测 q 尺度放大 1.5 倍即 20/20 命中) 在正常列上也会落进来。
-                    Cast(e0val, raw, RoundMode::CAST_NONE, ROWS * N);
+                    Cast(e0val, raw, RoundMode::CAST_NONE, ROWS * NB);
                     PipeBarrier<PIPE_V>();
                     //  ★比较走 **fp32** 而不是 int32: 向量比较单元在本机只对浮点给出
                     //  正确结果, 用 int32 实测使 c<8 这一支选错 (逐位 16/32 不符,
                     //  相对 RMSE 0.0432% —— 小而弥散, 正是少数元素错经 softmax 归一化
                     //  传播的形态)。c 在 fp32 里是精确整数 0..120, 故 `c < 8.0f` 精确。
-                    CompareScalar(cmp, e0val, 8.0f, CMPMODE::LT, ROWS * N);
+                    CompareScalar(cmp, e0val, 8.0f, CMPMODE::LT, ROWS * NB);
                     PipeBarrier<PIPE_V>();
-                    Muls(e0val, e0val, 1.0f / 512.0f, ROWS * N);
+                    Muls(e0val, e0val, 1.0f / 512.0f, ROWS * NB);
                     PipeBarrier<PIPE_V>();
-                    ShiftLeft(raw, raw, int32_t(20), ROWS * N);
+                    ShiftLeft(raw, raw, int32_t(20), ROWS * NB);
                     PipeBarrier<PIPE_V>();
-                    Adds(raw, raw, int32_t(120) << 23, ROWS * N);
+                    Adds(raw, raw, int32_t(120) << 23, ROWS * NB);
                     PipeBarrier<PIPE_V>();
-                    Select(score, cmp, e0val, raw.ReinterpretCast<float>(),
-                           SELMODE::VSEL_TENSOR_TENSOR_MODE, ROWS * N);
+                    Select(sc, cmp, e0val, raw.ReinterpretCast<float>(),
+                           SELMODE::VSEL_TENSOR_TENSOR_MODE, ROWS * NB);
                 } else {
-                    Exp(score, score, ROWS * N);
+                    Exp(sc, sc, ROWS * NB);
                 }
                 PipeBarrier<PIPE_V>();
-                ReduceSum<float, Pattern::Reduce::AR, false>(mass, score, tmp, shape, true);
+                ReduceSum<float, Pattern::Reduce::AR, false>(mass, sc, tmp, shape, true);
                 PipeBarrier<PIPE_V>();
-                Cast(ph, score, RoundMode::CAST_NONE, ROWS * N);
+                Cast(ph, sc, RoundMode::CAST_NONE, ROWS * NB);
                 probe.template MarkEvent<HardEvent::V_S>(2, pipe);
                 SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
                 WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
-                DataCopy(pgs[tile & 1], ph, ROWS * N);
-                CrossCoreSetFlag<2, PIPE_MTE3>(P_READY);
-                probe.template MarkEvent<HardEvent::MTE3_S>(3, pipe);
-                //  l 与 m 只依赖 rowmax 与 mass, 与 pv 无关, 故立即更新。
+                DataCopy(pgs[slot + j], ph, ROWS * NB);
+                    Add(massAcc, massAcc, mass, ROWS);
+                    PipeBarrier<PIPE_V>();
+                    //  ★ph 的 MTE3 必须在下一块重写 ph 之前排空 (先写后读冲突)。
+                    SetFlag<HardEvent::MTE3_V>(EVENT_ID0);
+                    WaitFlag<HardEvent::MTE3_V>(EVENT_ID0);
+                }
+                CrossCoreSetFlag<2, PIPE_MTE3>(P_READY);   // ★整个 chunk 只置一次
+                probe.Mark(1);
                 Mul(l, l, alpha, ROWS);
                 PipeBarrier<PIPE_V>();
-                Add(l, l, mass, ROWS);
+                Add(l, l, massAcc, ROWS);
                 PipeBarrier<PIPE_V>();
                 Adds(m, rowmax, 0.0f, ROWS);
                 PipeBarrier<PIPE_V>();
-                //  ★acc 的 rescale **不在此处施加** —— acc 此刻仍停在第 j-1 块的尺度,
-                //  它要等拿到 pv(j-1) 之后才能前进一格。把 alpha(j) 存起来, 到第 j+1 轮再用。
-                Adds(alphaHold[tile & 1], alpha, 0.0f, ROWS);
-                probe.template MarkEvent<HardEvent::V_S>(4, pipe);
+                Adds(alphaHold[c & 1], alpha, 0.0f, ROWS);
+                PipeBarrier<PIPE_V>();
                 }
-                //  ★ph 的 MTE3 必须在**下一轮重写 ph 之前**排空, 故这一对 Flag 要无条件执行 ——
-                //  原写法把它放在 j==0 的 continue 之后, 于是第 0 轮发起的 DataCopy(pgs[0], ph)
-                //  还在飞行中, 第 1 轮的 Cast(ph, ...) 就把它覆写了 (先写后读冲突)。
-                SetFlag<HardEvent::MTE3_V>(EVENT_ID0);
-                WaitFlag<HardEvent::MTE3_V>(EVENT_ID0);
-                if (j == 0) {
-                    probe.Finish();
-                    continue;      // 第 0 轮只发布概率, 没有可消费的 PV
-                }
-                const uint32_t prev = j - 1;
+                if (c == 0) { probe.Finish(); continue; }   // 第 0 轮只发布, 没有可消费的 PV
+                const uint32_t pc = c - 1;
                 CrossCoreWaitFlag(O_READY);
                 probe.Mark(5); // only PV wait still exposed after the next tile's probability
-                DataCopy(pv, ogs[prev & 1], ROWS * t.dim);
+                DataCopy(pv, ogs[pc & 1], ROWS * t.dim);
                 SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
                 WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
                 probe.template MarkEvent<HardEvent::MTE2_S>(6, pipe);
@@ -436,7 +333,7 @@ public:
                 //  每一项的浮点运算顺序未变, 只是施加时刻推迟。
                 // H8: Muls by a scalar and Mul by a vector holding that scalar are the
                 // same FP32 multiply, so the result is bit identical.
-                Brcb(balpha, alphaHold[prev & 1], ROWS / 8, BrcbRepeatParams(1, 8));
+                Brcb(balpha, alphaHold[pc & 1], ROWS / 8, BrcbRepeatParams(1, 8));
                 PipeBarrier<PIPE_V>();
                 for (uint32_t off = 0; off < t.dim; off += 64)
                     Mul(acc[off], acc[off], balpha, uint64_t(64), ROWS, accBrc);
@@ -444,6 +341,7 @@ public:
                 Add(acc, acc, pv, ROWS * t.dim);
                 probe.template MarkEvent<HardEvent::V_S>(7, pipe);
                 CrossCoreSetFlag<2, PIPE_V>(O_USED);
+                probe.Finish();
                 probe.Finish();
             }
             SetFlag<HardEvent::V_S>(EVENT_ID0);
@@ -471,48 +369,6 @@ private:
     TBuf<TPosition::VECCALC> vsBuf, stateBuf, lutBuf, tmpBuf, brcbBuf;
     TBuf<TPosition::VECCALC> subBuf, cmpBuf;
 };
-
-template <uint32_t TileM, bool Profile>
-__aicore__ inline void RunAttention(
-    GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR qs, GM_ADDR ks, GM_ADDR vs,
-    GM_ADDR lut, GM_ADDR output, GM_ADDR ws, GM_ADDR qt, GM_ADDR vt, GM_ADDR tiling, GM_ADDR trace) {
-    // Legacy ascendc.cmake emits MIX for __aicore__ kernels using both pipelines.
-    // No KERNEL_TASK_TYPE_DEFAULT (arch35 only), no KFC workspace parameter.
-    Tiling t;
-    ReadControl(tiling, t);
-    if ASCEND_IS_AIC {
-        Cube<TileM, Profile> cube;
-        cube.RunCube(q, k, v, ws, qt, vt, trace, t);
-    }
-    if ASCEND_IS_AIV {
-        Vector<TileM, Profile> vector;
-        vector.RunVector(qs, ks, vs, lut, output, ws, trace, t);
-    }
-}
-
-extern "C" __global__ __aicore__ void vc910_forward(
-    GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR qs, GM_ADDR ks, GM_ADDR vs,
-    GM_ADDR lut, GM_ADDR output, GM_ADDR ws, GM_ADDR qt, GM_ADDR vt, GM_ADDR tiling, GM_ADDR trace) {
-    RunAttention<32, false>(q, k, v, qs, ks, vs, lut, output, ws, qt, vt, tiling, trace);
-}
-
-extern "C" __global__ __aicore__ void vc910_forward_m64(
-    GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR qs, GM_ADDR ks, GM_ADDR vs,
-    GM_ADDR lut, GM_ADDR output, GM_ADDR ws, GM_ADDR qt, GM_ADDR vt, GM_ADDR tiling, GM_ADDR trace) {
-    RunAttention<64, false>(q, k, v, qs, ks, vs, lut, output, ws, qt, vt, tiling, trace);
-}
-
-extern "C" __global__ __aicore__ void vc910_profile(
-    GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR qs, GM_ADDR ks, GM_ADDR vs,
-    GM_ADDR lut, GM_ADDR output, GM_ADDR ws, GM_ADDR qt, GM_ADDR vt, GM_ADDR tiling, GM_ADDR trace) {
-    RunAttention<32, true>(q, k, v, qs, ks, vs, lut, output, ws, qt, vt, tiling, trace);
-}
-
-extern "C" __global__ __aicore__ void vc910_profile_m64(
-    GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR qs, GM_ADDR ks, GM_ADDR vs,
-    GM_ADDR lut, GM_ADDR output, GM_ADDR ws, GM_ADDR qt, GM_ADDR vt, GM_ADDR tiling, GM_ADDR trace) {
-    RunAttention<64, true>(q, k, v, qs, ks, vs, lut, output, ws, qt, vt, tiling, trace);
-}
 
 //  ---- CubeV2: 按 chunk 分阶段的手写 cube ------------------------------------
 //  ★与旧 Cube 并存, **本轮尚未接进 RunAttention** —— 先让它被真正代码生成并过 lint,
@@ -598,6 +454,49 @@ public:
     }
 };
 
+template <uint32_t TileM, bool Profile>
+__aicore__ inline void RunAttention(
+    GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR qs, GM_ADDR ks, GM_ADDR vs,
+    GM_ADDR lut, GM_ADDR output, GM_ADDR ws, GM_ADDR qt, GM_ADDR vt, GM_ADDR tiling, GM_ADDR trace) {
+    // Legacy ascendc.cmake emits MIX for __aicore__ kernels using both pipelines.
+    // No KERNEL_TASK_TYPE_DEFAULT (arch35 only), no KFC workspace parameter.
+    Tiling t;
+    ReadControl(tiling, t);
+    if ASCEND_IS_AIC {
+        CubeV2<TileM, Profile> cube;
+        cube.RunCube(q, k, v, ws, trace, t);
+        (void)qt; (void)vt;   // 手写路径不读 CANN 的 TCubeTiling
+    }
+    if ASCEND_IS_AIV {
+        Vector<TileM, Profile> vector;
+        vector.RunVector(qs, ks, vs, lut, output, ws, trace, t);
+    }
+}
+
+extern "C" __global__ __aicore__ void vc910_forward(
+    GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR qs, GM_ADDR ks, GM_ADDR vs,
+    GM_ADDR lut, GM_ADDR output, GM_ADDR ws, GM_ADDR qt, GM_ADDR vt, GM_ADDR tiling, GM_ADDR trace) {
+    RunAttention<64, false>(q, k, v, qs, ks, vs, lut, output, ws, qt, vt, tiling, trace);
+}
+
+extern "C" __global__ __aicore__ void vc910_forward_m64(
+    GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR qs, GM_ADDR ks, GM_ADDR vs,
+    GM_ADDR lut, GM_ADDR output, GM_ADDR ws, GM_ADDR qt, GM_ADDR vt, GM_ADDR tiling, GM_ADDR trace) {
+    RunAttention<64, false>(q, k, v, qs, ks, vs, lut, output, ws, qt, vt, tiling, trace);
+}
+
+extern "C" __global__ __aicore__ void vc910_profile(
+    GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR qs, GM_ADDR ks, GM_ADDR vs,
+    GM_ADDR lut, GM_ADDR output, GM_ADDR ws, GM_ADDR qt, GM_ADDR vt, GM_ADDR tiling, GM_ADDR trace) {
+    RunAttention<64, true>(q, k, v, qs, ks, vs, lut, output, ws, qt, vt, tiling, trace);
+}
+
+extern "C" __global__ __aicore__ void vc910_profile_m64(
+    GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR qs, GM_ADDR ks, GM_ADDR vs,
+    GM_ADDR lut, GM_ADDR output, GM_ADDR ws, GM_ADDR qt, GM_ADDR vt, GM_ADDR tiling, GM_ADDR trace) {
+    RunAttention<64, true>(q, k, v, qs, ks, vs, lut, output, ws, qt, vt, tiling, trace);
+}
+
 //  ---- CubeV2 的**数值**探针 -------------------------------------------------
 //  ★不是编译探针。公开 API 有声明, 编译器能查**类型**, 但 repeat / src_stride /
 //    dst_gap / dst_frac_stride 这几个参数的**语义**仍要确证 —— CANN 树里没有这几个
@@ -628,14 +527,4 @@ extern "C" __global__ __aicore__ void vc910_cube_v2_probe(
     }
 }
 
-//  ★让 CubeV2 真的走到代码生成 —— 否则"编过了"是空话 (教训八: 定义了没调用会报 0 处)。
-//    本入口永不发射, 只为让编译器为 CubeV2::RunCube 生成代码并让 lint 看得见它。
-extern "C" __global__ __aicore__ void vc910_cube_v2_shape_probe(
-        GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR ws, GM_ADDR meta, GM_ADDR trace) {
-    if ASCEND_IS_AIC {
-        Tiling t;
-        ReadControl(meta, t);
-        CubeV2<vc910::map::MBLK, false> op;
-        op.RunCube(q, k, v, ws, trace, t);
-    }
-}
+//  ★shape_probe 已删: CubeV2 现在由 RunAttention 真正派发, 不再需要额外入口驱动代码生成。

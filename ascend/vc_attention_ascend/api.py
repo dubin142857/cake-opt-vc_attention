@@ -117,32 +117,35 @@ def _format_output(out, payload):
 
 
 @torch.no_grad()
-def run_prepared(payload, *, expcast=True, tile_m=32):
+def run_prepared(payload, *, expcast=True, tile_m=64):
     """Native launch, allocation and final cast/layout; excludes quantization."""
     if payload["q"].device.type != "npu":
         raise ValueError("run_prepared requires NPU tensors")
-    if tile_m not in (32, 64):
-        raise ValueError("tile_m must be 32 or 64; Q quantization remains Q32")
+    #  ★只剩 64: 手写 cube 的几何是 M=64 x N=128, 且 ROWS=M/2=32 恰好是一个
+    #    Q_BLOCK —— 向量侧的 scale 逻辑依赖这一条。Q 量化块仍是 32, 与 tile_m 无关。
+    if tile_m != 64:
+        raise ValueError("tile_m must be 64 (手写 cube 的几何); Q 量化仍是 Q32")
     op = load_native()
     args = _native_args(payload, expcast)
-    out = op.forward(*args) if tile_m == 32 else op.forward_tiled(*args, int(tile_m))
+    #  非 tiled 的 forward 入口按 vc_tiling.h 的 M 走, 现在也是 64, 两者等价; 统一走 tiled。
+    out = op.forward_tiled(*args, int(tile_m))
     return _format_output(out, payload)
 
 
 @torch.no_grad()
-def profile_prepared(payload, *, expcast=True, tile_m=32):
+def profile_prepared(payload, *, expcast=True, tile_m=64):
     """Instrumented output + [core,role,sample,field] system ticks, not production timings."""
     if payload["q"].device.type != "npu":
         raise ValueError("profile_prepared requires NPU tensors")
-    if tile_m not in (32, 64):
-        raise ValueError("tile_m must be 32 or 64")
+    if tile_m != 64:
+        raise ValueError("tile_m must be 64 (手写 cube 的几何)")
     out, records = load_native().profile_tiled(*_native_args(payload, expcast), int(tile_m))
     return _format_output(out, payload), records
 
 
 @torch.no_grad()
 def attention(q, k, v, *, layout="NHD", expcast=True, v_quantize=True,
-              causal=False, v_smooth=False, check_finite=True, tile_m=32):
+              causal=False, v_smooth=False, check_finite=True, tile_m=64):
     if causal or v_smooth:
         raise NotImplementedError("This 910B port is dense noncausal, without V clustering/smoothing")
     return run_prepared(prepare(q, k, v, layout=layout, v_quantize=v_quantize,

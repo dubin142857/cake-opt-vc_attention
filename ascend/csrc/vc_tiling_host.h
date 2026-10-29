@@ -1,5 +1,7 @@
 #pragma once
 #include "vc_tiling.h"
+//  CHUNK 与块几何住在地址表里 (它同时守着 L0 预算的 static_assert)。
+#include "vc_l1l0_map.h"
 
 // Host-only sizing helpers. Ordinary constexpr functions are not callable from
 // Ascend C device code with runtime arguments. Serialize workspace_bytes into
@@ -56,8 +58,8 @@ constexpr uint32_t VectorBytes(uint32_t reduce_bytes, uint32_t tile_m = M) {
     return rows * N * (4 + 4 + 2 + 4) + rows * N / 8 + 2 * rows * MAX_D * 4
          + MAX_D * 4 + 10 * rows * 4 + 128 * 4 + 2 * rows * 8 * 4 + reduce_bytes;
 }
-static_assert(WorkspaceBytes(64) == 114688 && WorkspaceBytes(128) == 131072,
-              "Workspace must cover two INT32 S slots, two FP16 P slots and the FP32 PV tile");
-static_assert(WorkspaceBytes(64, 64) == 229376 && WorkspaceBytes(128, 64) == 262144,
-              "M64 requires twice the scratch; Q quantization remains Q32");
+//  ★旧布局的两条取值断言已删: N 由 256 改 128 后它们的数值不再成立, 而主路径也已
+//    改用 WorkspaceBytesV2。WorkspaceBytes 本体保留 —— 上面那条"拿空间换流量"的
+//    对照断言还在用它, 它是**基线的量**, 不是现役布局。
+static_assert(WorkspaceBytesV2(128, 64, N, 4) == 458752, "现役布局 D=128 应是 448 KB/核");
 }

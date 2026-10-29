@@ -7,7 +7,10 @@ Q_BLOCK = 32
 K_BLOCK = 128
 #  内核的 K 方向 matmul tile 宽度。必须与 ascend/csrc/vc_tiling.h 的 N 一致,
 #  且为 K_BLOCK 的整数倍 —— K/V 按它填充, 而量化块仍按 K_BLOCK 切。
-K_TILE = 256
+#  ★K_TILE 是内核常量 N 的 python 镜像 —— 同一个量写两处, 改一处必须改另一处。
+#    2026-10-29 由 256 改 128, 随手写 cube 的几何 (M=64 x N=128)。
+#    它决定 K/V 的填充粒度, 与 K_BLOCK (量化块, 128) 不是一回事。
+K_TILE = 128
 assert K_TILE % K_BLOCK == 0
 EXPCAST_GAIN = 11.541560173034668  # FP32(8 * log2(e))
 
