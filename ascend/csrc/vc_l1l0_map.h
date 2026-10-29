@@ -52,6 +52,50 @@ static_assert(L0A_PONG + BLK_B16 == L0A_SIZE, "L0A 两个半区应正好填满")
 static_assert(L0B_PONG + BLK_B16 == L0B_SIZE, "L0B 两个半区应正好填满");
 static_assert(L0C_PONG + BLK_B32 == L0C_SIZE, "L0C 两个半区应正好填满");
 
+//  ---- 逐相 L0 预算 -------------------------------------------------------
+//  ★上面四条断言说的是 fp16 的情形。本算子两相的 dtype **不同**:
+//      QK 相: int8 x int8 -> int32   (Q/K 在算子入口就是 int8, 是接口契约)
+//      PV 相: half x half -> fp32
+//  两相对 L0 的要求因此不同, 必须分别断言, 否则"128x128 正好贴合"只对其中一相成立。
+//
+//  ★更要紧的是**前提**: 下面按"同一时刻只有一相占 L0"来算。这要求 QK 与 PV
+//    **按 chunk 分阶段** (先算完一个 chunk 的全部 QK, 向量做完 softmax, 再做该 chunk 的 PV),
+//    而不是逐 tile 交替。前提不成立时要算的是**两相之和**, 下面 _INTERLEAVED_* 给出那个数,
+//    它正是旧结构 (两个 MatmulImpl 逐 tile 交替) 装不下双缓冲的原因 —— 留在这里当反例。
+constexpr uint32_t D_MAX = 128;      // 契约: D 只能是 64 或 128 (vc_torch.cpp 的 TORCH_CHECK)
+constexpr uint32_t D_MIN = 64;
+
+//  单缓冲一块需要多少字节 (按 D 参数化)
+constexpr uint32_t qk_a(uint32_t d) { return BLK * d * 1; }   // Q tile, int8
+constexpr uint32_t qk_b(uint32_t d) { return BLK * d * 1; }   // K tile, int8
+constexpr uint32_t qk_c(uint32_t)   { return BLK * BLK * 4; } // S tile, int32
+constexpr uint32_t pv_a(uint32_t)   { return BLK * BLK * 2; } // P tile, half
+constexpr uint32_t pv_b(uint32_t d) { return BLK * d * 2; }   // V tile, half
+constexpr uint32_t pv_c(uint32_t d) { return BLK * d * 4; }   // O tile, fp32
+
+//  分时 + 双缓冲: 取两相的较大者再乘 2
+constexpr uint32_t _max2(uint32_t a, uint32_t b) { return a > b ? a : b; }
+constexpr uint32_t staged_l0a(uint32_t d) { return 2 * _max2(qk_a(d), pv_a(d)); }
+constexpr uint32_t staged_l0b(uint32_t d) { return 2 * _max2(qk_b(d), pv_b(d)); }
+constexpr uint32_t staged_l0c(uint32_t d) { return 2 * _max2(qk_c(d), pv_c(d)); }
+
+static_assert(staged_l0a(D_MAX) == L0A_SIZE, "D=128 分时双缓冲应恰好填满 L0A");
+static_assert(staged_l0b(D_MAX) == L0B_SIZE, "D=128 分时双缓冲应恰好填满 L0B");
+static_assert(staged_l0c(D_MAX) == L0C_SIZE, "D=128 分时双缓冲应恰好填满 L0C");
+static_assert(staged_l0a(D_MIN) <= L0A_SIZE, "D=64 分时双缓冲必须装得下 L0A");
+static_assert(staged_l0b(D_MIN) <= L0B_SIZE, "D=64 分时双缓冲必须装得下 L0B");
+static_assert(staged_l0c(D_MIN) <= L0C_SIZE, "D=64 分时双缓冲必须装得下 L0C");
+
+//  ★反例 (留痕, 不是死代码): 逐 tile 交替时要算两相之和。旧结构 tile_m=64 / N=256 下
+//    L0B 需 QK 32 KB + PV 64 KB = 96 KB > 64 KB, 两相**物理上不能共存** ——
+//    这正是 vc_torch.cpp 写死 dbL0A/B/C=1 与内核里那道 PipeBarrier<PIPE_ALL>() 的根源
+//    (F188: 无双缓冲 -> 流水不重叠 -> 标量卡在矩乘内部 flag 上空转, scalar 成为 binding pipe)。
+//    本文件的几何之所以成立, **前提就是分阶段**; 谁把它改回逐 tile 交替, 下面这条会立刻变红。
+constexpr uint32_t interleaved_l0b(uint32_t d) { return 2 * (qk_b(d) + pv_b(d)); }
+static_assert(interleaved_l0b(D_MAX) > L0B_SIZE,
+              "★本几何的双缓冲依赖'两相分时'。若此条不再成立, 说明 dtype 或块大小变了, "
+              "请重新核对 staged_* 的前提是否还对");
+
 //  ---- L1 布局: 512 KB 切成 8 个 64 KB 槽 ----
 //  Phase 0 只用前四个 (A/B 各双缓冲); 后四个**预留**给 Phase 3 的对角阵与累加器驻留,
 //  现在就把地址定下来, 免得那时再搬动前四个。
