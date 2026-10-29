@@ -370,6 +370,12 @@ private:
     TBuf<TPosition::VECCALC> subBuf, cmpBuf;
 };
 
+//  ★二分实验开关 (F191 之后那个数值错的定位): 置 true 则在 QK 的四段之后各加一道
+//    保守的 asc_sync(), 标志协议保持不动。若这样能恢复正确, 说明缺陷在**标志协议**;
+//    若仍错, 说明缺陷在**四段函数本身或 ping/pong 寻址**, 那是另一条路。
+//    读码已经数不出问题 (单轮的 notify/wait 计数逐条核过是平衡的), 故改用实验。
+constexpr bool VC_QK_SYNC_A = false;
+
 //  ---- CubeV2: 按 chunk 分阶段的手写 cube ------------------------------------
 //  ★与旧 Cube 并存, **本轮尚未接进 RunAttention** —— 先让它被真正代码生成并过 lint,
 //    下一轮再与向量侧一起接。这样每一笔提交仓库都是绿的。
@@ -410,6 +416,25 @@ public:
 
         const uint32_t tiles  = t.kpad / NB;
         const uint32_t chunks = (tiles + CHUNK - 1) / CHUNK;
+        //  ---- 内核级 PresetFlag ------------------------------------------------
+        //  ★结构照 Laser 的 CubeForward::PresetFlag/ClearFlag: 入口**一次**把全部
+        //    "缓冲可覆写"的许可发出来, 循环里每一轮**先认领再释放**, 出口**一次**全收回。
+        //  ★此前是自创的"每 chunk 预置 + 每 chunk 排空", 且序幕是**直接 set** 许可 ——
+        //    相当于在上一次启动遗留的状态之上**追加**, 于是形状一变, 第一次调用就错
+        //    (实测: 预跑 4 个形状后第 1 次 RMSE 1.0, 第 2、3 次恢复 1.84e-6 ——
+        //     典型的"上一次的陈旧标志被这一次吸收掉"形态)。
+        //  ★每个 chunk 的净收支因此恒为零, 不再需要排空循环。
+        using namespace vc910::map;
+        SetFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(uint32_t(EV_L1A_PING)));
+        SetFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(uint32_t(EV_L1A_PONG)));
+        SetFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(uint32_t(EV_L1B_PING)));
+        SetFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(uint32_t(EV_L1B_PONG)));
+        SetFlag<HardEvent::M_MTE1>(static_cast<event_t>(uint32_t(EV_L0A_PING)));
+        SetFlag<HardEvent::M_MTE1>(static_cast<event_t>(uint32_t(EV_L0A_PONG)));
+        SetFlag<HardEvent::M_MTE1>(static_cast<event_t>(uint32_t(EV_L0B_PING)));
+        SetFlag<HardEvent::M_MTE1>(static_cast<event_t>(uint32_t(EV_L0B_PONG)));
+        SetFlag<HardEvent::FIX_M>(static_cast<event_t>(uint32_t(EV_L0C_PING)));
+        SetFlag<HardEvent::FIX_M>(static_cast<event_t>(uint32_t(EV_L0C_PONG)));
         for (uint64_t task = core; task < t.tasks; task += t.cores) {
             const uint64_t head = task / (t.qpad / MT);
             const uint32_t qr   = (task % (t.qpad / MT)) * MT;
@@ -435,19 +460,14 @@ public:
                     //    ★F183 当时试的是 uint8_t 与 **AscendC::event_t** —— 后者是命名空间限定的
                     //      另一个东西, 不是这里要的全局 event_t, 所以三次构建都没对上。
                     //  事件号按 (from,to) pipe 对分作用域, 取值见 vc_l1l0_map.h 的 EV_GROUPS。
-                    using namespace vc910::map;
-                    //  预取第 0 块
+                    //  序幕: **先认领** PING 槽再装 —— 不是直接 set 许可 (见入口处的说明)。
+                    WaitFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(uint32_t(EV_L1A_PING)));
+                    WaitFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(uint32_t(EV_L1B_PING)));
                     qk_gm2l1(1, qbase, kbase + uint64_t(base_i) * NB * t.dim,
                              uint16_t(t.dim), uint16_t(t.dim), uint16_t(t.dim));
+                    if (VC_QK_SYNC_A) asc_sync();
                     SetFlag<HardEvent::MTE2_MTE1>(static_cast<event_t>(uint32_t(EV_L1A_PING)));
                     SetFlag<HardEvent::MTE2_MTE1>(static_cast<event_t>(uint32_t(EV_L1B_PING)));
-                    //  L0 与 L0C 的"可覆写"初始许可: 第 0 轮不该等任何人
-                    SetFlag<HardEvent::M_MTE1>(static_cast<event_t>(uint32_t(EV_L0A_PING)));
-                    SetFlag<HardEvent::M_MTE1>(static_cast<event_t>(uint32_t(EV_L0A_PONG)));
-                    SetFlag<HardEvent::M_MTE1>(static_cast<event_t>(uint32_t(EV_L0B_PING)));
-                    SetFlag<HardEvent::M_MTE1>(static_cast<event_t>(uint32_t(EV_L0B_PONG)));
-                    SetFlag<HardEvent::FIX_M>(static_cast<event_t>(uint32_t(EV_L0C_PING)));
-                    SetFlag<HardEvent::FIX_M>(static_cast<event_t>(uint32_t(EV_L0C_PONG)));
                     for (uint32_t j = 0; j < n_in; ++j) {
                         //  ★j 为偶数用 PING, 奇数用 PONG —— 必须与上面序幕装的那一槽一致。
                         //    初版写成 `cur = j & 1`, 于是 j=0 得 cur=0 即 PONG, 而序幕装的是 PING:
@@ -477,6 +497,7 @@ public:
                         WaitFlag<HardEvent::M_MTE1>(static_cast<event_t>(ev_l0a));
                         WaitFlag<HardEvent::M_MTE1>(static_cast<event_t>(ev_l0b));
                         qk_l12l0(cur, uint16_t(t.dim));
+                        if (VC_QK_SYNC_A) asc_sync();   // 二分实验 A
                         SetFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(ev_l1a_c));
                         SetFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(ev_l1b_c));
                         SetFlag<HardEvent::MTE1_M>(static_cast<event_t>(ev_l0a));
@@ -486,26 +507,32 @@ public:
                         WaitFlag<HardEvent::MTE1_M>(static_cast<event_t>(ev_l0b));
                         WaitFlag<HardEvent::FIX_M>(static_cast<event_t>(ev_l0c));
                         qk_mad(cur, uint16_t(t.dim));
+                        if (VC_QK_SYNC_A) asc_sync();   // 二分实验 A
                         SetFlag<HardEvent::M_MTE1>(static_cast<event_t>(ev_l0a));
                         SetFlag<HardEvent::M_MTE1>(static_cast<event_t>(ev_l0b));
                         SetFlag<HardEvent::M_FIX>(static_cast<event_t>(ev_l0c));
 
                         WaitFlag<HardEvent::M_FIX>(static_cast<event_t>(ev_l0c));
                         qk_fix(cur, sg + uint64_t(slot + j) * MT * NB, uint16_t(NB));
+                        if (VC_QK_SYNC_A) asc_sync();   // 二分实验 A
                         SetFlag<HardEvent::FIX_M>(static_cast<event_t>(ev_l0c));
                     }
                     //  排空: 把上面预置而未被消费的"可覆写"许可收回, 否则跨 chunk 会多算
-                    for (uint32_t z = 0; z < 2; ++z) {
-                        WaitFlag<HardEvent::M_MTE1>(static_cast<event_t>(z ? EV_L0A_PONG : EV_L0A_PING));
-                        WaitFlag<HardEvent::M_MTE1>(static_cast<event_t>(z ? EV_L0B_PONG : EV_L0B_PING));
-                        WaitFlag<HardEvent::FIX_M>(static_cast<event_t>(z ? EV_L0C_PONG : EV_L0C_PING));
-                    }
                     CrossCoreSetFlag<2, PIPE_FIX>(S_READY);
                 }
                 if (c == 0) continue;   // 第 0 轮只发不消费 (错位一拍)
                 //  相 2: 消费第 c-1 个 chunk —— 全部 PV 在 L0C 累加, 只在末尾搬出一次
                 CrossCoreWaitFlag(P_READY);
                 if (outstanding >= 2) { CrossCoreWaitFlag(O_USED); --outstanding; }
+                //  ★QK 相与 PV 相之间的 L0C 交接 —— 少了它就是本轮那个数值错的成因。
+                //    PV 的累加器是 L0C_PING (= L0C_ACC), 而 QK 的 j 为偶数时也写 L0C_PING。
+                //    把每 chunk 的排空挪到内核级之后, 这道交接**没了**: PV 的 mad 可以在
+                //    QK 最后一次 fixpipe 还在读 L0C 时就开始写它。
+                //    ★证据: 四段后各加全屏障 (完全串行) 仍错 —— 说明缺陷不在细粒度标志的
+                //      重叠, 而在被我改掉的槽位与交接; 通过验收的 _sync 版用的是**固定**槽
+                //      L0C_QK = L0C_PONG, 与 PV 的 L0C_ACC 天然不冲突。
+                //    按 claim/release 补: 认领 L0C_PING, 用完释放, 内核级 Preset/Clear 的收支不变。
+                WaitFlag<HardEvent::FIX_M>(static_cast<event_t>(uint32_t(map::EV_L0C_PING)));
                 const uint32_t pc = c - 1;
                 const uint32_t pslot = (pc & 1) * CHUNK;
                 for (uint32_t j = 0; j < CHUNK; ++j) {
@@ -518,11 +545,25 @@ public:
                     else        mm_pv_acc<false>(pp, vv, uint16_t(t.dim), uint16_t(NB), uint16_t(t.dim));
                 }
                 pv_flush(og + uint64_t(pc & 1) * MT * t.dim, uint16_t(t.dim), uint16_t(t.dim));
+                //  释放 L0C_PING, 与上面的认领配对 (pv_flush 用的是 _sync 变体, 已自带排空)。
+                SetFlag<HardEvent::FIX_M>(static_cast<event_t>(uint32_t(map::EV_L0C_PING)));
                 CrossCoreSetFlag<2, PIPE_FIX>(O_READY);
                 ++outstanding;
             }
             while (outstanding) { CrossCoreWaitFlag(O_USED); --outstanding; }
         }
+        //  ---- 内核级 ClearFlag: 把入口发出的许可全部收回 ----------------------
+        //  ★少收一个就会留给**下一次启动**, 表现为"形状一变第一次调用就错"。
+        WaitFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(uint32_t(EV_L1A_PING)));
+        WaitFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(uint32_t(EV_L1A_PONG)));
+        WaitFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(uint32_t(EV_L1B_PING)));
+        WaitFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(uint32_t(EV_L1B_PONG)));
+        WaitFlag<HardEvent::M_MTE1>(static_cast<event_t>(uint32_t(EV_L0A_PING)));
+        WaitFlag<HardEvent::M_MTE1>(static_cast<event_t>(uint32_t(EV_L0A_PONG)));
+        WaitFlag<HardEvent::M_MTE1>(static_cast<event_t>(uint32_t(EV_L0B_PING)));
+        WaitFlag<HardEvent::M_MTE1>(static_cast<event_t>(uint32_t(EV_L0B_PONG)));
+        WaitFlag<HardEvent::FIX_M>(static_cast<event_t>(uint32_t(EV_L0C_PING)));
+        WaitFlag<HardEvent::FIX_M>(static_cast<event_t>(uint32_t(EV_L0C_PONG)));
     }
 };
 
