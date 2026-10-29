@@ -176,38 +176,58 @@ static_assert(_in_bounds(), "★L1 有区间越界");
 static_assert(L1_REGION_N == 8, "新增 L1 区间后请同步更新本计数, 否则重叠检查会漏看");
 
 
-//  ---- 核内事件号 ---------------------------------------------------------
-//  ★为什么也要守: 我们那个竞态的另一半正是**事件号共用** —— 两个 MatmulImpl 的
-//    M_MTE1 事件号由 TPipe 各自分配而源码里看不出来。CubeV2 独占整个核 (不再有
-//    MatmulImpl), 所以事件号由我们自己管; 自己管就必须自己守唯一性, 否则只是把
-//    一个看不见的坑换成另一个。
-//  ★命名按"谁等谁"而不是按用途 —— 用途会变, 流水关系不会。
-constexpr uint8_t EV_A_PING = 0;   // MTE1->M : L0A ping 装好
-constexpr uint8_t EV_A_PONG = 1;   // MTE1->M : L0A pong 装好
-constexpr uint8_t EV_B_PING = 2;   // MTE1->M : L0B ping 装好
-constexpr uint8_t EV_B_PONG = 3;   // MTE1->M : L0B pong 装好
-constexpr uint8_t EV_C_PING = 4;   // M->FIX  : L0C ping 算完
-constexpr uint8_t EV_C_PONG = 5;   // M->FIX  : L0C pong 算完
-constexpr uint8_t EV_L1_A   = 6;   // MTE2->MTE1 : L1 的 A 槽装好
-constexpr uint8_t EV_L1_B   = 7;   // MTE2->MTE1 : L1 的 B 槽装好
-
-constexpr uint8_t EVENTS[] = {EV_A_PING, EV_A_PONG, EV_B_PING, EV_B_PONG,
-                              EV_C_PING, EV_C_PONG, EV_L1_A, EV_L1_B};
-constexpr uint32_t EVENT_N = sizeof(EVENTS) / sizeof(uint8_t);
-//  DAV-2201 的核内事件号是 3 位, 合法范围 0..7。
+//  ---- 核内事件号 (按 **pipe 对** 分作用域) --------------------------------
+//  ★为什么也要守: 此前那个竞态的另一半正是**事件号共用** —— 两个 MatmulImpl 的
+//    M_MTE1 事件号由 TPipe 各自分配而源码里看不出来。CubeV2 独占整核, 事件号由我们自己管;
+//    自己管就必须自己守, 否则只是把一个看不见的坑换成另一个。
+//
+//  ★2026-10-29 修正了一个**过约束**: 原来是 8 个号的扁平表 + 全局唯一断言。
+//    实测 Laser 在 `MTE2->MTE1` 与 `MTE1->M` 上**都用了 {0,1}** (CubeForward.h),
+//    即事件号按 **(from, to) pipe 对**分作用域, 同一对内才必须互异。
+//    扁平唯一会让号不够用 —— 软件流水要六个 pipe 对各自的 ping/pong。
+//  ★DAV-2201 的核内事件号是 3 位, 每个 pipe 对的合法范围都是 0..7。
 constexpr uint8_t EVENT_MAX = 7;
 
-constexpr bool _ev_in_range(uint32_t i = 0) {
-    return i >= EVENT_N ? true : (EVENTS[i] <= EVENT_MAX && _ev_in_range(i + 1));
+//  每个 pipe 对内的号分配。命名按"谁等谁 + 守哪块缓冲", 不按用途 —— 用途会变, 流水关系不会。
+//    MTE2->MTE1 / MTE1->MTE2 : L1 的 A/B 槽 (装好 / 可覆写)
+//    MTE1->M    / M->MTE1    : L0 的 A/B 槽 (装好 / 可覆写)
+//    M->FIX     / FIX->M     : L0C      (算完 / 可覆写)
+constexpr uint8_t EV_L1A_PING = 0, EV_L1A_PONG = 1;   // 对: MTE2<->MTE1
+constexpr uint8_t EV_L1B_PING = 2, EV_L1B_PONG = 3;   // 同上, 与 A 同对故须错开
+constexpr uint8_t EV_L0A_PING = 0, EV_L0A_PONG = 1;   // 对: MTE1<->M
+constexpr uint8_t EV_L0B_PING = 2, EV_L0B_PONG = 3;   // 同上, 与 L0A 同对故须错开
+constexpr uint8_t EV_L0C_PING = 0, EV_L0C_PONG = 1;   // 对: M<->FIX
+
+//  ★守的是**每个 pipe 对内**的互异与范围。跨对复用是合法的 (上面 L1A 与 L0A 都是 0),
+//    所以不能再用一张扁平表做全局唯一 —— 那正是被修掉的过约束。
+struct EvGroup { const char *pair; uint8_t a, b, c, d; uint8_t n; };
+constexpr EvGroup EV_GROUPS[] = {
+    {"MTE2<->MTE1 (L1)", EV_L1A_PING, EV_L1A_PONG, EV_L1B_PING, EV_L1B_PONG, 4},
+    {"MTE1<->M (L0)",    EV_L0A_PING, EV_L0A_PONG, EV_L0B_PING, EV_L0B_PONG, 4},
+    {"M<->FIX (L0C)",    EV_L0C_PING, EV_L0C_PONG, 0,           0,           2},
+};
+constexpr uint32_t EV_GROUP_N = sizeof(EV_GROUPS) / sizeof(EvGroup);
+
+constexpr uint8_t _ev_at(const EvGroup &g, uint8_t i) {
+    return i == 0 ? g.a : i == 1 ? g.b : i == 2 ? g.c : g.d;
 }
-constexpr bool _ev_unique(uint32_t i = 0, uint32_t j = 1) {
-    return i >= EVENT_N ? true
-         : j >= EVENT_N ? _ev_unique(i + 1, i + 2)
-         : (EVENTS[i] != EVENTS[j] && _ev_unique(i, j + 1));
+constexpr bool _ev_group_unique(const EvGroup &g, uint8_t i = 0, uint8_t j = 1) {
+    return i >= g.n ? true
+         : j >= g.n ? _ev_group_unique(g, i + 1, i + 2)
+         : (_ev_at(g, i) != _ev_at(g, j) && _ev_group_unique(g, i, j + 1));
 }
-static_assert(_ev_in_range(), "★事件号超出 0..7");
-static_assert(_ev_unique(), "★有两个事件号撞了 —— 这正是此前竞态的另一半成因");
-static_assert(EVENT_N == 8, "新增事件号后请同步更新本计数, 否则唯一性检查会漏看");
+constexpr bool _ev_group_in_range(const EvGroup &g, uint8_t i = 0) {
+    return i >= g.n ? true : (_ev_at(g, i) <= EVENT_MAX && _ev_group_in_range(g, i + 1));
+}
+constexpr bool _ev_all_unique(uint32_t k = 0) {
+    return k >= EV_GROUP_N ? true : (_ev_group_unique(EV_GROUPS[k]) && _ev_all_unique(k + 1));
+}
+constexpr bool _ev_all_in_range(uint32_t k = 0) {
+    return k >= EV_GROUP_N ? true : (_ev_group_in_range(EV_GROUPS[k]) && _ev_all_in_range(k + 1));
+}
+static_assert(_ev_all_unique(), "★同一个 pipe 对里有两个事件号撞了 —— 这正是此前竞态的成因形态");
+static_assert(_ev_all_in_range(), "★事件号超出 0..7");
+static_assert(EV_GROUP_N == 3, "新增 pipe 对后请同步更新本计数, 否则唯一性检查会漏看它");
 
 }  // namespace map
 }  // namespace vc910
