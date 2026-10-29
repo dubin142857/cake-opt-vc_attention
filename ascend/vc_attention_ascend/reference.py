@@ -11,6 +11,14 @@ K_BLOCK = 128
 #    2026-10-29 由 256 改 128, 随手写 cube 的几何 (M=64 x N=128)。
 #    它决定 K/V 的填充粒度, 与 K_BLOCK (量化块, 128) 不是一回事。
 K_TILE = 128
+#  ★CHUNK 是内核常量 vc910::map::CHUNK 的 python 镜像 —— 又一处"同一个量写两处"。
+#    内核把一个 chunk 内的全部 PV 在 L0C 上累加, 于是**在线更新的粒度由 K_TILE 变成
+#    K_TILE * CHUNK**。参考的窗口按定义要跟随内核 (见 payload_reference 的文档串),
+#    否则 decoded_reference 不再是"隔离实现误差"的尺子。
+#    2026-10-29 实撞: 漏改它使 expcast 在 3 个 tile 一组时报 1.87% 超闸 —— 那不是实现错,
+#    是尺子与被测者用了不同的窗口 (F190)。普通 exp 路径对窗口不变, 故只有 expcast 受影响。
+CHUNK = 4
+ONLINE_TILE = K_TILE * CHUNK
 assert K_TILE % K_BLOCK == 0
 EXPCAST_GAIN = 11.541560173034668  # FP32(8 * log2(e))
 
@@ -42,7 +50,9 @@ def quantize_e4m3_decoded(x):
 def payload_reference(payload, *, expcast=True, query_indices=None, tile_width=None):
     """All keys, optionally selected queries; decoded operands and FP32 matmuls.
 
-    tile_width 是**在线更新的粒度**, 默认取 K_TILE, 即内核的 K 方向 matmul tile 宽度。
+    tile_width 是**在线更新的粒度**, 默认取 ONLINE_TILE = K_TILE * CHUNK ——
+    内核把一个 chunk 内的全部 PV 在 L0C 上累加, 故它的归一化窗口是整个 chunk,
+    不是单个 matmul tile。
     ★它不是自由参数: ExpCast 的 E4M3 编码相对**当前 tile 的行最大值**定义
     (低于 -120/EXPCAST_GAIN 的分数一律压成索引 0), 所以换一个宽度就是换一个数值契约。
     本函数要作为内核的同契约 oracle, 宽度必须与 vc_tiling.h 的 N 相同。
@@ -59,7 +69,7 @@ def payload_reference(payload, *, expcast=True, query_indices=None, tile_width=N
     m = torch.full(shape, -float("inf"), device=q.device)
     mass = torch.zeros(shape, device=q.device)
     out = torch.zeros_like(q)
-    width = K_TILE if tile_width is None else tile_width
+    width = ONLINE_TILE if tile_width is None else tile_width
     if width % K_BLOCK:
         raise ValueError("tile_width must cover whole K quantization blocks")
     for begin in range(0, payload["keys"], width):

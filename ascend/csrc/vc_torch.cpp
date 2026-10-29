@@ -181,7 +181,10 @@ std::tuple<at::Tensor, at::Tensor> ForwardImpl(const at::Tensor& q, const at::Te
 at::Tensor Forward(const at::Tensor& q, const at::Tensor& k, const at::Tensor& v,
     const at::Tensor& qs, const at::Tensor& ks, const at::Tensor& vs, const at::Tensor& lut,
     int64_t queries, int64_t keys, double scale, bool expcast) {
-    return std::get<0>(ForwardImpl(q, k, v, qs, ks, vs, lut, queries, keys, scale, expcast, 32, false));
+    //  ★非 tiled 入口原来把 32 写死 —— M 改 64 后它会被自己的 TORCH_CHECK 拒掉。
+    //    改用 M, 这样"默认 tile"只有一个定义处 (vc_tiling.h), 不再有第二份字面量。
+    return std::get<0>(ForwardImpl(q, k, v, qs, ks, vs, lut, queries, keys, scale, expcast,
+                                   int64_t(M), false));
 }
 
 at::Tensor ForwardTiled(const at::Tensor& q, const at::Tensor& k, const at::Tensor& v,
