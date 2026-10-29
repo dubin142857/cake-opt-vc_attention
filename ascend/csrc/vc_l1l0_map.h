@@ -97,6 +97,40 @@ static_assert(_no_overlap(), "★L1 有两个区间重叠 —— 这正是此前
 static_assert(_in_bounds(), "★L1 有区间越界");
 static_assert(L1_REGION_N == 8, "新增 L1 区间后请同步更新本计数, 否则重叠检查会漏看");
 
+
+//  ---- 核内事件号 ---------------------------------------------------------
+//  ★为什么也要守: 我们那个竞态的另一半正是**事件号共用** —— 两个 MatmulImpl 的
+//    M_MTE1 事件号由 TPipe 各自分配而源码里看不出来。CubeV2 独占整个核 (不再有
+//    MatmulImpl), 所以事件号由我们自己管; 自己管就必须自己守唯一性, 否则只是把
+//    一个看不见的坑换成另一个。
+//  ★命名按"谁等谁"而不是按用途 —— 用途会变, 流水关系不会。
+constexpr uint8_t EV_A_PING = 0;   // MTE1->M : L0A ping 装好
+constexpr uint8_t EV_A_PONG = 1;   // MTE1->M : L0A pong 装好
+constexpr uint8_t EV_B_PING = 2;   // MTE1->M : L0B ping 装好
+constexpr uint8_t EV_B_PONG = 3;   // MTE1->M : L0B pong 装好
+constexpr uint8_t EV_C_PING = 4;   // M->FIX  : L0C ping 算完
+constexpr uint8_t EV_C_PONG = 5;   // M->FIX  : L0C pong 算完
+constexpr uint8_t EV_L1_A   = 6;   // MTE2->MTE1 : L1 的 A 槽装好
+constexpr uint8_t EV_L1_B   = 7;   // MTE2->MTE1 : L1 的 B 槽装好
+
+constexpr uint8_t EVENTS[] = {EV_A_PING, EV_A_PONG, EV_B_PING, EV_B_PONG,
+                              EV_C_PING, EV_C_PONG, EV_L1_A, EV_L1_B};
+constexpr uint32_t EVENT_N = sizeof(EVENTS) / sizeof(uint8_t);
+//  DAV-2201 的核内事件号是 3 位, 合法范围 0..7。
+constexpr uint8_t EVENT_MAX = 7;
+
+constexpr bool _ev_in_range(uint32_t i = 0) {
+    return i >= EVENT_N ? true : (EVENTS[i] <= EVENT_MAX && _ev_in_range(i + 1));
+}
+constexpr bool _ev_unique(uint32_t i = 0, uint32_t j = 1) {
+    return i >= EVENT_N ? true
+         : j >= EVENT_N ? _ev_unique(i + 1, i + 2)
+         : (EVENTS[i] != EVENTS[j] && _ev_unique(i, j + 1));
+}
+static_assert(_ev_in_range(), "★事件号超出 0..7");
+static_assert(_ev_unique(), "★有两个事件号撞了 —— 这正是此前竞态的另一半成因");
+static_assert(EVENT_N == 8, "新增事件号后请同步更新本计数, 否则唯一性检查会漏看");
+
 }  // namespace map
 }  // namespace vc910
 
