@@ -52,6 +52,17 @@ static_assert(L0A_PONG + BLK_B16 == L0A_SIZE, "L0A 两个半区应正好填满")
 static_assert(L0B_PONG + BLK_B16 == L0B_SIZE, "L0B 两个半区应正好填满");
 static_assert(L0C_PONG + BLK_B32 == L0C_SIZE, "L0C 两个半区应正好填满");
 
+//  ---- chunk 深度 -----------------------------------------------------------
+//  ★一个 chunk 内的全部 PV 在 L0C 上累加, 只在 chunk 末搬出一次 O。
+//    取 4 是算出来的不是拍的 (见 problem.yaml F189 之后的 chunk 权衡表):
+//      CHUNK=1 -> fixpipe 297.4 GB (= N 减半使 O 字节翻倍, 与 N=128 实测的 297.4 吻合)
+//      CHUNK=2 -> 223.3 GB (≈ 基线 223.8, 无收益)
+//      CHUNK=4 -> 186.3 GB, 向量侧 UB 141.1/192 KB  ★取它
+//      CHUNK=8 -> 167.8 GB 但 UB 205.6 KB **超容**
+//    上限来自向量侧: chunk 内要取**单一 rowmax**, 故整个 chunk 的 S 必须留在 UB。
+constexpr uint32_t CHUNK = 4;
+static_assert(CHUNK >= 2, "CHUNK=1 等于每个 key 块搬一次 O, 即单独改几何那个回退点");
+
 //  ---- 逐相 L0 预算 -------------------------------------------------------
 //  ★上面四条断言说的是 fp16 的情形。本算子两相的 dtype **不同**:
 //      QK 相: int8 x int8 -> int32   (Q/K 在算子入口就是 int8, 是接口契约)

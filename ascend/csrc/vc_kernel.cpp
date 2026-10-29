@@ -514,6 +514,90 @@ extern "C" __global__ __aicore__ void vc910_profile_m64(
     RunAttention<64, true>(q, k, v, qs, ks, vs, lut, output, ws, qt, vt, tiling, trace);
 }
 
+//  ---- CubeV2: 按 chunk 分阶段的手写 cube ------------------------------------
+//  ★与旧 Cube 并存, **本轮尚未接进 RunAttention** —— 先让它被真正代码生成并过 lint,
+//    下一轮再与向量侧一起接。这样每一笔提交仓库都是绿的。
+//
+//  结构 (依据 F186/F188/F189, 三件事必须同时落地, 拆开做任一件都会退):
+//    几何 M=64 x N=128  —— 使 L0 各缓冲半满可双缓冲 (断言在 vc_l1l0_map.h)
+//    按 chunk 分阶段     —— 同一时刻只有一相占 L0, 故可整块用; 旧结构逐 tile 交替时
+//                          L0B 需 2x(32+64)=192 KB > 64 KB, 两相物理上不能共存
+//    O 在 L0C 跨 chunk 累加 —— O 只在 chunk 末搬出一次。N 由 256 减半会使 O 字节翻倍
+//                          (实测 N=128 单独上慢 2.03 倍), CHUNK=4 把它压回 37.6 GB
+//
+//  ★错位一个 chunk, 不是提示里那种"相1 相2 严格交替"。
+//    理由就是 F189 自己的规则: 严格交替会让 AIC 与 AIV 互等, 重叠比现状更差。
+//    代价是 S/P 各要两个 chunk 组 (workspace 448 KB/核, 基线 256 KB/核, 24 核共 10.5 MB)。
+template <uint32_t MT, bool Profile>
+class CubeV2 {
+public:
+    __aicore__ inline void RunCube(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR ws,
+                                   GM_ADDR trace, const Tiling& t) {
+        using namespace vc910::cube2;
+        //  ★本类一律用 map::NBLK 与 map::CHUNK, **不用 vc_tiling.h 的 N** ——
+        //    旧 Cube 仍是 N=256, 两者并存期间混用会静默取错值。
+        constexpr uint32_t NB = map::NBLK;
+        constexpr uint32_t CHUNK = map::CHUNK;
+        static_assert(MT == map::MBLK, "CubeV2 的查询块必须与地址表的 MBLK 一致");
+        const uint32_t core = GetBlockIdx();
+        auto *base = reinterpret_cast<__gm__ uint8_t*>(ws) + uint64_t(core) * t.workspace_bytes;
+        //  workspace 布局 (与 vc_tiling_host.h 的 WorkspaceBytesV2 是同一个量的两处写法,
+        //  改一处必须改另一处)。S/P 各两个 chunk 组供错位, O 双槽。
+        auto *sg = reinterpret_cast<__gm__ int32_t*>(base);
+        auto *pg = reinterpret_cast<__gm__ half*>(base + 2 * CHUNK * MT * NB * 4);
+        auto *og = reinterpret_cast<__gm__ float*>(base + 2 * CHUNK * MT * NB * 4
+                                                        + 2 * CHUNK * MT * NB * 2);
+        auto *qg = reinterpret_cast<__gm__ int8_t*>(q);
+        auto *kg = reinterpret_cast<__gm__ int8_t*>(k);
+        auto *vg = reinterpret_cast<__gm__ half*>(v);
+        (void)trace;
+
+        const uint32_t tiles  = t.kpad / NB;
+        const uint32_t chunks = (tiles + CHUNK - 1) / CHUNK;
+        for (uint64_t task = core; task < t.tasks; task += t.cores) {
+            const uint64_t head = task / (t.qpad / MT);
+            const uint32_t qr   = (task % (t.qpad / MT)) * MT;
+            auto *qbase = qg + head * uint64_t(t.qpad) * t.dim + uint64_t(qr) * t.dim;
+            auto *kbase = kg + head * uint64_t(t.kpad) * t.dim;
+            auto *vbase = vg + head * uint64_t(t.kpad) * t.dim;
+            uint32_t outstanding = 0;
+            for (uint32_t c = 0; c <= chunks; ++c) {
+                //  相 1: 本 chunk 的全部 QK, 末尾只置一次 S_READY
+                if (c < chunks) {
+                    const uint32_t slot = (c & 1) * CHUNK;
+                    for (uint32_t j = 0; j < CHUNK; ++j) {
+                        const uint32_t i = c * CHUNK + j;
+                        if (i >= tiles) break;
+                        mm_qk(sg + uint64_t(slot + j) * MT * NB, qbase,
+                              kbase + uint64_t(i) * NB * t.dim,
+                              uint16_t(t.dim), uint16_t(t.dim), uint16_t(t.dim), uint16_t(NB));
+                    }
+                    CrossCoreSetFlag<2, PIPE_FIX>(S_READY);
+                }
+                if (c == 0) continue;   // 第 0 轮只发不消费 (错位一拍)
+                //  相 2: 消费第 c-1 个 chunk —— 全部 PV 在 L0C 累加, 只在末尾搬出一次
+                CrossCoreWaitFlag(P_READY);
+                if (outstanding >= 2) { CrossCoreWaitFlag(O_USED); --outstanding; }
+                const uint32_t pc = c - 1;
+                const uint32_t pslot = (pc & 1) * CHUNK;
+                for (uint32_t j = 0; j < CHUNK; ++j) {
+                    const uint32_t i = pc * CHUNK + j;
+                    if (i >= tiles) break;
+                    auto *pp = pg + uint64_t(pslot + j) * MT * NB;
+                    auto *vv = vbase + uint64_t(i) * NB * t.dim;
+                    //  ★只有 chunk 内第一块把 L0C 置零; 其余累加 —— 这正是 O 只搬一次的机制。
+                    if (j == 0) mm_pv_acc<true>(pp, vv, uint16_t(t.dim), uint16_t(NB), uint16_t(t.dim));
+                    else        mm_pv_acc<false>(pp, vv, uint16_t(t.dim), uint16_t(NB), uint16_t(t.dim));
+                }
+                pv_flush(og + uint64_t(pc & 1) * MT * t.dim, uint16_t(t.dim), uint16_t(t.dim));
+                CrossCoreSetFlag<2, PIPE_FIX>(O_READY);
+                ++outstanding;
+            }
+            while (outstanding) { CrossCoreWaitFlag(O_USED); --outstanding; }
+        }
+    }
+};
+
 //  ---- CubeV2 的**数值**探针 -------------------------------------------------
 //  ★不是编译探针。公开 API 有声明, 编译器能查**类型**, 但 repeat / src_stride /
 //    dst_gap / dst_frac_stride 这几个参数的**语义**仍要确证 —— CANN 树里没有这几个
@@ -541,5 +625,17 @@ extern "C" __global__ __aicore__ void vc910_cube_v2_probe(
         mm_pv_acc<true>(pp, vv, D, vc910::map::NBLK, D);
         mm_pv_acc<false>(pp, vv, D, vc910::map::NBLK, D);
         pv_flush(reinterpret_cast<__gm__ float*>(o_out), D, D);
+    }
+}
+
+//  ★让 CubeV2 真的走到代码生成 —— 否则"编过了"是空话 (教训八: 定义了没调用会报 0 处)。
+//    本入口永不发射, 只为让编译器为 CubeV2::RunCube 生成代码并让 lint 看得见它。
+extern "C" __global__ __aicore__ void vc910_cube_v2_shape_probe(
+        GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR ws, GM_ADDR meta, GM_ADDR trace) {
+    if ASCEND_IS_AIC {
+        Tiling t;
+        ReadControl(meta, t);
+        CubeV2<vc910::map::MBLK, false> op;
+        op.RunCube(q, k, v, ws, trace, t);
     }
 }
