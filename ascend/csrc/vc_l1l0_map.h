@@ -65,13 +65,29 @@ static_assert(L0C_PONG + BLK_B32 == L0C_SIZE, "L0C 两个半区应正好填满")
 constexpr uint32_t D_MAX = 128;      // 契约: D 只能是 64 或 128 (vc_torch.cpp 的 TORCH_CHECK)
 constexpr uint32_t D_MIN = 64;
 
+//  ---- 块形状: M=64 行 x N=128 键, **不是方块** ----
+//  ★为什么不用 Laser 的 128x128 方块, 三条约束都是量出来的:
+//    (1) UB: M=128 时 VectorBytes 要 184.5 KB, 而本机 ub_size=196608 (192 KB),
+//        余量只有 7.5 KB 且还没算 reduce_bytes (运行时由 GetReduceSumMaxMinTmpSize 定)。
+//        M=64 只要 92.8 KB。host 的 TORCH_CHECK(VectorBytes(...) <= ub) 会在 M=128 上擦边。
+//    (2) Q 量化粒度: Q_SCALE_BLOCK=32, M=64 使每个 AIV 半区 ROWS=32 **恰好一个量化块**,
+//        向量侧 qscale.GetValue(0) 的写法成立; M=128 则每半区两个块, scale 逻辑要重写。
+//    (3) host 只接受 tile_m ∈ {32,64} (vc_torch.cpp:101)。
+//  ★代价: 每 MAC 的 L1->L0 流量是方块的 1.5 倍 (MACs/载入字节 = M*N/(M+N): 42.7 vs 64)。
+//    可接受的依据是实测 aic_mte1_ratio=0.215, 远不是 binding (binding 是 scalar 0.859)。
+constexpr uint32_t MBLK = 64;    // 查询行
+constexpr uint32_t NBLK = 128;   // 键
+static_assert(MBLK % FRACTAL == 0 && NBLK % FRACTAL == 0, "块边长必须是 16x16 分形的整数倍");
+static_assert(NBLK == BLK, "键方向仍用 BLK, 便于与 L1 槽和 K 量化块(128)对齐");
+static_assert(NBLK % 128 == 0, "一个键块必须覆盖整数个 K 量化块 (K_SCALE_BLOCK=128)");
+
 //  单缓冲一块需要多少字节 (按 D 参数化)
-constexpr uint32_t qk_a(uint32_t d) { return BLK * d * 1; }   // Q tile, int8
-constexpr uint32_t qk_b(uint32_t d) { return BLK * d * 1; }   // K tile, int8
-constexpr uint32_t qk_c(uint32_t)   { return BLK * BLK * 4; } // S tile, int32
-constexpr uint32_t pv_a(uint32_t)   { return BLK * BLK * 2; } // P tile, half
-constexpr uint32_t pv_b(uint32_t d) { return BLK * d * 2; }   // V tile, half
-constexpr uint32_t pv_c(uint32_t d) { return BLK * d * 4; }   // O tile, fp32
+constexpr uint32_t qk_a(uint32_t d) { return MBLK * d * 1; }     // Q tile, int8
+constexpr uint32_t qk_b(uint32_t d) { return NBLK * d * 1; }     // K tile, int8
+constexpr uint32_t qk_c(uint32_t)   { return MBLK * NBLK * 4; }  // S tile, int32
+constexpr uint32_t pv_a(uint32_t)   { return MBLK * NBLK * 2; }  // P tile, half
+constexpr uint32_t pv_b(uint32_t d) { return NBLK * d * 2; }     // V tile, half
+constexpr uint32_t pv_c(uint32_t d) { return MBLK * d * 4; }     // O tile, fp32
 
 //  分时 + 双缓冲: 取两相的较大者再乘 2
 constexpr uint32_t _max2(uint32_t a, uint32_t b) { return a > b ? a : b; }
@@ -79,22 +95,29 @@ constexpr uint32_t staged_l0a(uint32_t d) { return 2 * _max2(qk_a(d), pv_a(d)); 
 constexpr uint32_t staged_l0b(uint32_t d) { return 2 * _max2(qk_b(d), pv_b(d)); }
 constexpr uint32_t staged_l0c(uint32_t d) { return 2 * _max2(qk_c(d), pv_c(d)); }
 
-static_assert(staged_l0a(D_MAX) == L0A_SIZE, "D=128 分时双缓冲应恰好填满 L0A");
-static_assert(staged_l0b(D_MAX) == L0B_SIZE, "D=128 分时双缓冲应恰好填满 L0B");
-static_assert(staged_l0c(D_MAX) == L0C_SIZE, "D=128 分时双缓冲应恰好填满 L0C");
+static_assert(staged_l0a(D_MAX) <= L0A_SIZE, "D=128 分时双缓冲必须装得下 L0A");
+static_assert(staged_l0b(D_MAX) <= L0B_SIZE, "D=128 分时双缓冲必须装得下 L0B");
+static_assert(staged_l0c(D_MAX) <= L0C_SIZE, "D=128 分时双缓冲必须装得下 L0C");
 static_assert(staged_l0a(D_MIN) <= L0A_SIZE, "D=64 分时双缓冲必须装得下 L0A");
 static_assert(staged_l0b(D_MIN) <= L0B_SIZE, "D=64 分时双缓冲必须装得下 L0B");
 static_assert(staged_l0c(D_MIN) <= L0C_SIZE, "D=64 分时双缓冲必须装得下 L0C");
+//  ★D=128 时 L0B 正好占满 (PV 的 V 块 32 KB x2); L0A 与 L0C 各半空 ——
+//    那半空是**余量不是浪费**, 留给后续把缓冲加深或让第二个查询块的 O 也驻留。
+//    把它写成断言, 以免将来有人"顺手"把块加大而不知道 L0B 已经没有余地。
+static_assert(staged_l0b(D_MAX) == L0B_SIZE, "★L0B 在 D=128 上已无余量, 加大键块会溢出");
+static_assert(staged_l0a(D_MAX) * 2 == L0A_SIZE, "L0A 现用一半, 余量留痕");
+static_assert(staged_l0c(D_MAX) * 2 == L0C_SIZE, "L0C 现用一半, 余量留痕");
 
 //  ★反例 (留痕, 不是死代码): 逐 tile 交替时要算两相之和。旧结构 tile_m=64 / N=256 下
 //    L0B 需 QK 32 KB + PV 64 KB = 96 KB > 64 KB, 两相**物理上不能共存** ——
 //    这正是 vc_torch.cpp 写死 dbL0A/B/C=1 与内核里那道 PipeBarrier<PIPE_ALL>() 的根源
 //    (F188: 无双缓冲 -> 流水不重叠 -> 标量卡在矩乘内部 flag 上空转, scalar 成为 binding pipe)。
 //    本文件的几何之所以成立, **前提就是分阶段**; 谁把它改回逐 tile 交替, 下面这条会立刻变红。
-constexpr uint32_t interleaved_l0b(uint32_t d) { return 2 * (qk_b(d) + pv_b(d)); }
-static_assert(interleaved_l0b(D_MAX) > L0B_SIZE,
-              "★本几何的双缓冲依赖'两相分时'。若此条不再成立, 说明 dtype 或块大小变了, "
-              "请重新核对 staged_* 的前提是否还对");
+constexpr uint32_t OLD_N = 256;   // 旧几何的键块宽度
+constexpr uint32_t interleaved_l0b_old(uint32_t d) { return 2 * (OLD_N * d * 1 + OLD_N * d * 2); }
+static_assert(interleaved_l0b_old(D_MAX) > L0B_SIZE,
+              "★旧几何 (N=256, 逐 tile 交替) 的 L0B 需求应当超容 —— 这条是**反例对照**, "
+              "它变绿说明这里的算法写错了, 而不是说明旧几何没问题");
 
 //  ---- L1 布局: 512 KB 切成 8 个 64 KB 槽 ----
 //  Phase 0 只用前四个 (A/B 各双缓冲); 后四个**预留**给 Phase 3 的对角阵与累加器驻留,
