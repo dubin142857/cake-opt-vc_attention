@@ -48,6 +48,75 @@
 > `CheckTensor(q, q, at::kChar, "Q")`：**Q/K 在算子入口就是 int8**，INT8 QK 是接口契约，
 > 不是我们的选择。验收闸也写错了参考对象，见下。原文保留以存证，以修正段为准。
 
+## ★★因果链闭合（F188，2026-10-29）—— 以本节为准，下节的 C→A→B 次序已被否
+
+动手写 C 之前先读仓里已有的 `PhaseProbe` 数据（`results/ascend910b_profile.json`），**C 被否掉了**。
+
+**稳态（main）逐阶段**（1 tick = 10.77 ns，自核：AIC 252.5 ticks × 101873 tile = 257230 us，
+实测 `aic_time` 276959，覆盖 93%，差额是 tail）：
+
+| AIC main | ticks | AIV main | ticks |
+|---|---:|---|---:|
+| qk_api_complete | 126.5 | wait_s | 58.0 |
+| **wait_p** | **1.0** | probability | 98.5 |
+| pv_api_complete | 125.0 | **wait_o** | **1.0** |
+| **wait_o_used** | **0.0** | 其余 | 80 |
+
+**AIC 在稳态几乎不等跨核。** tail 的 `wait_p` 1256 ticks 只占 1/149 轮，折算 9307 us = scalar 的 3.9%。
+所以 **C 针对的等待实测约为零**。F187 把 `aic_scalar` 0.859 归因为"跨核锁步"是**错的**——
+握手次数 40.7 万 vs 344 这个事实没错，但它不是 scalar 高的成因。
+
+### 真正的 binding pipe 是 scalar，两侧都是
+
+| | ours | laser |
+|---|---|---|
+| AIC binding | **scalar 238019 us**（窗口/binding = **1.164**） | cube 53598 us（1.390） |
+| AIV binding | **scalar 235222 us**（vec 135600） | vec 50380 us（scalar 16697） |
+
+**我们被指令发射/标量绑住，Laser 被真实计算绑住。** binding 之比 238019/53598 = **4.44×**。
+★推论：`fixpipe`（186.6 ticks/tile）本来就在 `scalar`（216.9）之下，
+**降 fixpipe 流量在 scalar 降下来之前帮不上忙**——A 与 B 的流量效应被 scalar 挡住。
+
+### 机制：几何逼得双缓冲全关
+
+`vc_torch.cpp` 显式写 `t.set_dbL0A(1); set_dbL0B(1); set_dbL0C(1);`，注释是
+"Two sequential local matmul objects share the physical Cube memories."。按 tile_m=64, N=256, D=128：
+
+| | QK | PV | 合计 | 容量 | |
+|---|---:|---:|---:|---:|---|
+| L0A | 8 KB | 32 KB | 40 KB | 64 KB | 双缓冲要 80 KB，不够 |
+| **L0B** | 32 KB | 64 KB | **96 KB** | **64 KB** | ★**相加已超容，必须分时** |
+| L0C | 64 KB | 32 KB | 96 KB | 128 KB | 双缓冲要 192 KB，不够 |
+
+**L0B 超容正是 `PipeBarrier<PIPE_ALL>()`（当初的竞态修法）与三个 db 全关的根源。**
+没有双缓冲，MTE1 不能在 M 计算时装下一块、FIX 不能在 M 计算时排空 L0C，流水无法重叠，
+标量管道就卡在矩乘内部的 flag 上空转。实测佐证：AIC 四条流水占比之和 **1.48 vs 2.17**。
+单 tile 252.5 ticks 里两次 matmul API 占 251.5，而 cube 真算只要 49.2 ——
+**API 开销 202.3 ticks/tile，占单 tile 时间的 80%**。
+
+Laser 的 128×128 全 half：L0A 32 KB×2 = 64 KB 正好、L0B 同、L0C 64 KB×2 = 128 KB 正好。
+**三个缓冲各自半满 → 处处 ping/pong**；且 cube1/cube2 按 chunk 分阶段，同一时刻只有一个占 L0，
+故能整块用。★这才是 T3「128×128 正好填满缓存半区」的**作用**——它使双缓冲成为可能，
+而双缓冲才是重叠的前提。此前我把 T3 记成一条孤立技巧，没说清这层因果。
+
+### 修正后的次序
+
+**C 降级**（探针否掉，最多值 3.9% 的 tail）。A 与 B 的流量效应排在 scalar 之后。
+
+**真正的使能项是一件事而不是三件**：几何改 **128×128** + **手写 cube** + **按 chunk 分阶段**。
+- 128×128 使三个 L0 缓冲各自半满 → 可双缓冲
+- 按 chunk 分阶段使同一时刻只有一个 matmul 占 L0 → 能整块用
+- 手写 cube 去掉 `MatmulImpl` 的 API 开销（单 tile 80%），并给出显式逐 pipe 同步
+
+已写好的 `vc_l1l0_map.h`（128×128 地址表 + 事件号守卫）与 `vc_cube_v2.h`（`mm128`）正是为此。
+**先把 cube 侧换成手写 128×128 双缓冲 + chunk 分阶段**（这一步同时拿下 scalar 与重叠），
+再叠 A（S 改 half）与 B（O 常驻 L0C）的流量效应。
+
+> ★**本案计划已改四次**（F185 降级重写 → F186 重新升级 → F187 提出 C→A→B → F188 否掉 C）。
+> 根因是同一个：**反复在读完手头已有的测量之前就先提方案**。F185 的契约事实、F186 的依赖图、
+> F187 的 msprof 四族、F188 的 PhaseProbe——**四批数据全部在动手前就已经在仓里**。
+> 规则：提优化方案之前，先把仓里**已有的**测量产物读完，并写明"binding pipe 是哪条、依据是哪个字段"。
+
 ## ★实测分解（F187，2026-10-29）—— 本节是后续所有步骤的依据
 
 不占卡，全部从已有 msprof 产物挖出（`msprof_h26/control_m64` 3 趟 · `mindie_laser_msopprof_o8o9ss3c` 1 趟，
