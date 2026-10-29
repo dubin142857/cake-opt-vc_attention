@@ -1,0 +1,2 @@
+Op Name,Op Type,Task Duration(us),Block Dim,Mix Block Dim,Device Id,Pid,Current Freq,Rated Freq,
+vc910_forward_m64_1_mix_aic,mix,281814.531250,24,48,1,3692756,1800,1800,

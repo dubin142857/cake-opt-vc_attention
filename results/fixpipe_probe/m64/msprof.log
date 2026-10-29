@@ -1,0 +1,110 @@
+SO_SHA256 3494c48d2ce2b73ed7292dac3e26ce6e6d084fa83f77c2b777cae42ddf04cf55
+2026-10-29 04:22:08 [WARN]  The option "--application" will be deprecated in future version. It is recommended to specify <app> [arguments] instead.
+2026-10-29 04:22:08 [WARN]  Currently, the root permission is used, which is unrecommended. Please ensure the security of the execution environment and programs.
+2026-10-29 04:22:08 [INFO]  Op profiling analysis start.
+2026-10-29 04:22:08 [INFO]  Running device task: DeviceProf
+2026-10-29 04:22:17 [INFO]  Kernel Cast_9f288b80370c6545ffe8cef142d37f5c_high_performance_210010000 skipped: not selected via --kernel-name.
+2026-10-29 04:22:17 [INFO]  Kernel Cast_9f288b80370c6545ffe8cef142d37f5c_high_performance_210010000 skipped: not selected via --kernel-name.
+2026-10-29 04:22:17 [INFO]  Kernel Cast_9f288b80370c6545ffe8cef142d37f5c_high_performance_210010000 skipped: not selected via --kernel-name.
+2026-10-29 04:22:17 [INFO]  Kernel IsFinite_1f99bd74231252c53047b697443be5ef_high_performance_2600 skipped: not selected via --kernel-name.
+2026-10-29 04:22:17 [INFO]  Kernel ReduceAll_4f12aca806ed482b082e86983ec4bb6f_high_performance_1100400_mix_aiv skipped: not selected via --kernel-name.
+2026-10-29 04:22:17 [INFO]  Kernel IsFinite_1f99bd74231252c53047b697443be5ef_high_performance_2600 skipped: not selected via --kernel-name.
+2026-10-29 04:22:17 [INFO]  Kernel ReduceAll_4f12aca806ed482b082e86983ec4bb6f_high_performance_1100400_mix_aiv skipped: not selected via --kernel-name.
+2026-10-29 04:22:17 [INFO]  Kernel IsFinite_1f99bd74231252c53047b697443be5ef_high_performance_2600 skipped: not selected via --kernel-name.
+2026-10-29 04:22:17 [INFO]  Kernel ReduceAll_4f12aca806ed482b082e86983ec4bb6f_high_performance_1100400_mix_aiv skipped: not selected via --kernel-name.
+2026-10-29 04:22:18 [INFO]  Kernel Abs_1c4543fdfe7149b6b0717bd88f061562_high_performance_210010000 skipped: not selected via --kernel-name.
+2026-10-29 04:22:18 [INFO]  Kernel ReduceMax_44d37a79883319362dc6757137315d26_high_performance_1100400_mix_aiv skipped: not selected via --kernel-name.
+2026-10-29 04:22:18 [INFO]  Kernel Abs_1c4543fdfe7149b6b0717bd88f061562_high_performance_210010000 skipped: not selected via --kernel-name.
+2026-10-29 04:22:18 [INFO]  Kernel ReduceMax_44d37a79883319362dc6757137315d26_high_performance_1100400_mix_aiv skipped: not selected via --kernel-name.
+2026-10-29 04:22:18 [INFO]  Kernel Transpose_be837fe498fad076d01c0ce8dfd3d014_high_performance_5 skipped: not selected via --kernel-name.
+2026-10-29 04:22:18 [INFO]  Kernel Transpose_be837fe498fad076d01c0ce8dfd3d014_high_performance_5 skipped: not selected via --kernel-name.
+2026-10-29 04:22:18 [INFO]  Kernel Transpose_be837fe498fad076d01c0ce8dfd3d014_high_performance_5 skipped: not selected via --kernel-name.
+2026-10-29 04:22:18 [INFO]  Kernel Cast_b2717900ea7de2d41ea9c63d23aa269b_high_performance_210010000 skipped: not selected via --kernel-name.
+2026-10-29 04:22:19 [INFO]  Kernel ReduceMean_483c206567cda955ff1cdfd62744bc74_high_precision_2100900_mix_aiv skipped: not selected via --kernel-name.
+2026-10-29 04:22:19 [INFO]  Kernel Sub_ee98c6628030785f610b924ab1557b31_high_performance_212100002 skipped: not selected via --kernel-name.
+2026-10-29 04:22:19 [INFO]  Kernel IsFinite_b7bc55b48bdf94d74b955b3c42bf74f0_high_performance_2590 skipped: not selected via --kernel-name.
+2026-10-29 04:22:19 [INFO]  Kernel ReduceAll_4f12aca806ed482b082e86983ec4bb6f_high_performance_1100400_mix_aiv skipped: not selected via --kernel-name.
+2026-10-29 04:22:19 [INFO]  Kernel Cast_b2717900ea7de2d41ea9c63d23aa269b_high_performance_210010000 skipped: not selected via --kernel-name.
+2026-10-29 04:22:19 [INFO]  Kernel MemSet_1a6864193b99ef93ef38616f04a712ab_high_performance__kernel0 skipped: not selected via --kernel-name.
+2026-10-29 04:22:19 [INFO]  Kernel PadV3_a4fcb61bb0e8ab8cff8a55136393947d_high_performance__kernel0 skipped: not selected via --kernel-name.
+2026-10-29 04:22:20 [INFO]  Kernel Abs_5c5e58e043224cccf51a06108010ae13_high_performance_210010000 skipped: not selected via --kernel-name.
+2026-10-29 04:22:20 [INFO]  Kernel ReduceMax_4f6a0c4868cfa76d49884fb185cc812a_high_performance_50000400_mix_aiv skipped: not selected via --kernel-name.
+2026-10-29 04:22:20 [INFO]  Kernel Greater_3efaad932f458d7892fdb0715ec85b2b_high_performance_223000000 skipped: not selected via --kernel-name.
+2026-10-29 04:22:20 [INFO]  Kernel RealDiv_ee98c6628030785f610b924ab1557b31_high_precision_223000000 skipped: not selected via --kernel-name.
+2026-10-29 04:22:21 [INFO]  Kernel ClipByValueV2_54f1d1caf8fe36c496f699fefe98fbca_high_performance_220000000 skipped: not selected via --kernel-name.
+2026-10-29 04:22:21 [INFO]  Kernel Fill_f2e41efad1a938074b5e381afcc7acf3_high_performance_223000000 skipped: not selected via --kernel-name.
+2026-10-29 04:22:21 [INFO]  Kernel SelectV2_bad39ec50a3854a750466c42b6ef8078_high_performance_210000000 skipped: not selected via --kernel-name.
+2026-10-29 04:22:21 [INFO]  Kernel RealDiv_ee98c6628030785f610b924ab1557b31_high_precision_212000001 skipped: not selected via --kernel-name.
+2026-10-29 04:22:21 [INFO]  Kernel Round_291664ae3e88b38b8b46c2efbbea27c9_high_performance_210010000 skipped: not selected via --kernel-name.
+2026-10-29 04:22:21 [INFO]  Kernel ClipByValueV2_54f1d1caf8fe36c496f699fefe98fbca_high_performance_220010000 skipped: not selected via --kernel-name.
+2026-10-29 04:22:21 [INFO]  Kernel Cast_be58e0047e83b59a9415f71365cd1622_high_performance_210010000 skipped: not selected via --kernel-name.
+2026-10-29 04:22:21 [INFO]  Kernel BroadcastTo_9a632dc5b6be9e1b4215e3cf2b1aff0d_high_performance_212000001 skipped: not selected via --kernel-name.
+2026-10-29 04:22:22 [INFO]  Kernel MemSet_1a6864193b99ef93ef38616f04a712ab_high_performance__kernel0 skipped: not selected via --kernel-name.
+2026-10-29 04:22:22 [INFO]  Kernel PadV3_a4fcb61bb0e8ab8cff8a55136393947d_high_performance__kernel0 skipped: not selected via --kernel-name.
+2026-10-29 04:22:22 [INFO]  Kernel Abs_5c5e58e043224cccf51a06108010ae13_high_performance_210010000 skipped: not selected via --kernel-name.
+2026-10-29 04:22:22 [INFO]  Kernel ReduceMax_4f6a0c4868cfa76d49884fb185cc812a_high_performance_10000100400_mix_aiv skipped: not selected via --kernel-name.
+2026-10-29 04:22:22 [INFO]  Kernel Greater_3efaad932f458d7892fdb0715ec85b2b_high_performance_223000000 skipped: not selected via --kernel-name.
+2026-10-29 04:22:22 [INFO]  Kernel RealDiv_ee98c6628030785f610b924ab1557b31_high_precision_223000000 skipped: not selected via --kernel-name.
+2026-10-29 04:22:22 [INFO]  Kernel ClipByValueV2_54f1d1caf8fe36c496f699fefe98fbca_high_performance_220000000 skipped: not selected via --kernel-name.
+2026-10-29 04:22:22 [INFO]  Kernel Fill_f2e41efad1a938074b5e381afcc7acf3_high_performance_223000000 skipped: not selected via --kernel-name.
+2026-10-29 04:22:22 [INFO]  Kernel SelectV2_bad39ec50a3854a750466c42b6ef8078_high_performance_210000000 skipped: not selected via --kernel-name.
+2026-10-29 04:22:22 [INFO]  Kernel RealDiv_ee98c6628030785f610b924ab1557b31_high_precision_212010002 skipped: not selected via --kernel-name.
+2026-10-29 04:22:22 [INFO]  Kernel Round_291664ae3e88b38b8b46c2efbbea27c9_high_performance_210010000 skipped: not selected via --kernel-name.
+2026-10-29 04:22:22 [INFO]  Kernel ClipByValueV2_54f1d1caf8fe36c496f699fefe98fbca_high_performance_220010000 skipped: not selected via --kernel-name.
+2026-10-29 04:22:22 [INFO]  Kernel Cast_be58e0047e83b59a9415f71365cd1622_high_performance_210010000 skipped: not selected via --kernel-name.
+2026-10-29 04:22:22 [INFO]  Kernel BroadcastTo_9a632dc5b6be9e1b4215e3cf2b1aff0d_high_performance_212000001 skipped: not selected via --kernel-name.
+2026-10-29 04:22:22 [INFO]  Kernel Cast_b2717900ea7de2d41ea9c63d23aa269b_high_performance_210010000 skipped: not selected via --kernel-name.
+2026-10-29 04:22:22 [INFO]  Kernel Abs_5c5e58e043224cccf51a06108010ae13_high_performance_210010000 skipped: not selected via --kernel-name.
+2026-10-29 04:22:22 [INFO]  Kernel ReduceMax_4f6a0c4868cfa76d49884fb185cc812a_high_performance_10002100900_mix_aiv skipped: not selected via --kernel-name.
+2026-10-29 04:22:22 [INFO]  Kernel Greater_3efaad932f458d7892fdb0715ec85b2b_high_performance_223000000 skipped: not selected via --kernel-name.
+2026-10-29 04:22:22 [INFO]  Kernel RealDiv_ee98c6628030785f610b924ab1557b31_high_precision_223000000 skipped: not selected via --kernel-name.
+2026-10-29 04:22:22 [INFO]  Kernel ClipByValueV2_54f1d1caf8fe36c496f699fefe98fbca_high_performance_220000000 skipped: not selected via --kernel-name.
+2026-10-29 04:22:22 [INFO]  Kernel Fill_f2e41efad1a938074b5e381afcc7acf3_high_performance_223000000 skipped: not selected via --kernel-name.
+2026-10-29 04:22:22 [INFO]  Kernel SelectV2_bad39ec50a3854a750466c42b6ef8078_high_performance_210000000 skipped: not selected via --kernel-name.
+2026-10-29 04:22:22 [INFO]  Kernel RealDiv_ee98c6628030785f610b924ab1557b31_high_precision_212100002 skipped: not selected via --kernel-name.
+2026-10-29 04:22:22 [INFO]  Kernel Abs_5c5e58e043224cccf51a06108010ae13_high_performance_210010000 skipped: not selected via --kernel-name.
+2026-10-29 04:22:22 [INFO]  Kernel ClipByValueV2_54f1d1caf8fe36c496f699fefe98fbca_high_performance_220010000 skipped: not selected via --kernel-name.
+2026-10-29 04:22:22 [INFO]  Kernel ClipByValueV2_54f1d1caf8fe36c496f699fefe98fbca_high_performance_220010000 skipped: not selected via --kernel-name.
+2026-10-29 04:22:22 [INFO]  Kernel Log_fb42ea349cd1f1779279250bf66d5d90_high_performance_210010000 skipped: not selected via --kernel-name.
+2026-10-29 04:22:22 [INFO]  Kernel Floor_5c5e58e043224cccf51a06108010ae13_high_performance_210010000 skipped: not selected via --kernel-name.
+2026-10-29 04:22:22 [INFO]  Kernel ClipByValueV2_54f1d1caf8fe36c496f699fefe98fbca_high_performance_220010000 skipped: not selected via --kernel-name.
+2026-10-29 04:22:22 [INFO]  Kernel Sub_ee98c6628030785f610b924ab1557b31_high_performance_223010000 skipped: not selected via --kernel-name.
+2026-10-29 04:22:22 [INFO]  Kernel Pow_ee98c6628030785f610b924ab1557b31_high_performance_232010000 skipped: not selected via --kernel-name.
+2026-10-29 04:22:22 [INFO]  Kernel RealDiv_ee98c6628030785f610b924ab1557b31_high_precision_210010000 skipped: not selected via --kernel-name.
+2026-10-29 04:22:22 [INFO]  Kernel Round_291664ae3e88b38b8b46c2efbbea27c9_high_performance_210010000 skipped: not selected via --kernel-name.
+2026-10-29 04:22:22 [INFO]  Kernel Mul_ee98c6628030785f610b924ab1557b31_high_performance_210010000 skipped: not selected via --kernel-name.
+2026-10-29 04:22:22 [INFO]  Kernel ClipByValueV2_54f1d1caf8fe36c496f699fefe98fbca_high_performance_220010000 skipped: not selected via --kernel-name.
+2026-10-29 04:22:23 [INFO]  Kernel Sign_5c5e58e043224cccf51a06108010ae13_high_performance_210010000 skipped: not selected via --kernel-name.
+2026-10-29 04:22:23 [INFO]  Kernel Mul_ee98c6628030785f610b924ab1557b31_high_performance_210010000 skipped: not selected via --kernel-name.
+2026-10-29 04:22:23 [INFO]  Kernel Cast_15ccf3aee15572ed7572778d4afbef60_high_performance_210010000 skipped: not selected via --kernel-name.
+2026-10-29 04:22:23 [INFO]  Kernel MemSet_1a6864193b99ef93ef38616f04a712ab_high_performance__kernel0 skipped: not selected via --kernel-name.
+2026-10-29 04:22:23 [INFO]  Kernel PadV3_979a4a399cde811d3c4347b2daf8ac75_high_performance__kernel0 skipped: not selected via --kernel-name.
+[INFO] <ProfData> Start profiling on device 1, kernel: vc910_forward_m64_1_mix_aic
+[INFO] <WarmUp> Warm Up enabled. times:5
+DRIVER_OK 64 3
+2026-10-29 04:22:35 [INFO]  Profiling running finished. All task success.
+2026-10-29 04:22:35 [INFO]  Start analyze kernel on device: device1, kernel: vc910_forward_m64_1_mix_aic, name is: 0
+2026-10-29 04:22:35 [INFO]  Save profiling data with metric [PipeUtilization] success.
+2026-10-29 04:22:36 [INFO]  Performance Summary Report:
+
+	1) aicore MTE1 bandwidth utilization lower than 80% when active.
+	2) aicore MTE2 bandwidth utilization lower than 80% when active.
+	3) aicore compute usage lower than 20%.
+	4) aivector MTE2 bandwidth utilization lower than 80% when active.
+	5) aivector MTE3 bandwidth utilization lower than 80% when active.
+
+2026-10-29 04:22:36 [INFO]  Operator Basic Information:
+
+	Op Name: vc910_forward_m64_1_mix_aic
+	Op Type: mix
+	Task Duration(us): 281814.531250
+	Block Dim: 24
+	Mix Block Dim: 48
+	Device Id: 1
+	Pid: 3692756
+	Current Freq: 1800
+	Rated Freq: 1800
+
+2026-10-29 04:22:36 [INFO]  Profiling results saved in /data0/z60106022/a-vc_attention_opt/vc-attention/results/fixpipe_probe/m64/OPPROF_20261029042208_EQJKETQPCMCMJZCG
+2026-10-29 04:22:36 [INFO]  Profiling data parse finished.
+2026-10-29 04:22:36 [INFO]  Op profiling finish. Welcome to next use.

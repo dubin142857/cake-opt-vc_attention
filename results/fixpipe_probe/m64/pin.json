@@ -1,0 +1,20 @@
+{
+ "so_sha256": "3494c48d2ce2b73ed7292dac3e26ce6e6d084fa83f77c2b777cae42ddf04cf55",
+ "commit": "53ec7af",
+ "tile_m": 64,
+ "arm": "control",
+ "shape_nhd": [
+  1,
+  37741,
+  28,
+  128
+ ],
+ "dtype": "bfloat16",
+ "reps": 3,
+ "device_physical": 1,
+ "soc": "Ascend910B2",
+ "cann": "9.0.0",
+ "aic_metrics": "PipeUtilization",
+ "retained": "PipeUtilization.csv + OpBasicInfo.csv + dump/ (原始 PMU 记录) + msprof.log",
+ "dropped": "visualize_data.bin (2.17 MB, 纯可视化 blob, 非证据)"
+}
