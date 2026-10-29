@@ -5,6 +5,7 @@
 #include "vc_tiling.h"
 #include "vc_phase_probe.h"
 #include "vc_intrinsic_probe.h"
+#include "vc_cube_v2.h"
 
 using namespace AscendC;
 using namespace matmul;
@@ -519,5 +520,17 @@ extern "C" __global__ __aicore__ void vc910_intrinsic_probe(GM_ADDR out, GM_ADDR
     if ASCEND_IS_AIC {
         vc_intrinsic_probe_body(reinterpret_cast<__gm__ half*>(out),
                                 reinterpret_cast<__gm__ half*>(src));
+    }
+}
+
+//  CubeV2 的编译探针 —— **永不发射**, 只为让 mm128 真的走到代码生成。
+extern "C" __global__ __aicore__ void vc910_cube_v2_probe(GM_ADDR s_out, GM_ADDR q, GM_ADDR k) {
+    if ASCEND_IS_AIC {
+        //  QK: A=Q, B=K (转置), 输出 S 为 half (fixpipe F322F16 收窄)
+        vc910::mm128<true, true, half>(reinterpret_cast<__gm__ half*>(s_out),
+                                 reinterpret_cast<__gm__ half*>(q),
+                                 reinterpret_cast<__gm__ half*>(k),
+                                 vc910::map::BLK, vc910::map::BLK,
+                                 vc910::map::BLK, F322F16);
     }
 }
