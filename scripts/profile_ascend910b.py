@@ -25,9 +25,12 @@ ROLE_PHASES = {
     "aiv1": ("wait_s", "load_scores", "probability", "p_publish", "history",
              "wait_o", "load_pv", "accumulate"),
 }
+#  ★tile_m 现在只支持 64 (手写 cube 的几何 M=64 x N=128; ROWS=M/2=32 恰好是一个
+#    Q_SCALE_BLOCK, 向量侧的 scale 逻辑依赖这一条)。原来这里是 (32, 64) 的笛卡尔积 ——
+#    删 32 支路时漏了这一处, 表现为探针脚本一跑就被 api.py 的校验拒掉。
 VARIANTS = {f"{mode}_m{tile}": (cast, tile)
             for mode, cast in (("control", False), ("expcast", True))
-            for tile in (32, 64)}
+            for tile in (64,)}
 
 
 def summarize_records(records):
@@ -106,7 +109,7 @@ def validate_tiles(vc, reference, device, report, save):
                     print("Validate M32/M64:", json.dumps(row), flush=True)
                     oracle = reference(cpu_p, expcast=cast).to(dtype)
                     baseline = None
-                    for tile in (32, 64):
+                    for tile in (64,):   # tile_m 现在只支持 64
                         out = vc.run_prepared(p, expcast=cast, tile_m=tile).cpu()
                         gate(out, oracle, limit=.01, label=f"m{tile}_decoded_reference",
                              row=row, save=save)

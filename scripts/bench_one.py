@@ -18,7 +18,8 @@ def main() -> int:
     ap.add_argument("--queries", type=int, default=37741)
     ap.add_argument("--heads", type=int, default=28)
     ap.add_argument("--dim", type=int, default=128)
-    ap.add_argument("--tile-m", type=int, default=64, choices=(32, 64))
+    #  tile_m 现在只支持 64 (手写 cube 的几何)。
+    ap.add_argument("--tile-m", type=int, default=64, choices=(64,))
     ap.add_argument("--warmup", type=int, default=2)
     ap.add_argument("--reps", type=int, default=5)
     a = ap.parse_args()
