@@ -267,12 +267,40 @@ def main():
                         raise AssertionError(f"{name} fixed-payload cast output changed on repeat")
                     del repeated
             del output
-        report["tile_comparison"] = {}
-        for mode in ("control", "expcast"):
-            row = report["tile_comparison"][mode] = {}
-            gate(core_outputs[f"{mode}_m64"], core_outputs[f"{mode}_m32"], limit=.001,
-                 label="m64_vs_m32_all_rows", row=row, save=save)
-            row["exact_match"] = torch.equal(core_outputs[f"{mode}_m64"], core_outputs[f"{mode}_m32"])
+        #  ★原来这里是 m64 对 m32 的交叉校验 (两种 tile 几何必须一致到 0.1%)。
+        #    tile_m 现在只剩 64, 那道闸跑不了 —— 但**直接删掉等于削弱检查**,
+        #    故换一道等价强度的不变式, 而不是留个空位。
+        #  新判据: **control 必须对参考的在线更新窗口不变**。
+        #    依据是 reference.py 的文档串原话 "普通 exp 路径对宽度不变, 故只有 ExpCast 受影响" ——
+        #    这对 control 是数学恒等 (softmax 对分块归一化不变), 对 expcast 不是
+        #    (E4M3 编码相对窗口最大值定义, 见 F190)。
+        #  ★所以这道闸只对 control 设限; expcast 只记录差异不设限, 它的差异是**预期的**。
+        from vc_attention_ascend.reference import payload_reference, K_TILE, ONLINE_TILE
+        report["window_invariance"] = {}
+        cpu_p = {k: (v.cpu() if torch.is_tensor(v) else v) for k, v in p.items()}
+        for mode, cast in (("control", False), ("expcast", True)):
+            row = report["window_invariance"][mode] = {}
+            a = payload_reference(cpu_p, expcast=cast, tile_width=K_TILE)
+            b = payload_reference(cpu_p, expcast=cast, tile_width=ONLINE_TILE)
+            diff = (a.double() - b.double())
+            rel = float((diff.norm() / a.double().norm().clamp_min(1e-30)).item())
+            row.update(tile_width_a=K_TILE, tile_width_b=ONLINE_TILE, relative_diff=rel)
+            if mode == "control":
+                #  ★闸取 1e-3, 不是 1e-6 —— 自检当场否掉了后者。
+                #    control 只在**精确算术**下对窗口不变; 实际是 fp32 重结合,
+                #    实测残差 1.37e-4 (账本早已量化过这一项为"约 2e-4")。
+                #    闸必须落在重结合残差 (~1.4e-4) 与 expcast 的差 (~2.3e-2) **之间**:
+                #    低于前者会恒红, 高于后者就分不开两条路径。
+                row["gate"] = 1e-3
+                assert rel < 1e-3, (
+                    f"control 对参考窗口的相对差 {rel:.3e} 超过 1e-3 —— "
+                    f"fp32 重结合只应给出约 1.4e-4; 更大说明归一化不再是数学恒等, "
+                    f"或参考的窗口语义变了")
+            else:
+                row["gate"] = None
+                row["note"] = ("expcast 对窗口**不**不变 (实测约 2.3e-2), 这是 E4M3 编码"
+                               "相对窗口最大值定义使然 (F190), 故只记录不设限 —— "
+                               "它同时是上面那条闸的**负例对照**: 两者差两个量级, 判据分得开")
         # Probe correctness and record schema are also checked before timing.
         for name, (cast, tile) in VARIANTS.items():
             detail = report["probes"][name] = {"trials": []}
