@@ -4,7 +4,6 @@
 #include "lib/matmul_intf.h"
 #include "vc_tiling.h"
 #include "vc_phase_probe.h"
-#include "vc_intrinsic_probe.h"
 #include "vc_cube_v2.h"
 
 using namespace AscendC;
@@ -515,22 +514,31 @@ extern "C" __global__ __aicore__ void vc910_profile_m64(
     RunAttention<64, true>(q, k, v, qs, ks, vs, lut, output, ws, qt, vt, tiling, trace);
 }
 
-//  Phase 0 去风险探针的入口 —— **永不发射**, 只为让代码生成真的走到那组内建函数。
-extern "C" __global__ __aicore__ void vc910_intrinsic_probe(GM_ADDR out, GM_ADDR src) {
+//  ---- CubeV2 的**数值**探针 -------------------------------------------------
+//  ★不是编译探针。公开 API 有声明, 编译器能查**类型**, 但 repeat / src_stride /
+//    dst_gap / dst_frac_stride 这几个参数的**语义**仍要确证 —— CANN 树里没有这几个
+//    函数的调用样例 (查过 c_api 全树与 impl 层)。语义只能从内建推, 而"推"正是
+//    F183 里烧掉三次构建的失败模式。
+//  对策: 在固定小输入上单独跑这三个原语, 结果写 GM, 主机侧与 NumPy 参考逐元素比。
+//  猜错在**一次构建 + 一次运行**里暴露, 而不是污染整个内核后去 141 个用例里排查。
+//  d 固定 128 (基准形状), 不读 tiling —— 探针要尽量少的活动部件。
+extern "C" __global__ __aicore__ void vc910_cube_v2_probe(
+        GM_ADDR s_out, GM_ADDR o_out, GM_ADDR q, GM_ADDR k, GM_ADDR pmat, GM_ADDR v) {
     if ASCEND_IS_AIC {
-        vc_intrinsic_probe_body(reinterpret_cast<__gm__ half*>(out),
-                                reinterpret_cast<__gm__ half*>(src));
-    }
-}
-
-//  CubeV2 的编译探针 —— **永不发射**, 只为让 mm128 真的走到代码生成。
-extern "C" __global__ __aicore__ void vc910_cube_v2_probe(GM_ADDR s_out, GM_ADDR q, GM_ADDR k) {
-    if ASCEND_IS_AIC {
-        //  QK: A=Q, B=K (转置), 输出 S 为 half (fixpipe F322F16 收窄)
-        vc910::mm128<true, true, half>(reinterpret_cast<__gm__ half*>(s_out),
-                                 reinterpret_cast<__gm__ half*>(q),
-                                 reinterpret_cast<__gm__ half*>(k),
-                                 vc910::map::BLK, vc910::map::BLK,
-                                 vc910::map::BLK, F322F16);
+        constexpr uint16_t D = 128;
+        using namespace vc910::cube2;
+        //  QK: S[64][128] int32 = Q[64][128] · K[128][128]^T
+        mm_qk(reinterpret_cast<__gm__ int32_t*>(s_out),
+              reinterpret_cast<__gm__ int8_t*>(q),
+              reinterpret_cast<__gm__ int8_t*>(k),
+              D, D, D, vc910::map::NBLK);
+        //  PV: 两次累加, 第二次用同一对 P/V —— 结果应当恰好是单次的两倍。
+        //  ★这一条专门验 c_matrix_init_val=false 真的在累加而不是覆写:
+        //    若它其实是覆写, 结果会等于单次而不是两倍, 主机侧一眼看出。
+        mm_pv_acc<true>(reinterpret_cast<__gm__ half*>(pmat),
+                        reinterpret_cast<__gm__ half*>(v), D, vc910::map::NBLK, D);
+        mm_pv_acc<false>(reinterpret_cast<__gm__ half*>(pmat),
+                         reinterpret_cast<__gm__ half*>(v), D, vc910::map::NBLK, D);
+        pv_flush(reinterpret_cast<__gm__ float*>(o_out), D, D);
     }
 }

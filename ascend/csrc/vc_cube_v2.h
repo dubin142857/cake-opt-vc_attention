@@ -1,18 +1,18 @@
-//  CubeV2 —— Phase 0 的 cube 侧: 手写 mmad + 裸地址 + 128x128 块 + FP16 契约。
+//  CubeV2 —— 手写 cube 的矩乘原语 (M=64 查询行 x N=128 键)。
 //
 //  为什么另起一个类而不是改 Cube:
-//    PV 的 B 是 BLK*dim half = 32KB, QK 的 B 同样 32KB, 两者加上双缓冲正好用满
-//    64KB 的 L0B —— **前提是这个核里没有别的 L0 使用者**。旧 Cube 的两个
-//    MatmulImpl 经 TPipe 自己占 L0, 与裸地址并存就是"同一个核里两套分配权威",
-//    正是我们那个竞态的形态。故 V2 独占整核, 旧 Cube 原封不动留作对照。
+//    旧 Cube 的两个 MatmulImpl 经 TPipe 自己占 L0, 与裸地址并存就是"同一个核里
+//    两套分配权威", 正是此前那个竞态的形态。故 V2 独占整核, 旧 Cube 留作对照。
 //
-//  与旧 Cube 的差别 (Phase 0 范围):
-//    块 64x256 -> **128x128** (两个矩乘都成 128^3)
-//    S 的 dtype int32 -> **half** —— 靠 copy_matrix_cc_to_gm 的 QuantPRE=F322F16
-//      让 fixpipe **在写出的路上**收窄, 不需要额外一趟 (这是 T6 的真实机制)
-//    MatmulImpl -> 手写 load/mad/fixpipe, 地址与事件号全部显式 (见 vc_l1l0_map.h)
-//  **不在本相范围**: T8 的深度 2 软件流水 (Phase 2) · T1 的对角阵矩乘 (Phase 3) ·
-//    INT8 (Phase 4, 且有硬闸: 必须先确认 cube 成为 binding pipe)。
+//  ★几何 M=64 x N=128 的依据见 vc_l1l0_map.h 的注释 (UB / Q 量化粒度 / host 的 tile_m 检查),
+//    L0 预算由该文件的 static_assert 守住。**前提是两相按 chunk 分阶段**, 不是逐 tile 交替。
+//
+//  ★为什么要有数值探针 (vc_cube_probe_entry):
+//    公开 API 有声明, 编译器能查**类型**, 但 repeat / src_stride / dst_gap /
+//    dst_frac_stride 这几个参数的**语义**仍要确证。CANN 树里没有这几个函数的调用样例
+//    (查过), 所以语义只能从内建推 —— 而"推"正是 F183 里烧掉三次构建的失败模式。
+//    对策: 把原语单独跑在固定小输入上, 结果写 GM, 主机侧与 NumPy 参考比对。
+//    猜错在**一次构建 + 一次运行**里暴露, 而不是污染整个内核后去 141 个用例里排查。
 #ifndef VC_CUBE_V2_H
 #define VC_CUBE_V2_H
 
@@ -21,57 +21,85 @@
 //    "use of undeclared identifier 'asc_mmad_sync'"。
 #include "c_api/asc_simd.h"
 #include "vc_l1l0_map.h"
-#include "vc_tiling.h"
 
 namespace vc910 {
+namespace cube2 {
 
-//  一次 128x128x128 的矩乘并把结果写回 GM。
-//
-//  ★用**公开 C API** (asc/include/c_api) 而不是 Laser 那套未声明的 ccec 内建。
-//    2026-10-29 实撞: 逆向内建花了三次构建仍没对上 set_flag 的第三参类型, 后来才发现
-//    cann-9.0.0/aarch64-linux/**asc/include/c_api** 下有一整套**有声明、按 dtype 重载**
-//    的公开接口。此前搜公开头搜的是 ascendc/include —— 搜索根错了 (教训二)。
-//    公开 API 的覆盖并不完整: L0C->GM **只有配置函数**没有搬运函数,
-//    故那一步仍用内建 copy_matrix_cc_to_gm, 由 asc_set_l0c2gm_config 配置。
-//
-//  ★Phase 0 一律用 **_sync 变体**: 它们内嵌必要的流水同步, 构造性地避开手写
-//    set/wait 的一整类错误 —— 而我们那个竞态正是同步问题。代价是少了重叠,
-//    但本相的目标是"骨架做对, 不求快"。Phase 2 做软件流水时再换成手动同步。
-template <bool UsePing, bool BTrans, typename OutT>
-__aicore__ inline void mm128(__gm__ OutT *gm_out, __gm__ half *gm_a, __gm__ half *gm_b,
-                             uint16_t a_rows_stride, uint16_t b_rows_stride,
-                             uint16_t out_cols, uint64_t quant_pre) {
-    using namespace map;
-    constexpr uint32_t L1A = UsePing ? L1_A_PING : L1_A_PONG;
-    constexpr uint32_t L1B = UsePing ? L1_B_PING : L1_B_PONG;
-    constexpr uint32_t L0A = UsePing ? L0A_PING : L0A_PONG;
-    constexpr uint32_t L0B = UsePing ? L0B_PING : L0B_PONG;
-    constexpr uint32_t L0C = UsePing ? L0C_PING : L0C_PONG;
+using namespace map;
 
-    auto l1a = reinterpret_cast<__cbuf__ half *>(static_cast<uintptr_t>(L1A));
-    auto l1b = reinterpret_cast<__cbuf__ half *>(static_cast<uintptr_t>(L1B));
-    auto l0a = reinterpret_cast<__ca__ half *>(static_cast<uintptr_t>(L0A));
-    auto l0b = reinterpret_cast<__cb__ half *>(static_cast<uintptr_t>(L0B));
-    auto l0c = reinterpret_cast<__cc__ float *>(static_cast<uintptr_t>(L0C));
+//  L1/L0 分区。QK 与 PV **分时**使用, 故可以各自占满;
+//  PV 的累加器必须跨 chunk 内的多次 mad 存活, 所以它固定在 L0C_PING,
+//  QK 的输出每块都搬走, 用 L0C_PONG。两者不同时存活, 但分开写地址更难出错。
+constexpr uint32_t L0C_ACC = L0C_PING;    // PV 累加器 (chunk 内常驻)
+constexpr uint32_t L0C_QK  = L0C_PONG;    // QK 的 S, 每块搬走
 
-    //  GM (ND) -> L1 (NZ)
-    asc_copy_gm2l1_nd2nz_sync(l1a, gm_a, 1, BLK, BLK, 0, a_rows_stride, BLK, 1, 0);
-    asc_copy_gm2l1_nd2nz_sync(l1b, gm_b, 1, BLK, BLK, 0, b_rows_stride, BLK, 1, 0);
+//  分形片大小: L1->L0 的 repeat 以 512 B 为单位 (与 mm128 初版一致, 待探针确证)。
+constexpr uint32_t FRAC_BYTES = 512;
 
-    //  L1 -> L0A / L0B。repeat 以 512 B 的分形片为单位: 128*128*2 / 512 = 64。
-    asc_copy_l12l0a_sync(l0a, l1a, 0, BLK * BLK * 2 / 512, 1, 0);
-    asc_copy_l12l0b_sync(l0b, l1b, 0, BLK * BLK * 2 / 512, 1, 0);
+//  ---- QK: S[MBLK][NBLK] int32 = Q[MBLK][d] · K[NBLK][d]^T --------------------
+//  ★B 需要转置: K 在 GM 是 [keys][d] = [n][k], 而 mmad 的 B 要 [k][n]。
+//    公开层的 2D asc_copy_l12l0b **没有** transpose 参数; 转置走**另一个函数**
+//    asc_copy_l12l0b_trans_sync, 它有 int8_t 重载 (cube_datamove.h:418 节)。
+//    实现上它是内建 load_cbuf_to_cb_transpose 的薄包装 (参数 1:1 + asc_sync_post_process)。
+__aicore__ inline void mm_qk(__gm__ int32_t *gm_s, __gm__ int8_t *gm_q, __gm__ int8_t *gm_k,
+                             uint16_t d, uint16_t q_row_stride, uint16_t k_row_stride,
+                             uint16_t s_cols) {
+    auto l1a = reinterpret_cast<__cbuf__ int8_t *>(static_cast<uintptr_t>(L1_A_PING));
+    auto l1b = reinterpret_cast<__cbuf__ int8_t *>(static_cast<uintptr_t>(L1_B_PING));
+    auto l0a = reinterpret_cast<__ca__ int8_t *>(static_cast<uintptr_t>(L0A_PING));
+    auto l0b = reinterpret_cast<__cb__ int8_t *>(static_cast<uintptr_t>(L0B_PING));
+    auto l0c = reinterpret_cast<__cc__ int32_t *>(static_cast<uintptr_t>(L0C_QK));
 
-    //  128^3。c_matrix_init_val=true 表示本次把 L0C 初始化为 0 (不累加)。
-    asc_mmad_sync(l0c, l0a, l0b, BLK, BLK, BLK, 3, false, false, true);
+    //  GM (ND) -> L1 (NZ)。nd_num=1 表示只搬一个矩阵;
+    //  n_value/d_value 是本块的行/列数; src_d_value 是 GM 里相邻行的元素步长。
+    asc_copy_gm2l1_nd2nz_sync(l1a, gm_q, 1, MBLK, d, 0, q_row_stride, MBLK, 1, 0);
+    asc_copy_gm2l1_nd2nz_sync(l1b, gm_k, 1, NBLK, d, 0, k_row_stride, NBLK, 1, 0);
 
-    //  ★T6: fixpipe 在写出的路上做 dtype 转换与 NZ->ND, 不需要额外一趟。
-    //    配置走公开 API, 发射仍用内建 (公开 API 没有 L0C->GM 的搬运函数)。
-    asc_set_l0c2gm_config(0, quant_pre, true);
-    copy_matrix_cc_to_gm(gm_out, l0c, 0, BLK, BLK, out_cols, BLK, 3, quant_pre, 0, false, true);
-    (void)BTrans;
+    asc_copy_l12l0a_sync(l0a, l1a, 0, uint8_t(MBLK * d / FRAC_BYTES), 1, 0);
+    asc_copy_l12l0b_trans_sync(l0b, l1b, 0, uint8_t(NBLK * d / FRAC_BYTES), 1, 0, false,
+                               uint64_t(0));
+
+    //  参数序: (left_height=m, n_dim=k, right_width=n)。本相 m=MBLK, k=d, n=NBLK。
+    //  c_matrix_init_val=true: 本次把 L0C 置零不累加 (QK 的每个块都是独立结果)。
+    asc_mmad_sync(l0c, l0a, l0b, MBLK, d, NBLK, 3, false, false, true);
+
+    asc_set_l0c2gm_config(0, 0, true);
+    copy_matrix_cc_to_gm(gm_s, l0c, 0, NBLK, MBLK, s_cols, MBLK, 3, 0, 0, false, true);
 }
 
+//  ---- PV: O[MBLK][d] fp32 (+)= P[MBLK][NBLK] · V[NBLK][d] --------------------
+//  ★Init=false 时 c_matrix_init_val=false, 即**累加进 L0C 已有内容**。
+//    这是 chunk 内跨 key 块累加的全部机制 —— O 因此只在 chunk 末搬出一次,
+//    而不是每个 key 块一次 (F186/F189: 后者使 O 的 fixpipe 字节翻倍)。
+//  ★V 不转置: V 在 GM 是 [keys][d] = [k][n], 正是 mmad 的 B 所要的布局。
+template <bool Init>
+__aicore__ inline void mm_pv_acc(__gm__ half *gm_p, __gm__ half *gm_v,
+                                 uint16_t d, uint16_t p_row_stride, uint16_t v_row_stride) {
+    auto l1a = reinterpret_cast<__cbuf__ half *>(static_cast<uintptr_t>(L1_A_PONG));
+    auto l1b = reinterpret_cast<__cbuf__ half *>(static_cast<uintptr_t>(L1_B_PONG));
+    auto l0a = reinterpret_cast<__ca__ half *>(static_cast<uintptr_t>(L0A_PING));
+    auto l0b = reinterpret_cast<__cb__ half *>(static_cast<uintptr_t>(L0B_PING));
+    auto l0c = reinterpret_cast<__cc__ float *>(static_cast<uintptr_t>(L0C_ACC));
+
+    asc_copy_gm2l1_nd2nz_sync(l1a, gm_p, 1, MBLK, NBLK, 0, p_row_stride, MBLK, 1, 0);
+    asc_copy_gm2l1_nd2nz_sync(l1b, gm_v, 1, NBLK, d, 0, v_row_stride, NBLK, 1, 0);
+
+    asc_copy_l12l0a_sync(l0a, l1a, 0, uint8_t(MBLK * NBLK * 2 / FRAC_BYTES), 1, 0);
+    asc_copy_l12l0b_sync(l0b, l1b, 0, uint8_t(NBLK * d * 2 / FRAC_BYTES), 1, 0);
+
+    //  m=MBLK, k=NBLK, n=d。
+    asc_mmad_sync(l0c, l0a, l0b, MBLK, NBLK, d, 3, false, false, Init);
+}
+
+//  把 chunk 内累好的 O 从 L0C 搬到 GM。公开层没有 L0C->GM 的搬运函数,
+//  只有配置函数 asc_set_l0c2gm_config, 故发射仍用内建 (查过 c_api 全树)。
+__aicore__ inline void pv_flush(__gm__ float *gm_o, uint16_t d, uint16_t o_cols) {
+    auto l0c = reinterpret_cast<__cc__ float *>(static_cast<uintptr_t>(L0C_ACC));
+    asc_set_l0c2gm_config(0, 0, true);
+    copy_matrix_cc_to_gm(gm_o, l0c, 0, d, MBLK, o_cols, MBLK, 3, 0, 0, false, true);
+}
+
+}  // namespace cube2
 }  // namespace vc910
 
 #endif  // VC_CUBE_V2_H
