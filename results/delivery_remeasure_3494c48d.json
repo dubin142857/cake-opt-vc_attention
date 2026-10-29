@@ -1,0 +1,38 @@
+{
+ "label": "remeasure-3494c48d",
+ "so_sha256": "3494c48d2ce2b73ed7292dac3e26ce6e6d084fa83f77c2b777cae42ddf04cf55",
+ "so_sha256_16": "3494c48d2ce2b73e",
+ "config": {
+  "queries": 37741,
+  "keys": 37741,
+  "heads": 28,
+  "dim": 128,
+  "dtype": "bfloat16",
+  "tile_m": 64,
+  "layout": "NHD",
+  "warmup": 2,
+  "reps": 5,
+  "timed": "run_prepared() only; prepare() excluded"
+ },
+ "t": 1793256433.773122,
+ "control_m64": 285.4558201506734,
+ "control_m64_samples": [
+  285.7187855988741,
+  285.13486590236425,
+  285.38830019533634,
+  285.4558201506734,
+  285.9801398590207
+ ],
+ "expcast_m64": 300.1918075606227,
+ "expcast_m64_samples": [
+  299.9494937248528,
+  299.7605809941888,
+  301.2244659475982,
+  300.26692897081375,
+  300.1918075606227
+ ],
+ "scope": "交付耗时补测: delivery/PERF_COMPARISON.md 主表那两格此前在仓内无留存记录 (F175)",
+ "predictions": "results/fixpipe_probe/remeasure_predictions.md (读数之前登记)",
+ "device": "Ascend910B2 物理 1 号卡; CANN 9.0.0 / torch_npu 2.9.0",
+ "kernel_commit": "53ec7af"
+}

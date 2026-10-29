@@ -47,7 +47,7 @@
 | **官方 Laser**（FP16，不量化） | **95.30 ms** | **0.191 %** |
 | 同机 CANN `npu_fusion_attention` | 142 ms | 0.234 % |
 | 本交付 `control`（`tile_m=64`） | 285.46 ms | 2.98 % |
-| 本交付 `expcast`（`tile_m=64`） | 299.89 ms | 4.36 % |
+| 本交付 `expcast`（`tile_m=64`） | 300.19 ms | 4.36 % |
 
 **耗时**：Laser 快 **3.0 倍**。
 **精度**：Laser 的相对 RMSE 小约 **16 倍**。
@@ -158,12 +158,14 @@ NPU_DEVICE=<空闲卡号> bash scripts/run_ascend910b.sh --long-shape
 
 - **Laser 一侧**：`results/mindie_laser_quant_compare.json`（三次 trial、精度采样、
   环境指纹、源码清单均在其中）。
-- **本交付一侧**：★**第三节表中的 285.46 / 299.89 两格在本仓没有留存的测量记录**
-  （2026-10-29 全树核查）。它们是竞态修复后（产物 `3494c48d…`）实测的，但未落盘。
-  仓里有记录的是修复**之前**那次 A/B：`results/bench_9e3a550_vs_h26-bitdecode/`
-  （产物 `4d20b857…`，两会话 283.38 / 283.18 ms 与 298.23 / 298.79 ms）。
-  两者差约 0.7%–0.6%，与第七节所述修复代价（+1.14% / +0.41%）量级一致但不等同。
-  **要按本文的验证标准复核这两格，需在产物 `3494c48d…` 上重测一次并留档。**
+- **本交付一侧**：`results/delivery_remeasure_3494c48d.json` —— 2026-10-29 在产物
+  `3494c48d…` 上补测并留档（5 次重复，含逐次样本与 so 的 sha256）。
+  `control_m64` 中位 **285.4558 ms**、`expcast_m64` 中位 **300.1918 ms**。
+  ★此前这两格**在仓内没有任何留存记录**（F175 查实），文档写着"要复核数字看验证手段
+  一节"而那一节对本交付一侧指不到东西。本次补测把该缺口关掉：`control` 与原记的
+  285.46 逐位吻合；`expcast` 原记 299.89，本次 300.19（+0.10%，会话间漂移），
+  **表中已改用本次实测值**，因为它是唯一有记录的那次。
+  预测按协议在读数之前登记于 `results/fixpipe_probe/remeasure_predictions.md`。
 - **精度一侧**：`results/ascend910b_benchmark.json` 的 `accuracy` 段
   （`vc_control` / `vc_expcast` / `cann_fusion_attention` 三者的 `dense_fp32`
   与 `decoded_reference`，`config.check_queries = 32`）。

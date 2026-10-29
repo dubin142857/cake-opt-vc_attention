@@ -1,0 +1,606 @@
+{
+  "status": "passed",
+  "config": {
+    "device": 1,
+    "backends": [
+      "vc_expcast",
+      "vc_control",
+      "cann_fusion_attention",
+      "mindie_laser"
+    ],
+    "require_laser": false,
+    "queries": 37741,
+    "keys": 37741,
+    "heads": 28,
+    "dim": 128,
+    "dtype": "bfloat16",
+    "warmup": 2,
+    "repeats": 3,
+    "trials": 5,
+    "check_queries": 32,
+    "output": "results/ascend910b_benchmark.json"
+  },
+  "torch": "2.9.0+cpu",
+  "shape_nhd": [
+    1,
+    37741,
+    28,
+    128
+  ],
+  "scope": "synchronized API wall ms, not kernel durations; full includes fresh preprocessing; fixed core excludes input preprocessing",
+  "contract": "dense noncausal MHA, original HND inputs and contiguous HND outputs; VC INT8 Q32/K128, E4M3 V decoded to FP16, no V smoothing",
+  "finite_scan_in_timing": false,
+  "baseline_error": null,
+  "skipped": {
+    "mindie_laser": "MindIE Laser unavailable. Install MindIE-SD (Python package mindiesd) with its LaserAttention native ops; MindIE-LLM alone is insufficient. Match the target CANN/torch_npu versions. Original error: ModuleNotFoundError: No module named 'mindiesd'"
+  },
+  "mindie_laser": null,
+  "accuracy": {
+    "vc_expcast": {
+      "dense_fp32": {
+        "relative_rmse": 0.04368436709046364,
+        "max_abs": 0.0016959663480520248
+      },
+      "decoded_reference": {
+        "relative_rmse": 2.078272309802287e-08,
+        "max_abs": 5.960464477539063e-08
+      },
+      "rows": {
+        "worst_rows": [
+          {
+            "batch": 0,
+            "head": 5,
+            "query": 23130,
+            "query_block": 722,
+            "aiv_half": 1,
+            "task": 6622,
+            "squared_error_fraction": 1.0,
+            "relative_rmse": 6.672225936199538e-07,
+            "max_abs": 5.960464477539063e-08
+          },
+          {
+            "batch": 0,
+            "head": 18,
+            "query": 32870,
+            "query_block": 1027,
+            "aiv_half": 0,
+            "task": 22267,
+            "squared_error_fraction": 0.0,
+            "relative_rmse": 0.0,
+            "max_abs": 0.0
+          },
+          {
+            "batch": 0,
+            "head": 18,
+            "query": 15826,
+            "query_block": 494,
+            "aiv_half": 1,
+            "task": 21734,
+            "squared_error_fraction": 0.0,
+            "relative_rmse": 0.0,
+            "max_abs": 0.0
+          },
+          {
+            "batch": 0,
+            "head": 18,
+            "query": 17043,
+            "query_block": 532,
+            "aiv_half": 1,
+            "task": 21772,
+            "squared_error_fraction": 0.0,
+            "relative_rmse": 0.0,
+            "max_abs": 0.0
+          },
+          {
+            "batch": 0,
+            "head": 18,
+            "query": 18261,
+            "query_block": 570,
+            "aiv_half": 1,
+            "task": 21810,
+            "squared_error_fraction": 0.0,
+            "relative_rmse": 0.0,
+            "max_abs": 0.0
+          },
+          {
+            "batch": 0,
+            "head": 18,
+            "query": 19478,
+            "query_block": 608,
+            "aiv_half": 1,
+            "task": 21848,
+            "squared_error_fraction": 0.0,
+            "relative_rmse": 0.0,
+            "max_abs": 0.0
+          },
+          {
+            "batch": 0,
+            "head": 18,
+            "query": 20696,
+            "query_block": 646,
+            "aiv_half": 1,
+            "task": 21886,
+            "squared_error_fraction": 0.0,
+            "relative_rmse": 0.0,
+            "max_abs": 0.0
+          },
+          {
+            "batch": 0,
+            "head": 18,
+            "query": 21913,
+            "query_block": 684,
+            "aiv_half": 1,
+            "task": 21924,
+            "squared_error_fraction": 0.0,
+            "relative_rmse": 0.0,
+            "max_abs": 0.0
+          }
+        ],
+        "per_head": [
+          {
+            "head": 0,
+            "relative_rmse": 0.0,
+            "max_abs": 0.0
+          },
+          {
+            "head": 1,
+            "relative_rmse": 0.0,
+            "max_abs": 0.0
+          },
+          {
+            "head": 2,
+            "relative_rmse": 0.0,
+            "max_abs": 0.0
+          },
+          {
+            "head": 3,
+            "relative_rmse": 0.0,
+            "max_abs": 0.0
+          },
+          {
+            "head": 4,
+            "relative_rmse": 0.0,
+            "max_abs": 0.0
+          },
+          {
+            "head": 5,
+            "relative_rmse": 1.1012728151627016e-07,
+            "max_abs": 5.960464477539063e-08
+          },
+          {
+            "head": 6,
+            "relative_rmse": 0.0,
+            "max_abs": 0.0
+          },
+          {
+            "head": 7,
+            "relative_rmse": 0.0,
+            "max_abs": 0.0
+          },
+          {
+            "head": 8,
+            "relative_rmse": 0.0,
+            "max_abs": 0.0
+          },
+          {
+            "head": 9,
+            "relative_rmse": 0.0,
+            "max_abs": 0.0
+          },
+          {
+            "head": 10,
+            "relative_rmse": 0.0,
+            "max_abs": 0.0
+          },
+          {
+            "head": 11,
+            "relative_rmse": 0.0,
+            "max_abs": 0.0
+          },
+          {
+            "head": 12,
+            "relative_rmse": 0.0,
+            "max_abs": 0.0
+          },
+          {
+            "head": 13,
+            "relative_rmse": 0.0,
+            "max_abs": 0.0
+          },
+          {
+            "head": 14,
+            "relative_rmse": 0.0,
+            "max_abs": 0.0
+          },
+          {
+            "head": 15,
+            "relative_rmse": 0.0,
+            "max_abs": 0.0
+          },
+          {
+            "head": 16,
+            "relative_rmse": 0.0,
+            "max_abs": 0.0
+          },
+          {
+            "head": 17,
+            "relative_rmse": 0.0,
+            "max_abs": 0.0
+          },
+          {
+            "head": 18,
+            "relative_rmse": 0.0,
+            "max_abs": 0.0
+          },
+          {
+            "head": 19,
+            "relative_rmse": 0.0,
+            "max_abs": 0.0
+          },
+          {
+            "head": 20,
+            "relative_rmse": 0.0,
+            "max_abs": 0.0
+          },
+          {
+            "head": 21,
+            "relative_rmse": 0.0,
+            "max_abs": 0.0
+          },
+          {
+            "head": 22,
+            "relative_rmse": 0.0,
+            "max_abs": 0.0
+          },
+          {
+            "head": 23,
+            "relative_rmse": 0.0,
+            "max_abs": 0.0
+          },
+          {
+            "head": 24,
+            "relative_rmse": 0.0,
+            "max_abs": 0.0
+          },
+          {
+            "head": 25,
+            "relative_rmse": 0.0,
+            "max_abs": 0.0
+          },
+          {
+            "head": 26,
+            "relative_rmse": 0.0,
+            "max_abs": 0.0
+          },
+          {
+            "head": 27,
+            "relative_rmse": 0.0,
+            "max_abs": 0.0
+          }
+        ]
+      },
+      "full_vs_prepared_all_rows": {
+        "relative_rmse": 0.0,
+        "max_abs": 0.0
+      }
+    },
+    "vc_control": {
+      "dense_fp32": {
+        "relative_rmse": 0.029799535870552063,
+        "max_abs": 0.0011419476941227913
+      },
+      "decoded_reference": {
+        "relative_rmse": 6.567405216628686e-05,
+        "max_abs": 6.103515625e-05
+      },
+      "rows": {
+        "worst_rows": [
+          {
+            "batch": 0,
+            "head": 23,
+            "query": 30435,
+            "query_block": 951,
+            "aiv_half": 0,
+            "task": 28091,
+            "squared_error_fraction": 0.10523915522449502,
+            "relative_rmse": 0.0005753492005169392,
+            "max_abs": 6.103515625e-05
+          },
+          {
+            "batch": 0,
+            "head": 17,
+            "query": 31652,
+            "query_block": 989,
+            "aiv_half": 0,
+            "task": 21049,
+            "squared_error_fraction": 0.10482489081323683,
+            "relative_rmse": 0.0006338656530715525,
+            "max_abs": 6.103515625e-05
+          },
+          {
+            "batch": 0,
+            "head": 14,
+            "query": 37740,
+            "query_block": 1179,
+            "aiv_half": 0,
+            "task": 17699,
+            "squared_error_fraction": 0.10482331632856566,
+            "relative_rmse": 0.0005937169189564884,
+            "max_abs": 6.103515625e-05
+          },
+          {
+            "batch": 0,
+            "head": 13,
+            "query": 36522,
+            "query_block": 1141,
+            "aiv_half": 0,
+            "task": 16481,
+            "squared_error_fraction": 0.10482329133674548,
+            "relative_rmse": 0.0007328094216063619,
+            "max_abs": 6.103515625e-05
+          },
+          {
+            "batch": 0,
+            "head": 25,
+            "query": 10956,
+            "query_block": 342,
+            "aiv_half": 0,
+            "task": 29842,
+            "squared_error_fraction": 0.10482329133674548,
+            "relative_rmse": 0.0005797460325993598,
+            "max_abs": 6.103515625e-05
+          },
+          {
+            "batch": 0,
+            "head": 17,
+            "query": 21913,
+            "query_block": 684,
+            "aiv_half": 1,
+            "task": 20744,
+            "squared_error_fraction": 0.10482329133674548,
+            "relative_rmse": 0.0005254644202068448,
+            "max_abs": 6.103515625e-05
+          },
+          {
+            "batch": 0,
+            "head": 10,
+            "query": 15826,
+            "query_block": 494,
+            "aiv_half": 1,
+            "task": 12294,
+            "squared_error_fraction": 0.10482329133674548,
+            "relative_rmse": 0.0006031515076756477,
+            "max_abs": 6.103515625e-05
+          },
+          {
+            "batch": 0,
+            "head": 18,
+            "query": 3652,
+            "query_block": 114,
+            "aiv_half": 0,
+            "task": 21354,
+            "squared_error_fraction": 0.032757278542732964,
+            "relative_rmse": 0.00033115240512415767,
+            "max_abs": 3.0517578125e-05
+          }
+        ],
+        "per_head": [
+          {
+            "head": 0,
+            "relative_rmse": 7.697584806010127e-06,
+            "max_abs": 3.814697265625e-06
+          },
+          {
+            "head": 1,
+            "relative_rmse": 3.974412265961291e-06,
+            "max_abs": 1.9073486328125e-06
+          },
+          {
+            "head": 2,
+            "relative_rmse": 6.94708705850644e-06,
+            "max_abs": 3.814697265625e-06
+          },
+          {
+            "head": 3,
+            "relative_rmse": 8.16635656519793e-05,
+            "max_abs": 3.0517578125e-05
+          },
+          {
+            "head": 4,
+            "relative_rmse": 7.213666322058998e-06,
+            "max_abs": 3.814697265625e-06
+          },
+          {
+            "head": 5,
+            "relative_rmse": 1.7600900719116908e-06,
+            "max_abs": 9.5367431640625e-07
+          },
+          {
+            "head": 6,
+            "relative_rmse": 4.187054219073616e-05,
+            "max_abs": 1.52587890625e-05
+          },
+          {
+            "head": 7,
+            "relative_rmse": 1.8253483631269773e-06,
+            "max_abs": 9.5367431640625e-07
+          },
+          {
+            "head": 8,
+            "relative_rmse": 7.20909156370908e-06,
+            "max_abs": 3.814697265625e-06
+          },
+          {
+            "head": 9,
+            "relative_rmse": 2.9169164918130264e-05,
+            "max_abs": 1.52587890625e-05
+          },
+          {
+            "head": 10,
+            "relative_rmse": 0.00011694654676830396,
+            "max_abs": 6.103515625e-05
+          },
+          {
+            "head": 11,
+            "relative_rmse": 3.7156764847168233e-06,
+            "max_abs": 1.9073486328125e-06
+          },
+          {
+            "head": 12,
+            "relative_rmse": 3.5537636904336978e-06,
+            "max_abs": 1.9073486328125e-06
+          },
+          {
+            "head": 13,
+            "relative_rmse": 0.0001115313425543718,
+            "max_abs": 6.103515625e-05
+          },
+          {
+            "head": 14,
+            "relative_rmse": 0.00011120535054942593,
+            "max_abs": 6.103515625e-05
+          },
+          {
+            "head": 15,
+            "relative_rmse": 5.399856672738679e-05,
+            "max_abs": 3.0517578125e-05
+          },
+          {
+            "head": 16,
+            "relative_rmse": 1.6273897927021608e-05,
+            "max_abs": 7.62939453125e-06
+          },
+          {
+            "head": 17,
+            "relative_rmse": 0.00015560952306259423,
+            "max_abs": 6.103515625e-05
+          },
+          {
+            "head": 18,
+            "relative_rmse": 8.983397128758952e-05,
+            "max_abs": 3.0517578125e-05
+          },
+          {
+            "head": 19,
+            "relative_rmse": 3.3800548408180475e-05,
+            "max_abs": 1.52587890625e-05
+          },
+          {
+            "head": 20,
+            "relative_rmse": 9.295176255363913e-07,
+            "max_abs": 4.76837158203125e-07
+          },
+          {
+            "head": 21,
+            "relative_rmse": 5.279647666611709e-05,
+            "max_abs": 1.52587890625e-05
+          },
+          {
+            "head": 22,
+            "relative_rmse": 1.3758781278738752e-05,
+            "max_abs": 7.62939453125e-06
+          },
+          {
+            "head": 23,
+            "relative_rmse": 0.00012428080663084984,
+            "max_abs": 6.103515625e-05
+          },
+          {
+            "head": 24,
+            "relative_rmse": 7.02369698046823e-06,
+            "max_abs": 3.814697265625e-06
+          },
+          {
+            "head": 25,
+            "relative_rmse": 0.00011531234486028552,
+            "max_abs": 6.103515625e-05
+          },
+          {
+            "head": 26,
+            "relative_rmse": 4.473471619803604e-07,
+            "max_abs": 2.384185791015625e-07
+          },
+          {
+            "head": 27,
+            "relative_rmse": 6.579355977009982e-05,
+            "max_abs": 3.0517578125e-05
+          }
+        ]
+      },
+      "full_vs_prepared_all_rows": {
+        "relative_rmse": 0.0,
+        "max_abs": 0.0
+      }
+    },
+    "cann_fusion_attention": {
+      "dense_fp32": {
+        "relative_rmse": 0.0023375230375677347,
+        "max_abs": 0.00012801587581634521
+      }
+    }
+  },
+  "timings": {
+    "full": {
+      "vc_control": [
+        1881.8805140132706,
+        1872.2790468794603,
+        1879.2028293634455,
+        1881.40921589608,
+        1883.2355664732556
+      ],
+      "vc_expcast": [
+        2021.972503978759,
+        2025.4180879953008,
+        2015.565593726933,
+        2023.1387099872034,
+        2025.164133713891
+      ],
+      "cann_fusion_attention": [
+        143.88878659034768,
+        143.69843698417148,
+        144.01386895527443,
+        144.03104595839977,
+        144.35005110378066
+      ]
+    },
+    "core": {
+      "vc_expcast": [
+        1985.0837743530672,
+        1986.5324186782043,
+        1979.9513219234843,
+        1985.2638306717079,
+        1977.0076959393919
+      ],
+      "vc_control": [
+        1842.1042229359348,
+        1847.0344819749396,
+        1851.5358573446672,
+        1839.876765695711,
+        1841.9339299822848
+      ]
+    }
+  },
+  "torch_npu": "2.9.0",
+  "device": "Ascend910B2",
+  "cann_root": "/usr/local/Ascend/cann-9.0.0",
+  "vc_version": "0.2.0",
+  "medians_ms": {
+    "full": {
+      "vc_control": 1881.40921589608,
+      "vc_expcast": 2023.1387099872034,
+      "cann_fusion_attention": 144.01386895527443
+    },
+    "core": {
+      "vc_expcast": 1985.0837743530672,
+      "vc_control": 1842.1042229359348
+    }
+  },
+  "full_api_speedups": {
+    "cann_fusion_attention": {
+      "vc_control": 0.07654574440185428,
+      "vc_expcast": 0.0711833885854447,
+      "cann_fusion_attention": 1.0
+    }
+  },
+  "mindiesd_version": null
+}

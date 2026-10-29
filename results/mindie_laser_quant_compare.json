@@ -1,0 +1,992 @@
+{
+ "status": "passed",
+ "shape_bnsd": [
+  1,
+  28,
+  37741,
+  128
+ ],
+ "dtype": "bfloat16",
+ "seed": 0,
+ "process_order": [
+  "baseline"
+ ],
+ "artifact_dir": "<repo>/results/mindie_laser_quant_compare_3ec8bmew",
+ "workers": {
+  "baseline": {
+   "status": "passed",
+   "mode": "baseline",
+   "pid": 1583594,
+   "implementation_contract": "Original FP16 Laser QK/PV",
+   "shape_bnsd": [
+    1,
+    28,
+    37741,
+    128
+   ],
+   "dtype": "bfloat16",
+   "seed": 0,
+   "source_transform_validation": {
+    "passed": true,
+    "cpu_cases": 4,
+    "scope": "Exact CPU tensor transform equivalence to pinned source helpers",
+    "upstream_wrapper_sha256": "1b111bd231706b6bb3cf6b113d2199e763fb7cf948c73e040feab4ba5e5ccc94"
+   },
+   "adapter": {
+    "dispatch": "torch.ops.vc_laser.la.default",
+    "native_schema": "vc_laser::la(Tensor query, Tensor key, Tensor value, Tensor? atten_mask=None, Tensor? alibi_mask=None, Tensor? drop_mask=None, float scale_value=1., int head_num=2, str input_layout=\"BNSD\", float keep_prob=1., int pre_tokens=2147483647, int next_tokens=1, bool is_highPrecision=True) -> (Tensor, Tensor)",
+    "native_api": "aclnnVcLaserAttention",
+    "op_type": "VcLaserAttention",
+    "bridge": "<repo>/build/mindie_laser_bridge/libvc_laser_bridge.so",
+    "preprocessing": "Pinned upstream FP16 conversion and S256/D128 zero padding"
+   },
+   "environment": {
+    "torch": "2.9.0+cpu",
+    "torch_npu": "2.9.0",
+    "device": "Ascend910B2",
+    "custom_opp_path": "<repo>/build/mindie_laser_install/packages/vendors/vc_laser",
+    "ld_library_path": "<repo>/build/mindie_laser_install/packages/vendors/vc_laser/op_api/lib:/usr/local/Ascend/cann-9.0.0/lib64:/usr/local/Ascend/cann-9.0.0/lib64/plugin/opskernel:/usr/local/Ascend/cann-9.0.0/lib64/plugin/nnengine:/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/op_tiling/lib/linux/aarch64:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/ascend-toolkit/latest/aarch64-linux/lib64:/usr/local/Ascend/driver/lib64/common/:/usr/local/Ascend/driver/lib64/driver/",
+    "compiler_cache": "disable"
+   },
+   "small_accuracy": [
+    {
+     "dtype": "torch.float16",
+     "queries": 256,
+     "keys": 256,
+     "dim": 128,
+     "payload": {
+      "input_shape_hnd": [
+       1,
+       2,
+       256,
+       128
+      ],
+      "input_dtype": "torch.float16",
+      "native_shapes": [
+       [
+        1,
+        2,
+        256,
+        128
+       ],
+       [
+        1,
+        2,
+        256,
+        128
+       ],
+       [
+        1,
+        2,
+        256,
+        128
+       ]
+      ],
+      "native_dtype": "torch.float16",
+      "scale": 0.08838834764831843,
+      "pre_tokens": 2147483647,
+      "next_tokens": 1,
+      "is_high_precision": true,
+      "causal": false,
+      "quantized": false,
+      "fixed_core_scope": "preconverted/padded QKV; includes allocation, native dispatch, output cast/trim/contiguous"
+     },
+     "full_vs_prepared": {
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "reference_rms": 0.2035706341266632,
+      "max_abs": 0.0,
+      "limit": 0.001,
+      "passed": true
+     },
+     "dense_fp32_all_rows_all_keys": {
+      "relative_rmse": 0.0004880130582505618,
+      "rmse": 9.935026173479855e-05,
+      "reference_rms": 0.20358115434646606,
+      "max_abs": 0.001954317092895508,
+      "limit": 0.01,
+      "passed": true
+     },
+     "constant_value_padding_check": "passed"
+    },
+    {
+     "dtype": "torch.float16",
+     "queries": 257,
+     "keys": 385,
+     "dim": 64,
+     "payload": {
+      "input_shape_hnd": [
+       1,
+       2,
+       257,
+       64
+      ],
+      "input_dtype": "torch.float16",
+      "native_shapes": [
+       [
+        1,
+        2,
+        512,
+        128
+       ],
+       [
+        1,
+        2,
+        512,
+        128
+       ],
+       [
+        1,
+        2,
+        512,
+        128
+       ]
+      ],
+      "native_dtype": "torch.float16",
+      "scale": 0.125,
+      "pre_tokens": 127,
+      "next_tokens": 1,
+      "is_high_precision": true,
+      "causal": false,
+      "quantized": false,
+      "fixed_core_scope": "preconverted/padded QKV; includes allocation, native dispatch, output cast/trim/contiguous"
+     },
+     "full_vs_prepared": {
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "reference_rms": 0.2622731328010559,
+      "max_abs": 0.0,
+      "limit": 0.001,
+      "passed": true
+     },
+     "dense_fp32_all_rows_all_keys": {
+      "relative_rmse": 0.0003900076619820393,
+      "rmse": 0.00010229357576463372,
+      "reference_rms": 0.26228606700897217,
+      "max_abs": 0.00195467472076416,
+      "limit": 0.01,
+      "passed": true
+     },
+     "constant_value_padding_check": "passed"
+    },
+    {
+     "dtype": "torch.bfloat16",
+     "queries": 256,
+     "keys": 256,
+     "dim": 128,
+     "payload": {
+      "input_shape_hnd": [
+       1,
+       2,
+       256,
+       128
+      ],
+      "input_dtype": "torch.bfloat16",
+      "native_shapes": [
+       [
+        1,
+        2,
+        256,
+        128
+       ],
+       [
+        1,
+        2,
+        256,
+        128
+       ],
+       [
+        1,
+        2,
+        256,
+        128
+       ]
+      ],
+      "native_dtype": "torch.float16",
+      "scale": 0.08838834764831843,
+      "pre_tokens": 2147483647,
+      "next_tokens": 1,
+      "is_high_precision": true,
+      "causal": false,
+      "quantized": false,
+      "fixed_core_scope": "preconverted/padded QKV; includes allocation, native dispatch, output cast/trim/contiguous"
+     },
+     "full_vs_prepared": {
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "reference_rms": 0.20357713103294373,
+      "max_abs": 0.0,
+      "limit": 0.001,
+      "passed": true
+     },
+     "dense_fp32_all_rows_all_keys": {
+      "relative_rmse": 0.0009179119064847371,
+      "rmse": 0.00018686951079871505,
+      "reference_rms": 0.2035810947418213,
+      "max_abs": 0.0013713538646697998,
+      "limit": 0.01,
+      "passed": true
+     },
+     "constant_value_padding_check": "passed"
+    },
+    {
+     "dtype": "torch.bfloat16",
+     "queries": 257,
+     "keys": 385,
+     "dim": 64,
+     "payload": {
+      "input_shape_hnd": [
+       1,
+       2,
+       257,
+       64
+      ],
+      "input_dtype": "torch.bfloat16",
+      "native_shapes": [
+       [
+        1,
+        2,
+        512,
+        128
+       ],
+       [
+        1,
+        2,
+        512,
+        128
+       ],
+       [
+        1,
+        2,
+        512,
+        128
+       ]
+      ],
+      "native_dtype": "torch.float16",
+      "scale": 0.125,
+      "pre_tokens": 127,
+      "next_tokens": 1,
+      "is_high_precision": true,
+      "causal": false,
+      "quantized": false,
+      "fixed_core_scope": "preconverted/padded QKV; includes allocation, native dispatch, output cast/trim/contiguous"
+     },
+     "full_vs_prepared": {
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "reference_rms": 0.26261526346206665,
+      "max_abs": 0.0,
+      "limit": 0.001,
+      "passed": true
+     },
+     "dense_fp32_all_rows_all_keys": {
+      "relative_rmse": 0.0005548209567663095,
+      "rmse": 0.00014570436906069517,
+      "reference_rms": 0.2626151144504547,
+      "max_abs": 0.001033872365951538,
+      "limit": 0.01,
+      "passed": true
+     },
+     "constant_value_padding_check": "passed"
+    }
+   ],
+   "finite_validation": "Original CPU tensors checked once, outside timing; repeated scans excluded",
+   "host_markers": [
+    {
+     "token": "vc_mindie_laser_v1",
+     "phase": "tiling",
+     "pid": 1583594,
+     "tiling_key": 0
+    }
+   ],
+   "tiling_keys": [
+    0
+   ],
+   "mapped_library_paths": [
+    "<repo>/build/mindie_laser_bridge/libvc_laser_bridge.so",
+    "<repo>/build/mindie_laser_install/packages/vendors/vc_laser/op_api/lib/libcust_opapi.so",
+    "<repo>/build/mindie_laser_install/packages/vendors/vc_laser/op_impl/ai_core/tbe/op_tiling/lib/linux/aarch64/libcust_opmaster_rt2.0.so",
+    "/usr/lib/aarch64-linux-gnu/ld-linux-aarch64.so.1",
+    "/usr/lib/aarch64-linux-gnu/libbz2.so.1.0.4",
+    "/usr/lib/aarch64-linux-gnu/libc.so.6",
+    "/usr/lib/aarch64-linux-gnu/libcrypto.so.3",
+    "/usr/lib/aarch64-linux-gnu/libdl.so.2",
+    "/usr/lib/aarch64-linux-gnu/libexpat.so.1.8.7",
+    "/usr/lib/aarch64-linux-gnu/libffi.so.8.1.0",
+    "/usr/lib/aarch64-linux-gnu/libgcc_s.so.1",
+    "/usr/lib/aarch64-linux-gnu/liblzma.so.5.2.5",
+    "/usr/lib/aarch64-linux-gnu/libm.so.6",
+    "/usr/lib/aarch64-linux-gnu/libmpdec.so.2.5.1",
+    "/usr/lib/aarch64-linux-gnu/libpthread.so.0",
+    "/usr/lib/aarch64-linux-gnu/libpython3.10.so.1.0",
+    "/usr/lib/aarch64-linux-gnu/libreadline.so.8.1",
+    "/usr/lib/aarch64-linux-gnu/librt.so.1",
+    "/usr/lib/aarch64-linux-gnu/libsqlite3.so.0.8.6",
+    "/usr/lib/aarch64-linux-gnu/libssl.so.3",
+    "/usr/lib/aarch64-linux-gnu/libstdc++.so.6.0.30",
+    "/usr/lib/aarch64-linux-gnu/libtinfo.so.6.3",
+    "/usr/lib/aarch64-linux-gnu/libuuid.so.1.3.0",
+    "/usr/lib/aarch64-linux-gnu/libz.so.1.2.11",
+    "/usr/lib/python3.10/lib-dynload/_asyncio.cpython-310-aarch64-linux-gnu.so",
+    "/usr/lib/python3.10/lib-dynload/_bz2.cpython-310-aarch64-linux-gnu.so",
+    "/usr/lib/python3.10/lib-dynload/_contextvars.cpython-310-aarch64-linux-gnu.so",
+    "/usr/lib/python3.10/lib-dynload/_ctypes.cpython-310-aarch64-linux-gnu.so",
+    "/usr/lib/python3.10/lib-dynload/_decimal.cpython-310-aarch64-linux-gnu.so",
+    "/usr/lib/python3.10/lib-dynload/_hashlib.cpython-310-aarch64-linux-gnu.so",
+    "/usr/lib/python3.10/lib-dynload/_json.cpython-310-aarch64-linux-gnu.so",
+    "/usr/lib/python3.10/lib-dynload/_lsprof.cpython-310-aarch64-linux-gnu.so",
+    "/usr/lib/python3.10/lib-dynload/_lzma.cpython-310-aarch64-linux-gnu.so",
+    "/usr/lib/python3.10/lib-dynload/_multiprocessing.cpython-310-aarch64-linux-gnu.so",
+    "/usr/lib/python3.10/lib-dynload/_opcode.cpython-310-aarch64-linux-gnu.so",
+    "/usr/lib/python3.10/lib-dynload/_posixshmem.cpython-310-aarch64-linux-gnu.so",
+    "/usr/lib/python3.10/lib-dynload/_queue.cpython-310-aarch64-linux-gnu.so",
+    "/usr/lib/python3.10/lib-dynload/_sqlite3.cpython-310-aarch64-linux-gnu.so",
+    "/usr/lib/python3.10/lib-dynload/_ssl.cpython-310-aarch64-linux-gnu.so",
+    "/usr/lib/python3.10/lib-dynload/_uuid.cpython-310-aarch64-linux-gnu.so",
+    "/usr/lib/python3.10/lib-dynload/mmap.cpython-310-aarch64-linux-gnu.so",
+    "/usr/lib/python3.10/lib-dynload/readline.cpython-310-aarch64-linux-gnu.so",
+    "/usr/lib/python3.10/lib-dynload/resource.cpython-310-aarch64-linux-gnu.so",
+    "/usr/lib/python3.10/lib-dynload/termios.cpython-310-aarch64-linux-gnu.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libacl_mdl.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libacl_mdl_impl.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libacl_op_compiler.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libacl_op_executor.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libacl_op_executor_impl.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libacl_rt.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libacl_rt_impl.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libacl_tdt_channel.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libaicore_utils.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libaicpu_engine_common.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libaihac_autofusion.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libaihac_codegen.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libaihac_ir.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libaihac_ir_register.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libaihac_symbolizer.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libaoe_executor.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libascend_dump.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libascend_kms.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libascend_protobuf.so.3.13.0.0",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libascend_trace.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libascend_watchdog.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libascendalog.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libascendcl.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libc_sec.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libcann_kb.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libcompress.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libdata_flow_base.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libdavinci_executor.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libdflow_runner.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libdummy_tls.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/liberror_manager.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libexe_graph.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libflow_graph.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libfusion_pass.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libge_common.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libge_common_base.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libge_compiler.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libge_executor.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libge_runner.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libge_runner_v2.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libgert.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libgraph.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libgraph_base.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libhccl.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libhccl_alg.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libhccl_legacy.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libhccl_plf.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libhccl_v2.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libhccl_v2_alg_frame.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libhccl_v2_native_alg_repo.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libhcom_graph_adaptor.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libhcomm.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libhybrid_executor.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/liblowering.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libmetadef.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libmmpa.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libmsprofiler.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libnnopbase.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libop_compile_adapter.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libopapi.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libopp_registry.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libops_base.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libopskernel.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libplatform.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libprofapi.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libprofimpl.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libra.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libra_hdc.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libra_peer.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libregister.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/librs.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libruntime.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libruntime_common.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libruntime_v100.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libslice.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libtls_adp.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libtopoaddrinfo.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libtsdclient.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libtvm.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libunified_dlog.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/plugin/nnengine/libengine.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/plugin/opskernel/fusion_pass/libops_fusion_pass_aicore.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/plugin/opskernel/libaicpu_ascend_engine.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/plugin/opskernel/libaicpu_tf_engine.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/plugin/opskernel/libascend_sch_policy_pass.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/plugin/opskernel/libdvpp_engine.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/plugin/opskernel/libfe.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/plugin/opskernel/libffts.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/plugin/opskernel/libge_local_engine.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/plugin/opskernel/libge_local_opskernel_builder.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/plugin/opskernel/libgraph_tuner.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/plugin/opskernel/libhcom_gradtune_opskernel_builder.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/plugin/opskernel/libhcom_opskernel_builder.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/plugin/opskernel/libhost_cpu_engine.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/plugin/opskernel/libhost_cpu_opskernel_builder.so",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/plugin/opskernel/librts_engine.so",
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/op_host/lib/linux/aarch64/libophost_comm_legacy.so",
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/op_host/lib/linux/aarch64/libophost_cv.so",
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/op_host/lib/linux/aarch64/libophost_legacy.so",
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/op_host/lib/linux/aarch64/libophost_math.so",
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/op_host/lib/linux/aarch64/libophost_nn.so",
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/op_host/lib/linux/aarch64/libophost_oam.so",
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/op_host/lib/linux/aarch64/libophost_transformer.so",
+    "/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/dpu/libccl_dpu.so",
+    "/usr/local/Ascend/cann-9.0.0/python/site-packages/asc_op_compile_base/c_api/libasc_platform.so",
+    "/usr/local/Ascend/driver/lib64/driver/libascend_hal.so",
+    "/usr/local/lib/python3.10/dist-packages/markupsafe/_speedups.cpython-310-aarch64-linux-gnu.so",
+    "/usr/local/lib/python3.10/dist-packages/ml_dtypes/_ml_dtypes_ext.cpython-310-aarch64-linux-gnu.so",
+    "/usr/local/lib/python3.10/dist-packages/numpy.libs/libgfortran-daac5196.so.5.0.0",
+    "/usr/local/lib/python3.10/dist-packages/numpy.libs/libopenblas64_p-r0-17488984.3.23.dev.so",
+    "/usr/local/lib/python3.10/dist-packages/numpy/core/_multiarray_tests.cpython-310-aarch64-linux-gnu.so",
+    "/usr/local/lib/python3.10/dist-packages/numpy/core/_multiarray_umath.cpython-310-aarch64-linux-gnu.so",
+    "/usr/local/lib/python3.10/dist-packages/numpy/fft/_pocketfft_internal.cpython-310-aarch64-linux-gnu.so",
+    "/usr/local/lib/python3.10/dist-packages/numpy/linalg/_umath_linalg.cpython-310-aarch64-linux-gnu.so",
+    "/usr/local/lib/python3.10/dist-packages/numpy/random/_bounded_integers.cpython-310-aarch64-linux-gnu.so",
+    "/usr/local/lib/python3.10/dist-packages/numpy/random/_common.cpython-310-aarch64-linux-gnu.so",
+    "/usr/local/lib/python3.10/dist-packages/numpy/random/_generator.cpython-310-aarch64-linux-gnu.so",
+    "/usr/local/lib/python3.10/dist-packages/numpy/random/_mt19937.cpython-310-aarch64-linux-gnu.so",
+    "/usr/local/lib/python3.10/dist-packages/numpy/random/_pcg64.cpython-310-aarch64-linux-gnu.so",
+    "/usr/local/lib/python3.10/dist-packages/numpy/random/_philox.cpython-310-aarch64-linux-gnu.so",
+    "/usr/local/lib/python3.10/dist-packages/numpy/random/_sfc64.cpython-310-aarch64-linux-gnu.so",
+    "/usr/local/lib/python3.10/dist-packages/numpy/random/bit_generator.cpython-310-aarch64-linux-gnu.so",
+    "/usr/local/lib/python3.10/dist-packages/numpy/random/mtrand.cpython-310-aarch64-linux-gnu.so",
+    "/usr/local/lib/python3.10/dist-packages/psutil/_psutil_linux.abi3.so",
+    "/usr/local/lib/python3.10/dist-packages/psutil/_psutil_posix.abi3.so",
+    "/usr/local/lib/python3.10/dist-packages/scipy.libs/libgfortran-daac5196-038a5e3c.so.5.0.0",
+    "/usr/local/lib/python3.10/dist-packages/scipy.libs/libscipy_openblas-9778f98e.so",
+    "/usr/local/lib/python3.10/dist-packages/scipy/_lib/_ccallback_c.cpython-310-aarch64-linux-gnu.so",
+    "/usr/local/lib/python3.10/dist-packages/scipy/linalg/_cythonized_array_utils.cpython-310-aarch64-linux-gnu.so",
+    "/usr/local/lib/python3.10/dist-packages/scipy/linalg/_decomp_lu_cython.cpython-310-aarch64-linux-gnu.so",
+    "/usr/local/lib/python3.10/dist-packages/scipy/linalg/_decomp_update.cpython-310-aarch64-linux-gnu.so",
+    "/usr/local/lib/python3.10/dist-packages/scipy/linalg/_fblas.cpython-310-aarch64-linux-gnu.so",
+    "/usr/local/lib/python3.10/dist-packages/scipy/linalg/_flapack.cpython-310-aarch64-linux-gnu.so",
+    "/usr/local/lib/python3.10/dist-packages/scipy/linalg/_linalg_pythran.cpython-310-aarch64-linux-gnu.so",
+    "/usr/local/lib/python3.10/dist-packages/scipy/linalg/_matfuncs_expm.cpython-310-aarch64-linux-gnu.so",
+    "/usr/local/lib/python3.10/dist-packages/scipy/linalg/_matfuncs_sqrtm_triu.cpython-310-aarch64-linux-gnu.so",
+    "/usr/local/lib/python3.10/dist-packages/scipy/linalg/_solve_toeplitz.cpython-310-aarch64-linux-gnu.so",
+    "/usr/local/lib/python3.10/dist-packages/scipy/linalg/cython_blas.cpython-310-aarch64-linux-gnu.so",
+    "/usr/local/lib/python3.10/dist-packages/scipy/linalg/cython_lapack.cpython-310-aarch64-linux-gnu.so",
+    "/usr/local/lib/python3.10/dist-packages/scipy/sparse/_csparsetools.cpython-310-aarch64-linux-gnu.so",
+    "/usr/local/lib/python3.10/dist-packages/scipy/sparse/_sparsetools.cpython-310-aarch64-linux-gnu.so",
+    "/usr/local/lib/python3.10/dist-packages/scipy/sparse/csgraph/_flow.cpython-310-aarch64-linux-gnu.so",
+    "/usr/local/lib/python3.10/dist-packages/scipy/sparse/csgraph/_matching.cpython-310-aarch64-linux-gnu.so",
+    "/usr/local/lib/python3.10/dist-packages/scipy/sparse/csgraph/_min_spanning_tree.cpython-310-aarch64-linux-gnu.so",
+    "/usr/local/lib/python3.10/dist-packages/scipy/sparse/csgraph/_reordering.cpython-310-aarch64-linux-gnu.so",
+    "/usr/local/lib/python3.10/dist-packages/scipy/sparse/csgraph/_shortest_path.cpython-310-aarch64-linux-gnu.so",
+    "/usr/local/lib/python3.10/dist-packages/scipy/sparse/csgraph/_tools.cpython-310-aarch64-linux-gnu.so",
+    "/usr/local/lib/python3.10/dist-packages/scipy/sparse/csgraph/_traversal.cpython-310-aarch64-linux-gnu.so",
+    "/usr/local/lib/python3.10/dist-packages/scipy/sparse/linalg/_dsolve/_superlu.cpython-310-aarch64-linux-gnu.so",
+    "/usr/local/lib/python3.10/dist-packages/scipy/sparse/linalg/_eigen/arpack/_arpack.cpython-310-aarch64-linux-gnu.so",
+    "/usr/local/lib/python3.10/dist-packages/scipy/sparse/linalg/_propack/_cpropack.cpython-310-aarch64-linux-gnu.so",
+    "/usr/local/lib/python3.10/dist-packages/scipy/sparse/linalg/_propack/_dpropack.cpython-310-aarch64-linux-gnu.so",
+    "/usr/local/lib/python3.10/dist-packages/scipy/sparse/linalg/_propack/_spropack.cpython-310-aarch64-linux-gnu.so",
+    "/usr/local/lib/python3.10/dist-packages/scipy/sparse/linalg/_propack/_zpropack.cpython-310-aarch64-linux-gnu.so",
+    "/usr/local/lib/python3.10/dist-packages/torch.libs/libarm_compute-4dd6d3ec.so",
+    "/usr/local/lib/python3.10/dist-packages/torch.libs/libarm_compute_graph-91f54ff9.so",
+    "/usr/local/lib/python3.10/dist-packages/torch.libs/libgfortran-e1b7dfc8.so.5.0.0",
+    "/usr/local/lib/python3.10/dist-packages/torch.libs/libgomp-a49a47f9.so.1.0.0",
+    "/usr/local/lib/python3.10/dist-packages/torch.libs/libopenblasp-r0-121ca252.3.30.so",
+    "/usr/local/lib/python3.10/dist-packages/torch/_C.cpython-310-aarch64-linux-gnu.so",
+    "/usr/local/lib/python3.10/dist-packages/torch/lib/libc10.so",
+    "/usr/local/lib/python3.10/dist-packages/torch/lib/libshm.so",
+    "/usr/local/lib/python3.10/dist-packages/torch/lib/libtorch.so",
+    "/usr/local/lib/python3.10/dist-packages/torch/lib/libtorch_cpu.so",
+    "/usr/local/lib/python3.10/dist-packages/torch/lib/libtorch_global_deps.so",
+    "/usr/local/lib/python3.10/dist-packages/torch/lib/libtorch_python.so",
+    "/usr/local/lib/python3.10/dist-packages/torch_npu/_C.cpython-310-aarch64-linux-gnu.so",
+    "/usr/local/lib/python3.10/dist-packages/torch_npu/lib/libnpu_profiler.so",
+    "/usr/local/lib/python3.10/dist-packages/torch_npu/lib/libtensorpipe.so",
+    "/usr/local/lib/python3.10/dist-packages/torch_npu/lib/libtorch_npu.so",
+    "/usr/local/lib/python3.10/dist-packages/yaml/_yaml.cpython-310-aarch64-linux-gnu.so",
+    "/usr/local/lib/python3.10/dist-packages/zstandard/backend_c.cpython-310-aarch64-linux-gnu.so"
+   ],
+   "provider_check_context": {
+    "cann_root": "/usr/local/Ascend/cann-9.0.0",
+    "soc": "ascend910b"
+   },
+   "ambient_registered_provider": {},
+   "loaded_library_sha256": {
+    "<repo>/build/mindie_laser_install/packages/vendors/vc_laser/op_api/lib/libcust_opapi.so": "6ef5a2406ba7e357f835c86c178629d9ab8fe685b5a3400e6d8c1d7d6c7a75eb",
+    "<repo>/build/mindie_laser_install/packages/vendors/vc_laser/op_impl/ai_core/tbe/op_tiling/lib/linux/aarch64/libcust_opmaster_rt2.0.so": "46637f77ef81946a06538c19bc143ae99bf3308a2e4edcd2df646bfaae2a99a8",
+    "/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libopapi.so": "f337f61d9bcdf87421c8be77f906d492ad0c782114bd09a92c0c747fd9bcada2",
+    "<repo>/build/mindie_laser_bridge/libvc_laser_bridge.so": "ac88b676853aad07050e92d494e79d108d1b3a75ee69218053b3f7ea2f1f353b"
+   },
+   "provider_evidence_passed": true,
+   "marker_disabled_before_timing": true,
+   "prepared_payload": {
+    "input_shape_hnd": [
+     1,
+     28,
+     37741,
+     128
+    ],
+    "input_dtype": "torch.bfloat16",
+    "native_shapes": [
+     [
+      1,
+      28,
+      37888,
+      128
+     ],
+     [
+      1,
+      28,
+      37888,
+      128
+     ],
+     [
+      1,
+      28,
+      37888,
+      128
+     ]
+    ],
+    "native_dtype": "torch.float16",
+    "scale": 0.08838834764831843,
+    "pre_tokens": 147,
+    "next_tokens": 1,
+    "is_high_precision": true,
+    "causal": false,
+    "quantized": false,
+    "fixed_core_scope": "preconverted/padded QKV; includes allocation, native dispatch, output cast/trim/contiguous"
+   },
+   "long_full_vs_prepared_sample": {
+    "relative_rmse": 0.0,
+    "rmse": 0.0,
+    "reference_rms": 0.008480381220579147,
+    "max_abs": 0.0,
+    "limit": 0.001,
+    "passed": true
+   },
+   "full_sample": "<repo>/results/mindie_laser_quant_compare_3ec8bmew/baseline/local/full_sample.pt",
+   "prepared_core_sample": "<repo>/results/mindie_laser_quant_compare_3ec8bmew/baseline/local/prepared_core_sample.pt",
+   "long_dense_fp32": {
+    "relative_rmse": 0.0019094695833331502,
+    "rmse": 1.619465183466673e-05,
+    "reference_rms": 0.008481230586767197,
+    "max_abs": 0.00013466551899909973,
+    "scope": "Original input FP32 softmax; synthetic algorithm diagnostic"
+   },
+   "query_ids": [
+    0,
+    1217,
+    2434,
+    3652,
+    4869,
+    6087,
+    7304,
+    8521,
+    9739,
+    10956,
+    12174,
+    13391,
+    14609,
+    15826,
+    17043,
+    18261,
+    19478,
+    20696,
+    21913,
+    23130,
+    24348,
+    25565,
+    26783,
+    28000,
+    29218,
+    30435,
+    31652,
+    32870,
+    34087,
+    35305,
+    36522,
+    37740
+   ],
+   "all_keys": 37741,
+   "timing_ms": {
+    "preprocessing": {
+     "trials": [
+      2.7427946217358112,
+      2.737334370613098,
+      2.741686627268791
+     ],
+     "median": 2.741686627268791,
+     "min": 2.737334370613098,
+     "max": 2.7427946217358112
+    },
+    "full": {
+     "trials": [
+      96.36920224875212,
+      96.31734741851687,
+      96.52929101139307
+     ],
+     "median": 96.36920224875212,
+     "min": 96.31734741851687,
+     "max": 96.52929101139307
+    },
+    "prepared_core": {
+     "trials": [
+      95.30321042984724,
+      95.19831240177155,
+      95.339160785079
+     ],
+     "median": 95.30321042984724,
+     "min": 95.19831240177155,
+     "max": 95.339160785079
+    }
+   },
+   "command": [
+    "/usr/bin/python",
+    "<repo>/scripts/benchmark_mindie_laser_quant.py",
+    "--_worker",
+    "baseline",
+    "--_run-dir",
+    "<repo>/results/mindie_laser_quant_compare_3ec8bmew",
+    "--baseline-build",
+    "results/mindie_laser_build.json",
+    "--quant-build",
+    "results/mindie_laser_quant_build.json",
+    "--preprocess-build",
+    "results/mindie_laser_quant_preprocess_build.json",
+    "--bridge-manifest",
+    "results/mindie_laser_bridge.json",
+    "--device",
+    "0",
+    "--warmup",
+    "2",
+    "--repeats",
+    "5",
+    "--trials",
+    "3",
+    "--cpu-threads",
+    "4",
+    "--shape",
+    "1",
+    "28",
+    "37741",
+    "128"
+   ],
+   "returncode": 0
+  }
+ },
+ "provenance": {
+  "baseline": {
+   "source_manifest": {
+    "algorithm_scope": "Original Laser",
+    "build_dependencies": "Installed CANN Toolkit/ops, bisheng, op_build, AscendC CMake/Python tools, CMake, Make and host C++ compiler; no full MindIE wheel or TIK build.",
+    "build_parallelism_patch": "csrc/ops/cmake/scripts/prepare.sh",
+    "custom_operator": "csrc/ops/vc_laser_attention",
+    "diagnostic_instrumentation": false,
+    "generated_files": {
+     "csrc/ops/vc_laser_attention/op_host/CMakeLists.txt": {
+      "inverse_rename_equivalent": true,
+      "original_path": "csrc/ops/laser_attention/op_host/CMakeLists.txt",
+      "original_sha256": "5ee23483c136211367c865444f53ae35a9163d4404c3b55c73c2a1f21e688760",
+      "prepared_sha256": "6976c93283c65c107bd055558e6c8da8fbcfec38a2e7971869e0c4c8b9ec363d"
+     },
+     "csrc/ops/vc_laser_attention/op_host/vc_laser_attention_def.cpp": {
+      "inverse_rename_equivalent": true,
+      "original_path": "csrc/ops/laser_attention/op_host/laser_attention_def.cpp",
+      "original_sha256": "0548050df8171c915edd488a4788023ee46ccdb55fe5df778bec5a6a718dc595",
+      "prepared_sha256": "6fb3dc45e968f22c6fb338ab7a8f5af0e7797991432b46d6ee4bbd0e6f23fbe1"
+     },
+     "csrc/ops/vc_laser_attention/op_host/vc_laser_attention_proto.cpp": {
+      "inverse_rename_equivalent": true,
+      "original_path": "csrc/ops/laser_attention/op_host/laser_attention_proto.cpp",
+      "original_sha256": "501ea377e1989529b9b7ecfea28bb0fedb56298a0553869e927e5760a271c94a",
+      "prepared_sha256": "3ebd87c81e6b53ca03b4cd2130547ba3aa5393999e12a066343b5409616aff6d"
+     },
+     "csrc/ops/vc_laser_attention/op_host/vc_laser_attention_tiling.cpp": {
+      "inverse_rename_equivalent": false,
+      "original_path": "csrc/ops/laser_attention/op_host/laser_attention_tiling.cpp",
+      "original_sha256": "ac0122b40620ebac71d3a5fd52c2dd06f2fc572f5d1f24a02c311e623d85100c",
+      "prepared_sha256": "96bb31c81c7351e217fa0430aa6c526f783d9d6ca064c81f9f2dae283da34083"
+     },
+     "csrc/ops/vc_laser_attention/op_host/vc_laser_attention_tiling.h": {
+      "inverse_rename_equivalent": true,
+      "original_path": "csrc/ops/laser_attention/op_host/laser_attention_tiling.h",
+      "original_sha256": "5b0e8faf361ec14669d9c79f5d80d7eb1fc8519f9fe10c59dd17a241673e67e9",
+      "prepared_sha256": "ccb6c1cc35903c79662f8d1051f9047b416e5204d75ce92a2dde12b98a7bbd1a"
+     },
+     "csrc/ops/vc_laser_attention/op_host/vc_source_marker.h": {
+      "inverse_rename_equivalent": false,
+      "original_path": null,
+      "original_sha256": null,
+      "prepared_sha256": "8f0260676a8420c5cc81e9a921c1e6feb1c66261854141d4399570f3fd22fa70"
+     },
+     "csrc/ops/vc_laser_attention/op_kernel/AddressMappingForwardOnline.h": {
+      "inverse_rename_equivalent": true,
+      "original_path": "csrc/ops/laser_attention/op_kernel/AddressMappingForwardOnline.h",
+      "original_sha256": "b1c83a6078f9a3f41f1e5a46613583991e1dbf26844f1284e04813dbb4b5264d",
+      "prepared_sha256": "b1c83a6078f9a3f41f1e5a46613583991e1dbf26844f1284e04813dbb4b5264d"
+     },
+     "csrc/ops/vc_laser_attention/op_kernel/AddressMappingVectorForwardOnline.h": {
+      "inverse_rename_equivalent": true,
+      "original_path": "csrc/ops/laser_attention/op_kernel/AddressMappingVectorForwardOnline.h",
+      "original_sha256": "27756e0a02fbe68d6827dd0f28c682a23d335510e94ab7b7691d8435e100d8b5",
+      "prepared_sha256": "27756e0a02fbe68d6827dd0f28c682a23d335510e94ab7b7691d8435e100d8b5"
+     },
+     "csrc/ops/vc_laser_attention/op_kernel/CubeForward.h": {
+      "inverse_rename_equivalent": true,
+      "original_path": "csrc/ops/laser_attention/op_kernel/CubeForward.h",
+      "original_sha256": "71401a8c33482a7dbc05d385f4f01e174e104506508364d1b65da0042a03a9d4",
+      "prepared_sha256": "71401a8c33482a7dbc05d385f4f01e174e104506508364d1b65da0042a03a9d4"
+     },
+     "csrc/ops/vc_laser_attention/op_kernel/VectorForward.h": {
+      "inverse_rename_equivalent": true,
+      "original_path": "csrc/ops/laser_attention/op_kernel/VectorForward.h",
+      "original_sha256": "da6d68346275a061111be7c2122db8c6e711d047d7744165a3a4130fcc0d9627",
+      "prepared_sha256": "da6d68346275a061111be7c2122db8c6e711d047d7744165a3a4130fcc0d9627"
+     },
+     "csrc/ops/vc_laser_attention/op_kernel/address_const.h": {
+      "inverse_rename_equivalent": true,
+      "original_path": "csrc/ops/laser_attention/op_kernel/address_const.h",
+      "original_sha256": "d933a953ff8deba960e90769b4b86b11c1166ae00b5edc5f64c784b329854421",
+      "prepared_sha256": "d933a953ff8deba960e90769b4b86b11c1166ae00b5edc5f64c784b329854421"
+     },
+     "csrc/ops/vc_laser_attention/op_kernel/matmul_const.h": {
+      "inverse_rename_equivalent": true,
+      "original_path": "csrc/ops/laser_attention/op_kernel/matmul_const.h",
+      "original_sha256": "ac6bef6c468824bab498504b9b7b32588dba2d386e8c6979f122333ff52fcf52",
+      "prepared_sha256": "ac6bef6c468824bab498504b9b7b32588dba2d386e8c6979f122333ff52fcf52"
+     },
+     "csrc/ops/vc_laser_attention/op_kernel/vc_laser_attention.cpp": {
+      "inverse_rename_equivalent": true,
+      "original_path": "csrc/ops/laser_attention/op_kernel/laser_attention.cpp",
+      "original_sha256": "dabdfc6e1ad3cfef840ff725e0a25857e1c4e1706ba87e4e396c07de526d4892",
+      "prepared_sha256": "ee888add7a4030b70cbdaa7b7ad7c1105370bcc52458a58f2fb7b7fd903b2561"
+     }
+    },
+    "identifier_renames": {
+     "LaserAttention": "VcLaserAttention",
+     "laser_attention": "vc_laser_attention"
+    },
+    "kernel_inverse_rename_equivalent": true,
+    "kernel_tree_hash_format": "sha256 of sorted original Laser path + NUL + original file sha256 + newline",
+    "kernel_tree_sha256": "94750a6c01567f07032fe3425ec927e4a6f8093241240fce1e4fe02e0afec3dc",
+    "marker_environment": "VC_MINDIE_LASER_MARKER_FILE",
+    "marker_token": "vc_mindie_laser_v1",
+    "modified_original_files": [
+     "csrc/ops/cmake/scripts/prepare.sh"
+    ],
+    "native_api": "aclnnVcLaserAttention",
+    "op_type": "VcLaserAttention",
+    "original_operator": "csrc/ops/laser_attention",
+    "schema_version": 1,
+    "source_dir": "<repo>/build/mindie_laser_source",
+    "source_files": {
+     "n_files": 1687,
+     "combined_sha256": "d0976b19e761fdc5bca6da3a76287ef4d4cb6bf5b83826f11bf5ee270fee80d0",
+     "how": "对 (路径, sha) 按路径排序后逐行 path\\0sha\\n 喂 sha256; 可独立重算",
+     "dropped": "原逐文件清单未随包 (约 415 KB); 需要时按本记录里的 upstream 提交重新生成 build/mindie_laser_source_manifest.json 即可比对"
+    },
+    "upstream": {
+     "commit": "71098c20ff90838d1fd1ca0a40515c751a3869b0",
+     "tag": null,
+     "url": "https://github.com/Ascend/MindIE-SD.git"
+    },
+    "variant": "baseline"
+   },
+   "build_manifest": {
+    "build_dir": "<repo>/build/mindie_laser_source/build/build",
+    "configure_required": false,
+    "definitions": {
+     "ASCEND_COMPUTE_UNIT": "ascend910b",
+     "ASCEND_OP_NAME": "vc_laser_attention",
+     "BUILD_OPEN_PROJECT": "ON",
+     "CHECK_COMPATIBLE": "TRUE",
+     "CMAKE_BUILD_TYPE": "Release",
+     "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+     "CMAKE_INSTALL_PREFIX": "<repo>/build/mindie_laser_install",
+     "CUSTOM_ASCEND_CANN_PACKAGE_PATH": "/usr/local/Ascend/cann-9.0.0",
+     "ENABLE_CCACHE": "OFF",
+     "ENABLE_OPS_HOST": "ON",
+     "ENABLE_OPS_KERNEL": "ON",
+     "PREPARE_BUILD": "OFF",
+     "Python3_EXECUTABLE": "/usr/bin/python",
+     "VENDOR_NAME": "vc_laser"
+    },
+    "deletes_build_directory": false,
+    "device_binaries": [
+     {
+      "path": "<repo>/build/mindie_laser_install/packages/vendors/vc_laser/op_impl/ai_core/tbe/kernel/ascend910b/vc_laser_attention/VcLaserAttention_713c55d8e514e991dd53111464c107fd.o",
+      "sha256": "9aa86016f6f92df2493a5cb07385f537941aa5f655f097351914cca72ba8c28d",
+      "size_bytes": 39504
+     },
+     {
+      "path": "<repo>/build/mindie_laser_install/packages/vendors/vc_laser/op_impl/ai_core/tbe/kernel/ascend910b/vc_laser_attention/VcLaserAttention_cec6c38a0e1a9e1e14dfca0fbfd713eb.o",
+      "sha256": "0e8b5cf4253f5516f0e65d4d7a874910d0ea701079e8f6b82e026c3e30e758ce",
+      "size_bytes": 39504
+     }
+    ],
+    "device_graph_before": {
+     "compile_scripts": [
+      "<repo>/build/mindie_laser_source/build/build/binary/ascend910b/gen/VcLaserAttention-vc_laser_attention-0.sh",
+      "<repo>/build/mindie_laser_source/build/build/binary/ascend910b/gen/VcLaserAttention-vc_laser_attention-1.sh"
+     ],
+     "complete": true,
+     "missing_targets": [],
+     "target_file": "<repo>/build/mindie_laser_source/build/build/CMakeFiles/TargetDirectories.txt"
+    },
+    "device_source_refresh": {
+     "changed_source_files": [],
+     "invalidated_stamps": []
+    },
+    "host_libraries": [
+     {
+      "path": "<repo>/build/mindie_laser_install/packages/vendors/vc_laser/op_api/lib/libcust_opapi.so",
+      "sha256": "6ef5a2406ba7e357f835c86c178629d9ab8fe685b5a3400e6d8c1d7d6c7a75eb",
+      "size_bytes": 14744
+     },
+     {
+      "path": "<repo>/build/mindie_laser_install/packages/vendors/vc_laser/op_impl/ai_core/tbe/op_tiling/lib/linux/aarch64/libcust_opmaster_rt2.0.so",
+      "sha256": "46637f77ef81946a06538c19bc143ae99bf3308a2e4edcd2df646bfaae2a99a8",
+      "size_bytes": 1517704
+     }
+    ],
+    "install_dir": "<repo>/build/mindie_laser_install",
+    "installation_mode": "CMake staging inside workspace; no package installer or system installation",
+    "jobs": 1,
+    "native_api": "aclnnVcLaserAttention",
+    "op_type": "VcLaserAttention",
+    "package": {
+     "path": "<repo>/build/mindie_laser_source/build/build/CANN-custom_ops--linux.aarch64.run",
+     "sha256": "5848fa409c463f3d08412a33620ad81e56b6286a75e38a6732915a3a55421bfc",
+     "size_bytes": 791809
+    },
+    "resume_existing_cache": true,
+    "schema_version": 1,
+    "scope": "Only vc_laser_attention host/device custom operator; no MindIE wheel, plugin or TIK build",
+    "soc": "ascend910b",
+    "source_dir": "<repo>/build/mindie_laser_source",
+    "source_manifest": {
+     "path": "<repo>/build/mindie_laser_source_manifest.json",
+     "sha256": "bee750410078687e9fb8dac276eb6d0a4f99f362d56a9436317c156ce94fee32",
+     "size_bytes": 453125
+    },
+    "status": "passed",
+    "steps": [
+     {
+      "command": [
+       "cmake",
+       "--build",
+       "<repo>/build/mindie_laser_source/build/build",
+       "--target",
+       "package",
+       "--parallel",
+       "1"
+      ],
+      "elapsed_seconds": 25.692506021354347,
+      "phase": "build_package",
+      "status": "passed"
+     },
+     {
+      "command": [
+       "cmake",
+       "--install",
+       "<repo>/build/mindie_laser_source/build/build",
+       "--prefix",
+       "<repo>/build/mindie_laser_install"
+      ],
+      "elapsed_seconds": 0.030724440701305866,
+      "phase": "install_workspace",
+      "status": "passed"
+     }
+    ],
+    "upstream": {
+     "commit": "71098c20ff90838d1fd1ca0a40515c751a3869b0",
+     "tag": null,
+     "url": "https://github.com/Ascend/MindIE-SD.git"
+    },
+    "vendor_root": "<repo>/build/mindie_laser_install/packages/vendors/vc_laser"
+   },
+   "source_manifest_sha256": "bee750410078687e9fb8dac276eb6d0a4f99f362d56a9436317c156ce94fee32",
+   "build_manifest_sha256": "059bde101c7215f6ad90b36e0e6a96c06c1569cd1f4c3558dac491c836fbdc08",
+   "device_binary_sha256": {
+    "<repo>/build/mindie_laser_install/packages/vendors/vc_laser/op_impl/ai_core/tbe/kernel/ascend910b/vc_laser_attention/VcLaserAttention_713c55d8e514e991dd53111464c107fd.o": "9aa86016f6f92df2493a5cb07385f537941aa5f655f097351914cca72ba8c28d",
+    "<repo>/build/mindie_laser_install/packages/vendors/vc_laser/op_impl/ai_core/tbe/kernel/ascend910b/vc_laser_attention/VcLaserAttention_cec6c38a0e1a9e1e14dfca0fbfd713eb.o": "0e8b5cf4253f5516f0e65d4d7a874910d0ea701079e8f6b82e026c3e30e758ce"
+   },
+   "host_library_sha256": {
+    "<repo>/build/mindie_laser_install/packages/vendors/vc_laser/op_api/lib/libcust_opapi.so": "6ef5a2406ba7e357f835c86c178629d9ab8fe685b5a3400e6d8c1d7d6c7a75eb",
+    "<repo>/build/mindie_laser_install/packages/vendors/vc_laser/op_impl/ai_core/tbe/op_tiling/lib/linux/aarch64/libcust_opmaster_rt2.0.so": "46637f77ef81946a06538c19bc143ae99bf3308a2e4edcd2df646bfaae2a99a8"
+   },
+   "bridge_path": "<repo>/build/mindie_laser_bridge/libvc_laser_bridge.so",
+   "bridge_sha256": "ac88b676853aad07050e92d494e79d108d1b3a75ee69218053b3f7ea2f1f353b",
+   "proof_scope": "Unique native API/operator names, fresh successful host tiling marker, loaded API/tiling libraries, bridge and packaged device binary hashes establish source build and host dispatch evidence. These do not independently prove which device binary executed, nor byte identity with the installed MindIE release.",
+   "bridge_manifest": {
+    "status": "passed",
+    "native_api": "aclnnVcLaserAttention",
+    "torch_api": "torch.ops.vc_laser.la",
+    "upstream_commit": "71098c20ff90838d1fd1ca0a40515c751a3869b0",
+    "scope": "Upstream la.cpp/helper; ACLNN symbol renamed; original queue/stream behavior retained",
+    "upstream_source_dir": "<repo>/build/mindie_laser_source",
+    "adapter_files": {
+     "la.cpp": {
+      "upstream_sha256": "612ebe0b78f957824a6165b3683c977a5fddff135b0a20d5c4795a54df8d6059",
+      "compiled_sha256": "481c65b924107e1d41e6cfe91b09ba20bc4e0ce56295f53d8a310490ee46fdff"
+     },
+     "la.h": {
+      "upstream_sha256": "a8ae0fe988d47744b5fb073449ecf408b92663edb11b9a7c39712fda248c2036",
+      "compiled_sha256": "a8ae0fe988d47744b5fb073449ecf408b92663edb11b9a7c39712fda248c2036"
+     },
+     "pytorch_npu_helper.h": {
+      "upstream_sha256": "911f6dcfa9c1d456fcf67ffba8a81f162923182f9dad5564a63c600e6c3c7290",
+      "compiled_sha256": "911f6dcfa9c1d456fcf67ffba8a81f162923182f9dad5564a63c600e6c3c7290"
+     },
+     "find_op_path.cpp": {
+      "upstream_sha256": "457b818ff8d98390632ed582e16dd228c50768be0028442ad95fb0f12de0bdd5",
+      "compiled_sha256": "457b818ff8d98390632ed582e16dd228c50768be0028442ad95fb0f12de0bdd5"
+     },
+     "find_op_path.h": {
+      "upstream_sha256": "53a7e58c9b121bb540bb70c7cc353d510a1b0a72a17ba67fe57429dadae66916",
+      "compiled_sha256": "53a7e58c9b121bb540bb70c7cc353d510a1b0a72a17ba67fe57429dadae66916"
+     }
+    },
+    "definitions": {
+     "CMAKE_BUILD_TYPE": "Release",
+     "Python3_EXECUTABLE": "/usr/bin/python",
+     "VC_LASER_ADAPTER_DIR": "<repo>/build/mindie_laser_bridge/adapter",
+     "TORCH_ROOT": "/usr/local/lib/python3.10/dist-packages/torch",
+     "TORCH_NPU_ROOT": "/usr/local/lib/python3.10/dist-packages/torch_npu",
+     "CANN_ROOT": "/usr/local/Ascend/cann-9.0.0",
+     "TORCH_ABI": "1"
+    },
+    "bridge_path": "<repo>/build/mindie_laser_bridge/libvc_laser_bridge.so",
+    "bridge_sha256": "ac88b676853aad07050e92d494e79d108d1b3a75ee69218053b3f7ea2f1f353b"
+   }
+  }
+ },
+ "proof_scope": "Unique native API/operator names, fresh successful host tiling marker, loaded API/tiling libraries, bridge and packaged device binary hashes establish source build and host dispatch evidence. These do not independently prove which device binary executed, nor byte identity with the installed MindIE release.",
+ "implementation_contract": "Pinned MindIE Laser with native INT8 QK/INT32 accumulation and FP16 PV. V E4M3 is a numerical quantization experiment decoded to FP16 before PV; there is no native FP8 matmul or FP8-storage performance claim. No V reordering or K smoothing.",
+ "timing_scope": {
+  "preprocessing": "fresh conversion, padding, quantization and decoded V (where applicable)",
+  "full": "fresh preprocessing + native allocation/dispatch + V output scale/cast/trim/contiguous",
+  "prepared_core": "fixed native input payload + native allocation/dispatch + V output scale/cast/trim/contiguous"
+ },
+ "quant_payload_identity": [],
+ "_sanitized": {
+  "by": "scripts/sanitize_measurement_json.py",
+  "date": "2026-10-29",
+  "what": "本机绝对路径已相对化; 超过 50 项的 source_files 逐文件清单已压成汇总指纹",
+  "why": "原件 538 KB / 40 处绝对路径, 越过本仓 results/*.json 的惯例 (<=92 KB, 0 处)"
+ }
+}
