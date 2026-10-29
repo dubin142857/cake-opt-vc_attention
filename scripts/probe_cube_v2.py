@@ -71,15 +71,15 @@ def main() -> int:
                 "exact": s_bad == 0}
 
     o_bad = int(np.count_nonzero(o != o_ref))
-    #  ★判"是累加还是覆写": 与单次比。两者都不符才是 stride 错。
-    o_like_once = int(np.count_nonzero(np.isclose(o, o_once, rtol=0, atol=0)))
+    #  ★判"是累加还是覆写": 与单次比。两者都不符才是排布错。
+    o_like_once = int(np.count_nonzero(o == o_once))
     rep["O"] = {"mismatched_vs_2x": o_bad, "total": int(o.size),
                 "max_abs_diff_vs_2x": float(np.abs(o - o_ref).max()),
                 "elems_equal_to_single_pass": o_like_once,
                 "exact_2x": o_bad == 0,
                 "verdict": ("累加正确" if o_bad == 0 else
-                            "★c_matrix_init_val=false 是**覆写**不是累加" if o_like_once > o.size // 2 else
-                            "两者都不符 —— stride 语义错")}
+                            "★c_matrix_init_val=false 是**覆写**不是累加"
+                            if o_like_once > o.size // 2 else "排布错")}
     rep["status"] = "passed" if rep["S"]["exact"] and rep["O"]["exact_2x"] else "failed"
 
     os.makedirs(os.path.dirname(a.output) or ".", exist_ok=True)

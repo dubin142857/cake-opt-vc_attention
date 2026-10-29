@@ -532,13 +532,14 @@ extern "C" __global__ __aicore__ void vc910_cube_v2_probe(
               reinterpret_cast<__gm__ int8_t*>(q),
               reinterpret_cast<__gm__ int8_t*>(k),
               D, D, D, vc910::map::NBLK);
-        //  PV: 两次累加, 第二次用同一对 P/V —— 结果应当恰好是单次的两倍。
-        //  ★这一条专门验 c_matrix_init_val=false 真的在累加而不是覆写:
+        //  PV: 连做两次累加且用同一对 P/V —— 结果必须恰好是单次的两倍。
+        //  ★这一条专门验 c_matrix_init_val=false 真的在**累加**而不是覆写:
         //    若它其实是覆写, 结果会等于单次而不是两倍, 主机侧一眼看出。
-        mm_pv_acc<true>(reinterpret_cast<__gm__ half*>(pmat),
-                        reinterpret_cast<__gm__ half*>(v), D, vc910::map::NBLK, D);
-        mm_pv_acc<false>(reinterpret_cast<__gm__ half*>(pmat),
-                         reinterpret_cast<__gm__ half*>(v), D, vc910::map::NBLK, D);
+        //    累加正是 chunk 内跨 key 块只搬出一次 O 的全部机制 (F186/F189)。
+        auto *pp = reinterpret_cast<__gm__ half*>(pmat);
+        auto *vv = reinterpret_cast<__gm__ half*>(v);
+        mm_pv_acc<true>(pp, vv, D, vc910::map::NBLK, D);
+        mm_pv_acc<false>(pp, vv, D, vc910::map::NBLK, D);
         pv_flush(reinterpret_cast<__gm__ float*>(o_out), D, D);
     }
 }

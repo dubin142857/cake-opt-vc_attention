@@ -115,8 +115,33 @@ __aicore__ inline void mm_pv_acc(__gm__ half *gm_p, __gm__ half *gm_v,
     asc_copy_gm2l1_nd2nz_sync(l1a, gm_p, 1, MBLK, NBLK, 0, p_row_stride, MBLK, 1, 0);
     asc_copy_gm2l1_nd2nz_sync(l1b, gm_v, 1, NBLK, d, 0, v_row_stride, NBLK, 1, 0);
 
-    asc_copy_l12l0a_sync(l0a, l1a, 0, uint8_t(MBLK * NBLK * 2 / FRAC_BYTES), 1, 0);
-    asc_copy_l12l0b_sync(l0b, l1b, 0, uint8_t(NBLK * d * 2 / FRAC_BYTES), 1, 0);
+    //  A (P, half, c0=16): 与 QK 同法按 m 分块。
+    for (uint16_t mm = 0; mm < MBLK / 16; ++mm)
+        asc_copy_l12l0a_sync(l0a + mm * NBLK * 16, l1a + mm * 16 * C0_HALF, 0,
+                             uint8_t(NBLK / C0_HALF), uint16_t(MBLK / 16), 0);
+    //  ★B (V, half): V 在逻辑上**不**转置, 故硬件要 ifTranspose=true —— 与 K 那边相反。
+    //    依据同样是两个独立来源: CANN 的 load_to_l0b_load2dV2.h:85 在 isBTranspose 为假时
+    //    走的那一支要求 transpose; Laser 的 cube2 给 V 传的正是 transpose=true
+    //    (CubeForward.h:275)。公开层 2D 的 asc_copy_l12l0b 把 transpose 硬编码为 false,
+    //    做不到, 只能走 asc_copy_l12l0b_trans_sync。
+    //    形参按 Laser cube2 的循环结构取: 每个 k 块一次调用, repeat = d/16, srcStride = NBLK/16。
+    //  ★这一处用**内建**而不是公开 API, 是穷尽公开层之后的决定 (F183 定的次序):
+    //    公开层对"2D 分形装载 + 转置"**没有覆盖** ——
+    //      2D 的 asc_copy_l12l0b 把 transpose 硬编码为 false (asc_copy_l12l0b_2d_impl.h:41);
+    //      3D 的 asc_copy_l12l0b 映射到 img2colv2_cbuf_to_cb, 是卷积 img2col 通路, 不适用;
+    //      asc_copy_l12l0b_trans 映射到 load_cbuf_to_cb_**transpose**, 与这里要的
+    //        load_cbuf_to_cb(..., transpose=true, ...) 是**两条不同指令**, 形参语义不同 ——
+    //        照搬后者的参数给前者, 实测报
+    //        "The read address of the mte load2d instruction is greater than the maximum
+    //         address of the source (L1)" (aicore exception 507015)。
+    //    而本内建正是公开 2D 包装自己调用的那一条, 只是 transpose 标志取 true;
+    //    参数取自 Laser 的 cube2 (CubeForward.h:268, 同为 half、同为 128 键块) —— 有工作样例, 不是猜。
+    for (uint16_t kk = 0; kk < NBLK / 16; ++kk)
+        load_cbuf_to_cb(l0b + kk * d * 16, l1b + kk * 16 * C0_HALF, 0,
+                        uint8_t(d / 16), uint16_t(NBLK / 16), 0, 0, true, inc);
+    //  内建没有 _sync 变体, 公开层的 asc_sync_post_process 也只在 impl 层。
+    //  本相用公开的 asc_sync() 保守补上; Phase 2 换手动细粒度同步时一并处理。
+    asc_sync();
 
     //  m=MBLK, k=NBLK, n=d。
     asc_mmad_sync(l0c, l0a, l0b, MBLK, NBLK, d, UNIT_FLAG_OFF, false, false, Init);
