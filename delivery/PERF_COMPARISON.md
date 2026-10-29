@@ -83,8 +83,13 @@ Laser 走 FP16 不量化，本交付走 INT8 QK + E4M3 V 的量化路线。换�
 
 - 两侧精度是**同一个字段名、同一种口径**（对 FP32 稠密参考的 `relative_rmse`），
   单位已逐项核对（Laser 报表中的 `dense RMSE %` 即 json 内 `relative_rmse × 100`）。
-- Laser 的精度采样覆盖至多 32 个 query 行（其脚本自述），本交付为长形状全量。
-  但两者相差一个量级以上，远超采样差异所能解释。
+- **两侧的精度采样方案相同**：各取 32 个等距 query 行
+  （`torch.linspace(0, S-1, 32).long().unique()`），对全部 37741 个 key，
+  与 FP32 CPU 稠密参考比。Laser 侧见其脚本第 223 行；本交付侧 `--check-queries`
+  默认 32，实际跑出 2.98% 那次的 `config.check_queries` 记录即为 32。
+  ★本节此前写作「本交付为长形状全量」，**那是错的**（2026-10-29 核出）：
+  被当成精度口径的 `full_vs_prepared_all_rows` 是**逐位重复性**检查，不是精度。
+  更正后这条对比更强——不再需要「采样差异不足以解释」这层辩护。
 - 计时协议不同：Laser 为进程分组同步计时，本交付为 `bench_one.py` 的重复中位，
   两者都排除预处理。3.0 倍的差距同样远超协议差异。
 - 同机 CANN 融合算子的 142 ms 只作背景参照，**不是加速比**——它与本交付是两个
@@ -149,8 +154,21 @@ source /usr/local/Ascend/ascend-toolkit/set_env.sh
 NPU_DEVICE=<空闲卡号> bash scripts/run_ascend910b.sh --long-shape
 ```
 
-原始测量记录：`results/mindie_laser_quant_compare.json`（Laser 一侧的三次 trial、
-精度采样与环境指纹均在其中）。构建后请先核对产物 sha256 再进入验收：
+原始测量记录：
+
+- **Laser 一侧**：`results/mindie_laser_quant_compare.json`（三次 trial、精度采样、
+  环境指纹、源码清单均在其中）。
+- **本交付一侧**：★**第三节表中的 285.46 / 299.89 两格在本仓没有留存的测量记录**
+  （2026-10-29 全树核查）。它们是竞态修复后（产物 `3494c48d…`）实测的，但未落盘。
+  仓里有记录的是修复**之前**那次 A/B：`results/bench_9e3a550_vs_h26-bitdecode/`
+  （产物 `4d20b857…`，两会话 283.38 / 283.18 ms 与 298.23 / 298.79 ms）。
+  两者差约 0.7%–0.6%，与第七节所述修复代价（+1.14% / +0.41%）量级一致但不等同。
+  **要按本文的验证标准复核这两格，需在产物 `3494c48d…` 上重测一次并留档。**
+- **精度一侧**：`results/ascend910b_benchmark.json` 的 `accuracy` 段
+  （`vc_control` / `vc_expcast` / `cann_fusion_attention` 三者的 `dense_fp32`
+  与 `decoded_reference`，`config.check_queries = 32`）。
+
+构建后请先核对产物 sha256 再进入验收：
 
 ```
 3494c48d2ce2b73ed7292dac3e26ce6e6d084fa83f77c2b777cae42ddf04cf55  libvc_ascend_ops.so

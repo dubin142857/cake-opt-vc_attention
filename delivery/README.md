@@ -105,8 +105,10 @@ NPU_DEVICE=<空闲卡号> bash scripts/run_ascend910b.sh --long-shape
 
 - 两侧的精度是**同一个字段名、同一种口径**（对 FP32 稠密参考的 `relative_rmse`），
   单位已逐项核对（Laser 报表里的 `dense RMSE %` 即 json 中 `relative_rmse × 100`）。
-- Laser 的精度采样覆盖至多 32 个 query 行（其脚本自述），本交付为长形状全量；
-  但两者相差约一个量级以上，远超采样差异所能解释。
+- **两侧的精度采样方案相同**：各取 32 个等距 query 行，对全部 37741 个 key，
+  与 FP32 CPU 稠密参考比。★此处此前写作「本交付为长形状全量」，**那是错的**
+  （2026-10-29 核出，见 `PERF_COMPARISON.md`）：被当成精度口径的
+  `full_vs_prepared_all_rows` 是逐位重复性检查，不是精度口径。
 - 计时协议不同（Laser 为进程分组同步墙钟，本交付为 `bench_one.py` 的重复中位），
   两者都排除预处理。3.0 倍的差距同样远超协议差异。
 - 未跑 `qkv_int8_e4m3_expcast` 等变体——那回答的是"把本路线搬进 Laser 框架会怎样"，
