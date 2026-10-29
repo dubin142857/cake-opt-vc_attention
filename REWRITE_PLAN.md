@@ -43,7 +43,37 @@
 
 每相独立可验收，**上一相不过不进下一相**。
 
-### Phase 0 — 骨架做对（不求快）
+> ★**2026-10-29 修正（F185）**：本节原文"FP16 契约先不量化"与下方 Phase 4"叠 INT8 QK"
+> 建立在一个**假前提**上——以为基线是 FP16。实际 `vc_torch.cpp:38` 写着
+> `CheckTensor(q, q, at::kChar, "Q")`：**Q/K 在算子入口就是 int8**，INT8 QK 是接口契约，
+> 不是我们的选择。验收闸也写错了参考对象，见下。原文保留以存证，以修正段为准。
+
+### Phase 0（修正后）— 把 S 工作区由 int32 改 half，直接作用在 binding pipe 上
+- **动因（数据而非类比）**：binding pipe 是 `aic_fixpipe`（192589 µs / 窗口 280251）。
+  fixpipe 搬的是 L0C→GM 的字节。按契约算：S 每 (查询行, 键) 对 4 字节，O 每对 `4·D/N`=2 字节，
+  **S 占 fixpipe 字节的 2/3**。把 S 由 int32 改 half 是作用在 binding pipe 上的最小改动。
+- **不需要手写 cube**：`MatmulImpl` 自带 `SetQuantScalar(uint64_t)` /
+  `SetQuantVector(GlobalTensor<uint64_t>)`（`asc/impl/adv_api/detail/matmul/matmul_impl_base.h:110-112`）。
+  K 的 scale 沿**列**变化，正是 quant vector 能表达的方向；Q 的 scale 沿**行**变化，
+  留给向量侧一次 `Muls`——比现在 `KSB_PER_TILE × K_SCALE_BLOCK/64` 次分段 `Muls` 还少。
+- **连带收益**：向量侧少一次 `ROWS×N` 的 `Cast(int32→fp32)`；MTE2 读 S 的字节减半。
+- **风险**：S 由 fp32 中间值改 fp16 会在 logit 阶段引入舍入。当前 `decoded_reference`
+  RMSE 最大 7e-5、闸 1e-2，**余量 143 倍**；Laser 同样用 half 工作区且对 dense 只有 0.191%。
+  有余量不等于够用，按闸实测。
+- **验收**（★用仓库自己的闸，不是新编的）：
+  `scripts/validate_ascend910b.py` → `status=passed`、**141 个用例**、
+  `decoded_reference` 相对 RMSE ≤ 1%（`validate_ascend910b.py:173` 抛的就是这条）；
+  `dense_fp32` 只记录**不设闸**（当前最大 4.63% / 中位 2.86%，即对甲方报的 2.98%）；
+  固定 payload 8 次逐位一致。
+- ★**冻结预测（E9，测前写定，不符时原文不改）**：若 fixpipe 时间与字节成正比，
+  fixpipe 字节由 6 单位降到 4 单位（×0.667），192589 → 约 128400 µs，**fixpipe 仍 binding**
+  （cube 50767），窗口 280251 → 约 216000 µs。但 Probe 1b 已部分否证按字节的比例关系
+  （M 加倍时 fixpipe 只 ×1.487 而非 ×2），故这是**上界量级估计不是预测值**：
+  实测落在 ×0.667 与 ×1.0 之间都不算意外，落在 ×0.667 以下才说明另有机制。
+- ★**T6 必要但不充分**：S 与 O 都改 half 最多给 fixpipe 约 2 倍，而我们与 Laser 的
+  fixpipe 差距是 **5.56 倍**。余下部分要另找机制，**不要用 T6 的结果解释全部差距**。
+
+### Phase 0 原文（存证，已被上节取代）
 - 新分支，新内核：AIC/AIV 两个程序、手写物理地址、128×128 块、**FP16 契约先不量化**。
 - 验收：24 个用例过；对 dense FP32 参考的相对 RMSE 在 G1 闸（1%）内；逐位重复性 8 次一致。
 - ★**最大风险在这一相**：手写地址没有 `TPipe` 的边界守护——而我们的竞态正是两个
@@ -64,7 +94,12 @@
 - 验收：`aiv_vec` 下降、`aic_cube` 上升，**净窗口下降**（搬运要以整个执行图衡量，
   不能只看单条 pipe，用户 2026-10-29 指出）。
 
-### Phase 4 — 叠 INT8 QK
+### Phase 4 — ~~叠 INT8 QK~~ → **PV 侧量化**（F185 修正）
+> ★QK **已经是 INT8**，这是接口契约（`vc_torch.cpp:38`），本相原本的目标不存在。
+> 剩下可量化的只有 PV：V 在入口是 `half`，要自行量化就得占用**已经吃紧的向量单元**，
+> 去省只占窗口 18.1% 的 cube。按已测数据这几乎必为负收益。下面的硬闸因此仍然成立，
+> 且现在读作"大概率永远不做"。
+
 - ★**前置条件（硬）**：Phase 1–3 之后必须确认 **cube 已成为 binding pipe**。
   若 cube 仍不是 binding，**不做本相** —— 那正是这条路线此前失败的全部原因。
 - 验收：cube 忙时下降**且窗口下降**；精度按 G1/G2 闸。
