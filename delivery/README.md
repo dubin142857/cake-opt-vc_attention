@@ -6,6 +6,7 @@
 | 文件 | 内容 |
 | --- | --- |
 | **`README.md`**（本文） | 当前进展、怎么启动、怎么验证、口径边界 |
+| **`PERF_COMPARISON.md`** | **性能对照**：相对贵方基线的收益，以及与官方 MindIE Laser Attention 的同机直接对测 |
 | **`TECHNICAL_REPORT.md`** | 九级改动的机理、证据、正确性 |
 | **`REPRODUCE.md`** | 从基线逐级复现的完整步骤 |
 | `OPTIONAL_FP16_S.md` | **可选级存档**：QK 直出 fp16。它在本验收判据下不通过，不在交付内 |
