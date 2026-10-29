@@ -4,6 +4,7 @@
 #include "lib/matmul_intf.h"
 #include "vc_tiling.h"
 #include "vc_phase_probe.h"
+#include "vc_intrinsic_probe.h"
 
 using namespace AscendC;
 using namespace matmul;
@@ -511,4 +512,12 @@ extern "C" __global__ __aicore__ void vc910_profile_m64(
     GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR qs, GM_ADDR ks, GM_ADDR vs,
     GM_ADDR lut, GM_ADDR output, GM_ADDR ws, GM_ADDR qt, GM_ADDR vt, GM_ADDR tiling, GM_ADDR trace) {
     RunAttention<64, true>(q, k, v, qs, ks, vs, lut, output, ws, qt, vt, tiling, trace);
+}
+
+//  Phase 0 去风险探针的入口 —— **永不发射**, 只为让代码生成真的走到那组内建函数。
+extern "C" __global__ __aicore__ void vc910_intrinsic_probe(GM_ADDR out, GM_ADDR src) {
+    if ASCEND_IS_AIC {
+        vc_intrinsic_probe_body(reinterpret_cast<__gm__ half*>(out),
+                                reinterpret_cast<__gm__ half*>(src));
+    }
 }
