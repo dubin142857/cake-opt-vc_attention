@@ -123,6 +123,57 @@ __aicore__ inline void qk_mad(uint32_t ping, uint16_t d) {
     asc_mmad(l0c, l0a, l0b, MBLK, d, NBLK, UNIT_FLAG_OFF, false, false, true);
 }
 
+//  ---- fixpipe 逐通道反量化 (VDEQF16) 的形参探针用件 --------------------------
+//  ★只给 `vc910_fixpipe_vdeq_probe` 用, **不在主路径上**。
+//  ★为什么要探针 (F183 的次序): 两处本机文档对那条 uint64 的编码**互相矛盾** ——
+//      tbe/tik/debug/intrinsic_cube.py:121  "bits[0:31] is deq value of fp32,
+//                                            bits[32:35] right move size, bits[36] mcd control"
+//      dav_c220/kernel_operator_fixpipe_v2_impl.h (标量 DEQF16 那支)
+//                                           "bits[31:13] is deq value of fp32"
+//    文档是证据不是结论; 冲突只能由数值坐实。
+//  ★序列照抄 CANN 自己的 CopyDeqTensorToFbuf (同文件, 本机权威样例):
+//      GM -> L1 -> FB, 再把 FB 地址右移 7 位左移 8 位写进 FPC。
+//    FPC 里给 Quant_PRE 的字段是 [15:8], 单位 128 字节 —— 这正是那两次移位。
+__aicore__ inline void qk_load_deq(__gm__ uint64_t *gm_deq) {
+    auto l1 = reinterpret_cast<__cbuf__ uint64_t *>(static_cast<uintptr_t>(vc910::map::L1_DEQ));
+    asc_copy_gm2l1(l1, gm_deq, vc910::map::DEQ_BYTES);
+}
+
+//  FB 里放 deq 向量的偏移。取 0, 与 CANN 的 GetTemporaryFbBufferAddr<uint64_t>(0, n) 同址。
+constexpr uint32_t FB_DEQ_OFF = 0;
+
+__aicore__ inline void qk_deq_to_fb() {
+    auto l1 = reinterpret_cast<__cbuf__ uint64_t *>(static_cast<uintptr_t>(vc910::map::L1_DEQ));
+    auto fb = reinterpret_cast<__fbuf__ uint64_t *>(static_cast<uintptr_t>(FB_DEQ_OFF));
+    //  burst_len 的单位是 **128 字节**, 不是 32 —— 见 CopyDeqTensorToFbuf。
+    asc_copy_l12fb(fb, l1, 1, uint16_t(vc910::map::DEQ_BYTES / 128), 0, 0);
+    //  ★这里**不设 FPC**: 下面还要先走一次 NoQuant 的 fixpipe, 而那一步会把 FPC 清零
+    //    (见 qk_fix_vdeq 处的注记)。FPC 必须在发射前一刻设。
+}
+
+//  VDEQF16: L0C 的 int32 乘逐通道 scale 后**舍成 fp16** 写 GM。
+//  ★dst 只能是 half —— 本机 (__NPU_ARCH__ 2201) 对 int32 源**没有任何**带 quant 的
+//    fp32 出口 (CheckFixpipeL0C2GMParam 的 SupportType 列表, 以及 QuantMode_t 里
+//    VQF322F32_PRE 只在 3510/9201/5102 上存在)。这条约束决定了方案的性质, 不是选择。
+__aicore__ inline void qk_fix_vdeq(uint32_t ping, __gm__ half *gm_s, uint16_t s_cols) {
+    auto l0c = reinterpret_cast<__cc__ int32_t *>(
+        static_cast<uintptr_t>(ping ? L0C_PING : L0C_PONG));
+    //  ★★**不能用 `asc_set_l0c2gm_config`** —— 2026-10-30 由本探针一次构建测出 (507015,
+    //    `mte error info: 0x90100109a`)。两种解释撞在 FPC 的同一段位上:
+    //      · C-API 的 `asc_capi_fpc_reg_config` 把 FPC[15:8] 叫 `quant_units` (模式号);
+    //      · 而硬件/AscendC 把 FPC[15:8] 当作 **deq 向量在 FB 里的地址**, 单位 128 字节
+    //        (`CopyDeqTensorToFbuf`: `deqTensorAddr = ((uint64_t)fb >> 7) << 8`)。
+    //    于是 `asc_set_l0c2gm_config(0, VDEQF16, false)` 把模式号 10 写进 FPC[15:8],
+    //    硬件读成"deq 向量在 FB 偏移 10*128 = 1280" —— 越出已拷贝区, MTE 异常。
+    //    ★生产路径一直没暴露, 因为它传的是 `NoQuant` = 0, 写 0 恰好无害。
+    //  ★量化**模式**本来就由指令的 QuantPRE 形参带 (AscendC 的 FixpipeL0cToOut 也是这么做的),
+    //    FPC 只负责那个地址。所以这里直接写地址, 且必须排在发射前一刻 ——
+    //    因为前一次 NoQuant 的 fixpipe 走 `asc_set_l0c2gm_config`, 它 `config = 0` 会清掉 FPC。
+    set_fpc((static_cast<uint64_t>(FB_DEQ_OFF) >> 7) << 8);
+    copy_matrix_cc_to_gm(gm_s, l0c, 0, NBLK, MBLK, s_cols, MBLK,
+                         UNIT_FLAG_OFF, VDEQF16, 0, false, true);
+}
+
 __aicore__ inline void qk_fix(uint32_t ping, __gm__ int32_t *gm_s, uint16_t s_cols) {
     auto l0c = reinterpret_cast<__cc__ int32_t *>(
         static_cast<uintptr_t>(ping ? L0C_PING : L0C_PONG));
@@ -147,6 +198,31 @@ __aicore__ inline void mm_qk(__gm__ int32_t *gm_s, __gm__ int8_t *gm_q, __gm__ i
     qk_mad(1, d);
     asc_sync();
     qk_fix(1, gm_s, s_cols);
+    asc_sync();
+}
+
+//  ★同一次 QK, 两条出口: 先走现行的 NoQuant(int32), 再走 VDEQF16(fp16)。
+//    两条读的是**同一份 L0C**, 所以主机侧可以把 fp16 的那份直接对着 int32 的那份算,
+//    不必把 int8 矩阵乘的正确性也混进这次判断 —— 它由 vc910_cube_v2_probe 另外守着。
+//  ★次序: int32 那条在前。VDEQF16 的 fixpipe 不改 L0C, 但把它放后面可以让
+//    "int32 这条仍然正确"成为"FPC 设置没有破坏别的东西"的旁证。
+__aicore__ inline void mm_qk_two_exits(__gm__ int32_t *gm_s_i32, __gm__ half *gm_s_f16,
+                                       __gm__ uint64_t *gm_deq,
+                                       __gm__ int8_t *gm_q, __gm__ int8_t *gm_k,
+                                       uint16_t d, uint16_t q_row_stride, uint16_t k_row_stride,
+                                       uint16_t s_cols) {
+    qk_load_deq(gm_deq);
+    qk_gm2l1_q(gm_q, d, q_row_stride);
+    qk_gm2l1_k(1, gm_k, d, k_row_stride);
+    asc_sync();
+    qk_deq_to_fb();          //  L1 -> FB 并设 FPC; 必须排在任何带 quant 的 fixpipe 之前
+    qk_l12l0(1, d);
+    asc_sync();
+    qk_mad(1, d);
+    asc_sync();
+    qk_fix(1, gm_s_i32, s_cols);
+    asc_sync();
+    qk_fix_vdeq(1, gm_s_f16, s_cols);
     asc_sync();
 }
 

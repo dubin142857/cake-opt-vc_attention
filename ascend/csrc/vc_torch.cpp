@@ -25,6 +25,8 @@ uint32_t aclrtlaunch_vc910_vec_reduce_probe(uint32_t blocks, void* stream,
 uint32_t aclrtlaunch_vc910_cube_v2_probe(uint32_t blocks, void* stream,
     void* s_out, void* o_out, void* r1_out, void* r2_out,
     void* q, void* k, void* p, void* v, void* dmat, void* obase);
+uint32_t aclrtlaunch_vc910_fixpipe_vdeq_probe(uint32_t blocks, void* stream,
+    void* s_i32, void* s_f16, void* q, void* k, void* deq);
 }
 
 namespace {
@@ -259,6 +261,32 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> CubeV2Probe(
     return {s_out, o_out, r1_out, r2_out};
 }
 
+//  fixpipe 逐通道反量化 (VDEQF16) 的数值探针: 确证那条 uint64 的编码与施加方向。
+//  ★deq 以 uint64 传进来, 但 torch 没有 uint64 —— 用 int64 承载**同样的 64 位**,
+//    主机侧只搬位不解释。这一条写在 TORCH_CHECK 的消息里, 免得调用方按有符号去构造。
+std::tuple<at::Tensor, at::Tensor> FixpipeVdeqProbe(
+        const at::Tensor& q, const at::Tensor& k, const at::Tensor& deq) {
+    constexpr int64_t MB = map::MBLK, NB = map::NBLK, D = map::D_MAX;
+    TORCH_CHECK(q.scalar_type() == at::kChar && k.scalar_type() == at::kChar,
+                "probe Q/K must be int8");
+    TORCH_CHECK(q.sizes() == at::IntArrayRef({MB, D}), "probe Q must be [64,128]");
+    TORCH_CHECK(k.sizes() == at::IntArrayRef({NB, D}), "probe K must be [128,128]");
+    TORCH_CHECK(deq.scalar_type() == at::kLong,
+                "probe deq must be int64 —— 它承载的是 uint64 的**位**, 不是有符号整数");
+    TORCH_CHECK(deq.sizes() == at::IntArrayRef({NB}), "probe deq must be [128] (每通道一项)");
+    for (const auto& t : {q, k, deq}) {
+        TORCH_CHECK(t.is_contiguous(), "probe inputs must be contiguous ND");
+        TORCH_CHECK(t.is_privateuseone(), "probe inputs must live on the NPU");
+    }
+    auto s_i32 = at::zeros({MB, NB}, q.options().dtype(at::kInt));
+    auto s_f16 = at::zeros({MB, NB}, q.options().dtype(at::kHalf));
+    auto stream = c10_npu::getCurrentNPUStream(q.device().index()).stream(true);
+    auto ret = aclrtlaunch_vc910_fixpipe_vdeq_probe(1, stream,
+        s_i32.data_ptr(), s_f16.data_ptr(), q.data_ptr(), k.data_ptr(), deq.data_ptr());
+    TORCH_CHECK(ret == ACL_SUCCESS, "vc910_fixpipe_vdeq_probe launch failed: ", ret);
+    return {s_i32, s_f16};
+}
+
 //  向量侧的数值探针: 确证 WholeReduceSum 的形参语义 (E33 的前置, 见内核侧注释)。
 std::tuple<at::Tensor, at::Tensor, at::Tensor> VecReduceProbe(const at::Tensor& x) {
     constexpr int64_t R = 32, NN = 128;
@@ -283,6 +311,7 @@ TORCH_LIBRARY(vc_ascend, m) {
     m.def("profile_tiled(Tensor q, Tensor k, Tensor v, Tensor q_scale, Tensor k_scale, Tensor v_scale, Tensor lut, int queries, int keys, float scale, bool expcast, int tile_m) -> (Tensor, Tensor)");
     m.def("cube_v2_probe(Tensor q, Tensor k, Tensor p, Tensor v, Tensor dmat, Tensor obase) -> (Tensor, Tensor, Tensor, Tensor)");
     m.def("vec_reduce_probe(Tensor x) -> (Tensor, Tensor, Tensor)");
+    m.def("fixpipe_vdeq_probe(Tensor q, Tensor k, Tensor deq) -> (Tensor, Tensor)");
 }
 TORCH_LIBRARY_IMPL(vc_ascend, PrivateUse1, m) {
     m.impl("forward", TORCH_FN(Forward));
@@ -290,6 +319,7 @@ TORCH_LIBRARY_IMPL(vc_ascend, PrivateUse1, m) {
     m.impl("profile_tiled", TORCH_FN(ProfileTiled));
     m.impl("cube_v2_probe", TORCH_FN(CubeV2Probe));
     m.impl("vec_reduce_probe", TORCH_FN(VecReduceProbe));
+    m.impl("fixpipe_vdeq_probe", TORCH_FN(FixpipeVdeqProbe));
 }
 TORCH_LIBRARY_IMPL(vc_ascend, Meta, m) {
     m.impl("forward", TORCH_FN(Meta));

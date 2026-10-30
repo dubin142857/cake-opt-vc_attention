@@ -179,6 +179,24 @@ static_assert(RESC_D_BYTES <= L0A_SIZE / 2, "重标定的 D 必须装进 L0A 的
 static_assert(RESC_O_BYTES <= L0B_SIZE / 2, "重标定的 O 必须装进 L0B 的一个半区");
 static_assert(MBLK * D_MAX * 4 <= L0C_SIZE / 2, "重标定的结果必须装进 L0C_ACC 半区");
 
+//  ---- fixpipe 逐通道反量化向量 (VDEQF16) 的 L1 暂存 --------------------------
+//  ★只给**数值探针** `vc910_fixpipe_vdeq_probe` 用, 不在主路径上。
+//    硬件要求这条向量先落 L1 (__cbuf__ uint64_t), 再由 copy_cbuf_to_fbuf 搬进 FB,
+//    最后把 FB 地址写进 FPC[15:8]。依据是 CANN 自己的 CopyDeqTensorToFbuf
+//    (dav_c220/kernel_operator_fixpipe_v2_impl.h) —— 本机权威样例。
+//  ★槽位: 借 L1_A_PONG 槽里重标定两片之后的**空尾** (49152 用掉, 还剩 16384)。
+//    探针是串行的, 与重标定不同时活, 故不必再占一整槽。
+constexpr uint32_t DEQ_BYTES  = NBLK * 8;                       // 每通道一个 uint64
+constexpr uint32_t L1_DEQ     = L1_A_PONG + RESC_D_BYTES + RESC_O_BYTES;
+static_assert(L1_DEQ + DEQ_BYTES <= L1_A_PONG + L1_SLOT,
+              "★逐通道反量化向量必须装进 L1_A_PONG 槽的空尾");
+static_assert(DEQ_BYTES % 128 == 0,
+              "★L1->FB 的 burst_len 以 **128 字节**为单位 (CANN 的 CopyDeqTensorToFbuf 如此), "
+              "故这条向量的字节数必须是 128 的整数倍");
+static_assert(NBLK <= 256,
+              "★FB 里给 Quant_PRE 的 deq 项上限是 256 (CANN 的 GenFixpipeTilingV220); "
+              "超过要分两轮, 探针不覆盖那条路");
+
 static_assert(L1_SLOT * 8 == L1_SIZE, "八个槽应正好填满 L1");
 static_assert(BLK_B16 <= L1_SLOT, "一个 fp16 基本块必须装得进一个 L1 槽");
 static_assert(BLK_B32 <= L1_SLOT, "一个 fp32 基本块必须装得进一个 L1 槽");

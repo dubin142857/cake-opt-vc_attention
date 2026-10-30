@@ -855,6 +855,31 @@ extern "C" __global__ __aicore__ void vc910_cube_v2_probe(
     }
 }
 
+//  ---- fixpipe 逐通道反量化 (VDEQF16) 的**数值**探针 ---------------------------
+//  ★要确证的是三件事, 每件都有一个会让它无声走错的替代解释:
+//    (1) **那条 uint64 的编码**。两处本机文档互相矛盾 (见 vc_cube_v2.h 的注记):
+//        模拟器说 bits[0:31] 是 fp32 位模式, c220 的标量支注释说 bits[31:13]。
+//        主机侧按"fp32 位模式零扩展"构造; 若这条是错的, 结果会整体偏掉。
+//    (2) **scale 是按哪个方向施加的**。若主机给的每通道 scale 全相等,
+//        "逐通道"与"标量"给出同一答案 —— 那样的样例钉不住契约 (E6)。
+//        故探针的 scale **逐列各不相同**, 且特意让第 0 列与第 1 列差一个量级。
+//    (3) **舍入到 fp16 的方式**。与 NumPy 的 float32->float16 (就近偶数) 逐位比。
+//  ★两条出口读同一份 L0C, 所以 int32 那份既是参考也是"FPC 没破坏别的东西"的旁证。
+//  ★几何与 vc910_cube_v2_probe 一致 (M=64, N=128, d=128), 活动部件尽量少。
+extern "C" __global__ __aicore__ void vc910_fixpipe_vdeq_probe(
+        GM_ADDR s_i32, GM_ADDR s_f16, GM_ADDR q, GM_ADDR k, GM_ADDR deq) {
+    if ASCEND_IS_AIC {
+        constexpr uint16_t D = 128;
+        using namespace vc910::cube2;
+        mm_qk_two_exits(reinterpret_cast<__gm__ int32_t*>(s_i32),
+                        reinterpret_cast<__gm__ half*>(s_f16),
+                        reinterpret_cast<__gm__ uint64_t*>(deq),
+                        reinterpret_cast<__gm__ int8_t*>(q),
+                        reinterpret_cast<__gm__ int8_t*>(k),
+                        D, D, D, vc910::map::NBLK);
+    }
+}
+
 //  ---- 向量侧的**数值**探针: 确证 WholeReduceSum 的形参语义 (E33 的前置) -------
 //  ★为什么要它 (F183 定的次序): `WholeReduceSum` 的 dstRepStride / srcBlkStride /
 //    srcRepStride 虽有本机权威样例 (CANN 自己的 reduce_sum_v220_impl.h 的 ReduceSumArCompute:
