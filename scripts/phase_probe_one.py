@@ -15,9 +15,17 @@
 """
 import argparse, statistics as st, sys
 
-NAMES = ["t1_setup", "t1_vec", "wait_o", "t2_vec", "t2_publish",
-         "chunk_tail", "pv_work", "wait_s"]
-WAITS = {"wait_o", "wait_s"}
+AIV_NAMES = ["t1_setup", "t1_vec", "wait_o", "t2_vec", "t2_publish",
+             "chunk_tail", "pv_work", "wait_s"]
+#  ★AIC 侧 (role 0) 自 F209 起也有标记, 与 AIV 同口径: 等待单列。
+AIC_NAMES = ["qk_issue", "chunk_drain", "wait_p", "wait_o_used", "pv_issue",
+             "-", "-", "-"]
+WAITS = {"wait_o", "wait_s", "wait_p", "wait_o_used"}
+#  ★AIV 的这四个相位是**每块**的, 同一 chunk 内逐块覆写故只留末块 ——
+#    直接求和会漏掉 n_in-1 块。还原时要乘 n_in (判据: 还原后应与每 chunk 的窗口对上)。
+#    AIC 的五个相位都是每 chunk 一次, 不必还原。
+PER_TILE = {"t1_setup", "t1_vec", "t2_vec", "t2_publish"}
+NBLK, CHUNK = 128, 4
 TICK_NS = 10.77
 
 
@@ -48,35 +56,43 @@ def main() -> int:
     torch.npu.synchronize()
     rec = rec.cpu().tolist()
 
-    by_key = {}
+    by_key = {}          # (role_kind, key) -> [相位向量]
     for core in rec:
         for role_i, role in enumerate(core):
-            if role_i == 0:          # 0 = aic (本轮 cube 侧无 Mark)
-                continue
+            kind = "AIC" if role_i == 0 else "AIV"
             for samp in role:
                 if samp[0] != 1:
                     continue
-                by_key.setdefault(samp[2], []).append(samp[4:12])
+                by_key.setdefault((kind, samp[2]), []).append(samp[4:12])
     if not by_key:
         print("★没有有效样本 —— 确认跑的是 PhaseProbe<true> 的 profile 内核", file=sys.stderr)
         return 1
     print(f"形状 q={a.queries} k={a.keys} h={a.heads} d={a.dim} expcast={a.expcast} "
-          f"· 采样位置 {sorted(by_key)}")
-    for key in sorted(by_key):
-        rows = by_key[key]
+          f"· 采样 {sorted(by_key)}")
+    for kind, key in sorted(by_key):
+        rows = by_key[(kind, key)]
+        names = AIC_NAMES if kind == "AIC" else AIV_NAMES
         med = [st.median([r[i] for r in rows]) for i in range(8)]
-        tot = sum(med)
+        #  还原每块相位: n_in = min(CHUNK, tiles - key/NBLK)
+        tiles = -(-a.keys // NBLK)
+        n_in = min(CHUNK, max(1, tiles - key // NBLK))
+        med = [v * n_in if n in PER_TILE else v for n, v in zip(names, med)]
+        tot = sum(v for n, v in zip(names, med) if n != "-")
         if tot <= 0:
             continue
-        wait = sum(v for n, v in zip(NAMES, med) if n in WAITS)
+        wait = sum(v for n, v in zip(names, med) if n in WAITS)
         tag = "起始块" if key == 0 else "稳态"
-        print(f"\n--- key={key} ({tag}, {len(rows)} 份样本) 每 chunk 合计 "
-              f"{tot:.0f} ticks = {tot*TICK_NS/1000:.2f} us ---")
-        for n, vv in sorted(zip(NAMES, med), key=lambda kv: -kv[1]):
-            mark = "  ← 等 AIC" if n in WAITS else ""
+        other = "AIV" if kind == "AIC" else "AIC"
+        print(f"\n--- {kind} key={key} ({tag}, {len(rows)} 份样本, n_in={n_in}) "
+              f"每 chunk 合计 {tot:.0f} ticks = {tot*TICK_NS/1000:.2f} us ---")
+        for n, vv in sorted(zip(names, med), key=lambda kv: -kv[1]):
+            if n == "-":
+                continue
+            mark = f"  ← 等 {other}" if n in WAITS else ("  (每块 x%d)" % n_in if n in PER_TILE else "")
             print(f"      {n:12s} {vv:8.0f} ticks  {vv*TICK_NS/1000:7.3f} us  "
                   f"{vv/tot*100:5.1f}%{mark}")
-        print(f"      ★等 AIC {wait/tot*100:.1f}% · AIV 自身工作 {(tot-wait)/tot*100:.1f}%")
+        print(f"      ★等 {other} {wait/tot*100:.1f}% · {kind} 自身工作 "
+              f"{(tot-wait)/tot*100:.1f}%")
     return 0
 
 

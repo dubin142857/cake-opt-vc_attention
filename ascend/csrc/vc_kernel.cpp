@@ -470,6 +470,13 @@ public:
         constexpr uint32_t CHUNK = map::CHUNK;
         static_assert(MT == map::MBLK, "CubeV2 的查询块必须与地址表的 MBLK 一致");
         const uint32_t core = GetBlockIdx();
+        //  ---- AIC 侧相位探针 (role 0) -----------------------------------------
+        //  ★此前 cube 侧一个标记都没有, 探针的 role 0 全是空记录 —— 而当前的核心问题
+        //    正是"AIC 与 AIV 谁在等谁", 缺了一半的账。相位与 AIV 侧同口径:
+        //    全部用**不插屏障**的 Mark (只读 SYS_CNT, 单条 MOV), 且把**等待**单列。
+        //    key 取法与 AIV 侧一致, 故同一 chunk 的两侧可以对齐比。
+        PhaseProbe<Profile> probe;
+        probe.Init(trace, core, 0);
         auto *base = reinterpret_cast<__gm__ uint8_t*>(ws) + uint64_t(core) * t.workspace_bytes;
         //  workspace 布局 (与 vc_tiling_host.h 的 WorkspaceBytesV2 是同一个量的两处写法,
         //  改一处必须改另一处)。S/P 各两个 chunk 组供错位, O 双槽。
@@ -480,7 +487,6 @@ public:
         auto *qg = reinterpret_cast<__gm__ int8_t*>(q);
         auto *kg = reinterpret_cast<__gm__ int8_t*>(k);
         auto *vg = reinterpret_cast<__gm__ half*>(v);
-        (void)trace;
 
         const uint32_t tiles  = t.kpad / NB;
         const uint32_t chunks = (tiles + CHUNK - 1) / CHUNK;
@@ -521,6 +527,7 @@ public:
             WaitFlag<HardEvent::MTE2_MTE1>(static_cast<event_t>(uint32_t(EV_L1A_PING)));
             uint32_t outstanding = 0;
             for (uint32_t c = 0; c <= chunks; ++c) {
+                probe.Begin(task, c ? (c - 1) * CHUNK * NB : 0, t);
                 //  相 1: 本 chunk 的全部 QK, 末尾只置一次 S_READY
                 if (c < chunks) {
                     const uint32_t slot = (c & 1) * CHUNK;
@@ -588,22 +595,25 @@ public:
                         if (VC_SYNC_FIX) asc_sync();
                         SetFlag<HardEvent::FIX_M>(static_cast<event_t>(ev_l0c));
                     }
+                    probe.Mark(0);   // qk_issue: 本 chunk 全部 QK 的发射
                     //  ★QK 相与 PV 相之间的交接: 两相分时共用 L0A/L0B, 故 PV 开始装载前
                     //    本 chunk 的 QK 必须全部落定。
                     if (VC_SYNC_CHUNK_END) asc_sync();
                     CrossCoreSetFlag<2, PIPE_FIX>(S_READY);
+                    probe.Mark(1);   // chunk_drain: chunk 末全屏障 (真排空, 故是墙上时间)
                 }
-                if (c == 0) continue;   // 第 0 轮只发不消费 (错位一拍)
+                if (c == 0) { probe.Finish(); continue; }   // 第 0 轮只发不消费 (错位一拍)
                 //  相 2: 消费第 c-1 个 chunk —— 全部 PV 在 L0C 累加, 只在末尾搬出一次
                 CrossCoreWaitFlag(P_READY);
+                probe.Mark(2);   // wait_p: 等 AIV 把 P 算出来
                 if (outstanding >= 2) { CrossCoreWaitFlag(O_USED); --outstanding; }
+                probe.Mark(3);   // wait_o_used: 等 AIV 用掉上上个 O (背压)
                 //  ★QK 相与 PV 相之间的 L0C 交接 —— 少了它就是本轮那个数值错的成因。
                 //    PV 的累加器是 L0C_PING (= L0C_ACC), 而 QK 的 j 为偶数时也写 L0C_PING。
                 //    把每 chunk 的排空挪到内核级之后, 这道交接**没了**: PV 的 mad 可以在
                 //    QK 最后一次 fixpipe 还在读 L0C 时就开始写它。
-                //    ★证据: 四段后各加全屏障 (完全串行) 仍错 —— 说明缺陷不在细粒度标志的
-                //      重叠, 而在被我改掉的槽位与交接; 通过验收的 _sync 版用的是**固定**槽
-                //      L0C_QK = L0C_PONG, 与 PV 的 L0C_ACC 天然不冲突。
+                //    ★订正: 此处原有一段"四段后各加全屏障仍错"的推理, 那是在**污染卡**上的
+                //      观测 (F194), 已被 F195 推翻 —— 四段拆分与槽位本身是正确的。
                 //    按 claim/release 补: 认领 L0C_PING, 用完释放, 内核级 Preset/Clear 的收支不变。
                 WaitFlag<HardEvent::FIX_M>(static_cast<event_t>(uint32_t(map::EV_L0C_PING)));
                 const uint32_t pc = c - 1;
@@ -622,6 +632,8 @@ public:
                 SetFlag<HardEvent::FIX_M>(static_cast<event_t>(uint32_t(map::EV_L0C_PING)));
                 CrossCoreSetFlag<2, PIPE_FIX>(O_READY);
                 ++outstanding;
+                probe.Mark(4);   // pv_issue: PV 累加 + pv_flush + O_READY 的发射
+                probe.Finish();
             }
             while (outstanding) { CrossCoreWaitFlag(O_USED); --outstanding; }
             //  归还 L1_Q 的"可覆写"许可, 与任务头的认领配对。

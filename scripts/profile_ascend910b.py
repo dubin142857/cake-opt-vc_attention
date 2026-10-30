@@ -19,7 +19,8 @@ from mindie_laser_backend import load_mindie_laser, validate_laser
 
 
 ROLE_PHASES = {
-    "aic": ("qk_api_complete", "wait_p", "pv_api_complete", "wait_o_used"),
+    #  ★AIC 侧已补相位标记 (F209), 与 AIV 同口径: 不插屏障的 Mark, 等待单列。
+    "aic": ("qk_issue", "chunk_drain", "wait_p", "wait_o_used", "pv_issue"),
     #  ★相位已按"发射时间分解"重新布点 (F205): 全部用不插屏障的 Mark, 量的是标量
     #    发射而非完成。索引即 probe.Mark 的参数。相位 t1_* / t2_* 是**每块**的,
     #    同一 chunk 内逐块覆写故读到末块; 其余是每 chunk 的。
