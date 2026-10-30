@@ -10,6 +10,22 @@ using namespace AscendC;
 using namespace matmul;
 using namespace vc910;
 
+//  ---- 测量变体: 把硬件性能计数器门控到 AIV 的**工作**区间 -------------------
+//  ★依据 F207: `AscendC::MetricsProfStart/Stop` 在本机 (Atlas A2 / dav_c220) 可用,
+//    公开接口在 kernel_prof_trace_intf.h, 已由 kernel_operator.h 拉进来, 无需新增 include。
+//    实现是 pipe_barrier(PIPE_ALL) + set_ctrl(sbitset1(get_ctrl(), 0)) + pipe_barrier(PIPE_ALL),
+//    即用 CTRL 第 0 位开关计数器; 官方文档说明它正是给 msOpProf 标代码段边界用的。
+//  ★为什么需要它 (F205): msprof 的 `aiv_scalar_time` 是整核聚合且**混入了阻塞等待**
+//    (CrossCoreWaitFlag 由标量发射并阻塞标量单元), 不能用来判 AIV 的真实工作量。
+//    把两处跨核等待排除在计数区间外, 就能拿到硬件计数的干净值, 与相位探针互为旁证。
+//  ★它两侧各插一道 pipe_barrier(PIPE_ALL), **是扰动**: 只做测量变体, 默认关, 不进生产。
+//  ★默认 false: 置位后 MetricsOff()/MetricsOn() 之间的代码被排除在硬件计数器之外。
+//  ★已校准 (F208): 门控掉整个趟 2 循环时 aiv_scalar_time 降 47.4% 而 aiv_vec_time 只变 +0.1%
+//    —— 即它**只门控 aiv_scalar_time**, 对 vec / mte3 无效。用它判 vec 是无效的。
+constexpr bool VC_METRICS_REGION = false;
+__aicore__ inline void MetricsOff() { if constexpr (VC_METRICS_REGION) MetricsProfStop(); }
+__aicore__ inline void MetricsOn()  { if constexpr (VC_METRICS_REGION) MetricsProfStart(); }
+
 template <typename T>
 __aicore__ inline void ReadControl(GM_ADDR gm, T& value) {
     auto src = reinterpret_cast<__gm__ uint32_t*>(gm);
@@ -269,6 +285,10 @@ public:
                 //  ---- 趟 2: 归一化 + exp + 写 P ----
                 Duplicate(massAcc, 0.0f, ROWS);
                 PipeBarrier<PIPE_V>();
+                //  ★对照 (E24): 把整个趟 2 循环排除在计数区间外。趟 2 含每块的
+                //    Sub/Exp/ReduceSum/Cast, 是 aiv_vec_time 的大头 —— 若门控有效,
+                //    aiv_vec_time 必然明显下降; 若纹丝不动, 说明门控在本采集模式下无效。
+                MetricsOff();
                 for (uint32_t j = 0; j < n_in; ++j) {
                     auto sc = chunkScore[j * ROWS * NB];
                     for (uint32_t off = 0; off < NB; off += 64)
@@ -342,6 +362,7 @@ public:
                     WaitFlag<HardEvent::MTE3_V>(EVENT_ID0);
                     probe.Mark(4);   // t2_publish: Cast(ph) + 旗标 + DataCopy + Add 的发射
                 }
+                MetricsOn();
                 CrossCoreSetFlag<2, PIPE_MTE3>(P_READY);   // ★整个 chunk 只置一次
                 Mul(l, l, alpha, ROWS);
                 PipeBarrier<PIPE_V>();
