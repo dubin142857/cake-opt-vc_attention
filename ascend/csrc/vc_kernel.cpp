@@ -380,7 +380,12 @@ private:
 constexpr bool VC_SYNC_GM2L1 = false;   // 序幕与预取的 GM->L1 之后
 constexpr bool VC_SYNC_L12L0 = false;   // L1->L0 之后
 constexpr bool VC_SYNC_MAD   = false;   // mad 之后
-constexpr bool VC_SYNC_FIX   = true;   // fixpipe 之后
+constexpr bool VC_SYNC_FIX   = false;  // fixpipe 之后
+//  ★候选: 把屏障由"每块一次"挪到"每 chunk 一次" (j 循环之后)。
+//    依据: QK 与 PV **分时共用 L0A/L0B** (vc_l1l0_map.h 的 staged_l0a = 2*max(qk_a, pv_a)),
+//    _sync 版每段自带同步故循环结束必已排空; 流水版则可能在最后一块的 mad/fix 还在跑时,
+//    PV 相已开始往同一组 L0 槽装数据。若成立, 循环后单屏障就够, 且 CHUNK=4 故屏障少四倍。
+constexpr bool VC_SYNC_CHUNK_END = true;
 
 //  ---- CubeV2: 按 chunk 分阶段的手写 cube ------------------------------------
 //  ★与旧 Cube 并存, **本轮尚未接进 RunAttention** —— 先让它被真正代码生成并过 lint,
@@ -524,7 +529,9 @@ public:
                         if (VC_SYNC_FIX) asc_sync();
                         SetFlag<HardEvent::FIX_M>(static_cast<event_t>(ev_l0c));
                     }
-                    //  排空: 把上面预置而未被消费的"可覆写"许可收回, 否则跨 chunk 会多算
+                    //  ★QK 相与 PV 相之间的交接: 两相分时共用 L0A/L0B, 故 PV 开始装载前
+                    //    本 chunk 的 QK 必须全部落定。
+                    if (VC_SYNC_CHUNK_END) asc_sync();
                     CrossCoreSetFlag<2, PIPE_FIX>(S_READY);
                 }
                 if (c == 0) continue;   // 第 0 轮只发不消费 (错位一拍)
