@@ -19,8 +19,8 @@ AIV_NAMES = ["t1_setup", "t1_vec", "wait_o", "t2_vec", "t2_publish",
              "chunk_tail", "pv_work", "wait_s"]
 #  ★AIC 侧 (role 0) 自 F209 起也有标记, 与 AIV 同口径: 等待单列。
 AIC_NAMES = ["qk_issue", "chunk_drain", "wait_p", "wait_o_used", "pv_issue",
-             "-", "-", "-"]
-WAITS = {"wait_o", "wait_s", "wait_p", "wait_o_used"}
+             "-", "claim_l0c", "-"]
+WAITS = {"wait_o", "wait_s", "wait_p", "wait_o_used", "claim_l0c"}
 #  ★AIV 的这四个相位是**每块**的, 同一 chunk 内逐块覆写故只留末块 ——
 #    直接求和会漏掉 n_in-1 块。还原时要乘 n_in (判据: 还原后应与每 chunk 的窗口对上)。
 #    AIC 的五个相位都是每 chunk 一次, 不必还原。

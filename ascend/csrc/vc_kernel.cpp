@@ -639,6 +639,7 @@ public:
                 //      观测 (F194), 已被 F195 推翻 —— 四段拆分与槽位本身是正确的。
                 //    按 claim/release 补: 认领 L0C_PING, 用完释放, 内核级 Preset/Clear 的收支不变。
                 WaitFlag<HardEvent::FIX_M>(static_cast<event_t>(uint32_t(map::EV_L0C_PING)));
+                probe.Mark(6);   // claim_l0c: 认领 L0C_ACC 的等待, 原先混在 pv_issue 里
                 const uint32_t pc = c - 1;
                 const uint32_t pslot = (pc & 1) * CHUNK;
                 const uint32_t pbase = pc * CHUNK;
