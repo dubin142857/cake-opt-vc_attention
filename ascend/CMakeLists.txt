@@ -29,6 +29,19 @@ separate_arguments(torch_flags NATIVE_COMMAND "${TORCH_CXX_FLAGS}")
 
 ascendc_library(vc910_kernel STATIC csrc/vc_kernel.cpp)
 ascendc_include_directories(vc910_kernel PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/csrc" "${ASCEND_CANN_PACKAGE_PATH}/include")
+#  ★只给**剖面**用的调试行信息, 默认关。开了之后:
+#    - `msprof op simulator` 的指令流水图能标出**源码行** (不开时它报
+#      "Kernel missed debug_line information. If you need code call stack, please recompile kernel with -g option");
+#    - `msprof op --aic-metrics=Source` 的代码热点图才算得出来 (不开时报
+#      "Hot spot function calculate data failed")。
+#  ★默认 OFF: 生产构建的产物指纹必须与交付一致, 这个开关只在取剖面时打开。
+#  ★`ascendc_compile_options` 会把选项包进 -Xaicore-start/-end, 即只给内核侧编译器,
+#    不影响 host 侧 (见 CANN 的 asc_modules/FindASC.cmake:96-117)。
+option(VC_KERNEL_DEBUG_LINE "给内核加 -g, 只为 msprof 的源码行映射; 生产构建请保持 OFF" OFF)
+if(VC_KERNEL_DEBUG_LINE)
+  ascendc_compile_options(vc910_kernel PRIVATE -g)
+  message(STATUS "vc910_kernel: 已加 -g (调试行信息), 这是**剖面用**构建, 不要用于交付")
+endif()
 add_library(vc_ascend_ops SHARED csrc/vc_torch.cpp)
 target_compile_options(vc_ascend_ops PRIVATE ${torch_flags})
 target_compile_definitions(vc_ascend_ops PRIVATE VC_ASCEND_SOC_VERSION="${SOC_VERSION}")

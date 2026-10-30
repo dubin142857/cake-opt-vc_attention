@@ -30,7 +30,10 @@ class NativeBuild(build_py):
                         f"-DSOC_VERSION={soc}",
                         f"-DPython3_EXECUTABLE={sys.executable}",
                         f"-DCMAKE_LIBRARY_OUTPUT_DIRECTORY={destination}",
-                        "-DCMAKE_BUILD_TYPE=Release"], check=True)
+                        "-DCMAKE_BUILD_TYPE=Release",
+                        #  ★VC_KERNEL_DEBUG_LINE=1 只为取 msprof 的源码行映射 (见 CMakeLists),
+                        #    默认关; 打开后产物指纹会变, 不可用于交付。
+                        f"-DVC_KERNEL_DEBUG_LINE={os.environ.get('VC_KERNEL_DEBUG_LINE', 'OFF')}"], check=True)
         subprocess.run(["cmake", "--build", str(native_build), "--parallel",
                         os.environ.get("MAX_JOBS", "4")], check=True)
 
