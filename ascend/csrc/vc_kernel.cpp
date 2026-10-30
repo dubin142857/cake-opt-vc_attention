@@ -48,7 +48,10 @@ public:
     __aicore__ inline void RunVector(GM_ADDR qs, GM_ADDR ks, GM_ADDR vs, GM_ADDR lut,
                               GM_ADDR output, GM_ADDR ws, GM_ADDR trace, const Tiling& t) {
         TPipe pipe;
-        pipe.InitBuffer(rawBuf, ROWS * N * 4);
+        //  ★raw 双缓冲: 趟 1 的 S 搬运与本块计算重叠。UB 精算 (ROWS=32,N=128,MAX_D=128,CHUNK=4):
+        //    raw 2x16384 + score 65536 + p 8192 + acc 16384 + pv 16384 + vs 512 + state 1536
+        //    + lut 512 + sub 16384 + cmp 512 + brcb 2048 = 160768, UB 196608, 余 35840 - reduce_bytes。
+        pipe.InitBuffer(rawBuf, 2 * ROWS * N * 4);
         //  ★score 由单块扩到**整个 chunk**: 两趟法要求全 chunk 用同一归一化基准,
         //    故第一趟算出的分数必须留着给第二趟用 (重读 GM 会让 AIV 读由 186 涨到 335 GB)。
         pipe.InitBuffer(scoreBuf, map::CHUNK * ROWS * N * 4);
@@ -71,7 +74,9 @@ public:
         pipe.InitBuffer(brcbBuf, 2 * ROWS * 8 * 4);
         pipe.InitBuffer(tmpBuf, t.reduce_bytes);
         const int32_t taskDoneEvent = static_cast<int32_t>(pipe.FetchEventID(HardEvent::MTE3_S));
-        auto raw = rawBuf.Get<int32_t>();
+        auto rawAll = rawBuf.Get<int32_t>();
+        //  趟 2 / ExpCast 段仍只用槽 0 —— 那时趟 1 已全部消费完, 槽 0 空闲。
+        auto raw = rawAll;
         auto chunkScore = scoreBuf.Get<float>();   // CHUNK 块连续排布, 第 j 块在 [j*ROWS*NB]
         auto ph = pBuf.Get<half>();
         auto acc = accBuf.Get<float>();
@@ -178,30 +183,45 @@ public:
                 //  ---- 趟 1: 读本 chunk 的全部 S, 施加 scale, 求 chunk 最大 ----
                 Adds(rowmax, m, 0.0f, ROWS);       // 以历史最大起算
                 PipeBarrier<PIPE_V>();
+                //  ---- 趟 1 的软件流水: 第 j+1 块的 S 搬运发在第 j 块的计算**之前** ----
+                //  ★依据 F202: AIV 的 vec 有 32.9% 的时间在等, 其中一处正是本循环里
+                //    `WaitFlag<MTE2_V>` —— 每块都要停下来等 S 从 GM 搬到 UB。
+                //    raw 双缓冲后, 第 j 块算的时候第 j+1 块已在搬, 这道等待就被藏掉。
+                //  ★V_MTE2 是**相邻自配对** (一次性把 V 定序在 MTE2 之前), 故各处都用
+                //    EVENT_ID0 即可; 只有 MTE2_V 要按槽分两个号, 否则第 j 块会吃掉第 j+1 块的置位。
+                //  ★序幕的那对 V_MTE2 仍然必需: 上一 chunk 的 ExpCast 段用 raw 槽 0 存
+                //    gather 偏移, 缺这条序会在 expcast 且 tiles>=2 时触发 aicore exception
+                //    (plog: fftsplus aivector error)。
+                SetFlag<HardEvent::V_MTE2>(EVENT_ID0);
+                WaitFlag<HardEvent::V_MTE2>(EVENT_ID0);
+                DataCopy(rawAll[0], sgs[slot], ROWS * NB);
+                SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
                 for (uint32_t j = 0; j < n_in; ++j) {
                     const uint32_t key = (base_i + j) * NB;
                     auto sc = chunkScore[j * ROWS * NB];
+                    const uint32_t cur = j & 1, nxt = cur ^ 1u;
                 probe.Mark(0);
-                //  ★raw 身兼两职: 这里由 MTE2 接收 S, 到 ExpCast 段又存 gather 的字节偏移
-                //  供向量单元读。移位循环把上一轮的 Gather 与本轮这次 DataCopy 拉得很近,
-                //  缺这条 V->MTE2 的序就会在 expcast 且 tiles>=2 时触发 aicore exception
-                //  (plog: fftsplus aivector error)。此前是用一块独立缓冲绕开的 ——
-                //  那是拿 ROWS*N*4 的 UB 换一条同步, 这里把它换回来。
-                SetFlag<HardEvent::V_MTE2>(EVENT_ID0);
-                WaitFlag<HardEvent::V_MTE2>(EVENT_ID0);
-                DataCopy(raw, sgs[slot + j], ROWS * NB);
                 //  一个 tile 覆盖 KSB_PER_TILE 个 K 量化块, 各有自己的 scale, 连续取。
+                //  ★kscale 的搬运必须发在预取**之前**: MTE2 队列按序, 排在大块预取之后
+                //    会让标量白等一整次 S 搬运。
                 DataCopy(kscale, ksg[(head * (t.kpad / K_SCALE_BLOCK) + key / K_SCALE_BLOCK) * 8],
                          8 * KSB_PER_TILE);
-                SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
-                WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
                 SetFlag<HardEvent::MTE2_S>(EVENT_ID0);
+                if (j + 1 < n_in) {
+                    //  此处的 V_MTE2 守的是 raw[nxt] —— 它上一次被读是第 j-1 块的 Cast,
+                    //  而本语句排在第 j 块的 Cast 之前, 故正好定序在那次读之后。
+                    SetFlag<HardEvent::V_MTE2>(EVENT_ID0);
+                    WaitFlag<HardEvent::V_MTE2>(EVENT_ID0);
+                    DataCopy(rawAll[nxt * ROWS * N], sgs[slot + j + 1], ROWS * NB);
+                    SetFlag<HardEvent::MTE2_V>(static_cast<event_t>(nxt));
+                }
                 WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);
                 float seg_scale[KSB_PER_TILE];
                 for (uint32_t sb = 0; sb < KSB_PER_TILE; ++sb)
                     seg_scale[sb] = (qscale.GetValue(0) * kscale.GetValue(sb * 8)) * t.scale;
+                WaitFlag<HardEvent::MTE2_V>(static_cast<event_t>(cur));
                 probe.Mark(1); // MTE2_S above completed raw scs and scale loads
-                Cast(sc, raw, RoundMode::CAST_NONE, ROWS * NB);
+                Cast(sc, rawAll[cur * ROWS * N], RoundMode::CAST_NONE, ROWS * NB);
                 PipeBarrier<PIPE_V>();
                 //  按列半区施加 scale: 一个 repeat 覆盖 64 个 fp32, K_SCALE_BLOCK 是 64 的整数倍,
                 //  故量化块边界落在 repeat 边界上, 每块用 K_SCALE_BLOCK/64 次调用,
