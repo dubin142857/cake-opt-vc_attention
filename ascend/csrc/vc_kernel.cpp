@@ -452,6 +452,16 @@ public:
             auto *qbase = qg + head * uint64_t(t.qpad) * t.dim + uint64_t(qr) * t.dim;
             auto *kbase = kg + head * uint64_t(t.kpad) * t.dim;
             auto *vbase = vg + head * uint64_t(t.kpad) * t.dim;
+            //  ---- Q 常驻 L1: 每**任务**装一次, 不随键块重复读 -------------------
+            //  ★Q 在一个任务的全部键块上都相同; 原先它与 K 合在一次 gm2l1 里,
+            //    于是被重读了 tiles 次 (37741^2/28 头上约 40 GB = GM_to_L1 的 12%)。
+            //  旗标: 认领"L1_Q 可覆写"(MTE1->MTE2), 装完发"数据就绪"(MTE2->MTE1),
+            //    在 MTE1 上等一次即可 —— 任务内无人覆写它, 故每块不必再等。
+            //    任务末归还可覆写许可, 收支与内核级 Preset/Clear 仍恒为零。
+            WaitFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(uint32_t(EV_L1A_PING)));
+            qk_gm2l1_q(qbase, uint16_t(t.dim), uint16_t(t.dim));
+            SetFlag<HardEvent::MTE2_MTE1>(static_cast<event_t>(uint32_t(EV_L1A_PING)));
+            WaitFlag<HardEvent::MTE2_MTE1>(static_cast<event_t>(uint32_t(EV_L1A_PING)));
             uint32_t outstanding = 0;
             for (uint32_t c = 0; c <= chunks; ++c) {
                 //  相 1: 本 chunk 的全部 QK, 末尾只置一次 S_READY
@@ -472,12 +482,10 @@ public:
                     //      另一个东西, 不是这里要的全局 event_t, 所以三次构建都没对上。
                     //  事件号按 (from,to) pipe 对分作用域, 取值见 vc_l1l0_map.h 的 EV_GROUPS。
                     //  序幕: **先认领** PING 槽再装 —— 不是直接 set 许可 (见入口处的说明)。
-                    WaitFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(uint32_t(EV_L1A_PING)));
                     WaitFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(uint32_t(EV_L1B_PING)));
-                    qk_gm2l1(1, qbase, kbase + uint64_t(base_i) * NB * t.dim,
-                             uint16_t(t.dim), uint16_t(t.dim), uint16_t(t.dim));
+                    qk_gm2l1_k(1, kbase + uint64_t(base_i) * NB * t.dim,
+                               uint16_t(t.dim), uint16_t(t.dim));
                     if (VC_SYNC_GM2L1) asc_sync();
-                    SetFlag<HardEvent::MTE2_MTE1>(static_cast<event_t>(uint32_t(EV_L1A_PING)));
                     SetFlag<HardEvent::MTE2_MTE1>(static_cast<event_t>(uint32_t(EV_L1B_PING)));
                     for (uint32_t j = 0; j < n_in; ++j) {
                         //  ★j 为偶数用 PING, 奇数用 PONG —— 必须与上面序幕装的那一槽一致。
@@ -486,31 +494,25 @@ public:
                         //    (实测: 141 例的第 1 例就卡住不动)。
                         //    ★这类错 detsync_lint 的 H7 看不见 —— 旗标**次数**是相等的, 错的是**配对**。
                         const uint32_t cur = (j & 1) ? 0u : 1u, nxt = cur ^ 1u;
-                        const uint32_t ev_l1a_c = cur ? EV_L1A_PING : EV_L1A_PONG;
+                        //  ★A 侧已常驻, 不再有 ev_l1a_*; 只有 K 随块交替。
                         const uint32_t ev_l1b_c = cur ? EV_L1B_PING : EV_L1B_PONG;
-                        const uint32_t ev_l1a_n = nxt ? EV_L1A_PING : EV_L1A_PONG;
                         const uint32_t ev_l1b_n = nxt ? EV_L1B_PING : EV_L1B_PONG;
                         const uint32_t ev_l0a = cur ? EV_L0A_PING : EV_L0A_PONG;
                         const uint32_t ev_l0b = cur ? EV_L0B_PING : EV_L0B_PONG;
                         const uint32_t ev_l0c = cur ? EV_L0C_PING : EV_L0C_PONG;
                         //  ★先发下一块的搬运 —— 它与本块的 MTE1/M/FIX 并行, 这是收益来源
                         if (j + 1 < n_in) {
-                            WaitFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(ev_l1a_n));
                             WaitFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(ev_l1b_n));
-                            qk_gm2l1(nxt, qbase,
-                                     kbase + uint64_t(base_i + j + 1) * NB * t.dim,
-                                     uint16_t(t.dim), uint16_t(t.dim), uint16_t(t.dim));
+                            qk_gm2l1_k(nxt, kbase + uint64_t(base_i + j + 1) * NB * t.dim,
+                                       uint16_t(t.dim), uint16_t(t.dim));
                             if (VC_SYNC_GM2L1) asc_sync();
-                            SetFlag<HardEvent::MTE2_MTE1>(static_cast<event_t>(ev_l1a_n));
                             SetFlag<HardEvent::MTE2_MTE1>(static_cast<event_t>(ev_l1b_n));
                         }
-                        WaitFlag<HardEvent::MTE2_MTE1>(static_cast<event_t>(ev_l1a_c));
                         WaitFlag<HardEvent::MTE2_MTE1>(static_cast<event_t>(ev_l1b_c));
                         WaitFlag<HardEvent::M_MTE1>(static_cast<event_t>(ev_l0a));
                         WaitFlag<HardEvent::M_MTE1>(static_cast<event_t>(ev_l0b));
                         qk_l12l0(cur, uint16_t(t.dim));
                         if (VC_SYNC_L12L0) asc_sync();
-                        SetFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(ev_l1a_c));
                         SetFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(ev_l1b_c));
                         SetFlag<HardEvent::MTE1_M>(static_cast<event_t>(ev_l0a));
                         SetFlag<HardEvent::MTE1_M>(static_cast<event_t>(ev_l0b));
@@ -565,6 +567,8 @@ public:
                 ++outstanding;
             }
             while (outstanding) { CrossCoreWaitFlag(O_USED); --outstanding; }
+            //  归还 L1_Q 的"可覆写"许可, 与任务头的认领配对。
+            SetFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(uint32_t(EV_L1A_PING)));
         }
         //  ---- 内核级 ClearFlag: 把入口发出的许可全部收回 ----------------------
         //  ★少收一个就会留给**下一次启动**, 表现为"形状一变第一次调用就错"。

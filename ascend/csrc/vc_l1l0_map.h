@@ -138,6 +138,11 @@ constexpr uint32_t L1_A_PING = 0 * L1_SLOT;
 constexpr uint32_t L1_A_PONG = 1 * L1_SLOT;
 constexpr uint32_t L1_B_PING = 2 * L1_SLOT;
 constexpr uint32_t L1_B_PONG = 3 * L1_SLOT;
+//  ★Q 常驻: Q 在一个任务的**所有键块上都相同**, 故每任务只装一次, 不随键块双缓冲。
+//    省下的 GM->L1 流量 = Q 片 8192 B x (tiles-1) x 任务数; 37741^2/28 头上约 40 GB,
+//    占 GM_to_L1 334.6 GB 的 12% (F196: mte2 是 binding pipe, 减输入流量直接减它)。
+//    复用 A 的 PING 槽: A 不再需要双缓冲, 而 L1_A_PONG 正好留给 PV 的 P 片, 冲突反而少一处。
+constexpr uint32_t L1_Q = L1_A_PING;
 constexpr uint32_t L1_DIAG_PING = 4 * L1_SLOT;   // Phase 3 预留
 constexpr uint32_t L1_DIAG_PONG = 5 * L1_SLOT;   // Phase 3 预留
 constexpr uint32_t L1_ACC_PING  = 6 * L1_SLOT;   // Phase 3 预留

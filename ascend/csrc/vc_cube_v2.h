@@ -71,20 +71,24 @@ constexpr uint8_t UNIT_FLAG_OFF = 0;
 //    fix   : FIX 读 L0C   -> notify(FIX,M)          ; 先 wait(M,FIX)
 //  调用方把第 j+1 块的 gm2l1 发在第 j 块的 l12l0/mad/fix **之前**, 重叠即由此而来。
 
-__aicore__ inline void qk_gm2l1(uint32_t ping, __gm__ int8_t *gm_q, __gm__ int8_t *gm_k,
-                                uint16_t d, uint16_t q_row_stride, uint16_t k_row_stride) {
-    auto l1a = reinterpret_cast<__cbuf__ int8_t *>(
-        static_cast<uintptr_t>(ping ? L1_A_PING : L1_A_PONG));
+//  ★Q 与 K 分开装载: Q 每**任务**一次 (常驻 L1_Q), K 每**键块**一次 (双缓冲)。
+//    原先两者合在一起, 于是 Q 跟着 K 被重复读了 tiles 次 —— 纯浪费的 GM->L1 流量。
+//  nd_num=1 只搬一个矩阵; n_value/d_value 是本块行/列数; src_d_value 是 GM 相邻行的元素步长。
+__aicore__ inline void qk_gm2l1_q(__gm__ int8_t *gm_q, uint16_t d, uint16_t q_row_stride) {
+    auto l1a = reinterpret_cast<__cbuf__ int8_t *>(static_cast<uintptr_t>(L1_Q));
+    asc_copy_gm2l1_nd2nz(l1a, gm_q, 1, MBLK, d, 0, q_row_stride, MBLK, 1, 0);
+}
+
+__aicore__ inline void qk_gm2l1_k(uint32_t ping, __gm__ int8_t *gm_k,
+                                  uint16_t d, uint16_t k_row_stride) {
     auto l1b = reinterpret_cast<__cbuf__ int8_t *>(
         static_cast<uintptr_t>(ping ? L1_B_PING : L1_B_PONG));
-    //  nd_num=1 只搬一个矩阵; n_value/d_value 是本块行/列数; src_d_value 是 GM 相邻行的元素步长。
-    asc_copy_gm2l1_nd2nz(l1a, gm_q, 1, MBLK, d, 0, q_row_stride, MBLK, 1, 0);
     asc_copy_gm2l1_nd2nz(l1b, gm_k, 1, NBLK, d, 0, k_row_stride, NBLK, 1, 0);
 }
 
 __aicore__ inline void qk_l12l0(uint32_t ping, uint16_t d) {
-    auto l1a = reinterpret_cast<__cbuf__ int8_t *>(
-        static_cast<uintptr_t>(ping ? L1_A_PING : L1_A_PONG));
+    //  ★A 侧读的是**常驻**的 L1_Q, 与 ping 无关; 只有 B(K) 随键块双缓冲。
+    auto l1a = reinterpret_cast<__cbuf__ int8_t *>(static_cast<uintptr_t>(L1_Q));
     auto l1b = reinterpret_cast<__cbuf__ int8_t *>(
         static_cast<uintptr_t>(ping ? L1_B_PING : L1_B_PONG));
     auto l0a = reinterpret_cast<__ca__ int8_t *>(
@@ -134,7 +138,8 @@ __aicore__ inline void qk_fix(uint32_t ping, __gm__ int32_t *gm_s, uint16_t s_co
 __aicore__ inline void mm_qk(__gm__ int32_t *gm_s, __gm__ int8_t *gm_q, __gm__ int8_t *gm_k,
                              uint16_t d, uint16_t q_row_stride, uint16_t k_row_stride,
                              uint16_t s_cols) {
-    qk_gm2l1(1, gm_q, gm_k, d, q_row_stride, k_row_stride);
+    qk_gm2l1_q(gm_q, d, q_row_stride);
+    qk_gm2l1_k(1, gm_k, d, k_row_stride);
     asc_sync();
     qk_l12l0(1, d);
     asc_sync();
