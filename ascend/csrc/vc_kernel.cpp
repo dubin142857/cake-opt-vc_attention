@@ -374,7 +374,13 @@ private:
 //    保守的 asc_sync(), 标志协议保持不动。若这样能恢复正确, 说明缺陷在**标志协议**;
 //    若仍错, 说明缺陷在**四段函数本身或 ping/pong 寻址**, 那是另一条路。
 //    读码已经数不出问题 (单轮的 notify/wait 计数逐条核过是平衡的), 故改用实验。
-constexpr bool VC_QK_SYNC_A = false;
+//  ---- 二分旋钮: 四段各自的保守屏障, 用留一法定位哪一道在承担顺序 ----------
+//  ★实测前提 (F195, 卡 3, 与对照同卡): 四道全开时流水版**确定**且与 _sync 版
+//    逐位相同; 全关时同一形状三次三种结果。故竞态在旗标协议, 不在寻址或结构。
+constexpr bool VC_SYNC_GM2L1 = false;   // 序幕与预取的 GM->L1 之后
+constexpr bool VC_SYNC_L12L0 = false;   // L1->L0 之后
+constexpr bool VC_SYNC_MAD   = false;   // mad 之后
+constexpr bool VC_SYNC_FIX   = true;   // fixpipe 之后
 
 //  ---- CubeV2: 按 chunk 分阶段的手写 cube ------------------------------------
 //  ★与旧 Cube 并存, **本轮尚未接进 RunAttention** —— 先让它被真正代码生成并过 lint,
@@ -465,7 +471,7 @@ public:
                     WaitFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(uint32_t(EV_L1B_PING)));
                     qk_gm2l1(1, qbase, kbase + uint64_t(base_i) * NB * t.dim,
                              uint16_t(t.dim), uint16_t(t.dim), uint16_t(t.dim));
-                    if (VC_QK_SYNC_A) asc_sync();
+                    if (VC_SYNC_GM2L1) asc_sync();
                     SetFlag<HardEvent::MTE2_MTE1>(static_cast<event_t>(uint32_t(EV_L1A_PING)));
                     SetFlag<HardEvent::MTE2_MTE1>(static_cast<event_t>(uint32_t(EV_L1B_PING)));
                     for (uint32_t j = 0; j < n_in; ++j) {
@@ -489,6 +495,7 @@ public:
                             qk_gm2l1(nxt, qbase,
                                      kbase + uint64_t(base_i + j + 1) * NB * t.dim,
                                      uint16_t(t.dim), uint16_t(t.dim), uint16_t(t.dim));
+                            if (VC_SYNC_GM2L1) asc_sync();
                             SetFlag<HardEvent::MTE2_MTE1>(static_cast<event_t>(ev_l1a_n));
                             SetFlag<HardEvent::MTE2_MTE1>(static_cast<event_t>(ev_l1b_n));
                         }
@@ -497,7 +504,7 @@ public:
                         WaitFlag<HardEvent::M_MTE1>(static_cast<event_t>(ev_l0a));
                         WaitFlag<HardEvent::M_MTE1>(static_cast<event_t>(ev_l0b));
                         qk_l12l0(cur, uint16_t(t.dim));
-                        if (VC_QK_SYNC_A) asc_sync();   // 二分实验 A
+                        if (VC_SYNC_L12L0) asc_sync();
                         SetFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(ev_l1a_c));
                         SetFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(ev_l1b_c));
                         SetFlag<HardEvent::MTE1_M>(static_cast<event_t>(ev_l0a));
@@ -507,14 +514,14 @@ public:
                         WaitFlag<HardEvent::MTE1_M>(static_cast<event_t>(ev_l0b));
                         WaitFlag<HardEvent::FIX_M>(static_cast<event_t>(ev_l0c));
                         qk_mad(cur, uint16_t(t.dim));
-                        if (VC_QK_SYNC_A) asc_sync();   // 二分实验 A
+                        if (VC_SYNC_MAD) asc_sync();
                         SetFlag<HardEvent::M_MTE1>(static_cast<event_t>(ev_l0a));
                         SetFlag<HardEvent::M_MTE1>(static_cast<event_t>(ev_l0b));
                         SetFlag<HardEvent::M_FIX>(static_cast<event_t>(ev_l0c));
 
                         WaitFlag<HardEvent::M_FIX>(static_cast<event_t>(ev_l0c));
                         qk_fix(cur, sg + uint64_t(slot + j) * MT * NB, uint16_t(NB));
-                        if (VC_QK_SYNC_A) asc_sync();   // 二分实验 A
+                        if (VC_SYNC_FIX) asc_sync();
                         SetFlag<HardEvent::FIX_M>(static_cast<event_t>(ev_l0c));
                     }
                     //  排空: 把上面预置而未被消费的"可覆写"许可收回, 否则跨 chunk 会多算
