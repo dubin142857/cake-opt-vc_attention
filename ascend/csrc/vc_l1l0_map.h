@@ -143,10 +143,22 @@ constexpr uint32_t L1_B_PONG = 3 * L1_SLOT;
 //    占 GM_to_L1 334.6 GB 的 12% (F196: mte2 是 binding pipe, 减输入流量直接减它)。
 //    复用 A 的 PING 槽: A 不再需要双缓冲, 而 L1_A_PONG 正好留给 PV 的 P 片, 冲突反而少一处。
 constexpr uint32_t L1_Q = L1_A_PING;
-constexpr uint32_t L1_DIAG_PING = 4 * L1_SLOT;   // Phase 3 预留
-constexpr uint32_t L1_DIAG_PONG = 5 * L1_SLOT;   // Phase 3 预留
-constexpr uint32_t L1_ACC_PING  = 6 * L1_SLOT;   // Phase 3 预留
-constexpr uint32_t L1_ACC_PONG  = 7 * L1_SLOT;   // Phase 3 预留
+constexpr uint32_t L1_DIAG_PING = 4 * L1_SLOT;
+constexpr uint32_t L1_DIAG_PONG = 5 * L1_SLOT;
+constexpr uint32_t L1_ACC_PING  = 6 * L1_SLOT;
+constexpr uint32_t L1_ACC_PONG  = 7 * L1_SLOT;
+
+//  ---- PV 相的 P/V 双缓冲 (F209) -------------------------------------------
+//  ★PV 相原先用 L1_A_PONG(P) 与 L1_B_PONG(V), 后者与 QK 的 K 槽**冲突**, 只能靠
+//    chunk 末的全屏障挡着。改用后四个槽 (原 Phase 3 预留) 之后, PV 与 QK 的 L1
+//    **完全不相交**, 那道交接少一项。
+//  ★尺寸: P 片 MBLK*NBLK*2 = 16384 B · V 片 NBLK*D_MAX*2 = 32768 B, 均 < L1_SLOT。
+constexpr uint32_t L1_PV_P_PING = L1_DIAG_PING;
+constexpr uint32_t L1_PV_P_PONG = L1_DIAG_PONG;
+constexpr uint32_t L1_PV_V_PING = L1_ACC_PING;
+constexpr uint32_t L1_PV_V_PONG = L1_ACC_PONG;
+static_assert(MBLK * NBLK * 2 <= L1_SLOT, "PV 的 P 片必须装得进一个 L1 槽");
+static_assert(NBLK * D_MAX * 2 <= L1_SLOT, "PV 的 V 片必须装得进一个 L1 槽");
 
 static_assert(L1_SLOT * 8 == L1_SIZE, "八个槽应正好填满 L1");
 static_assert(BLK_B16 <= L1_SLOT, "一个 fp16 基本块必须装得进一个 L1 槽");
@@ -201,21 +213,25 @@ constexpr uint8_t EV_L1A_PING = 0, EV_L1A_PONG = 1;   // 对: MTE2<->MTE1
 constexpr uint8_t EV_L1B_PING = 2, EV_L1B_PONG = 3;   // 同上, 与 A 同对故须错开
 constexpr uint8_t EV_L0A_PING = 0, EV_L0A_PONG = 1;   // 对: MTE1<->M
 constexpr uint8_t EV_L0B_PING = 2, EV_L0B_PONG = 3;   // 同上, 与 L0A 同对故须错开
+//  PV 的 P/V 双缓冲与 Q/K 同在 MTE2<->MTE1 对上, 故接着往下排, **正好填满 0..7**。
+constexpr uint8_t EV_PVP_PING = 4, EV_PVP_PONG = 5;   // 对: MTE2<->MTE1
+constexpr uint8_t EV_PVV_PING = 6, EV_PVV_PONG = 7;   // 同上
 constexpr uint8_t EV_L0C_PING = 0, EV_L0C_PONG = 1;   // 对: M<->FIX
 
 //  ★守的是**每个 pipe 对内**的互异与范围。跨对复用是合法的 (上面 L1A 与 L0A 都是 0),
 //    所以不能再用一张扁平表做全局唯一 —— 那正是被修掉的过约束。
-struct EvGroup { const char *pair; uint8_t a, b, c, d; uint8_t n; };
+//  ★由四个号扩到八个: MTE2<->MTE1 这一对现在同时服务 Q/K 与 PV 的 P/V, 共八个号。
+//    若仍只存四个, 唯一性检查就**看不见后面四个**, 撞号时它会静默放行。
+struct EvGroup { const char *pair; uint8_t id[8]; uint8_t n; };
 constexpr EvGroup EV_GROUPS[] = {
-    {"MTE2<->MTE1 (L1)", EV_L1A_PING, EV_L1A_PONG, EV_L1B_PING, EV_L1B_PONG, 4},
-    {"MTE1<->M (L0)",    EV_L0A_PING, EV_L0A_PONG, EV_L0B_PING, EV_L0B_PONG, 4},
-    {"M<->FIX (L0C)",    EV_L0C_PING, EV_L0C_PONG, 0,           0,           2},
+    {"MTE2<->MTE1 (L1)", {EV_L1A_PING, EV_L1A_PONG, EV_L1B_PING, EV_L1B_PONG,
+                          EV_PVP_PING, EV_PVP_PONG, EV_PVV_PING, EV_PVV_PONG}, 8},
+    {"MTE1<->M (L0)",    {EV_L0A_PING, EV_L0A_PONG, EV_L0B_PING, EV_L0B_PONG}, 4},
+    {"M<->FIX (L0C)",    {EV_L0C_PING, EV_L0C_PONG}, 2},
 };
 constexpr uint32_t EV_GROUP_N = sizeof(EV_GROUPS) / sizeof(EvGroup);
 
-constexpr uint8_t _ev_at(const EvGroup &g, uint8_t i) {
-    return i == 0 ? g.a : i == 1 ? g.b : i == 2 ? g.c : g.d;
-}
+constexpr uint8_t _ev_at(const EvGroup &g, uint8_t i) { return g.id[i]; }
 constexpr bool _ev_group_unique(const EvGroup &g, uint8_t i = 0, uint8_t j = 1) {
     return i >= g.n ? true
          : j >= g.n ? _ev_group_unique(g, i + 1, i + 2)

@@ -443,6 +443,11 @@ constexpr bool VC_SYNC_FIX   = false;  // fixpipe 之后
 //    _sync 版每段自带同步故循环结束必已排空; 流水版则可能在最后一块的 mad/fix 还在跑时,
 //    PV 相已开始往同一组 L0 槽装数据。若成立, 循环后单屏障就够, 且 CHUNK=4 故屏障少四倍。
 constexpr bool VC_SYNC_CHUNK_END = true;
+//  ---- PV 相的软件流水 (F209) ----------------------------------------------
+//  ★两侧测量: AIC 是关键路径且几乎从不等待 (等 AIV 仅 0.2%), 而它每 chunk 的时间
+//    被 pv_issue 吃掉 **80.6%** —— 因为 mm_pv_acc 全用 _sync 变体, 每步自等自己。
+//  false 走原来的 mm_pv_acc (保留以便 A/B), true 走四段流水。
+constexpr bool VC_PV_PIPE = true;
 
 //  ---- CubeV2: 按 chunk 分阶段的手写 cube ------------------------------------
 //  ★与旧 Cube 并存, **本轮尚未接进 RunAttention** —— 先让它被真正代码生成并过 lint,
@@ -503,6 +508,11 @@ public:
         SetFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(uint32_t(EV_L1A_PONG)));
         SetFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(uint32_t(EV_L1B_PING)));
         SetFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(uint32_t(EV_L1B_PONG)));
+        //  PV 的 P/V 双缓冲四个槽 (同在 MTE2<->MTE1 对上, 号 4..7)
+        SetFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(uint32_t(EV_PVP_PING)));
+        SetFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(uint32_t(EV_PVP_PONG)));
+        SetFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(uint32_t(EV_PVV_PING)));
+        SetFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(uint32_t(EV_PVV_PONG)));
         SetFlag<HardEvent::M_MTE1>(static_cast<event_t>(uint32_t(EV_L0A_PING)));
         SetFlag<HardEvent::M_MTE1>(static_cast<event_t>(uint32_t(EV_L0A_PONG)));
         SetFlag<HardEvent::M_MTE1>(static_cast<event_t>(uint32_t(EV_L0B_PING)));
@@ -618,14 +628,68 @@ public:
                 WaitFlag<HardEvent::FIX_M>(static_cast<event_t>(uint32_t(map::EV_L0C_PING)));
                 const uint32_t pc = c - 1;
                 const uint32_t pslot = (pc & 1) * CHUNK;
-                for (uint32_t j = 0; j < CHUNK; ++j) {
-                    const uint32_t i = pc * CHUNK + j;
-                    if (i >= tiles) break;
-                    auto *pp = pg + uint64_t(pslot + j) * MT * NB;
-                    auto *vv = vbase + uint64_t(i) * NB * t.dim;
-                    //  ★只有 chunk 内第一块把 L0C 置零; 其余累加 —— 这正是 O 只搬一次的机制。
-                    if (j == 0) mm_pv_acc<true>(pp, vv, uint16_t(t.dim), uint16_t(NB), uint16_t(t.dim));
-                    else        mm_pv_acc<false>(pp, vv, uint16_t(t.dim), uint16_t(NB), uint16_t(t.dim));
+                const uint32_t pbase = pc * CHUNK;
+                const uint32_t n_pv = (tiles - pbase) < CHUNK ? (tiles - pbase) : CHUNK;
+                if (!VC_PV_PIPE) {
+                    for (uint32_t j = 0; j < n_pv; ++j) {
+                        auto *pp = pg + uint64_t(pslot + j) * MT * NB;
+                        auto *vv = vbase + uint64_t(pbase + j) * NB * t.dim;
+                        //  ★只有 chunk 内第一块把 L0C 置零; 其余累加 —— 这正是 O 只搬一次的机制。
+                        if (j == 0) mm_pv_acc<true>(pp, vv, uint16_t(t.dim), uint16_t(NB), uint16_t(t.dim));
+                        else        mm_pv_acc<false>(pp, vv, uint16_t(t.dim), uint16_t(NB), uint16_t(t.dim));
+                    }
+                } else {
+                    //  ---- PV 的四段流水 (与 QK 同形) ------------------------------
+                    //  序幕: **先认领** PING 槽再装 —— 与 QK 同一教训: 直接 set 许可
+                    //  等于在上一次启动的遗留状态之上追加。
+                    WaitFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(uint32_t(EV_PVP_PING)));
+                    WaitFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(uint32_t(EV_PVV_PING)));
+                    pv_gm2l1(1, pg + uint64_t(pslot) * MT * NB,
+                             vbase + uint64_t(pbase) * NB * t.dim,
+                             uint16_t(t.dim), uint16_t(NB), uint16_t(t.dim));
+                    SetFlag<HardEvent::MTE2_MTE1>(static_cast<event_t>(uint32_t(EV_PVP_PING)));
+                    SetFlag<HardEvent::MTE2_MTE1>(static_cast<event_t>(uint32_t(EV_PVV_PING)));
+                    for (uint32_t j = 0; j < n_pv; ++j) {
+                        //  ★槽配对与 QK 同: j 偶用 PING, 奇用 PONG, 必须与序幕装的那一槽一致
+                        //    (写成 cur = j & 1 会让 j=0 取 PONG 而序幕装的是 PING, 直接死锁;
+                        //     H7 看不见 —— 次数相等, 错的是配对)。
+                        const uint32_t cur = (j & 1) ? 0u : 1u, nxt = cur ^ 1u;
+                        const uint32_t ev_p_c = cur ? EV_PVP_PING : EV_PVP_PONG;
+                        const uint32_t ev_v_c = cur ? EV_PVV_PING : EV_PVV_PONG;
+                        const uint32_t ev_p_n = nxt ? EV_PVP_PING : EV_PVP_PONG;
+                        const uint32_t ev_v_n = nxt ? EV_PVV_PING : EV_PVV_PONG;
+                        const uint32_t ev_l0a = cur ? EV_L0A_PING : EV_L0A_PONG;
+                        const uint32_t ev_l0b = cur ? EV_L0B_PING : EV_L0B_PONG;
+                        if (j + 1 < n_pv) {
+                            WaitFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(ev_p_n));
+                            WaitFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(ev_v_n));
+                            pv_gm2l1(nxt, pg + uint64_t(pslot + j + 1) * MT * NB,
+                                     vbase + uint64_t(pbase + j + 1) * NB * t.dim,
+                                     uint16_t(t.dim), uint16_t(NB), uint16_t(t.dim));
+                            SetFlag<HardEvent::MTE2_MTE1>(static_cast<event_t>(ev_p_n));
+                            SetFlag<HardEvent::MTE2_MTE1>(static_cast<event_t>(ev_v_n));
+                        }
+                        WaitFlag<HardEvent::MTE2_MTE1>(static_cast<event_t>(ev_p_c));
+                        WaitFlag<HardEvent::MTE2_MTE1>(static_cast<event_t>(ev_v_c));
+                        WaitFlag<HardEvent::M_MTE1>(static_cast<event_t>(ev_l0a));
+                        WaitFlag<HardEvent::M_MTE1>(static_cast<event_t>(ev_l0b));
+                        pv_l12l0(cur, uint16_t(t.dim));
+                        SetFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(ev_p_c));
+                        SetFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(ev_v_c));
+                        SetFlag<HardEvent::MTE1_M>(static_cast<event_t>(ev_l0a));
+                        SetFlag<HardEvent::MTE1_M>(static_cast<event_t>(ev_l0b));
+
+                        WaitFlag<HardEvent::MTE1_M>(static_cast<event_t>(ev_l0a));
+                        WaitFlag<HardEvent::MTE1_M>(static_cast<event_t>(ev_l0b));
+                        //  ★只有第一块把 L0C 置零; 其余累加 —— O 只搬一次的机制不变。
+                        if (j == 0) pv_mad<true>(cur, uint16_t(t.dim));
+                        else        pv_mad<false>(cur, uint16_t(t.dim));
+                        SetFlag<HardEvent::M_MTE1>(static_cast<event_t>(ev_l0a));
+                        SetFlag<HardEvent::M_MTE1>(static_cast<event_t>(ev_l0b));
+                    }
+                    //  L0C 的累加全部落定之后才能 fixpipe 搬出 (原先由 asc_mmad_sync 保证)。
+                    SetFlag<HardEvent::M_FIX>(static_cast<event_t>(uint32_t(map::EV_L0C_PING)));
+                    WaitFlag<HardEvent::M_FIX>(static_cast<event_t>(uint32_t(map::EV_L0C_PING)));
                 }
                 pv_flush(og + uint64_t(pc & 1) * MT * t.dim, uint16_t(t.dim), uint16_t(t.dim));
                 //  释放 L0C_PING, 与上面的认领配对 (pv_flush 用的是 _sync 变体, 已自带排空)。
@@ -645,6 +709,10 @@ public:
         WaitFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(uint32_t(EV_L1A_PONG)));
         WaitFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(uint32_t(EV_L1B_PING)));
         WaitFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(uint32_t(EV_L1B_PONG)));
+        WaitFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(uint32_t(EV_PVP_PING)));
+        WaitFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(uint32_t(EV_PVP_PONG)));
+        WaitFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(uint32_t(EV_PVV_PING)));
+        WaitFlag<HardEvent::MTE1_MTE2>(static_cast<event_t>(uint32_t(EV_PVV_PONG)));
         WaitFlag<HardEvent::M_MTE1>(static_cast<event_t>(uint32_t(EV_L0A_PING)));
         WaitFlag<HardEvent::M_MTE1>(static_cast<event_t>(uint32_t(EV_L0A_PONG)));
         WaitFlag<HardEvent::M_MTE1>(static_cast<event_t>(uint32_t(EV_L0B_PING)));

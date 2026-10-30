@@ -198,6 +198,56 @@ __aicore__ inline void mm_pv_acc(__gm__ half *gm_p, __gm__ half *gm_v,
     asc_mmad_sync(l0c, l0a, l0b, MBLK, NBLK, d, UNIT_FLAG_OFF, false, false, Init);
 }
 
+//  ---- PV 的软件流水 (与 QK 同形, F209) ---------------------------------------
+//  ★依据 F209 的两侧测量: AIC 是关键路径且**几乎从不等待** (等 AIV 仅 0.2%),
+//    而它每 chunk 的时间被 `pv_issue` 吃掉 **80.6%** —— 因为 mm_pv_acc 全用 `_sync`
+//    变体, 每一步都自等自己, 完全串行。
+//  ★槽位: P/V 改用 L1 的后四个槽 (原 Phase 3 预留), 与 QK 的 Q/K 槽**完全不相交**;
+//    L0A/L0B 复用 PING/PONG 两半 (PV 的 A 16384 B · B 32768 B, 都在半区内);
+//    L0C_ACC 是 chunk 内的累加器, **不双缓冲**。
+//  ★事件号: P/V 取 MTE2<->MTE1 对的 4..7, 与 Q/K 的 0..3 同对但互异 (见 EV_GROUPS)。
+__aicore__ inline void pv_gm2l1(uint32_t ping, __gm__ half *gm_p, __gm__ half *gm_v,
+                                uint16_t d, uint16_t p_row_stride, uint16_t v_row_stride) {
+    auto l1a = reinterpret_cast<__cbuf__ half *>(
+        static_cast<uintptr_t>(ping ? L1_PV_P_PING : L1_PV_P_PONG));
+    auto l1b = reinterpret_cast<__cbuf__ half *>(
+        static_cast<uintptr_t>(ping ? L1_PV_V_PING : L1_PV_V_PONG));
+    asc_copy_gm2l1_nd2nz(l1a, gm_p, 1, MBLK, NBLK, 0, p_row_stride, MBLK, 1, 0);
+    asc_copy_gm2l1_nd2nz(l1b, gm_v, 1, NBLK, d, 0, v_row_stride, NBLK, 1, 0);
+}
+
+__aicore__ inline void pv_l12l0(uint32_t ping, uint16_t d) {
+    auto l1a = reinterpret_cast<__cbuf__ half *>(
+        static_cast<uintptr_t>(ping ? L1_PV_P_PING : L1_PV_P_PONG));
+    auto l1b = reinterpret_cast<__cbuf__ half *>(
+        static_cast<uintptr_t>(ping ? L1_PV_V_PING : L1_PV_V_PONG));
+    auto l0a = reinterpret_cast<__ca__ half *>(
+        static_cast<uintptr_t>(ping ? L0A_PING : L0A_PONG));
+    auto l0b = reinterpret_cast<__cb__ half *>(
+        static_cast<uintptr_t>(ping ? L0B_PING : L0B_PONG));
+    //  A (P, half, c0=16): 与 QK 同法按 m 分块。
+    for (uint16_t mm = 0; mm < MBLK / 16; ++mm)
+        asc_copy_l12l0a(l0a + mm * NBLK * 16, l1a + mm * 16 * C0_HALF, 0,
+                        uint8_t(NBLK / C0_HALF), uint16_t(MBLK / 16), 0);
+    //  ★B (V, half): 硬件 transpose 取 true —— 与 K 相反, 见 mm_pv_acc 处的两个独立来源。
+    //    原先这里跟一道 asc_sync() (因为内建没有 _sync 变体); 流水版改由
+    //    MTE1->M 的旗标定序, 故去掉那道全屏障。
+    for (uint16_t kk = 0; kk < NBLK / 16; ++kk)
+        load_cbuf_to_cb(l0b + kk * d * 16, l1b + kk * 16 * C0_HALF, 0,
+                        uint8_t(d / 16), uint16_t(NBLK / 16), 0, 0, true, inc);
+}
+
+template <bool Init>
+__aicore__ inline void pv_mad(uint32_t ping, uint16_t d) {
+    auto l0a = reinterpret_cast<__ca__ half *>(
+        static_cast<uintptr_t>(ping ? L0A_PING : L0A_PONG));
+    auto l0b = reinterpret_cast<__cb__ half *>(
+        static_cast<uintptr_t>(ping ? L0B_PING : L0B_PONG));
+    auto l0c = reinterpret_cast<__cc__ float *>(static_cast<uintptr_t>(L0C_ACC));
+    //  m=MBLK, k=NBLK, n=d。Init=false 时累加进 L0C 已有内容。
+    asc_mmad(l0c, l0a, l0b, MBLK, NBLK, d, UNIT_FLAG_OFF, false, false, Init);
+}
+
 //  把 chunk 内累好的 O 从 L0C 搬到 GM。公开层没有 L0C->GM 的搬运函数,
 //  只有配置函数 asc_set_l0c2gm_config, 故发射仍用内建 (查过 c_api 全树)。
 __aicore__ inline void pv_flush(__gm__ float *gm_o, uint16_t d, uint16_t o_cols) {
