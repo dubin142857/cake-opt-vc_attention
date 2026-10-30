@@ -304,8 +304,15 @@ public:
                 WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
                 DataCopy(pgs[slot + j], ph, ROWS * NB);
                     Add(massAcc, massAcc, mass, ROWS);
-                    PipeBarrier<PIPE_V>();
+                    //  ★这里原有一道 PipeBarrier<PIPE_V>, 已删: massAcc 的下一个读者
+                    //    要么是下一块的 Add (中间隔着 L251/L298/L300 三道屏障),
+                    //    要么是循环之后的 Add(l, l, massAcc) (中间隔着 Mul 之后那道)。
+                    //    两条路径上都另有屏障, 故本道不承担任何 RAW。
+                    //  ★PipeBarrier<PIPE_V> 在 __NPU_ARCH__==2201 上**只在 AIC 空操作**,
+                    //    在 AIV 上是真实指令 (kernel_reg.h:105-112)。F200: AIV 是关键路径,
+                    //    其 vec 与 scalar 串行, 屏障强制 V 队列排空正是串行的机械原因。
                     //  ★ph 的 MTE3 必须在下一块重写 ph 之前排空 (先写后读冲突)。
+                    //    那由下面的 MTE3_V 旗标负责, **不是**上面那道 V 屏障的职责。
                     SetFlag<HardEvent::MTE3_V>(EVENT_ID0);
                     WaitFlag<HardEvent::MTE3_V>(EVENT_ID0);
                 }
