@@ -49,11 +49,28 @@ def main() -> int:
         d = (ref.float() - dense.float())
         return float(d.square().mean().sqrt() / dense.float().square().mean().sqrt())
 
+    #  ★三组对照, 每组只动一个量 (F189):
+    #    (1) 在线窗口的宽度  —— 现行 chunk 窗口 对 单块窗口
+    #    (2) 分数暂存的精度  —— fp32 (现行) 对 fp16
+    #    后者是 tile_m=128 的 UB 预算里唯一压得动的大头 (scoreBuf 131072 B),
+    #    压它的代价必须先在这里量出来, 再决定动不动内核。
+    cases = [("chunk 窗口 · 分数 fp32 (现行)", ONLINE_TILE, None),
+             ("chunk 窗口 · 分数 fp16",        ONLINE_TILE, torch.float16),
+             ("单块窗口 · 分数 fp32",          K_TILE,      None),
+             ("单块窗口 · 分数 fp16",          K_TILE,      torch.float16)]
+    base = {}
     for cast in (False, True):
         name = "expcast" if cast else "control"
-        for label, w in (("chunk 窗口 (现行)", ONLINE_TILE), ("单块窗口 (候选)", K_TILE)):
-            ref = payload_reference(cpu_p, expcast=cast, query_indices=ids, tile_width=w)
-            print(f"  {name:8s} {label:18s} tile_width={w:4d}  dense RMSE = {100*rmse(ref):.6f} %")
+        for label, w, sd in cases:
+            ref = payload_reference(cpu_p, expcast=cast, query_indices=ids,
+                                    tile_width=w, score_dtype=sd)
+            r = 100 * rmse(ref)
+            if sd is None and w == ONLINE_TILE:
+                base[cast] = r
+            delta = f"  (相对现行 {r - base[cast]:+.6f} 个百分点)" if cast in base else ""
+            print(f"  {name:8s} {label:26s} tile_width={w:4d}  dense RMSE = {r:.6f} %{delta}")
+    print("★判据: 交付闸是 dense RMSE 不劣于交付基线的 2.98%; "
+          "逐例闸是 decoded_reference 的 1%, 后者不受本改动影响 (oracle 与内核同契约)。")
     return 0
 
 

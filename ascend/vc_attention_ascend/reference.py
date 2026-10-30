@@ -47,7 +47,8 @@ def quantize_e4m3_decoded(x):
 
 
 @torch.no_grad()
-def payload_reference(payload, *, expcast=True, query_indices=None, tile_width=None):
+def payload_reference(payload, *, expcast=True, query_indices=None, tile_width=None,
+                      score_dtype=None):
     """All keys, optionally selected queries; decoded operands and FP32 matmuls.
 
     tile_width 是**在线更新的粒度**, 默认取 ONLINE_TILE = K_TILE * CHUNK ——
@@ -58,6 +59,13 @@ def payload_reference(payload, *, expcast=True, query_indices=None, tile_width=N
     本函数要作为内核的同契约 oracle, 宽度必须与 vc_tiling.h 的 N 相同。
     量化块仍是 K_BLOCK: 一个 tile 覆盖 tile_width/K_BLOCK 个块, 各自的 scale 按列分段施加,
     与内核一致。普通 exp 路径对宽度不变, 故只有 ExpCast 受影响。
+
+    score_dtype 是**趟 1 与趟 2 之间那份分数暂存的精度**, 默认 None = fp32 (现行)。
+    内核的 scoreBuf 按 chunk 整存, 在 tile_m=128 上它要 131072 B, 是 UB 预算里
+    唯一压得动的大头; 给它换 torch.float16 就是在这里离线量出代价 (不碰内核)。
+    ★取整必须排在行最大值**之前**: 否则 fp16 可能向上取整到超过 fp32 算出的基准,
+    scores - new_m 变正, ExpCast 那条'上界永不触到'的不变式 (内核据此删掉了
+    Mins(sc,120)) 就不再成立。此处模型与内核要做的事一致 —— 存完再求最大值。
     """
     q, k, v = payload["q"].float(), payload["k"].float(), payload["v"].float()
     qs, ks, vs = payload["q_scale"], payload["k_scale"], payload["v_scale"]
@@ -84,6 +92,9 @@ def payload_reference(payload, *, expcast=True, query_indices=None, tile_width=N
             g = (qscale * ks[:, :, block, 0].unsqueeze(-1)) * payload["scale"]
             segments.append(g.unsqueeze(-1).expand(*g.shape, span))
         scores *= torch.cat(segments, dim=-1)
+        if score_dtype is not None:
+            #  趟 1 写进 scoreBuf、趟 2 再读出来 —— 取整在这里, 且排在求最大值之前。
+            scores = scores.to(score_dtype).float()
         new_m = torch.maximum(m, scores.amax(-1, keepdim=True))
         alpha = torch.exp(m - new_m)
         shifted = scores - new_m
