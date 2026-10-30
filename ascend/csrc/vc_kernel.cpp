@@ -213,20 +213,32 @@ public:
                 //  ★序幕的那对 V_MTE2 仍然必需: 上一 chunk 的 ExpCast 段用 raw 槽 0 存
                 //    gather 偏移, 缺这条序会在 expcast 且 tiles>=2 时触发 aicore exception
                 //    (plog: fftsplus aivector error)。
+                //  ---- 本 chunk 的全部 k-scale 一次搬完 (F210 之后的 t1_setup 48.2%) ----
+                //  ★原先每块搬一次 8 个 float, 而 MTE2 **按序**: 第 j 块的 kscale 排在
+                //    上一轮发的 16 KB 预取**之后**, 于是"等 kscale"隐含等掉了那次大搬运,
+                //    预取只买到一个块的提前量。合并到 chunk 头并排在预取之前,
+                //    标量就只等这 128 B。
+                //  ★相邻分块的 scale 在 ksg 里连续 (KSB_PER_TILE=1 且 NB == K_SCALE_BLOCK,
+                //    故块号 = 块下标)。**按 n_in 截断**: 末 chunk 若按 CHUNK 搬会读到
+                //    下一个 head 的数据 (最后一个 head 则越界)。
+                //  ★容量: kscale 是 stateBuf 的第 6 槽, ROWS=32 个 float; 需 8*KSB_PER_TILE*CHUNK
+                //    = 32 个, 正好装满。
+                static_assert(8 * KSB_PER_TILE * map::CHUNK <= M / 2,
+                              "★kscale 槽 (ROWS 个 float) 装不下整个 chunk 的 k-scale");
+                DataCopy(kscale,
+                         ksg[(head * (t.kpad / K_SCALE_BLOCK) + base_i * KSB_PER_TILE) * 8],
+                         8 * KSB_PER_TILE * n_in);
+                SetFlag<HardEvent::MTE2_S>(EVENT_ID0);
                 SetFlag<HardEvent::V_MTE2>(EVENT_ID0);
                 WaitFlag<HardEvent::V_MTE2>(EVENT_ID0);
                 DataCopy(rawAll[0], sgs[slot], ROWS * NB);
                 SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
+                //  只等 kscale 那次小搬运: 它排在 MTE2 队列里大块预取**之前**, 故先完成。
+                WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);
                 for (uint32_t j = 0; j < n_in; ++j) {
                     const uint32_t key = (base_i + j) * NB;
                     auto sc = chunkScore[j * ROWS * NB];
                     const uint32_t cur = j & 1, nxt = cur ^ 1u;
-                //  一个 tile 覆盖 KSB_PER_TILE 个 K 量化块, 各有自己的 scale, 连续取。
-                //  ★kscale 的搬运必须发在预取**之前**: MTE2 队列按序, 排在大块预取之后
-                //    会让标量白等一整次 S 搬运。
-                DataCopy(kscale, ksg[(head * (t.kpad / K_SCALE_BLOCK) + key / K_SCALE_BLOCK) * 8],
-                         8 * KSB_PER_TILE);
-                SetFlag<HardEvent::MTE2_S>(EVENT_ID0);
                 if (j + 1 < n_in) {
                     //  此处的 V_MTE2 守的是 raw[nxt] —— 它上一次被读是第 j-1 块的 Cast,
                     //  而本语句排在第 j 块的 Cast 之前, 故正好定序在那次读之后。
@@ -235,10 +247,11 @@ public:
                     DataCopy(rawAll[nxt * ROWS * N], sgs[slot + j + 1], ROWS * NB);
                     SetFlag<HardEvent::MTE2_V>(static_cast<event_t>(nxt));
                 }
-                WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);
+                //  本块的 scale 在合并缓冲里的下标: (j*KSB_PER_TILE + sb) * 8
                 float seg_scale[KSB_PER_TILE];
                 for (uint32_t sb = 0; sb < KSB_PER_TILE; ++sb)
-                    seg_scale[sb] = (qscale.GetValue(0) * kscale.GetValue(sb * 8)) * t.scale;
+                    seg_scale[sb] = (qscale.GetValue(0)
+                                     * kscale.GetValue((j * KSB_PER_TILE + sb) * 8)) * t.scale;
                 WaitFlag<HardEvent::MTE2_V>(static_cast<event_t>(cur));
                 probe.Mark(0);   // t1_setup: kscale 搬运 + 旗标 + 预取发射 + GetValue
                 Cast(sc, rawAll[cur * ROWS * N], RoundMode::CAST_NONE, ROWS * NB);
