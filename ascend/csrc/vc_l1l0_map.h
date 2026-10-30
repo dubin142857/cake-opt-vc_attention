@@ -160,6 +160,25 @@ constexpr uint32_t L1_PV_V_PONG = L1_ACC_PONG;
 static_assert(MBLK * NBLK * 2 <= L1_SLOT, "PV 的 P 片必须装得进一个 L1 槽");
 static_assert(NBLK * D_MAX * 2 <= L1_SLOT, "PV 的 V 片必须装得进一个 L1 槽");
 
+//  ---- O 重标定 (fp32 对角阵乘) 的两片 ---------------------------------------
+//  ★机制: O 的跨 chunk 重标定 acc = acc*alpha + PV 原本是 AIV 的向量活;
+//    改成 cube 上的 fp32 对角阵乘 L0C = diag(alpha) x O_run, 随后本 chunk 的 PV
+//    以 Init=false 累加其上。依据是 MindIE Laser 的 CubeForward.h matmul_fp32,
+//    它用同一手法做重标定与最终除行和 (F215/F217)。
+//  ★槽位: 唯一空闲的 L1_A_PONG 一槽**同时**放 D 与 O —— 两片合计 48 KB < 64 KB,
+//    故不必再动已排满的其余七槽。D 在前, O 紧随其后。
+//  ★D 是 MBLK x MBLK fp32, O 是 MBLK x D_MAX fp32。
+constexpr uint32_t RESC_D_BYTES = MBLK * MBLK * 4;
+constexpr uint32_t RESC_O_BYTES = MBLK * D_MAX * 4;
+constexpr uint32_t L1_RESC_D = L1_A_PONG;
+constexpr uint32_t L1_RESC_O = L1_A_PONG + RESC_D_BYTES;
+static_assert(RESC_D_BYTES + RESC_O_BYTES <= L1_SLOT,
+              "★重标定的 D 与 O 两片必须共处一个 L1 槽 —— 其余七槽已排满");
+//  ★L0: D 占 L0A 的一个半区 (16 KB <= 32 KB), O 占 L0B 的一个半区 (32 KB == 32 KB, 零余量)。
+static_assert(RESC_D_BYTES <= L0A_SIZE / 2, "重标定的 D 必须装进 L0A 的一个半区");
+static_assert(RESC_O_BYTES <= L0B_SIZE / 2, "重标定的 O 必须装进 L0B 的一个半区");
+static_assert(MBLK * D_MAX * 4 <= L0C_SIZE / 2, "重标定的结果必须装进 L0C_ACC 半区");
+
 static_assert(L1_SLOT * 8 == L1_SIZE, "八个槽应正好填满 L1");
 static_assert(BLK_B16 <= L1_SLOT, "一个 fp16 基本块必须装得进一个 L1 槽");
 static_assert(BLK_B32 <= L1_SLOT, "一个 fp32 基本块必须装得进一个 L1 槽");

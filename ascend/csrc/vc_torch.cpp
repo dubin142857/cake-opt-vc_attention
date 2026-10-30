@@ -21,7 +21,8 @@ decltype(aclrtlaunch_vc910_forward) aclrtlaunch_vc910_profile;
 decltype(aclrtlaunch_vc910_forward) aclrtlaunch_vc910_profile_m64;
 //  CubeV2 的数值探针: 参数表与主内核不同, 单独声明。
 uint32_t aclrtlaunch_vc910_cube_v2_probe(uint32_t blocks, void* stream,
-    void* s_out, void* o_out, void* q, void* k, void* p, void* v);
+    void* s_out, void* o_out, void* r1_out, void* r2_out,
+    void* q, void* k, void* p, void* v, void* dmat, void* obase);
 }
 
 namespace {
@@ -223,8 +224,9 @@ at::Tensor MetaTiled(const at::Tensor& q, const at::Tensor& k, const at::Tensor&
 //    但 CANN 树里没有这几个函数的调用样例 (c_api 与 impl 两层都查过),
 //    语义只能从内建推 —— 而"推"正是 F183 里烧掉三次构建的失败模式。
 //  形状固定 (d=128, M=64, N=128), 单核启动 —— 探针要尽量少的活动部件。
-std::tuple<at::Tensor, at::Tensor> CubeV2Probe(const at::Tensor& q, const at::Tensor& k,
-                                               const at::Tensor& pmat, const at::Tensor& v) {
+std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> CubeV2Probe(
+        const at::Tensor& q, const at::Tensor& k, const at::Tensor& pmat, const at::Tensor& v,
+        const at::Tensor& dmat, const at::Tensor& obase) {
     constexpr int64_t MB = 64, NB = 128, D = 128;
     TORCH_CHECK(q.scalar_type() == at::kChar && k.scalar_type() == at::kChar,
                 "probe Q/K must be int8 (QK 走 int8 通路)");
@@ -234,17 +236,25 @@ std::tuple<at::Tensor, at::Tensor> CubeV2Probe(const at::Tensor& q, const at::Te
     TORCH_CHECK(k.sizes() == at::IntArrayRef({NB, D}), "probe K must be [128,128]");
     TORCH_CHECK(pmat.sizes() == at::IntArrayRef({MB, NB}), "probe P must be [64,128]");
     TORCH_CHECK(v.sizes() == at::IntArrayRef({NB, D}), "probe V must be [128,128]");
-    for (const auto& t : {q, k, pmat, v}) {
+    TORCH_CHECK(dmat.scalar_type() == at::kFloat && obase.scalar_type() == at::kFloat,
+                "probe diag/O must be fp32 (重标定走 fp32 通路)");
+    TORCH_CHECK(dmat.sizes() == at::IntArrayRef({MB, MB}), "probe diag must be [64,64]");
+    TORCH_CHECK(obase.sizes() == at::IntArrayRef({MB, D}), "probe O base must be [64,128]");
+    for (const auto& t : {q, k, pmat, v, dmat, obase}) {
         TORCH_CHECK(t.is_contiguous(), "probe inputs must be contiguous ND");
         TORCH_CHECK(t.is_privateuseone(), "probe inputs must live on the NPU");
     }
     auto s_out = at::zeros({MB, NB}, q.options().dtype(at::kInt));
     auto o_out = at::zeros({MB, D}, q.options().dtype(at::kFloat));
+    auto r1_out = at::zeros({MB, D}, q.options().dtype(at::kFloat));
+    auto r2_out = at::zeros({MB, D}, q.options().dtype(at::kFloat));
     auto stream = c10_npu::getCurrentNPUStream(q.device().index()).stream(true);
     auto ret = aclrtlaunch_vc910_cube_v2_probe(1, stream, s_out.data_ptr(), o_out.data_ptr(),
-        q.data_ptr(), k.data_ptr(), pmat.data_ptr(), v.data_ptr());
+        r1_out.data_ptr(), r2_out.data_ptr(),
+        q.data_ptr(), k.data_ptr(), pmat.data_ptr(), v.data_ptr(),
+        dmat.data_ptr(), obase.data_ptr());
     TORCH_CHECK(ret == ACL_SUCCESS, "vc910_cube_v2_probe launch failed: ", ret);
-    return {s_out, o_out};
+    return {s_out, o_out, r1_out, r2_out};
 }
 }
 
@@ -252,7 +262,7 @@ TORCH_LIBRARY(vc_ascend, m) {
     m.def("forward(Tensor q, Tensor k, Tensor v, Tensor q_scale, Tensor k_scale, Tensor v_scale, Tensor lut, int queries, int keys, float scale, bool expcast) -> Tensor");
     m.def("forward_tiled(Tensor q, Tensor k, Tensor v, Tensor q_scale, Tensor k_scale, Tensor v_scale, Tensor lut, int queries, int keys, float scale, bool expcast, int tile_m) -> Tensor");
     m.def("profile_tiled(Tensor q, Tensor k, Tensor v, Tensor q_scale, Tensor k_scale, Tensor v_scale, Tensor lut, int queries, int keys, float scale, bool expcast, int tile_m) -> (Tensor, Tensor)");
-    m.def("cube_v2_probe(Tensor q, Tensor k, Tensor p, Tensor v) -> (Tensor, Tensor)");
+    m.def("cube_v2_probe(Tensor q, Tensor k, Tensor p, Tensor v, Tensor dmat, Tensor obase) -> (Tensor, Tensor, Tensor, Tensor)");
 }
 TORCH_LIBRARY_IMPL(vc_ascend, PrivateUse1, m) {
     m.impl("forward", TORCH_FN(Forward));

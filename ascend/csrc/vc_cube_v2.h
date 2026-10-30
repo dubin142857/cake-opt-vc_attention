@@ -37,6 +37,7 @@ constexpr uint32_t L0C_QK  = L0C_PONG;    // QK 的 S, 每块搬走
 constexpr uint32_t FRAC_BYTES = 512;   // 分形恒 512 B, 与 dtype 无关
 constexpr uint16_t C0_INT8 = 32;       // 32 B / 1 B
 constexpr uint16_t C0_HALF = 16;       // 32 B / 2 B
+constexpr uint16_t C0_F32  = 8;        // 32 B / 4 B, fp32 的分形是 16x8
 
 //  ---- unit flag: 本相一律**关闭** ------------------------------------------
 //  ★2026-10-29 实撞, 代价一次 300 秒挂死: 初版给 mad 传 unit_flag=3 且
@@ -246,6 +247,52 @@ __aicore__ inline void pv_mad(uint32_t ping, uint16_t d) {
     auto l0c = reinterpret_cast<__cc__ float *>(static_cast<uintptr_t>(L0C_ACC));
     //  m=MBLK, k=NBLK, n=d。Init=false 时累加进 L0C 已有内容。
     asc_mmad(l0c, l0a, l0b, MBLK, NBLK, d, UNIT_FLAG_OFF, false, false, Init);
+}
+
+//  ---- O 的重标定: L0C_ACC = diag(alpha) x O_run (fp32) -----------------------
+//  ★为什么搬到 cube: 这三步原本是 AIV 的 Brcb + Mul + Add (F217 的 pv_consume 4.4%
+//    与 chunk_tail 7.3%)。cube 利用率只有 25.2% 而 AIV 是关键路径, 把活挪到闲着的
+//    单元是本轮的核心手法。
+//  ★参数语义照抄本机 MindIE Laser 的 CubeForward.h::matmul_fp32 —— 那是本机唯一
+//    一处 fp32 对角阵乘的调用样例。逐参对应 (Laser 的 M=K=N=128, 我们 M=K=MBLK, N=d):
+//      左片 D  : copy_gm_to_cbuf_multi_nd2nz_b32s(l1a, left, 0, 1, 128,128, 0,128, 128,1,0)
+//      右片 O  : (l1b, right, 0, 128/16, 16, 128, 16*128, 128, 16, 1, 16*128)
+//      L1->L0A : load_cbuf_to_ca(l0a + row*16*16*8, l1a + row*16*8, 0, 16, 8, 0, 0, false, inc)
+//      L1->L0B : load_cbuf_to_cb_transpose(l0b + row*2048, l1b + row*2048, 0, 8, 1, 0, inc, 7)
+//    公开的 asc_copy_l12l0a(float) 的 impl 正是 `load_cbuf_to_ca(..., 0, false, inc)`,
+//    asc_copy_l12l0b_trans(float) 正是 `load_cbuf_to_cb_transpose(...)`, 故可直接替换内建。
+//  ★O 在 GM 里是 [MBLK 行(k), d 列(n)], 与 V 的 [NBLK(k), d(n)] 同向, 故同样要硬件转置。
+__aicore__ inline void resc_gm2l1(__gm__ float *gm_d, __gm__ float *gm_o, uint16_t d) {
+    auto l1d = reinterpret_cast<__cbuf__ float *>(static_cast<uintptr_t>(L1_RESC_D));
+    auto l1o = reinterpret_cast<__cbuf__ float *>(static_cast<uintptr_t>(L1_RESC_O));
+    //  D: 单个 MBLK x MBLK 的 ND 矩阵。
+    asc_copy_gm2l1_nd2nz(l1d, gm_d, 1, MBLK, MBLK, 0, MBLK, MBLK, 1, 0);
+    //  O: 拆成 MBLK/16 个 16 x d 的 ND 矩阵 —— 这是转置装载所要求的 L1 排布。
+    asc_copy_gm2l1_nd2nz(l1o, gm_o, uint16_t(MBLK / 16), 16, d,
+                         uint16_t(16 * d), d, 16, 1, uint16_t(16 * d));
+}
+
+__aicore__ inline void resc_l12l0(uint16_t d) {
+    auto l1d = reinterpret_cast<__cbuf__ float *>(static_cast<uintptr_t>(L1_RESC_D));
+    auto l1o = reinterpret_cast<__cbuf__ float *>(static_cast<uintptr_t>(L1_RESC_O));
+    auto l0a = reinterpret_cast<__ca__ float *>(static_cast<uintptr_t>(L0A_PING));
+    auto l0b = reinterpret_cast<__cb__ float *>(static_cast<uintptr_t>(L0B_PING));
+    //  A (D, fp32, c0=8): 按 m 分 16 行一组, repeat = k/c0, src_stride = m/16。
+    for (uint16_t mm = 0; mm < MBLK / 16; ++mm)
+        asc_copy_l12l0a(l0a + mm * MBLK * 16, l1d + mm * 16 * C0_F32, 0,
+                        uint8_t(MBLK / C0_F32), uint16_t(MBLK / 16), 0);
+    //  B (O, fp32): 每轮搬一个 16(k) x d(n) 片, repeat = d/16, dst_frac_stride = d/16 - 1。
+    for (uint16_t kk = 0; kk < MBLK / 16; ++kk)
+        asc_copy_l12l0b_trans(l0b + kk * 16 * d, l1o + kk * 16 * d, 0,
+                              uint8_t(d / 16), 1, 0, false, uint64_t(d / 16 - 1));
+}
+
+//  L0C_ACC = D x O_run。恒 Init=true: 它是本 chunk 累加的起点。
+__aicore__ inline void resc_mad(uint16_t d) {
+    auto l0a = reinterpret_cast<__ca__ float *>(static_cast<uintptr_t>(L0A_PING));
+    auto l0b = reinterpret_cast<__cb__ float *>(static_cast<uintptr_t>(L0B_PING));
+    auto l0c = reinterpret_cast<__cc__ float *>(static_cast<uintptr_t>(L0C_ACC));
+    asc_mmad(l0c, l0a, l0b, MBLK, MBLK, d, UNIT_FLAG_OFF, false, false, true);
 }
 
 //  把 chunk 内累好的 O 从 L0C 搬到 GM。公开层没有 L0C->GM 的搬运函数,

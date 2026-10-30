@@ -787,7 +787,8 @@ extern "C" __global__ __aicore__ void vc910_profile_m64(
 //  猜错在**一次构建 + 一次运行**里暴露, 而不是污染整个内核后去 141 个用例里排查。
 //  d 固定 128 (基准形状), 不读 tiling —— 探针要尽量少的活动部件。
 extern "C" __global__ __aicore__ void vc910_cube_v2_probe(
-        GM_ADDR s_out, GM_ADDR o_out, GM_ADDR q, GM_ADDR k, GM_ADDR pmat, GM_ADDR v) {
+        GM_ADDR s_out, GM_ADDR o_out, GM_ADDR r1_out, GM_ADDR r2_out,
+        GM_ADDR q, GM_ADDR k, GM_ADDR pmat, GM_ADDR v, GM_ADDR dmat, GM_ADDR obase) {
     if ASCEND_IS_AIC {
         constexpr uint16_t D = 128;
         using namespace vc910::cube2;
@@ -805,6 +806,32 @@ extern "C" __global__ __aicore__ void vc910_cube_v2_probe(
         mm_pv_acc<true>(pp, vv, D, vc910::map::NBLK, D);
         mm_pv_acc<false>(pp, vv, D, vc910::map::NBLK, D);
         pv_flush(reinterpret_cast<__gm__ float*>(o_out), D, D);
+        SetFlag<HardEvent::FIX_M>(EVENT_ID0);
+        WaitFlag<HardEvent::FIX_M>(EVENT_ID0);
+
+        //  ---- 重标定 (fp32 对角阵乘) 的参数语义探针 ----------------------------
+        //  ★这三条 fp32 搬运 (nd2nz b32s / l12l0a / l12l0b_trans) 的 repeat /
+        //    src_stride / dst_frac_stride 语义是照着本机 MindIE Laser 的 matmul_fp32
+        //    抄的, 但 Laser 的几何是 M=K=N=128 而我们是 M=K=64, N=d ——
+        //    "照抄一个不同几何的调用" 与 "推参数" 在风险上同级, 故同样先数值坐实。
+        //  ★l12l0b_trans 映射的 load_cbuf_to_cb_transpose 与 PV 用的
+        //    load_cbuf_to_cb(transpose=true) 是**两条不同指令** (见 mm_pv_acc 处的注记,
+        //    搞混过一次, 报 507015), 这里走的是前者, 与 Laser 同。
+        auto *dd = reinterpret_cast<__gm__ float*>(dmat);
+        auto *ob = reinterpret_cast<__gm__ float*>(obase);
+        //  r1 = D x O_base —— 只验搬运与 mmad 的 fp32 通路本身。
+        resc_gm2l1(dd, ob, D); asc_sync();
+        resc_l12l0(D);         asc_sync();
+        resc_mad(D);           asc_sync();
+        pv_flush(reinterpret_cast<__gm__ float*>(r1_out), D, D);
+        SetFlag<HardEvent::FIX_M>(EVENT_ID0);
+        WaitFlag<HardEvent::FIX_M>(EVENT_ID0);
+        //  r2 = D x O_base + P x V —— 正是新内核的结构: 重标定打底, PV 以 Init=false 累上去。
+        resc_gm2l1(dd, ob, D); asc_sync();
+        resc_l12l0(D);         asc_sync();
+        resc_mad(D);           asc_sync();
+        mm_pv_acc<false>(pp, vv, D, vc910::map::NBLK, D);
+        pv_flush(reinterpret_cast<__gm__ float*>(r2_out), D, D);
     }
 }
 

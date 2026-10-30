@@ -7,10 +7,14 @@
   函数的调用样例 (c_api 与 impl 两层都查过)。语义只能从内建推, 而"推"正是
   F183 里烧掉三次构建的失败模式。猜错在一次运行里暴露, 而不是去 141 个用例里排查。
 
-两条判据:
+三条判据:
   S: int8 矩乘在 int32 里**精确**, 故要求与 NumPy 参考**逐位相同**, 不设容差。
   O: PV 用同一对 P/V 连做两次, 结果必须是单次的**两倍** ——
      若 c_matrix_init_val=false 其实是覆写而非累加, 结果会等于单次, 一眼看出。
+  R: fp32 对角阵乘 (O 的重标定)。取值全取 2 的幂次的整数倍, 故
+     R1 = D @ O_base 与 R2 = D @ O_base + P @ V 在 fp32 里**精确**, 同样不设容差。
+     R1 验三条 fp32 搬运的参数语义; R2 验"重标定打底 + PV 以 Init=false 累上去"
+     这一**组合**, 即新内核的结构本身。
 """
 import argparse, json, os, sys
 import numpy as np
@@ -42,24 +46,37 @@ def main() -> int:
     k = rng.integers(-8, 9, size=(NB, D), dtype=np.int8)
     pm = (rng.integers(-4, 5, size=(MB, NB)).astype(np.float32) / 4.0).astype(np.float16)
     v = (rng.integers(-4, 5, size=(NB, D)).astype(np.float32) / 4.0).astype(np.float16)
+    #  重标定: D 是对角阵 diag(alpha), alpha 取 2 的幂次; O_base 取 0.25 的整数倍。
+    #  两者乘积与 P@V 同为 0.0625 的整数倍且 |.| < 256, fp32 可精确表示。
+    alpha = (2.0 ** rng.integers(-2, 3, size=MB)).astype(np.float32)
+    dmat = np.zeros((MB, MB), dtype=np.float32)
+    dmat[np.arange(MB), np.arange(MB)] = alpha
+    obase = (rng.integers(-16, 17, size=(MB, D)).astype(np.float32) / 4.0)
 
     tq = torch.from_numpy(q).to(dev)
     tk = torch.from_numpy(k).to(dev)
     tp = torch.from_numpy(pm).to(dev)
     tv = torch.from_numpy(v).to(dev)
+    td = torch.from_numpy(dmat).to(dev)
+    tob = torch.from_numpy(obase).to(dev)
 
-    s_out, o_out = torch.ops.vc_ascend.cube_v2_probe(tq, tk, tp, tv)
+    s_out, o_out, r1_out, r2_out = torch.ops.vc_ascend.cube_v2_probe(tq, tk, tp, tv, td, tob)
     s = s_out.cpu().numpy()
     o = o_out.cpu().numpy()
+    r1 = r1_out.cpu().numpy()
+    r2 = r2_out.cpu().numpy()
 
     s_ref = q.astype(np.int32) @ k.astype(np.int32).T          # [64,128]
     o_once = pm.astype(np.float32) @ v.astype(np.float32)      # [64,128]
     o_ref = 2.0 * o_once
+    r1_ref = dmat @ obase                                      # [64,128]
+    r2_ref = r1_ref + o_once
 
     #  ★把原始输入输出存盘: stride 语义的假设检验全在主机侧离线做,
     #    不必为每个假设再占一次卡 (一次运行 ~3 分钟, 假设有十几个)。
     raw = os.path.splitext(a.output)[0] + "_raw.npz"
-    np.savez(raw, q=q, k=k, p=pm, v=v, s=s, o=o)
+    np.savez(raw, q=q, k=k, p=pm, v=v, s=s, o=o,
+             dmat=dmat, obase=obase, r1=r1, r2=r2)
     print("原始数据已存:", raw)
 
     rep = {"device": a.device, "seed": a.seed, "shapes": {"M": MB, "N": NB, "D": D},
@@ -80,7 +97,19 @@ def main() -> int:
                 "verdict": ("累加正确" if o_bad == 0 else
                             "★c_matrix_init_val=false 是**覆写**不是累加"
                             if o_like_once > o.size // 2 else "排布错")}
-    rep["status"] = "passed" if rep["S"]["exact"] and rep["O"]["exact_2x"] else "failed"
+    r1_bad = int(np.count_nonzero(r1 != r1_ref))
+    r2_bad = int(np.count_nonzero(r2 != r2_ref))
+    #  ★判"是搬运排布错还是组合错": r1 对而 r2 错 => 组合 (Init 语义) 的问题;
+    #    r1 就错 => 三条 fp32 搬运的参数语义有一条不对。
+    rep["R"] = {"r1_mismatched": r1_bad, "r2_mismatched": r2_bad, "total": int(r1.size),
+                "r1_max_abs_diff": float(np.abs(r1 - r1_ref).max()),
+                "r2_max_abs_diff": float(np.abs(r2 - r2_ref).max()),
+                "r1_exact": r1_bad == 0, "r2_exact": r2_bad == 0,
+                "verdict": ("fp32 对角阵乘与累加组合都正确" if r1_bad == 0 and r2_bad == 0 else
+                            "★组合错: 重标定本身对, 但 PV 没累到它上面" if r1_bad == 0 else
+                            "★三条 fp32 搬运的参数语义有错")}
+    rep["status"] = ("passed" if rep["S"]["exact"] and rep["O"]["exact_2x"]
+                     and rep["R"]["r1_exact"] and rep["R"]["r2_exact"] else "failed")
 
     os.makedirs(os.path.dirname(a.output) or ".", exist_ok=True)
     with open(a.output, "w") as fh:
