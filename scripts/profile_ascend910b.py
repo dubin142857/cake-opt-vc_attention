@@ -20,10 +20,13 @@ from mindie_laser_backend import load_mindie_laser, validate_laser
 
 ROLE_PHASES = {
     "aic": ("qk_api_complete", "wait_p", "pv_api_complete", "wait_o_used"),
-    "aiv0": ("wait_s", "load_scores", "probability", "p_publish", "history",
-             "wait_o", "load_pv", "accumulate"),
-    "aiv1": ("wait_s", "load_scores", "probability", "p_publish", "history",
-             "wait_o", "load_pv", "accumulate"),
+    #  ★相位已按"发射时间分解"重新布点 (F205): 全部用不插屏障的 Mark, 量的是标量
+    #    发射而非完成。索引即 probe.Mark 的参数。相位 t1_* / t2_* 是**每块**的,
+    #    同一 chunk 内逐块覆写故读到末块; 其余是每 chunk 的。
+    "aiv0": ("t1_setup", "t1_vec", "wait_o", "t2_vec", "t2_publish",
+             "chunk_tail", "pv_consume", "wait_s"),
+    "aiv1": ("t1_setup", "t1_vec", "wait_o", "t2_vec", "t2_publish",
+             "chunk_tail", "pv_consume", "wait_s"),
 }
 #  ★tile_m 现在只支持 64 (手写 cube 的几何 M=64 x N=128; ROWS=M/2=32 恰好是一个
 #    Q_SCALE_BLOCK, 向量侧的 scale 逻辑依赖这一条)。原来这里是 (32, 64) 的笛卡尔积 ——
@@ -346,7 +349,10 @@ def main():
         medians = {scope: {name: statistics.median(values) for name, values in rows.items()}
                    for scope, rows in report["timings"].items()}
         report["medians_ms"] = medians
-        for mode, row in report["tile_comparison"].items():
+        #  ★m32 支路已删 (见上面 VARIANTS 处的说明), report 里不再有 tile_comparison ——
+        #    这里是那次删除漏掉的第二处, 表现为脚本每次都在报表环节崩掉 (KeyError),
+        #    而探针数据其实已经落盘。按 F190: 改一个量要把它的全部镜像一起找出来。
+        for mode, row in report.get("tile_comparison", {}).items():
             row["m32_over_m64"] = {scope: medians[scope][f"{mode}_m32"] / medians[scope][f"{mode}_m64"]
                                      for scope in ("full", "core")}
         print("Uninstrumented synchronized API milliseconds:")

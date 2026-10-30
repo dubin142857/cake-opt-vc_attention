@@ -179,7 +179,12 @@ public:
                 const uint32_t base_i = c * CHUNK;
                 const uint32_t n_in = (tiles - base_i) < CHUNK ? (tiles - base_i) : CHUNK;
                 CrossCoreWaitFlag(S_READY);
-                probe.Mark(0);
+                //  ---- 相位布点 (仅 PhaseProbe<true> 的 vc910_profile_m64 生效) --------
+                //  ★一律用**不插屏障**的 Mark: 它只读系统计数, 量的是**发射**时间,
+                //    正是 aiv_scalar_busy 要分解的东西。MarkEvent 会插 Set/Wait, 是扰动。
+                //  ★相位 0/1/3/4 是**每块**的, 同一 chunk 内逐块覆写, 故读到的是**末块**的值;
+                //    相位 2/5/6/7 是每 chunk 的。
+                probe.Mark(7);   // wait_s: 跨核等待 + 序幕的 S 搬运发射
                 //  ---- 趟 1: 读本 chunk 的全部 S, 施加 scale, 求 chunk 最大 ----
                 Adds(rowmax, m, 0.0f, ROWS);       // 以历史最大起算
                 PipeBarrier<PIPE_V>();
@@ -200,7 +205,6 @@ public:
                     const uint32_t key = (base_i + j) * NB;
                     auto sc = chunkScore[j * ROWS * NB];
                     const uint32_t cur = j & 1, nxt = cur ^ 1u;
-                probe.Mark(0);
                 //  一个 tile 覆盖 KSB_PER_TILE 个 K 量化块, 各有自己的 scale, 连续取。
                 //  ★kscale 的搬运必须发在预取**之前**: MTE2 队列按序, 排在大块预取之后
                 //    会让标量白等一整次 S 搬运。
@@ -220,7 +224,7 @@ public:
                 for (uint32_t sb = 0; sb < KSB_PER_TILE; ++sb)
                     seg_scale[sb] = (qscale.GetValue(0) * kscale.GetValue(sb * 8)) * t.scale;
                 WaitFlag<HardEvent::MTE2_V>(static_cast<event_t>(cur));
-                probe.Mark(1); // MTE2_S above completed raw scs and scale loads
+                probe.Mark(0);   // t1_setup: kscale 搬运 + 旗标 + 预取发射 + GetValue
                 Cast(sc, rawAll[cur * ROWS * N], RoundMode::CAST_NONE, ROWS * NB);
                 PipeBarrier<PIPE_V>();
                 //  按列半区施加 scale: 一个 repeat 覆盖 64 个 fp32, K_SCALE_BLOCK 是 64 的整数倍,
@@ -253,6 +257,7 @@ public:
                     PipeBarrier<PIPE_V>();
                     Max(rowmax, rowmax, tmax, ROWS);
                     PipeBarrier<PIPE_V>();
+                    probe.Mark(1);   // t1_vec: Cast + Muls + ReduceMax + Max 的发射
                 }
                 Sub(alpha, m, rowmax, ROWS);
                 PipeBarrier<PIPE_V>();
@@ -318,8 +323,8 @@ public:
                 PipeBarrier<PIPE_V>();
                 ReduceSum<float, Pattern::Reduce::AR, false>(mass, sc, tmp, shape, true);
                 PipeBarrier<PIPE_V>();
+                probe.Mark(3);   // t2_vec: Sub + Exp + ReduceSum 的发射
                 Cast(ph, sc, RoundMode::CAST_NONE, ROWS * NB);
-                probe.template MarkEvent<HardEvent::V_S>(2, pipe);
                 SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
                 WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
                 DataCopy(pgs[slot + j], ph, ROWS * NB);
@@ -335,9 +340,9 @@ public:
                     //    那由下面的 MTE3_V 旗标负责, **不是**上面那道 V 屏障的职责。
                     SetFlag<HardEvent::MTE3_V>(EVENT_ID0);
                     WaitFlag<HardEvent::MTE3_V>(EVENT_ID0);
+                    probe.Mark(4);   // t2_publish: Cast(ph) + 旗标 + DataCopy + Add 的发射
                 }
                 CrossCoreSetFlag<2, PIPE_MTE3>(P_READY);   // ★整个 chunk 只置一次
-                probe.Mark(1);
                 Mul(l, l, alpha, ROWS);
                 PipeBarrier<PIPE_V>();
                 Add(l, l, massAcc, ROWS);
@@ -346,15 +351,19 @@ public:
                 PipeBarrier<PIPE_V>();
                 Adds(alphaHold[c & 1], alpha, 0.0f, ROWS);
                 PipeBarrier<PIPE_V>();
+                probe.Mark(5);   // chunk_tail: P_READY + Mul/Add/Adds/Adds 的发射
                 }
                 if (c == 0) { probe.Finish(); continue; }   // 第 0 轮只发布, 没有可消费的 PV
                 const uint32_t pc = c - 1;
                 CrossCoreWaitFlag(O_READY);
-                probe.Mark(5); // only PV wait still exposed after the next tile's probability
+                //  ★相位 2 改量这道**等待**本身: 原先它与 pv 的真实工作混在 pv_consume 里,
+                //    而"等多久"与"干多久"是两回事, 混在一起无法下结论 (E10)。
+                probe.Mark(2);   // wait_o: 等 AIC 把 O 搬出来
+
                 DataCopy(pv, ogs[pc & 1], ROWS * t.dim);
                 SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
                 WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
-                probe.template MarkEvent<HardEvent::MTE2_S>(6, pipe);
+
                 PipeBarrier<PIPE_V>();
                 //  acc = acc * alpha(prev) + pv(prev)。两项独立, 与即时累加**逐位相同** ——
                 //  每一项的浮点运算顺序未变, 只是施加时刻推迟。
@@ -366,7 +375,7 @@ public:
                     Mul(acc[off], acc[off], balpha, uint64_t(64), ROWS, accBrc);
                 PipeBarrier<PIPE_V>();
                 Add(acc, acc, pv, ROWS * t.dim);
-                probe.template MarkEvent<HardEvent::V_S>(7, pipe);
+                probe.Mark(6);   // pv_consume: 等 O + 搬 pv + Brcb/Mul/Add 的发射
                 CrossCoreSetFlag<2, PIPE_V>(O_USED);
                 probe.Finish();
                 probe.Finish();
