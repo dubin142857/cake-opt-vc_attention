@@ -139,7 +139,8 @@ std::tuple<at::Tensor, at::Tensor> ForwardImpl(const at::Tensor& q, const at::Te
                                      true, false, sum_tmp, min_tmp);
     auto reduce_bytes = (std::max(max_tmp, sum_tmp) + 31) / 32 * 32;
     reduce_bytes = std::max(reduce_bytes, uint32_t(32));
-    TORCH_CHECK(VectorBytes(reduce_bytes, uint32_t(tile_m)) <= ub, "Vector UB budget exceeds device capacity");
+    TORCH_CHECK(VectorBytes(reduce_bytes, uint32_t(tile_m), map::CHUNK) <= ub,
+                "Vector UB budget exceeds device capacity");
     // Payloads retain Q32 quantization. Only append a dummy Q32 block when the
     // M64 Cube would otherwise read beyond Q's allocation. Account for this in
     // both fixed-core and full-API timing; never requantize the valid operands.

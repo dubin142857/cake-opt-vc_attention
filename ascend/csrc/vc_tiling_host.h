@@ -46,18 +46,30 @@ static_assert(WorkspaceBytesV2(128, 64, 128, 4) > WorkspaceBytes(128, 64),
               "本设计用 448 KB/核 换 fixpipe 流量由 223.8 降到 186.3 GB; "
               "若此条变假说明 chunk 深度或块大小被改小了, 收益也就没了");
 
-constexpr uint32_t VectorBytes(uint32_t reduce_bytes, uint32_t tile_m = M) {
-    // int32 scores/indices, FP32 scores, FP16 P, accumulator, PV output,
-    // channel scales, ten state/metadata vectors (H11 的两个 alpha 暂存槽在其中),
-    // LUT, reduction scratch.
+//  UB 预算 —— 与 vc_kernel.cpp 的 InitBuffer 列表是同一个量的两处写法, 逐项对齐。
+//  ★2026-10-30 实撞 (F212): 旧式**漏了** scoreBuf 的 CHUNK 倍与 rawBuf 的多缓冲,
+//    且 state 按 10 槽算而实际 12 —— 合计少算 65792 B。实际占用 160768 而它只报 94976,
+//    于是 vc_torch.cpp 里那道 `TORCH_CHECK(VectorBytes(...) <= ub)` **形同虚设**:
+//    真超了它也不会红。守卫的覆盖面必须随被守对象一起长 (同 F210 的 EvGroup)。
+constexpr uint32_t VectorBytes(uint32_t reduce_bytes, uint32_t tile_m = M, uint32_t chunk = 4) {
     const uint32_t rows = tile_m / 2;
-    // Two per-row Brcb broadcast buffers (rowmax, alpha) of ROWS blocks each.
-    //  H26: 位运算解码新增 subBuf (rows*N*4) 与 cmpBuf (rows*N/8) ——
-    //  与 vc_kernel.cpp 的两次 InitBuffer 是同一个量的两处写法, 改一处必须改另一处
-    //  (hangdiag 的 C14 会在给定点上比对两侧的数值)。
-    return rows * N * (4 + 4 + 2 + 4) + rows * N / 8 + 2 * rows * MAX_D * 4
-         + MAX_D * 4 + 10 * rows * 4 + 128 * 4 + 2 * rows * 8 * 4 + reduce_bytes;
+    return VEC_RAW_SLOTS * rows * N * 4   // rawBuf   (S 的多缓冲)
+         + chunk * rows * N * 4           // scoreBuf (整个 chunk 的分数, 两趟法要留着)
+         + rows * N * 2                   // pBuf
+         + rows * MAX_D * 4               // accBuf
+         + rows * MAX_D * 4               // pvBuf
+         + MAX_D * 4                      // vsBuf
+         + 12 * rows * 4                  // stateBuf (H11 的 alpha 两槽 + tmax + massAcc 在内)
+         + 128 * 4                        // lutBuf
+         + rows * N * 4                   // subBuf   (H26 位运算解码)
+         + rows * N / 8                   // cmpBuf   (H26 的逐元素掩码)
+         + 2 * rows * 8 * 4               // brcbBuf  (rowmax / alpha 的逐行广播)
+         + reduce_bytes;                  // tmpBuf
 }
+//  本机几何 (M=64, N=128, MAX_D=128, CHUNK=4, VEC_RAW_SLOTS=2) 的取值钉死 ——
+//  改任何一项都要回来核这个数, 否则又会悄悄与 InitBuffer 分叉。
+static_assert(VectorBytes(0, 64, 4) == 160768, "★UB 账与内核的 InitBuffer 列表对不上");
+static_assert(VectorBytes(0, 64, 4) <= 196608, "★静态部分已超 UB, 还没算 reduce_bytes");
 //  ★旧布局的两条取值断言已删: N 由 256 改 128 后它们的数值不再成立, 而主路径也已
 //    改用 WorkspaceBytesV2。WorkspaceBytes 本体保留 —— 上面那条"拿空间换流量"的
 //    对照断言还在用它, 它是**基线的量**, 不是现役布局。

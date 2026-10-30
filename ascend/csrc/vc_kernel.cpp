@@ -67,7 +67,7 @@ public:
         //  ★raw 双缓冲: 趟 1 的 S 搬运与本块计算重叠。UB 精算 (ROWS=32,N=128,MAX_D=128,CHUNK=4):
         //    raw 2x16384 + score 65536 + p 8192 + acc 16384 + pv 16384 + vs 512 + state 1536
         //    + lut 512 + sub 16384 + cmp 512 + brcb 2048 = 160768, UB 196608, 余 35840 - reduce_bytes。
-        pipe.InitBuffer(rawBuf, 2 * ROWS * N * 4);
+        pipe.InitBuffer(rawBuf, VEC_RAW_SLOTS * ROWS * N * 4);
         //  ★score 由单块扩到**整个 chunk**: 两趟法要求全 chunk 用同一归一化基准,
         //    故第一趟算出的分数必须留着给第二趟用 (重读 GM 会让 AIV 读由 186 涨到 335 GB)。
         pipe.InitBuffer(scoreBuf, map::CHUNK * ROWS * N * 4);

@@ -16,6 +16,10 @@ constexpr uint32_t N = 128;
 constexpr uint32_t K_SCALE_BLOCK = 128;
 static_assert(N % K_SCALE_BLOCK == 0, "tile 宽度必须覆盖整数个 K 量化块");
 constexpr uint32_t KSB_PER_TILE = N / K_SCALE_BLOCK;
+
+//  ★rawBuf 的缓冲数 —— 由主机的 UB 预算式与内核的 InitBuffer **共用**, 不再各写一份。
+//    (F190: 能消掉的镜像就消掉, 消不掉的才用 static_assert 钉住。)
+constexpr uint32_t VEC_RAW_SLOTS = 2;
 constexpr uint32_t ROWS = M / 2;
 constexpr uint32_t MAX_D = 128;
 //  H16: PV 的 B (V) 由内核自管 L1 的两个槽。主机侧必须把这块从 PV matmul 的 L1
