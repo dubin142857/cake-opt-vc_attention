@@ -836,4 +836,66 @@ extern "C" __global__ __aicore__ void vc910_cube_v2_probe(
     }
 }
 
+//  ---- 向量侧的**数值**探针: 确证 WholeReduceSum 的形参语义 (E33 的前置) -------
+//  ★为什么要它 (F183 定的次序): `WholeReduceSum` 的 dstRepStride / srcBlkStride /
+//    srcRepStride 虽有本机权威样例 (CANN 自己的 reduce_sum_v220_impl.h 的 ReduceSumArCompute:
+//    `WholeReduceSum<T,false>(dst[i*248], src[i*248*padLast], MASK_PLACEHOLDER, 248, 1, 1,
+//     padLast/elePerBlk)`), 但那里的几何是 248 个 repeat, 我们是 ROWS 个; 且 **dst 的排布**
+//    (连续? 按 32B 块跳?) 从声明里看不出来。猜错在 141 个用例里排查, 远贵于在这里一次测掉。
+//  ★取值刻意用小整数: fp32 内精确, **任何求和顺序都同果**, 故"不逐位相同"只可能是形参错,
+//    不会是舍入。同时输出现行 ReduceSum 的结果作对照 —— 两者都要与 NumPy 逐位相同。
+extern "C" __global__ __aicore__ void vc910_vec_reduce_probe(
+        GM_ADDR x, GM_ADDR out_new, GM_ADDR out_old, GM_ADDR out_after) {
+    if ASCEND_IS_AIV {
+        constexpr uint32_t R = 32, NN = 128;   // 与生产的 ROWS / N 同
+        TPipe pipe;
+        TBuf<TPosition::VECCALC> xb, tb, ob;
+        pipe.InitBuffer(xb, R * NN * 4);
+        pipe.InitBuffer(tb, 8192);             // reduce 的暂存 (本机 shape{32,128} 实测需 8192)
+        pipe.InitBuffer(ob, 3 * R * 4);
+        auto sc = xb.Get<float>();
+        auto tmp = tb.Get<uint8_t>();
+        auto o = ob.Get<float>();
+        GlobalTensor<float> xg, ng, og, ag;
+        xg.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(x), R * NN);
+        ng.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(out_new), R);
+        og.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(out_old), R);
+        ag.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(out_after), R);
+
+        DataCopy(sc, xg, R * NN);
+        SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
+        WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
+
+        //  对照组: 现行写法。isReuseSource=false 故**不破坏** sc, 可以先跑。
+        uint32_t shape[2] = {R, NN};
+        ReduceSum<float, Pattern::Reduce::AR, false>(o[R], sc, tmp, shape, true);
+        PipeBarrier<PIPE_V>();
+
+        //  候选组: 折 128 -> 64 (原地), 再一条 WholeReduceSum。
+        //  ★Add 的 repeat 参数: 每个 repeat 覆盖 64 个 fp32, 行间跨 NN/8 个 32B 块。
+        Add(sc[0], sc[64], sc[0], uint64_t(64), R,
+            BinaryRepeatParams(1, 1, 1, NN / 8, NN / 8, NN / 8));
+        PipeBarrier<PIPE_V>();
+        WholeReduceSum<float>(o[0], sc, 64, R, 1, 1, NN / 8);
+        PipeBarrier<PIPE_V>();
+
+        //  ★第三条判据: `WholeReduceSum` 带 isSetMask=true 会**自己设 mask**, 而底层这条
+        //    与高层 `ReduceSum` 不同 —— 后者收尾有 `SetMaskNorm(); ResetMask();`
+        //    (reduce_sum_v220_impl.h:293-294), 前者**没有**。
+        //    若它把 mask 留在 64, 后续的全宽操作就会被悄悄截断。
+        //    这里故意**不**手动恢复, 先测它到底需不需要:
+        //    全宽写 1.0 再按旧路径求行和, 每行必须恰为 NN = 128.0; 若 mask 粘住则会是别的数。
+        Duplicate(sc, 1.0f, R * NN);
+        PipeBarrier<PIPE_V>();
+        ReduceSum<float, Pattern::Reduce::AR, false>(o[2 * R], sc, tmp, shape, true);
+        PipeBarrier<PIPE_V>();
+
+        SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
+        WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
+        DataCopy(ng, o[0], R);
+        DataCopy(og, o[R], R);
+        DataCopy(ag, o[2 * R], R);
+    }
+}
+
 //  ★shape_probe 已删: CubeV2 现在由 RunAttention 真正派发, 不再需要额外入口驱动代码生成。

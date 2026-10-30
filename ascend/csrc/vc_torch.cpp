@@ -20,6 +20,8 @@ decltype(aclrtlaunch_vc910_forward) aclrtlaunch_vc910_forward_m64;
 decltype(aclrtlaunch_vc910_forward) aclrtlaunch_vc910_profile;
 decltype(aclrtlaunch_vc910_forward) aclrtlaunch_vc910_profile_m64;
 //  CubeV2 的数值探针: 参数表与主内核不同, 单独声明。
+uint32_t aclrtlaunch_vc910_vec_reduce_probe(uint32_t blocks, void* stream,
+    void* x, void* out_new, void* out_old, void* out_after);
 uint32_t aclrtlaunch_vc910_cube_v2_probe(uint32_t blocks, void* stream,
     void* s_out, void* o_out, void* r1_out, void* r2_out,
     void* q, void* k, void* p, void* v, void* dmat, void* obase);
@@ -256,6 +258,23 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> CubeV2Probe(
     TORCH_CHECK(ret == ACL_SUCCESS, "vc910_cube_v2_probe launch failed: ", ret);
     return {s_out, o_out, r1_out, r2_out};
 }
+
+//  向量侧的数值探针: 确证 WholeReduceSum 的形参语义 (E33 的前置, 见内核侧注释)。
+std::tuple<at::Tensor, at::Tensor, at::Tensor> VecReduceProbe(const at::Tensor& x) {
+    constexpr int64_t R = 32, NN = 128;
+    TORCH_CHECK(x.scalar_type() == at::kFloat, "probe x must be fp32");
+    TORCH_CHECK(x.sizes() == at::IntArrayRef({R, NN}), "probe x must be [32,128]");
+    TORCH_CHECK(x.is_contiguous() && x.is_privateuseone(), "probe x must be contiguous ND on NPU");
+    auto out_new = at::zeros({R}, x.options());
+    auto out_old = at::zeros({R}, x.options());
+    auto out_after = at::zeros({R}, x.options());
+    auto stream = c10_npu::getCurrentNPUStream(x.device().index()).stream(true);
+    auto ret = aclrtlaunch_vc910_vec_reduce_probe(1, stream, x.data_ptr(),
+                                                 out_new.data_ptr(), out_old.data_ptr(),
+                                                 out_after.data_ptr());
+    TORCH_CHECK(ret == ACL_SUCCESS, "vc910_vec_reduce_probe launch failed: ", ret);
+    return {out_new, out_old, out_after};
+}
 }
 
 TORCH_LIBRARY(vc_ascend, m) {
@@ -263,12 +282,14 @@ TORCH_LIBRARY(vc_ascend, m) {
     m.def("forward_tiled(Tensor q, Tensor k, Tensor v, Tensor q_scale, Tensor k_scale, Tensor v_scale, Tensor lut, int queries, int keys, float scale, bool expcast, int tile_m) -> Tensor");
     m.def("profile_tiled(Tensor q, Tensor k, Tensor v, Tensor q_scale, Tensor k_scale, Tensor v_scale, Tensor lut, int queries, int keys, float scale, bool expcast, int tile_m) -> (Tensor, Tensor)");
     m.def("cube_v2_probe(Tensor q, Tensor k, Tensor p, Tensor v, Tensor dmat, Tensor obase) -> (Tensor, Tensor, Tensor, Tensor)");
+    m.def("vec_reduce_probe(Tensor x) -> (Tensor, Tensor, Tensor)");
 }
 TORCH_LIBRARY_IMPL(vc_ascend, PrivateUse1, m) {
     m.impl("forward", TORCH_FN(Forward));
     m.impl("forward_tiled", TORCH_FN(ForwardTiled));
     m.impl("profile_tiled", TORCH_FN(ProfileTiled));
     m.impl("cube_v2_probe", TORCH_FN(CubeV2Probe));
+    m.impl("vec_reduce_probe", TORCH_FN(VecReduceProbe));
 }
 TORCH_LIBRARY_IMPL(vc_ascend, Meta, m) {
     m.impl("forward", TORCH_FN(Meta));
