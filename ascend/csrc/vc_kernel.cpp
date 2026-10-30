@@ -354,13 +354,32 @@ public:
                     Exp(sc, sc, ROWS * NB);
                 }
                 PipeBarrier<PIPE_V>();
-                ReduceSum<float, Pattern::Reduce::AR, false>(mass, sc, tmp, shape, true);
-                PipeBarrier<PIPE_V>();
-                probe.Mark(3);   // t2_vec: Sub + Exp + ReduceSum 的发射
+                //  ★先发布 P, 再求行和 —— 与原先的次序相反。理由: 下面的折叠会**原地破坏** sc,
+                //    故必须先把 P 取走。`mass` 仍是**取 half 之前**的 fp32 之和 ——
+                //    Cast 不修改 sc, 所以数值契约不变 (reference.py 的 p = p.half().float()
+                //    对应的正是"分母用 pre-cast 的 fp32"这一条)。
                 Cast(ph, sc, RoundMode::CAST_NONE, ROWS * NB);
                 SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
                 WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
                 DataCopy(pgs[slot + j], ph, ROWS * NB);
+                //  ---- 行和: 折 NB -> NB/2 再一条 WholeReduceSum, 替掉泛型 ReduceSum ----
+                //  ★依据 F229 (读的是 CANN 自己的 reduce_sum_v220_impl.h::ReduceSumArCompute):
+                //      last <= 64 (fp32 的一个 repeat) 时, 它只发**一条** WholeReduceSum;
+                //      last > 64 走的是 ReduceSumInLargeLast —— 多步 + tmpBuf 搬运。
+                //    我们 last = NB = 128, 一直走的是贵的那条。先折成 64 就落进廉价分支。
+                //  ★上界由 F228 的消融给出 7.29% (把 ReduceSum 整个换成 Duplicate 时的窗口降幅);
+                //    本改动保留归约本身, 故实际只会更少。
+                //  ★形参由 scripts/probe_vec_reduce.py 逐位坐实 (与 NumPy 行和相同),
+                //    且实测 WholeReduceSum **不会**把 mask 留给后续全宽操作, 无需手动 ResetMask
+                //    —— 注意高层 ReduceSum 收尾是有 SetMaskNorm()+ResetMask() 的, 底层这条没有。
+                static_assert(NB / 2 == 64, "折叠假定 NB 正好是两个 fp32 repeat (每个 64 元素)");
+                Add(sc[0], sc[NB / 2], sc[0], uint64_t(NB / 2), ROWS,
+                    BinaryRepeatParams(1, 1, 1, NB / 8, NB / 8, NB / 8));
+                PipeBarrier<PIPE_V>();
+                WholeReduceSum<float>(mass, sc, NB / 2, ROWS, 1, 1, NB / 8);
+                PipeBarrier<PIPE_V>();
+                probe.Mark(3);   // t2_vec: Sub + Exp + Cast(ph) + 发布 + 折叠 + WholeReduceSum
+                                 //  ★口径变了: 发布已挪进本段, 故不要与改动前的 t2_vec 直接比大小
                     Add(massAcc, massAcc, mass, ROWS);
                     //  ★这里原有一道 PipeBarrier<PIPE_V>, 已删: massAcc 的下一个读者
                     //    要么是下一块的 Add (中间隔着 L251/L298/L300 三道屏障),
