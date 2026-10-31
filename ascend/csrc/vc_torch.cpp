@@ -26,7 +26,7 @@ uint32_t aclrtlaunch_vc910_cube_v2_probe(uint32_t blocks, void* stream,
     void* s_out, void* o_out, void* r1_out, void* r2_out,
     void* q, void* k, void* p, void* v, void* dmat, void* obase);
 uint32_t aclrtlaunch_vc910_axpy_probe(uint32_t blocks, void* stream,
-    void* x_half, void* base_f32, void* a_half, void* out_count, void* out_l0);
+    void* x_half, void* base_f32, void* a_half, void* out_count, void* out_l0, void* out_inf);
 uint32_t aclrtlaunch_vc910_fixpipe_vdeq_probe(uint32_t blocks, void* stream,
     void* s_i32, void* s_f16, void* s_sc1, void* s_sc2,
     void* q, void* k, void* deq, void* deqs);
@@ -297,7 +297,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> FixpipeVdeqProbe(
 }
 
 //  `Axpy<float, half>` 的数值探针 (F238 的前置): 确证语义、标量类型与混合宽度的跨步。
-std::tuple<at::Tensor, at::Tensor> AxpyProbe(
+std::tuple<at::Tensor, at::Tensor, at::Tensor> AxpyProbe(
         const at::Tensor& x, const at::Tensor& base, const at::Tensor& a) {
     constexpr int64_t R = 32, NN = 128;
     TORCH_CHECK(x.scalar_type() == at::kHalf, "probe x must be fp16");
@@ -312,11 +312,15 @@ std::tuple<at::Tensor, at::Tensor> AxpyProbe(
     }
     auto oc = at::zeros({R, NN}, base.options());
     auto ol = at::zeros({R, NN}, base.options());
+    //  out_inf: 前 R 个是逐行 ReduceMax, 其后 R*NN 个是 Exp(Axpy(含 -inf 的行))。
+    //  ★前 2*R 个是 WholeReduceMax 的 (值, 下标) 对 —— 它每个 repeat 写两个 half。
+    auto oi = at::zeros({2 * R + R * NN}, base.options());
     auto stream = c10_npu::getCurrentNPUStream(x.device().index()).stream(true);
     auto ret = aclrtlaunch_vc910_axpy_probe(1, stream, x.data_ptr(), base.data_ptr(),
-                                            a.data_ptr(), oc.data_ptr(), ol.data_ptr());
+                                            a.data_ptr(), oc.data_ptr(), ol.data_ptr(),
+                                            oi.data_ptr());
     TORCH_CHECK(ret == ACL_SUCCESS, "vc910_axpy_probe launch failed: ", ret);
-    return {oc, ol};
+    return {oc, ol, oi};
 }
 
 //  向量侧的数值探针: 确证 WholeReduceSum 的形参语义 (E33 的前置, 见内核侧注释)。
@@ -344,7 +348,7 @@ TORCH_LIBRARY(vc_ascend, m) {
     m.def("cube_v2_probe(Tensor q, Tensor k, Tensor p, Tensor v, Tensor dmat, Tensor obase) -> (Tensor, Tensor, Tensor, Tensor)");
     m.def("vec_reduce_probe(Tensor x) -> (Tensor, Tensor, Tensor)");
     m.def("fixpipe_vdeq_probe(Tensor q, Tensor k, Tensor deq, Tensor deqs) -> (Tensor, Tensor, Tensor, Tensor)");
-    m.def("axpy_probe(Tensor x, Tensor base, Tensor a) -> (Tensor, Tensor)");
+    m.def("axpy_probe(Tensor x, Tensor base, Tensor a) -> (Tensor, Tensor, Tensor)");
 }
 TORCH_LIBRARY_IMPL(vc_ascend, PrivateUse1, m) {
     m.impl("forward", TORCH_FN(Forward));

@@ -907,15 +907,16 @@ extern "C" __global__ __aicore__ void vc910_fixpipe_vdeq_probe(
 //  ★两条出口分开: count 形 (最简, 只验语义与标量类型) 与 level-0 形 (验跨步)。
 extern "C" __global__ __aicore__ void vc910_axpy_probe(
         GM_ADDR x_half, GM_ADDR base_f32, GM_ADDR a_half,
-        GM_ADDR out_count, GM_ADDR out_l0) {
+        GM_ADDR out_count, GM_ADDR out_l0, GM_ADDR out_inf) {
     if ASCEND_IS_AIV {
         constexpr uint32_t R = 32, NN = 128;   // 与生产的 ROWS / N 同
         TPipe pipe;
-        TBuf<TPosition::VECCALC> xb, b1, b2, ab;
+        TBuf<TPosition::VECCALC> xb, b1, b2, ab, mb;
         pipe.InitBuffer(xb, R * NN * 2);       // x: half
         pipe.InitBuffer(b1, R * NN * 4);       // count 形的 dst
         pipe.InitBuffer(b2, R * NN * 4);       // level-0 形的 dst
         pipe.InitBuffer(ab, 32);               // 标量
+        pipe.InitBuffer(mb, 256);              // 出口 3 的逐行最大值 (half), **独立缓冲**
         auto xh = xb.Get<half>();
         auto d1 = b1.Get<float>();
         auto d2 = b2.Get<float>();
@@ -955,6 +956,61 @@ extern "C" __global__ __aicore__ void vc910_axpy_probe(
         WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
         DataCopy(o1, d1, R * NN);
         DataCopy(o2, d2, R * NN);
+        //  ★以下的出口 3 会**破坏** d1/d2/xh, 故必须排在上面两次 DataCopy 之后。
+        //    写这段注记时才发现次序反了 —— 若不调, C1/C2 读到的会是出口 3 的残留。
+        SetFlag<HardEvent::MTE3_V>(EVENT_ID0);
+        WaitFlag<HardEvent::MTE3_V>(EVENT_ID0);
+        //  出口 3 (F238 的 (c)): 尾部掩码走 fp16 的 **-inf** 是否可行。
+        //  ★链路上要同时成立三件事, 任一不成立这条设计就不能用:
+        //    ① `ReduceMax` 不被 -inf 污染 (它要返回有限元素里的最大值);
+        //    ② `Axpy` 的 -inf * 有限标量仍是 -inf (IEEE 如此, 但本机要验);
+        //    ③ `Exp(-inf)` 给 **0** (而不是 NaN 或下溢成别的)。
+        //  ★为什么不能用有限下界 (如 -65504): qs 约 1e-4 时
+        //    `exp(qs*(-65504 - m))` 只到 exp(-6.5) ≈ 1.5e-3, **会泄漏**到分母里。
+        //  布局: out_inf[0..R-1] = 逐行 ReduceMax 的结果;
+        //        out_inf[R .. R+R*NN-1] = Exp(Axpy(-inf 行)) 的结果。
+        {
+            GlobalTensor<float> oi;
+            oi.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(out_inf), 2 * R + R * NN);
+            //  把每行的后 32 列改成 fp16 的 -inf (前 96 列保持原值)。
+            //  ★`__builtin_inf()` 返回 **double**, aicore 不允许 (实撞: "double precision
+            //    operation is not allowed in aicore function")。按位构造 fp16 的 -inf。
+            const uint16_t ninf_bits = 0xFC00u;        // fp16: 符号 1, 指数全 1, 尾数 0
+            half ninf;
+            __builtin_memcpy(&ninf, &ninf_bits, sizeof(ninf));
+            SetFlag<HardEvent::MTE3_S>(EVENT_ID0);
+            WaitFlag<HardEvent::MTE3_S>(EVENT_ID0);
+            for (uint32_t r = 0; r < R; ++r)
+                for (uint32_t c = 96; c < NN; ++c) xh.SetValue(r * NN + c, ninf);
+            SetFlag<HardEvent::S_V>(EVENT_ID0);
+            WaitFlag<HardEvent::S_V>(EVENT_ID0);
+            //  ① 逐行最大值 (对 fp16 做, 与 F238 形态一致)
+            //  ★必须用**独立缓冲**: 第一版写成 `d2.ReinterpretCast<half>()`, 随后又
+            //    `Cast(d2, rmax, ...)` —— dst 与 src 同一块内存, 读写重叠。
+            //    探针当场报 "ReduceMax 不被污染 False", 而那是**我的缺陷, 不是硬件事实**。
+            //    (仓里的教训原文: 本机对 Cast 的 dst==src 无任何说明, 别推。)
+            auto rmax = mb.Get<half>();
+            //  ★`WholeReduceMax<half>` 每个 repeat 写的是 **(值, 下标) 一对 half**,
+            //    不是一个值 —— 2026-10-31 由本探针测出: 偶数位是行最大值, 奇数位把
+            //    half 的位模式读成整数正好是最大值在行内的下标 (33 / 8 / 88)。
+            //    所以 dst 要留 2*R 个 half, 主机侧取 [0::2]。**这是读法, 不是硬件缺陷。**
+            WholeReduceMax<half>(rmax, xh, NN, R, 1, 1, uint16_t(NN / 16));
+            PipeBarrier<PIPE_V>();
+            //  ② + ③ : dst 填 0, Axpy 乘 1.0 -> 得到 f32 的 x; 再 Exp
+            Duplicate(d1, 0.0f, R * NN);
+            PipeBarrier<PIPE_V>();
+            Axpy<float, half>(d1, xh, static_cast<half>(1.0f), R * NN);
+            PipeBarrier<PIPE_V>();
+            Exp(d1, d1, R * NN);
+            PipeBarrier<PIPE_V>();
+            //  行最大值转 fp32 写出
+            Cast(d2, rmax, RoundMode::CAST_NONE, 2 * R);
+            PipeBarrier<PIPE_V>();
+            SetFlag<HardEvent::V_MTE3>(EVENT_ID1);
+            WaitFlag<HardEvent::V_MTE3>(EVENT_ID1);
+            DataCopy(oi, d2, 2 * R);
+            DataCopy(oi[2 * R], d1, R * NN);
+        }
     }
 }
 
