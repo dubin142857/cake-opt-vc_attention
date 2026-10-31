@@ -287,7 +287,20 @@ public:
                     //    因为 qs > 0 故 max_j(qs*s_j) = qs*max_j(s_j)。那是 32 个元素, 不是一遍。
                     //    用泛型 ReduceMax<half> 而非 WholeReduceMax —— 后者写 (值,下标) 成对 (F242),
                     //    泛型那条替我们把值取出来。
-                    ReduceMax<half, Pattern::Reduce::AR, false>(tmaxh, sc, tmp, shape, true);
+                    //  ★★F246 的探针件 —— 判"缺口在不在行最大值这一步"。
+                    //    把泛型 `ReduceMax<half>` 换成手写 `WholeReduceMax<half>`。
+                    //    ★**不是**因为泛型在贵分支 (F246 读接口: half 的 last=128 正好等于
+                    //      B16_DATA_NUM_PER_REPEAT, 它在**便宜**分支), 而是用它当探针。
+                    //    ★求最大值**无舍入**, 故数值应逐位等价, 五条摘要应**不变** ——
+                    //      先看摘要再看时间, 不等价则读数不能用来归因。
+                    //  ★形参依据本机权威样例 (CANN 自己的 v220 softmax,
+                    //    softmax_common_nd_reduce.h:55): `ORDER_ONLY_VALUE` 配
+                    //    dstRepStride=1 给出**连续**输出 (不再是 F242 那种 (值,下标) 成对),
+                    //    srcRepStride = 行长 / 每块元素数。half 每块 16 个, 故 NB/16。
+                    //  ★mask 取 NB=128 —— fp16 的一个 repeat 正好 128 个元素, 不需折叠
+                    //    (fp32 那次折 128->64 是因为 fp32 的 repeat 只有 64)。
+                    WholeReduceMax<half>(tmaxh, sc, NB, ROWS, 1, 1, NB / 16,
+                                         ReduceOrder::ORDER_ONLY_VALUE);
                     PipeBarrier<PIPE_V>();
                     Cast(tmax, tmaxh, RoundMode::CAST_NONE, ROWS);
                     PipeBarrier<PIPE_V>();
