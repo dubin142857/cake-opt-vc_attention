@@ -25,6 +25,8 @@ uint32_t aclrtlaunch_vc910_vec_reduce_probe(uint32_t blocks, void* stream,
 uint32_t aclrtlaunch_vc910_cube_v2_probe(uint32_t blocks, void* stream,
     void* s_out, void* o_out, void* r1_out, void* r2_out,
     void* q, void* k, void* p, void* v, void* dmat, void* obase);
+uint32_t aclrtlaunch_vc910_axpy_probe(uint32_t blocks, void* stream,
+    void* x_half, void* base_f32, void* a_half, void* out_count, void* out_l0);
 uint32_t aclrtlaunch_vc910_fixpipe_vdeq_probe(uint32_t blocks, void* stream,
     void* s_i32, void* s_f16, void* s_sc1, void* s_sc2,
     void* q, void* k, void* deq, void* deqs);
@@ -294,6 +296,29 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> FixpipeVdeqProbe(
     return {s_i32, s_f16, s_sc1, s_sc2};
 }
 
+//  `Axpy<float, half>` 的数值探针 (F238 的前置): 确证语义、标量类型与混合宽度的跨步。
+std::tuple<at::Tensor, at::Tensor> AxpyProbe(
+        const at::Tensor& x, const at::Tensor& base, const at::Tensor& a) {
+    constexpr int64_t R = 32, NN = 128;
+    TORCH_CHECK(x.scalar_type() == at::kHalf, "probe x must be fp16");
+    TORCH_CHECK(base.scalar_type() == at::kFloat, "probe base must be fp32");
+    TORCH_CHECK(a.scalar_type() == at::kHalf, "probe a must be fp16 (Axpy 的标量跟 src 的类型)");
+    TORCH_CHECK(x.sizes() == at::IntArrayRef({R, NN}), "probe x must be [32,128]");
+    TORCH_CHECK(base.sizes() == at::IntArrayRef({R, NN}), "probe base must be [32,128]");
+    TORCH_CHECK(a.numel() >= 16, "probe a 至少 16 个元素 (一次 DataCopy 的粒度), 只读第 0 个");
+    for (const auto& t : {x, base, a}) {
+        TORCH_CHECK(t.is_contiguous() && t.is_privateuseone(),
+                    "probe inputs must be contiguous ND on NPU");
+    }
+    auto oc = at::zeros({R, NN}, base.options());
+    auto ol = at::zeros({R, NN}, base.options());
+    auto stream = c10_npu::getCurrentNPUStream(x.device().index()).stream(true);
+    auto ret = aclrtlaunch_vc910_axpy_probe(1, stream, x.data_ptr(), base.data_ptr(),
+                                            a.data_ptr(), oc.data_ptr(), ol.data_ptr());
+    TORCH_CHECK(ret == ACL_SUCCESS, "vc910_axpy_probe launch failed: ", ret);
+    return {oc, ol};
+}
+
 //  向量侧的数值探针: 确证 WholeReduceSum 的形参语义 (E33 的前置, 见内核侧注释)。
 std::tuple<at::Tensor, at::Tensor, at::Tensor> VecReduceProbe(const at::Tensor& x) {
     constexpr int64_t R = 32, NN = 128;
@@ -319,6 +344,7 @@ TORCH_LIBRARY(vc_ascend, m) {
     m.def("cube_v2_probe(Tensor q, Tensor k, Tensor p, Tensor v, Tensor dmat, Tensor obase) -> (Tensor, Tensor, Tensor, Tensor)");
     m.def("vec_reduce_probe(Tensor x) -> (Tensor, Tensor, Tensor)");
     m.def("fixpipe_vdeq_probe(Tensor q, Tensor k, Tensor deq, Tensor deqs) -> (Tensor, Tensor, Tensor, Tensor)");
+    m.def("axpy_probe(Tensor x, Tensor base, Tensor a) -> (Tensor, Tensor)");
 }
 TORCH_LIBRARY_IMPL(vc_ascend, PrivateUse1, m) {
     m.impl("forward", TORCH_FN(Forward));
@@ -327,6 +353,7 @@ TORCH_LIBRARY_IMPL(vc_ascend, PrivateUse1, m) {
     m.impl("cube_v2_probe", TORCH_FN(CubeV2Probe));
     m.impl("vec_reduce_probe", TORCH_FN(VecReduceProbe));
     m.impl("fixpipe_vdeq_probe", TORCH_FN(FixpipeVdeqProbe));
+    m.impl("axpy_probe", TORCH_FN(AxpyProbe));
 }
 TORCH_LIBRARY_IMPL(vc_ascend, Meta, m) {
     m.impl("forward", TORCH_FN(Meta));

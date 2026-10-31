@@ -895,6 +895,69 @@ extern "C" __global__ __aicore__ void vc910_fixpipe_vdeq_probe(
 //    (连续? 按 32B 块跳?) 从声明里看不出来。猜错在 141 个用例里排查, 远贵于在这里一次测掉。
 //  ★取值刻意用小整数: fp32 内精确, **任何求和顺序都同果**, 故"不逐位相同"只可能是形参错,
 //    不会是舍入。同时输出现行 ReduceSum 的结果作对照 —— 两者都要与 NumPy 逐位相同。
+//  ---- `Axpy<float, half>` 的**数值**探针 (F238 的 (a), 实现前置) ---------------
+//  ★要确证什么: 本机 (dav_c220) 的 `Axpy` 支持 (dst=float, src=half), 语义
+//    `dst[i] = src[i] * scalar + dst[i]`, 且**标量类型跟 src**, 即 fp16。
+//    它能把"读半精度 + 乘标量 + 累加到 fp32"融进一条指令 —— 这是让
+//    "反量化的乘 + int->float 的转换 + 减行最大值"合成一遍的关键。
+//  ★为什么不能推: 混合宽度下 **repeat 的跨步单位**从声明里看不出来 ——
+//    dst 是 fp32 (一个 32B 块 8 个元素), src 是 fp16 (16 个元素), 两边的
+//    dstRepStride / srcRepStride 到底各按谁的块算, 只有数值能定。
+//    这正是 F183 立的次序: 猜错在一次构建里暴露, 而不是污染内核后去 141 例里排查。
+//  ★两条出口分开: count 形 (最简, 只验语义与标量类型) 与 level-0 形 (验跨步)。
+extern "C" __global__ __aicore__ void vc910_axpy_probe(
+        GM_ADDR x_half, GM_ADDR base_f32, GM_ADDR a_half,
+        GM_ADDR out_count, GM_ADDR out_l0) {
+    if ASCEND_IS_AIV {
+        constexpr uint32_t R = 32, NN = 128;   // 与生产的 ROWS / N 同
+        TPipe pipe;
+        TBuf<TPosition::VECCALC> xb, b1, b2, ab;
+        pipe.InitBuffer(xb, R * NN * 2);       // x: half
+        pipe.InitBuffer(b1, R * NN * 4);       // count 形的 dst
+        pipe.InitBuffer(b2, R * NN * 4);       // level-0 形的 dst
+        pipe.InitBuffer(ab, 32);               // 标量
+        auto xh = xb.Get<half>();
+        auto d1 = b1.Get<float>();
+        auto d2 = b2.Get<float>();
+        auto ah = ab.Get<half>();
+        GlobalTensor<half> xg, ag;
+        GlobalTensor<float> bg, o1, o2;
+        xg.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(x_half), R * NN);
+        ag.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(a_half), 16);
+        bg.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(base_f32), R * NN);
+        o1.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(out_count), R * NN);
+        o2.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(out_l0), R * NN);
+
+        DataCopy(xh, xg, R * NN);
+        DataCopy(d1, bg, R * NN);
+        DataCopy(d2, bg, R * NN);
+        DataCopy(ah, ag, 16);
+        SetFlag<HardEvent::MTE2_S>(EVENT_ID0);
+        WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);
+        SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
+        WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
+        const half a = ah.GetValue(0);
+
+        //  出口 1: count 形 —— 一次覆盖全部 R*NN 个元素。
+        Axpy<float, half>(d1, xh, a, R * NN);
+        PipeBarrier<PIPE_V>();
+
+        //  出口 2: level-0 形 —— 每个 repeat 覆盖 64 个元素, 线性推进 R*NN/64 次。
+        //  ★待验假设: 跨步各按**自己**的数据宽度算 ——
+        //    dst 是 fp32, 64 个元素 = 8 个 32B 块 -> dstRepStride = 8;
+        //    src 是 fp16, 64 个元素 = 4 个 32B 块 -> srcRepStride = 4。
+        //    若实际两边都按 dst (或都按 src) 的块算, 结果会整片错位, 主机侧一眼看出。
+        Axpy<float, half>(d2, xh, a, uint64_t(64), uint8_t(R * NN / 64),
+                          UnaryRepeatParams(1, 1, 8, 4));
+        PipeBarrier<PIPE_V>();
+
+        SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
+        WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
+        DataCopy(o1, d1, R * NN);
+        DataCopy(o2, d2, R * NN);
+    }
+}
+
 extern "C" __global__ __aicore__ void vc910_vec_reduce_probe(
         GM_ADDR x, GM_ADDR out_new, GM_ADDR out_old, GM_ADDR out_after) {
     if ASCEND_IS_AIV {
