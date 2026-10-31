@@ -48,7 +48,7 @@ def quantize_e4m3_decoded(x):
 
 @torch.no_grad()
 def payload_reference(payload, *, expcast=True, query_indices=None, tile_width=None,
-                      score_dtype=None):
+                      score_dtype=None, deq_trunc_bits=None):
     """All keys, optionally selected queries; decoded operands and FP32 matmuls.
 
     tile_width 是**在线更新的粒度**, 默认取 ONLINE_TILE = K_TILE * CHUNK ——
@@ -66,6 +66,14 @@ def payload_reference(payload, *, expcast=True, query_indices=None, tile_width=N
     ★取整必须排在行最大值**之前**: 否则 fp16 可能向上取整到超过 fp32 算出的基准,
     scores - new_m 变正, ExpCast 那条'上界永不触到'的不变式 (内核据此删掉了
     Mins(sc,120)) 就不再成立。此处模型与内核要做的事一致 —— 存完再求最大值。
+
+    deq_trunc_bits 是**反量化 scale 被硬件截掉的低位尾数位数**, 默认 None = 不截 (现行)。
+    ★它只在"把反量化挪进 fixpipe"这条路上才有意义, 且**不是可选项**:
+      F233 实测确证, 本机 (`__NPU_ARCH__` 2201) 的 fixpipe 反量化把那条 fp32 scale
+      的低 **13** 位尾数**截断**(不是进位), 只用 bits[31:13] —— 剩 10 位尾数,
+      恰是 fp16 的尾数宽度。传 13 就是在离线量这条路的数值代价 (不碰内核)。
+    ★截的是**合成之后**的那个数 (qscale * kscale * scale), 因为进 deq 项的正是它。
+      而 qscale 在一个 32 行的量化块内恒定, 故逐元素截与按块截同果。
     """
     q, k, v = payload["q"].float(), payload["k"].float(), payload["v"].float()
     qs, ks, vs = payload["q_scale"], payload["k_scale"], payload["v_scale"]
@@ -90,6 +98,12 @@ def payload_reference(payload, *, expcast=True, query_indices=None, tile_width=N
             block = (begin + sub) // K_BLOCK
             span = min(K_BLOCK, count - sub)
             g = (qscale * ks[:, :, block, 0].unsqueeze(-1)) * payload["scale"]
+            if deq_trunc_bits:
+                #  硬件把 fp32 的低 deq_trunc_bits 位尾数**截断**。按位与, 不是四舍五入 ——
+                #  F233 在 8 个候选模型里把"截断"与"就近偶数"分开过: 截断 0/8192 不符,
+                #  就近偶数 3528/8192 不符。
+                mask = -(1 << deq_trunc_bits)          # int32 下即 0xFFFF_E000 (13 位时)
+                g = (g.float().view(torch.int32) & mask).view(torch.float32)
             segments.append(g.unsqueeze(-1).expand(*g.shape, span))
         scores *= torch.cat(segments, dim=-1)
         if score_dtype is not None:
