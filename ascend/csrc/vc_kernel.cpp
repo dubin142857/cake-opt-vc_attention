@@ -23,6 +23,15 @@ using namespace vc910;
 //  ★已校准 (F208): 门控掉整个趟 2 循环时 aiv_scalar_time 降 47.4% 而 aiv_vec_time 只变 +0.1%
 //    —— 即它**只门控 aiv_scalar_time**, 对 vec / mte3 无效。用它判 vec 是无效的。
 constexpr bool VC_METRICS_REGION = false;
+
+//  ---- 甲-1 的**消融件** (E44, 2026-10-31): 趟 2 整体搬 fp16 宽度, 量"速率轴"的上界 ----
+//  ★**默认 false, 生产路径逐字不动**。置位后数值**故意不对** (分母也走 fp16,
+//    广播块与行和落点都用重解释的缓冲), 只为让**指令形状**与真的 fp16 版本一致。
+//  ★为什么要量它: 约束流水是 vector (ratio 0.8052), 而 `aiv_vec_fp16_ratio` 实测 **0.000000**;
+//    参考实现 Laser 同一比率 **0.658**。达芬奇核 2048 位 SIMD —— fp32 每 repeat 64 元素,
+//    fp16 **128** 元素。即约束流水上 100% 的工作跑在**半宽**。
+//  ★测完必须改回 false 并重建, 核对五条确定性摘要回到基线 (E44 写定的收尾条件)。
+constexpr bool VC_ABLATE_FP16_PASS2 = false;
 __aicore__ inline void MetricsOff() { if constexpr (VC_METRICS_REGION) MetricsProfStop(); }
 __aicore__ inline void MetricsOn()  { if constexpr (VC_METRICS_REGION) MetricsProfStart(); }
 
@@ -96,6 +105,10 @@ public:
         //    两者在趟 2 内同时活, 但分属不同槽, 不冲突。
         auto raw = rawBuf.Get<int32_t>();                      // 槽 0: ExpCast 用
         auto work = rawBuf.Get<float>()[ROWS * N];             // 槽 1: 趟 2 的 fp32 工作块
+        //  ★E44 消融件的三个 half 视图 (默认分支里一个都不会被用到, 编译器会整段消掉):
+        //    workh 与 work **同一字节偏移** (槽 1); bmaxh 复用广播块; massh 借 subBuf ——
+        //    subBuf 只在 expcast 路径用, 控制路径空闲。数值无意义, 只为指令形状一致。
+        auto workh = rawBuf.Get<half>()[2 * ROWS * N];
         auto chunkScore = scoreBuf.Get<half>();   // ★fp16; CHUNK 块连续, 第 j 块在 [j*ROWS*NB]
         auto ph = pBuf.Get<half>();
         auto acc = accBuf.Get<float>();
@@ -115,6 +128,8 @@ public:
         auto table = lutBuf.Get<float>();
         auto brcb = brcbBuf.Get<float>();
         auto bmax = brcb[0], balpha = brcb[ROWS * 8];
+        auto bmaxh = brcbBuf.Get<half>();                      // E44 消融件: 广播块的 half 视图
+        auto massh = subBuf.Get<half>();                       // E44 消融件: 行和的 half 落点
         auto tmp = tmpBuf.Get<uint8_t>();
         auto e0val = subBuf.Get<float>();
         auto cmp = cmpBuf.Get<uint8_t>();
@@ -341,12 +356,21 @@ public:
                     //    得到 `qs*s - rowmax`, 与改动前那条 `Sub` 的结果同义。
                     //  ★填值那一遍的代价已实测: vec +11.9 ms (F241); 它换掉的是趟 1 的一整遍 Cast。
                     //  ★`Axpy` 的标量类型跟 src 即 fp16, 跨步各按自己数据宽度 (F239 坐实)。
+                    if constexpr (VC_ABLATE_FP16_PASS2) {
+                        //  ★填值: fp16 一个 repeat 128 个元素, 故**一次**调用覆盖整行 (fp32 要两次)。
+                        Adds(workh[0], bmaxh, half(0), uint64_t(NB), ROWS,
+                             UnaryRepeatParams(1, 0, uint8_t(N / 16), 1));
+                        PipeBarrier<PIPE_V>();
+                        Axpy<half, half>(workh, sc, qs_half, ROWS * NB);
+                        PipeBarrier<PIPE_V>();
+                    } else {
                     for (uint32_t off = 0; off < NB; off += 64)
                         Adds(work[off], bmax, 0.0f, uint64_t(64), ROWS,
                              UnaryRepeatParams(1, 0, uint8_t(N / 8), 1));
                     PipeBarrier<PIPE_V>();
                     Axpy<float, half>(work, sc, qs_half, ROWS * NB);
                     PipeBarrier<PIPE_V>();
+                    }
                 if (t.expcast) {
                     // Separate FP32 multiply/add is part of the numerical contract.
                     Muls(work, work, EXPCAST_GAIN, ROWS * NB);
@@ -390,6 +414,8 @@ public:
                     PipeBarrier<PIPE_V>();
                     Select(work, cmp, e0val, raw.ReinterpretCast<float>(),
                            SELMODE::VSEL_TENSOR_TENSOR_MODE, ROWS * NB);
+                } else if constexpr (VC_ABLATE_FP16_PASS2) {
+                    Exp(workh, workh, ROWS * NB);
                 } else {
                     Exp(work, work, ROWS * NB);
                 }
@@ -398,6 +424,23 @@ public:
                 //    故必须先把 P 取走。`mass` 仍是**取 half 之前**的 fp32 之和 ——
                 //    Cast 不修改 work, 所以数值契约不变 (reference.py 的 p = p.half().float()
                 //    对应的正是"分母用 pre-cast 的 fp32"这一条)。
+                if constexpr (VC_ABLATE_FP16_PASS2) {
+                    //  ★消融: fp16 下 NB=128 **恰好一个 repeat**, 于是三条指令整条消失 ——
+                    //    (a) `Cast(ph, work)` 不需要 (workh 本身就是 fp16 的 P);
+                    //    (b) 折叠 `Add(NB -> NB/2)` 不需要 (fp32 要折是因为它的 repeat 只有 64);
+                    //    (c) 填值由两次 64 元素调用变一次 128 元素调用。
+                    //    即速率轴这一刀**顺带砍掉三条**, 不只是把宽度翻倍。
+                    SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
+                    WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
+                    DataCopy(pgs[slot + j], workh, ROWS * NB);
+                    //  ★`WholeReduceSum` 带独立 dst 类型的那个重载被 3510/5102/3003/3113 圈住,
+                    //    **2201 上没有** (kernel_operator_vec_reduce_intf_impl.h:305 对 327),
+                    //    故行和只能落 half 再 Cast 回 fp32。
+                    WholeReduceSum<half>(massh, workh, NB, ROWS, 1, 1, NB / 16);
+                    PipeBarrier<PIPE_V>();
+                    Cast(mass, massh, RoundMode::CAST_NONE, ROWS);
+                    PipeBarrier<PIPE_V>();
+                } else {
                 Cast(ph, work, RoundMode::CAST_NONE, ROWS * NB);
                 SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
                 WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
@@ -418,6 +461,7 @@ public:
                 PipeBarrier<PIPE_V>();
                 WholeReduceSum<float>(mass, work, NB / 2, ROWS, 1, 1, NB / 8);
                 PipeBarrier<PIPE_V>();
+                }
                 probe.Mark(3);   // t2_vec: Sub + Exp + Cast(ph) + 发布 + 折叠 + WholeReduceSum
                                  //  ★口径变了: 发布已挪进本段, 故不要与改动前的 t2_vec 直接比大小
                     Add(massAcc, massAcc, mass, ROWS);
