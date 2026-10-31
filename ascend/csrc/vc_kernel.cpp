@@ -32,6 +32,14 @@ constexpr bool VC_METRICS_REGION = false;
 //    fp16 **128** 元素。即约束流水上 100% 的工作跑在**半宽**。
 //  ★测完必须改回 false 并重建, 核对五条确定性摘要回到基线 (E44 写定的收尾条件)。
 constexpr bool VC_ABLATE_FP16_PASS2 = false;
+
+//  ---- 甲-2 的**单价探针** (E45, 2026-10-31): 一条 mask 形 level-0 调用值多少时间 ----
+//  ★真机给不了逐指令时间 (`--aic-metrics=Source` 只给逐基本块**计数**), 故不直接问
+//    "MOVEMASK 占多少", 改问"一条 mask 形调用的单价", 份额由单价 x 调用数算出。
+//  ★插的那条是 `Adds(..., 0.0f)` —— fp32 加零**逐位不变**, 所以五条确定性摘要
+//    在任何 K 上都必须不变。这是探针自带的正确性校验: 摘要变了说明插错了地方。
+//  ★斜率是单价的**上界**: 每条含 1 个 repeat 的 64 元素加法 (整块调用是 32 个 repeat)。
+constexpr uint32_t VC_PROBE_MASKCALLS = 0;
 __aicore__ inline void MetricsOff() { if constexpr (VC_METRICS_REGION) MetricsProfStop(); }
 __aicore__ inline void MetricsOn()  { if constexpr (VC_METRICS_REGION) MetricsProfStart(); }
 
@@ -461,6 +469,14 @@ public:
                 PipeBarrier<PIPE_V>();
                 WholeReduceSum<float>(mass, work, NB / 2, ROWS, 1, 1, NB / 8);
                 PipeBarrier<PIPE_V>();
+                }
+                //  ★E45 单价探针 (默认 K=0, 整段被编掉)。放在这里是因为此处 `work`
+                //    已被折叠原地破坏, 是死数据 —— 加零对它做什么都不影响下游。
+                if constexpr (VC_PROBE_MASKCALLS > 0) {
+                    for (uint32_t pk = 0; pk < VC_PROBE_MASKCALLS; ++pk)
+                        Adds(work[0], work[0], 0.0f, uint64_t(64), 1,
+                             UnaryRepeatParams(1, 1, 8, 8));
+                    PipeBarrier<PIPE_V>();
                 }
                 probe.Mark(3);   // t2_vec: Sub + Exp + Cast(ph) + 发布 + 折叠 + WholeReduceSum
                                  //  ★口径变了: 发布已挪进本段, 故不要与改动前的 t2_vec 直接比大小
