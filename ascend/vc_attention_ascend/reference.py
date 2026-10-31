@@ -3,6 +3,10 @@
 import math
 import torch
 
+#  ★哨兵: 区分"没传" (取契约默认) 与"显式传 None/False" (回到改动前的口径)。
+#    用 None 当默认就分不开这两件事, 而离线对比正需要分开。
+_UNSET = object()
+
 Q_BLOCK = 32
 K_BLOCK = 128
 #  内核的 K 方向 matmul tile 宽度。必须与 ascend/csrc/vc_tiling.h 的 N 一致,
@@ -46,9 +50,24 @@ def quantize_e4m3_decoded(x):
     return (torch.round(a / step) * step).clamp(max=448.0) * x.sign()
 
 
+#  ---- 内核的数值契约 (E38 起) ------------------------------------------------
+#  ★oracle 必须与内核**同契约** —— payload_reference 的定位本就是"内核的同契约 oracle"
+#    (F220 立, 与当年 tile_width 同理)。内核把反量化拆成两步 (F238):
+#      · fixpipe 施加 `ks_block * scale` 并吐出 **fp16** 分数 (硬件对 int32 源没有带 quant
+#        的 fp32 出口, F233), 且该 scale 的低 **13** 位尾数被硬件**截断** (F233);
+#      · `qs` 由 AIV 的 `Axpy<float,half>` 在 fp16 舍入**之后**施加, 标量本身是 fp16 (F239)。
+#  ★这是**契约变更, 不是闸放宽**, 代价已离线量清 (F240):
+#    control 的 dense RMSE 增量 **+0.001215 个百分点**, 逐行最坏 0.1938% 仍在 1% 闸内。
+#  ★三个常量在这里**只写一次**, 调用方不要各自填 —— 那正是契约分叉的起点。
+#    显式传 None/False 仍可回到改动前的口径 (离线对比用)。
+SCORE_DTYPE = torch.float16
+DEQ_TRUNC_BITS = 13
+DEQ_SPLIT_QSCALE = True
+
+
 @torch.no_grad()
 def payload_reference(payload, *, expcast=True, query_indices=None, tile_width=None,
-                      score_dtype=None, deq_trunc_bits=None, deq_split_qscale=False):
+                      score_dtype=_UNSET, deq_trunc_bits=_UNSET, deq_split_qscale=_UNSET):
     """All keys, optionally selected queries; decoded operands and FP32 matmuls.
 
     tile_width 是**在线更新的粒度**, 默认取 ONLINE_TILE = K_TILE * CHUNK ——
@@ -81,6 +100,12 @@ def payload_reference(payload, *, expcast=True, query_indices=None, tile_width=N
     #  ★次序因此与现行**不同**: fp16 的舍入发生在**乘 qscale 之前**。
     #  ★且 AIV 用 `Axpy<float,half>` 来乘, 它的标量类型是 **fp16** (F239 坐实),
     #  所以 qscale 会被舍成 10 位尾数 —— 这一项要一并建模, 不能假定可忽略。
+    if score_dtype is _UNSET:
+        score_dtype = SCORE_DTYPE
+    if deq_trunc_bits is _UNSET:
+        deq_trunc_bits = DEQ_TRUNC_BITS
+    if deq_split_qscale is _UNSET:
+        deq_split_qscale = DEQ_SPLIT_QSCALE
     q, k, v = payload["q"].float(), payload["k"].float(), payload["v"].float()
     qs, ks, vs = payload["q_scale"], payload["k_scale"], payload["v_scale"]
     n, d = payload["queries"], q.shape[-1]

@@ -287,6 +287,25 @@ static_assert(_ev_all_unique(), "★同一个 pipe 对里有两个事件号撞�
 static_assert(_ev_all_in_range(), "★事件号超出 0..7");
 static_assert(EV_GROUP_N == 3, "新增 pipe 对后请同步更新本计数, 否则唯一性检查会漏看它");
 
+
+//  ---- workspace (CubeV2 布局) 三段的字节数 ------------------------------------
+//  ★放在这里而不是 vc_tiling_host.h: 那个头**只给主机**用 (它自己的首注就写着
+//    "keep the device's shared header free of host functions"), 而这三个量设备两侧都要用。
+//    放这里才能做到"全仓只有一处写法"。
+//  ★2026-10-31 (E38): S 由 int32 改 **fp16** —— fixpipe 以 `DEQF16` 直接吐出
+//    已施加 `ks_block * t.scale` 的 fp16 分数, AIV 不再做 Cast 与按块 Muls。
+//  ★设备侧调用要写成 `constexpr`, 让它在编译期折掉 (普通 constexpr 函数带运行时实参
+//    在 Ascend C 设备代码里不可调 —— 见 vc_tiling_host.h 的首注)。
+constexpr uint64_t WsSBytesV2(uint32_t tile_m, uint32_t nblk, uint32_t chunk) {
+    return 2ull * chunk * tile_m * nblk * sizeof(uint16_t);   // S: fp16 (E38 起)
+}
+constexpr uint64_t WsPBytesV2(uint32_t tile_m, uint32_t nblk, uint32_t chunk) {
+    return 2ull * chunk * tile_m * nblk * sizeof(uint16_t);   // P: fp16
+}
+constexpr uint64_t WsOBytesV2(uint32_t dim, uint32_t tile_m) {
+    return 2ull * tile_m * dim * sizeof(float);               // O: fp32, 双槽
+}
+
 }  // namespace map
 }  // namespace vc910
 

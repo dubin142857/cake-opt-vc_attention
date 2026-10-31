@@ -24,17 +24,20 @@ constexpr uint64_t WorkspaceBytes(uint32_t dim, uint32_t tile_m = M) {
 //  ---- CubeV2 (按 chunk 分阶段) 的 workspace ---------------------------------
 //  ★与 vc_kernel.cpp 里 CubeV2::RunCube 的布局是**同一个量的两处写法**, 改一处必须改另一处
 //    (与上面 VectorBytes 和内核两次 InitBuffer 的关系同形, hangdiag C14 守的就是这种成对量)。
-//  布局: S (int32, 2xCHUNK 槽) · P (half, 2xCHUNK 槽) · O (fp32, 2 槽)。
+//  布局: S (**half**, 2xCHUNK 槽) · P (half, 2xCHUNK 槽) · O (fp32, 2 槽)。
+//  ★S 由 int32 改 half (E38): fixpipe 以 `DEQF16` 直接吐出已施加 ks·scale 的 fp16 分数。
+//    硬件强加 —— 本机对 int32 源没有任何带 quant 的 fp32 出口 (F233)。
+//  ★三段的字节数住在 **vc_l1l0_map.h** (设备两侧也要用), 这里只做加总。
 //  ★S/P 要**两个** chunk 组是因为错位一个 chunk: AIC 在算第 c 组的 QK 时,
 //    AIV 还在读第 c-1 组的 S。不错位则两侧严格交替, 重叠比现状更差 (F189 的规则)。
 constexpr uint64_t WorkspaceBytesV2(uint32_t dim, uint32_t tile_m, uint32_t nblk, uint32_t chunk) {
-    return 2ull * chunk * tile_m * nblk * sizeof(int32_t)     // S
-         + 2ull * chunk * tile_m * nblk * sizeof(uint16_t)    // P
-         + 2ull * tile_m * dim * sizeof(float);               // O
+    return vc910::map::WsSBytesV2(tile_m, nblk, chunk)
+         + vc910::map::WsPBytesV2(tile_m, nblk, chunk)
+         + vc910::map::WsOBytesV2(dim, tile_m);
 }
 //  本机几何 (M=64, N=128, CHUNK=4) 的取值钉死, 免得有人改了常量而没核预算。
-static_assert(WorkspaceBytesV2(128, 64, 128, 4) == 458752, "D=128 时每核应是 448 KB");
-static_assert(WorkspaceBytesV2(64, 64, 128, 4) == 425984, "D=64 时每核应是 416 KB");
+static_assert(WorkspaceBytesV2(128, 64, 128, 4) == 327680, "D=128 时每核应是 320 KB");
+static_assert(WorkspaceBytesV2(64, 64, 128, 4) == 294912, "D=64 时每核应是 288 KB");
 //  ★一条刚被编译器否掉的直觉, 留痕: 我原本断言
 //    WorkspaceBytesV2(128,64,128,4) > WorkspaceBytesV2(128,64,256,2), 它**不成立** ——
 //    S/P 的字节只取决于 CHUNK x NBLK 的**乘积** (4x128 = 2x256), 与怎么切无关。
@@ -43,7 +46,7 @@ static_assert(WorkspaceBytesV2(128, 64, 128, 4) == WorkspaceBytesV2(128, 64, 256
               "S/P 的字节只取决于 CHUNK x NBLK 的乘积; 此条变假说明布局算错了");
 //  与真实基线 (旧布局, S 两槽 + P 两槽 + O 两槽, N=256) 比才是"拿空间换流量"的那笔账。
 static_assert(WorkspaceBytesV2(128, 64, 128, 4) > WorkspaceBytes(128, 64),
-              "本设计用 448 KB/核 换 fixpipe 流量由 223.8 降到 186.3 GB; "
+              "本设计用 320 KB/核 (S 转 fp16 之前是 448 KB) 换 fixpipe 流量; "
               "若此条变假说明 chunk 深度或块大小被改小了, 收益也就没了");
 
 //  UB 预算 —— 与 vc_kernel.cpp 的 InitBuffer 列表是同一个量的两处写法, 逐项对齐。
@@ -73,5 +76,5 @@ static_assert(VectorBytes(0, 64, 4) <= 196608, "★静态部分已超 UB, 还没
 //  ★旧布局的两条取值断言已删: N 由 256 改 128 后它们的数值不再成立, 而主路径也已
 //    改用 WorkspaceBytesV2。WorkspaceBytes 本体保留 —— 上面那条"拿空间换流量"的
 //    对照断言还在用它, 它是**基线的量**, 不是现役布局。
-static_assert(WorkspaceBytesV2(128, 64, N, 4) == 458752, "现役布局 D=128 应是 448 KB/核");
+static_assert(WorkspaceBytesV2(128, 64, N, 4) == 327680, "现役布局 D=128 应是 320 KB/核");
 }
