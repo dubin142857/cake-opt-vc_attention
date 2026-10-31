@@ -42,6 +42,16 @@ constexpr uint32_t VC_ABLATE_FP16_PASS2 = 0;
 //    在任何 K 上都必须不变。这是探针自带的正确性校验: 摘要变了说明插错了地方。
 //  ★斜率是单价的**上界**: 每条含 1 个 repeat 的 64 元素加法 (整块调用是 32 个 repeat)。
 constexpr uint32_t VC_PROBE_MASKCALLS = 0;
+
+//  ---- 次序轴的**消融件** (E48, 2026-10-31): 把向量侧的 V 屏障全部编掉 ----
+//  ★**默认 false, 生产路径逐字不动**。置位后数值**必然不对** (去掉的是真承担 RAW 的屏障),
+//    只为量"屏障造成的空闲"占窗口多少。
+//  ★为什么要量它: `aiv_vec_ratio` 0.8022 的另一面是向量流水有近 20% 不在干活。
+//    次序轴的绝对上界 = 窗口降到约束流水的忙时, 即 177720 -> 143595 us (-19.2%);
+//    本轮量那 19.2% 里有多少是屏障造成的。
+//  ★只动向量核 (源码第 200-500 行区间), cube 侧与探针内核的屏障不动。
+constexpr bool VC_ABLATE_NO_VBAR = false;
+__aicore__ inline void VBar() { if constexpr (!VC_ABLATE_NO_VBAR) PipeBarrier<PIPE_V>(); }
 __aicore__ inline void MetricsOff() { if constexpr (VC_METRICS_REGION) MetricsProfStop(); }
 __aicore__ inline void MetricsOn()  { if constexpr (VC_METRICS_REGION) MetricsProfStart(); }
 
@@ -217,7 +227,7 @@ public:
             Duplicate(m, -3.402823466e38f, ROWS);
             Duplicate(l, 0.0f, ROWS);
             Duplicate(acc, 0.0f, ROWS * t.dim);
-            PipeBarrier<PIPE_V>();
+            VBar();
             //  H11: 移位循环 —— 第 j 轮先算第 j 块的概率并发布, 再消费第 j-1 块的 PV。
             //  这样 AIV 在等 O_READY(j-1) 之前已经把下一块的概率算完,
             //  原本大头的等待被真实工作填上。设备侧不能用 lambda 做结构抽象 (见 F54),
@@ -252,7 +262,7 @@ public:
                 //  ★E38: rowmax 现在先在**未乘 qs** 的域里累积, 故**不能**从 m 起算
                 //    (m 在已乘 qs 的域里)。先置 -inf, 跑完本 chunk 再乘 qs, 最后与 m 合并。
                 Duplicate(rowmax, -3.402823466e38f, ROWS);
-                PipeBarrier<PIPE_V>();
+                VBar();
                 //  ---- 趟 1 的软件流水: 第 j+1 块的 S 搬运发在第 j 块的计算**之前** ----
                 //  ★依据 F202: AIV 的 vec 有 32.9% 的时间在等, 其中一处正是本循环里
                 //    `WaitFlag<MTE2_V>` —— 每块都要停下来等 S 从 GM 搬到 UB。
@@ -327,33 +337,33 @@ public:
                     //    (fp32 那次折 128->64 是因为 fp32 的 repeat 只有 64)。
                     WholeReduceMax<half>(tmaxh, sc, NB, ROWS, 1, 1, NB / 16,
                                          ReduceOrder::ORDER_ONLY_VALUE);
-                    PipeBarrier<PIPE_V>();
+                    VBar();
                     Cast(tmax, tmaxh, RoundMode::CAST_NONE, ROWS);
-                    PipeBarrier<PIPE_V>();
+                    VBar();
                     Max(rowmax, rowmax, tmax, ROWS);
-                    PipeBarrier<PIPE_V>();
+                    VBar();
                     probe.Mark(1);   // t1_vec: 掩码 + ReduceMax(fp16) + Max 的发射
                 }
                 //  ★E38: 把本 chunk 的行最大值由"未乘 qs"转到"已乘 qs"的域, 再与历史最大合并。
                 //    `qs` 对本半核是**一个标量** (ROWS=32 恰好一个 Q_SCALE_BLOCK), 故这是
                 //    32 个元素上的两次操作, 不是一遍。
                 Muls(rowmax, rowmax, qs_scalar, ROWS);
-                PipeBarrier<PIPE_V>();
+                VBar();
                 Max(rowmax, rowmax, m, ROWS);
-                PipeBarrier<PIPE_V>();
+                VBar();
                 Sub(alpha, m, rowmax, ROWS);
-                PipeBarrier<PIPE_V>();
+                VBar();
                 Exp(alpha, alpha, ROWS);
-                PipeBarrier<PIPE_V>();
+                VBar();
                 //  ★趟 2 要的是 `qs*s - rowmax`, 而 `Axpy` 是 `dst += src*scalar`,
                 //    故把 dst 预填成 **-rowmax**。bmax 原先只给那条 Sub 用, 现在改存 -rowmax。
                 Muls(rowmaxNeg, rowmax, -1.0f, ROWS);
-                PipeBarrier<PIPE_V>();
+                VBar();
                 Brcb(bmax, rowmaxNeg, ROWS / 8, BrcbRepeatParams(1, 8));
-                PipeBarrier<PIPE_V>();
+                VBar();
                 //  ---- 趟 2: 归一化 + exp + 写 P ----
                 Duplicate(massAcc, 0.0f, ROWS);
-                PipeBarrier<PIPE_V>();
+                VBar();
                 //  ★对照 (E24): 把整个趟 2 循环排除在计数区间外。趟 2 含每块的
                 //    Sub/Exp/ReduceSum/Cast, 是 aiv_vec_time 的大头 —— 若门控有效,
                 //    aiv_vec_time 必然明显下降; 若纹丝不动, 说明门控在本采集模式下无效。
@@ -371,26 +381,26 @@ public:
                         //  ★填值: fp16 一个 repeat 128 个元素, 故**一次**调用覆盖整行 (fp32 要两次)。
                         Adds(workh[0], bmaxh, half(0), uint64_t(NB), ROWS,
                              UnaryRepeatParams(1, 0, uint8_t(N / 16), 1));
-                        PipeBarrier<PIPE_V>();
+                        VBar();
                         Axpy<half, half>(workh, sc, qs_half, ROWS * NB);
-                        PipeBarrier<PIPE_V>();
+                        VBar();
                     } else {
                     for (uint32_t off = 0; off < NB; off += 64)
                         Adds(work[off], bmax, 0.0f, uint64_t(64), ROWS,
                              UnaryRepeatParams(1, 0, uint8_t(N / 8), 1));
-                    PipeBarrier<PIPE_V>();
+                    VBar();
                     Axpy<float, half>(work, sc, qs_half, ROWS * NB);
-                    PipeBarrier<PIPE_V>();
+                    VBar();
                     }
                 if (t.expcast) {
                     // Separate FP32 multiply/add is part of the numerical contract.
                     Muls(work, work, EXPCAST_GAIN, ROWS * NB);
-                    PipeBarrier<PIPE_V>();
+                    VBar();
                     Adds(work, work, 120.0f, ROWS * NB);
-                    PipeBarrier<PIPE_V>();
+                    VBar();
                     //  Maxs(0) 是承担越界防护的那一条: 负下标会真的读到表外。
                     Maxs(work, work, 0.0f, ROWS * NB);
-                    PipeBarrier<PIPE_V>();
+                    VBar();
                     //  H25: 上界夹持 Mins(work, 120) **恒不生效**, 已删。
                     //  不变式: 本段入口处 work 已是 `Sub(work, work, bmax)` 的结果,
                     //  而 bmax 是 rowmax = Max(ReduceMax(本 tile), m) 的广播, 故 bmax >= 本 tile
@@ -400,7 +410,7 @@ public:
                     //  ★若将来改动 rowmax 的定义使 work 可能大于 rowmax, 这条删除就不再成立 ——
                     //  不变式的来源就是上面那次 Sub, 改它时请一并复核此处。
                     Cast(raw, work, RoundMode::CAST_RINT, ROWS * NB);
-                    PipeBarrier<PIPE_V>();
+                    VBar();
                     //  H26: 用位运算直接构造 E4M3 的解码值, 替掉查表。
                     //  码 c = 8e + f 且 f < 8, 故 `c << 20` 本身就等于 `e<<23 | f<<20`;
                     //  再加常量 `120 << 23` (= 127-7 的指数偏置) 得到的 int32, 按 fp32 读出
@@ -410,19 +420,19 @@ public:
                     //  省掉** —— 尾块掩码的无效列必然落在 c = 0, 而行内跨度超过 9.7041 的
                     //  分布 (实测 q 尺度放大 1.5 倍即 20/20 命中) 在正常列上也会落进来。
                     Cast(e0val, raw, RoundMode::CAST_NONE, ROWS * NB);
-                    PipeBarrier<PIPE_V>();
+                    VBar();
                     //  ★比较走 **fp32** 而不是 int32: 向量比较单元在本机只对浮点给出
                     //  正确结果, 用 int32 实测使 c<8 这一支选错 (逐位 16/32 不符,
                     //  相对 RMSE 0.0432% —— 小而弥散, 正是少数元素错经 softmax 归一化
                     //  传播的形态)。c 在 fp32 里是精确整数 0..120, 故 `c < 8.0f` 精确。
                     CompareScalar(cmp, e0val, 8.0f, CMPMODE::LT, ROWS * NB);
-                    PipeBarrier<PIPE_V>();
+                    VBar();
                     Muls(e0val, e0val, 1.0f / 512.0f, ROWS * NB);
-                    PipeBarrier<PIPE_V>();
+                    VBar();
                     ShiftLeft(raw, raw, int32_t(20), ROWS * NB);
-                    PipeBarrier<PIPE_V>();
+                    VBar();
                     Adds(raw, raw, int32_t(120) << 23, ROWS * NB);
-                    PipeBarrier<PIPE_V>();
+                    VBar();
                     Select(work, cmp, e0val, raw.ReinterpretCast<float>(),
                            SELMODE::VSEL_TENSOR_TENSOR_MODE, ROWS * NB);
                 } else if constexpr (VC_ABLATE_FP16_PASS2 != 0) {
@@ -430,7 +440,7 @@ public:
                 } else {
                     Exp(work, work, ROWS * NB);
                 }
-                PipeBarrier<PIPE_V>();
+                VBar();
                 //  ★先发布 P, 再求行和 —— 与原先的次序相反。理由: 下面的折叠会**原地破坏** work,
                 //    故必须先把 P 取走。`mass` 仍是**取 half 之前**的 fp32 之和 ——
                 //    Cast 不修改 work, 所以数值契约不变 (reference.py 的 p = p.half().float()
@@ -449,20 +459,20 @@ public:
                         //    workh 与 work 是同一段字节 (rawBuf 槽 1 的两种视图),
                         //    `Cast(work, workh, ...)` 会 dst/src 重叠, 铁律禁止 (F242 实撞两次)。
                         Cast(workf, workh, RoundMode::CAST_NONE, ROWS * NB);
-                        PipeBarrier<PIPE_V>();
+                        VBar();
                         Add(workf[0], workf[NB / 2], workf[0], uint64_t(NB / 2), ROWS,
                             BinaryRepeatParams(1, 1, 1, NB / 8, NB / 8, NB / 8));
-                        PipeBarrier<PIPE_V>();
+                        VBar();
                         WholeReduceSum<float>(mass, workf, NB / 2, ROWS, 1, 1, NB / 8);
-                        PipeBarrier<PIPE_V>();
+                        VBar();
                     } else {
                     //  ★`WholeReduceSum` 带独立 dst 类型的那个重载被 3510/5102/3003/3113 圈住,
                     //    **2201 上没有** (kernel_operator_vec_reduce_intf_impl.h:305 对 327),
                     //    故行和只能落 half 再 Cast 回 fp32。
                     WholeReduceSum<half>(massh, workh, NB, ROWS, 1, 1, NB / 16);
-                    PipeBarrier<PIPE_V>();
+                    VBar();
                     Cast(mass, massh, RoundMode::CAST_NONE, ROWS);
-                    PipeBarrier<PIPE_V>();
+                    VBar();
                     }
                 } else {
                 Cast(ph, work, RoundMode::CAST_NONE, ROWS * NB);
@@ -482,9 +492,9 @@ public:
                 static_assert(NB / 2 == 64, "折叠假定 NB 正好是两个 fp32 repeat (每个 64 元素)");
                 Add(work[0], work[NB / 2], work[0], uint64_t(NB / 2), ROWS,
                     BinaryRepeatParams(1, 1, 1, NB / 8, NB / 8, NB / 8));
-                PipeBarrier<PIPE_V>();
+                VBar();
                 WholeReduceSum<float>(mass, work, NB / 2, ROWS, 1, 1, NB / 8);
-                PipeBarrier<PIPE_V>();
+                VBar();
                 }
                 //  ★E45 单价探针 (默认 K=0, 整段被编掉)。放在这里是因为此处 `work`
                 //    已被折叠原地破坏, 是死数据 —— 加零对它做什么都不影响下游。
@@ -492,7 +502,7 @@ public:
                     for (uint32_t pk = 0; pk < VC_PROBE_MASKCALLS; ++pk)
                         Adds(work[0], work[0], 0.0f, uint64_t(64), 1,
                              UnaryRepeatParams(1, 1, 8, 8));
-                    PipeBarrier<PIPE_V>();
+                    VBar();
                 }
                 probe.Mark(3);   // t2_vec: Sub + Exp + Cast(ph) + 发布 + 折叠 + WholeReduceSum
                                  //  ★口径变了: 发布已挪进本段, 故不要与改动前的 t2_vec 直接比大小
