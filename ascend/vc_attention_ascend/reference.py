@@ -48,7 +48,7 @@ def quantize_e4m3_decoded(x):
 
 @torch.no_grad()
 def payload_reference(payload, *, expcast=True, query_indices=None, tile_width=None,
-                      score_dtype=None, deq_trunc_bits=None):
+                      score_dtype=None, deq_trunc_bits=None, deq_split_qscale=False):
     """All keys, optionally selected queries; decoded operands and FP32 matmuls.
 
     tile_width 是**在线更新的粒度**, 默认取 ONLINE_TILE = K_TILE * CHUNK ——
@@ -75,6 +75,12 @@ def payload_reference(payload, *, expcast=True, query_indices=None, tile_width=N
     ★截的是**合成之后**的那个数 (qscale * kscale * scale), 因为进 deq 项的正是它。
       而 qscale 在一个 32 行的量化块内恒定, 故逐元素截与按块截同果。
     """
+    #  deq_split_qscale (F238 的形态): fixpipe 只施加 **ks_block * scale** (整块一个标量,
+    #  因为 NBLK == K_SCALE_BLOCK, 一个 tile 正好一个 K 量化块), 而 **qscale 留给 AIV** ——
+    #  它在 AIV 侧对每个 32 行半核也只是一个标量 (`qscale.GetValue(0)` 本就依赖这一条)。
+    #  ★次序因此与现行**不同**: fp16 的舍入发生在**乘 qscale 之前**。
+    #  ★且 AIV 用 `Axpy<float,half>` 来乘, 它的标量类型是 **fp16** (F239 坐实),
+    #  所以 qscale 会被舍成 10 位尾数 —— 这一项要一并建模, 不能假定可忽略。
     q, k, v = payload["q"].float(), payload["k"].float(), payload["v"].float()
     qs, ks, vs = payload["q_scale"], payload["k_scale"], payload["v_scale"]
     n, d = payload["queries"], q.shape[-1]
@@ -93,6 +99,38 @@ def payload_reference(payload, *, expcast=True, query_indices=None, tile_width=N
         scores = q @ k[:, :, begin:begin + count].transpose(-1, -2)
         # Match native scalar multiplication order; QK dot product is exact.
         # 一个 tile 可跨多个量化块, 逐块取自己的 scale 并按列拼接, 与内核的列分段施加一致。
+        if deq_split_qscale:
+            #  ---- F238 的形态: 反量化拆成 fixpipe 的 ks 与 AIV 的 qs 两步 ----
+            segs = []
+            for sub in range(0, count, K_BLOCK):
+                block = (begin + sub) // K_BLOCK
+                span = min(K_BLOCK, count - sub)
+                gk = ks[:, :, block, 0].unsqueeze(-1) * payload["scale"]   # 不含 qscale
+                if deq_trunc_bits:
+                    m_ = -(1 << deq_trunc_bits)
+                    gk = (gk.float().view(torch.int32) & m_).view(torch.float32)
+                segs.append(gk.unsqueeze(-1).expand(*gk.shape, span))
+            scores = scores * torch.cat(segs, dim=-1)
+            if score_dtype is not None:
+                #  fixpipe 出口就是这个精度; 舍入排在乘 qscale **之前**。
+                scores = scores.to(score_dtype).float()
+            #  AIV 侧: Axpy 的标量是 fp16, 故 qscale 先舍成 fp16 再乘, 乘法本身在 fp32
+            #  (F239 的 C1 坐实: 实得与 `base + f32(src)*f32(f16(a))` 逐位相同)。
+            scores = scores * qscale.to(torch.float16).float().unsqueeze(-1)
+            new_m = torch.maximum(m, scores.amax(-1, keepdim=True))
+            alpha = torch.exp(m - new_m)
+            shifted = scores - new_m
+            if expcast:
+                p = expcast_decode(shifted)
+                tile_mass = p.sum(-1, keepdim=True)
+            else:
+                p = torch.exp(shifted)
+                tile_mass = p.sum(-1, keepdim=True)
+                p = p.half().float()
+            out = out * alpha + p @ v[:, :, begin:begin + count]
+            mass = mass * alpha + tile_mass
+            m = new_m
+            continue
         segments = []
         for sub in range(0, count, K_BLOCK):
             block = (begin + sub) // K_BLOCK

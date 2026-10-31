@@ -82,19 +82,23 @@ def main() -> int:
     #  ★为什么是 13: F233 在 8 个候选模型里把它钉死 (trunc13 0/8192 不符,
     #    次优 trunc12 1992 个, 全精度 fp32 scale 3956 个)。
     print("\n=== fixpipe 反量化契约: 内核若改而 oracle 不改, 两者相差多少 (1% 闸) ===")
-    contracts = [("S 转 fp16 (F220 复现)",            None, torch.float16),
-                 ("scale 截 13 位尾数 (F233 新增)",    13,   None),
-                 ("两项一起 = fixpipe 契约",           13,   torch.float16)]
+    #  ★第四条是 **F238 的形态**: 反量化拆成 fixpipe 的 ks 与 AIV 的 qs 两步 ——
+    #    fp16 的舍入排在乘 qscale **之前**, 且 qscale 本身被舍成 fp16 (Axpy 的标量类型, F239)。
+    #    它与第三条是**两个不同的契约**, 不是同一个的两种写法。
+    contracts = [("S 转 fp16 (F220 复现)",            None, torch.float16, False),
+                 ("scale 截 13 位尾数 (F233 新增)",    13,   None,          False),
+                 ("E36 契约: 两项一起 (已回退)",        13,   torch.float16, False),
+                 ("★F238 形态: ks 进 fixpipe + qs 走 fp16 标量", 13, torch.float16, True)]
     worst_overall = 0.0
     for cast in (False, True):
         name = "expcast" if cast else "control"
         base = payload_reference(cpu_p, expcast=cast, query_indices=ids,
                                  tile_width=ONLINE_TILE)
         bf = base.float()
-        for label, tb, sd in contracts:
+        for label, tb, sd, split in contracts:
             ref = payload_reference(cpu_p, expcast=cast, query_indices=ids,
                                     tile_width=ONLINE_TILE, score_dtype=sd,
-                                    deq_trunc_bits=tb).float()
+                                    deq_trunc_bits=tb, deq_split_qscale=split).float()
             d = ref - bf
             glob = float(d.square().mean().sqrt() / bf.square().mean().sqrt())
             #  逐行: 把除最后一维 (dim) 外的所有维拍平, 每一行单独算相对 RMSE。
@@ -107,12 +111,14 @@ def main() -> int:
             #    前者问"离真值多远", 后者问"内核与 oracle 差多远"。两个都要看。
             dn = 100 * float((ref - dense.float()).square().mean().sqrt()
                              / dense.float().square().mean().sqrt())
-            if label.startswith("两项"):
+            if label.startswith("★F238"):
                 worst_overall = max(worst_overall, row_worst)
             print(f"  {name:8s} {label:28s} 对 oracle: 全局 {100*glob:.4f} % · "
                   f"逐行最坏 {100*row_worst:.4f} %{flag} | dense RMSE {dn:.6f} %")
     print(f"★结论依据: 1% 闸比的是 decoded_reference 的逐例相对误差; "
-          f"两项一起时的逐行最坏 = {100*worst_overall:.4f} %。")
+          f"**F238 形态**下的逐行最坏 = {100*worst_overall:.4f} %。")
+    print("★两个 harness 的口径不可混: 这里的 dense RMSE 来自本脚本, 交付闸读的是 benchmark 的,"
+          " 两者对同一契约差约 0.0044 pp (F236 的 E7 实撞)。**能跨仪器的是增量, 不是绝对值。**")
     print("★若 expcast 一侧打穿, 则 oracle 必须同步改契约 (传 deq_trunc_bits 与 score_dtype) ——"
           " 那是**契约变更, 不是闸放宽**, 必须留痕。")
     return 0
