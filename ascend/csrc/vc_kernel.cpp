@@ -31,7 +31,9 @@ constexpr bool VC_METRICS_REGION = false;
 //    参考实现 Laser 同一比率 **0.658**。达芬奇核 2048 位 SIMD —— fp32 每 repeat 64 元素,
 //    fp16 **128** 元素。即约束流水上 100% 的工作跑在**半宽**。
 //  ★测完必须改回 false 并重建, 核对五条确定性摘要回到基线 (E44 写定的收尾条件)。
-constexpr bool VC_ABLATE_FP16_PASS2 = false;
+//  模式: 0=关 (生产) · 1=乙式 全 fp16 (E44/F251, 分母也 fp16, **不可实现**)
+//        2=甲式 fp16 算 + **fp32 分母** (E47, 保住数值契约的那一种)
+constexpr uint32_t VC_ABLATE_FP16_PASS2 = 0;
 
 //  ---- 甲-2 的**单价探针** (E45, 2026-10-31): 一条 mask 形 level-0 调用值多少时间 ----
 //  ★真机给不了逐指令时间 (`--aic-metrics=Source` 只给逐基本块**计数**), 故不直接问
@@ -138,6 +140,7 @@ public:
         auto bmax = brcb[0], balpha = brcb[ROWS * 8];
         auto bmaxh = brcbBuf.Get<half>();                      // E44 消融件: 广播块的 half 视图
         auto massh = subBuf.Get<half>();                       // E44 消融件: 行和的 half 落点
+        auto workf = subBuf.Get<float>();                      // E47 甲式: fp32 分母的落点 (与 workh 不重叠)
         auto tmp = tmpBuf.Get<uint8_t>();
         auto e0val = subBuf.Get<float>();
         auto cmp = cmpBuf.Get<uint8_t>();
@@ -364,7 +367,7 @@ public:
                     //    得到 `qs*s - rowmax`, 与改动前那条 `Sub` 的结果同义。
                     //  ★填值那一遍的代价已实测: vec +11.9 ms (F241); 它换掉的是趟 1 的一整遍 Cast。
                     //  ★`Axpy` 的标量类型跟 src 即 fp16, 跨步各按自己数据宽度 (F239 坐实)。
-                    if constexpr (VC_ABLATE_FP16_PASS2) {
+                    if constexpr (VC_ABLATE_FP16_PASS2 != 0) {
                         //  ★填值: fp16 一个 repeat 128 个元素, 故**一次**调用覆盖整行 (fp32 要两次)。
                         Adds(workh[0], bmaxh, half(0), uint64_t(NB), ROWS,
                              UnaryRepeatParams(1, 0, uint8_t(N / 16), 1));
@@ -422,7 +425,7 @@ public:
                     PipeBarrier<PIPE_V>();
                     Select(work, cmp, e0val, raw.ReinterpretCast<float>(),
                            SELMODE::VSEL_TENSOR_TENSOR_MODE, ROWS * NB);
-                } else if constexpr (VC_ABLATE_FP16_PASS2) {
+                } else if constexpr (VC_ABLATE_FP16_PASS2 != 0) {
                     Exp(workh, workh, ROWS * NB);
                 } else {
                     Exp(work, work, ROWS * NB);
@@ -432,7 +435,7 @@ public:
                 //    故必须先把 P 取走。`mass` 仍是**取 half 之前**的 fp32 之和 ——
                 //    Cast 不修改 work, 所以数值契约不变 (reference.py 的 p = p.half().float()
                 //    对应的正是"分母用 pre-cast 的 fp32"这一条)。
-                if constexpr (VC_ABLATE_FP16_PASS2) {
+                if constexpr (VC_ABLATE_FP16_PASS2 != 0) {
                     //  ★消融: fp16 下 NB=128 **恰好一个 repeat**, 于是三条指令整条消失 ——
                     //    (a) `Cast(ph, work)` 不需要 (workh 本身就是 fp16 的 P);
                     //    (b) 折叠 `Add(NB -> NB/2)` 不需要 (fp32 要折是因为它的 repeat 只有 64);
@@ -441,6 +444,18 @@ public:
                     SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
                     WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
                     DataCopy(pgs[slot + j], workh, ROWS * NB);
+                    if constexpr (VC_ABLATE_FP16_PASS2 == 2) {
+                        //  ★甲式: 分母保住 fp32。目标用 `subBuf` 而**不是** work ——
+                        //    workh 与 work 是同一段字节 (rawBuf 槽 1 的两种视图),
+                        //    `Cast(work, workh, ...)` 会 dst/src 重叠, 铁律禁止 (F242 实撞两次)。
+                        Cast(workf, workh, RoundMode::CAST_NONE, ROWS * NB);
+                        PipeBarrier<PIPE_V>();
+                        Add(workf[0], workf[NB / 2], workf[0], uint64_t(NB / 2), ROWS,
+                            BinaryRepeatParams(1, 1, 1, NB / 8, NB / 8, NB / 8));
+                        PipeBarrier<PIPE_V>();
+                        WholeReduceSum<float>(mass, workf, NB / 2, ROWS, 1, 1, NB / 8);
+                        PipeBarrier<PIPE_V>();
+                    } else {
                     //  ★`WholeReduceSum` 带独立 dst 类型的那个重载被 3510/5102/3003/3113 圈住,
                     //    **2201 上没有** (kernel_operator_vec_reduce_intf_impl.h:305 对 327),
                     //    故行和只能落 half 再 Cast 回 fp32。
@@ -448,6 +463,7 @@ public:
                     PipeBarrier<PIPE_V>();
                     Cast(mass, massh, RoundMode::CAST_NONE, ROWS);
                     PipeBarrier<PIPE_V>();
+                    }
                 } else {
                 Cast(ph, work, RoundMode::CAST_NONE, ROWS * NB);
                 SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
