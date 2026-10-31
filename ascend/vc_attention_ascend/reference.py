@@ -63,11 +63,16 @@ def quantize_e4m3_decoded(x):
 SCORE_DTYPE = torch.float16
 DEQ_TRUNC_BITS = 13
 DEQ_SPLIT_QSCALE = True
+#  ★分母的求和域 (甲-5 / E48): 现行契约是"**取 fp16 之前**的 fp32 之和";
+#    内核若把趟 2 整体搬到 fp16, 行和就只能在 fp16 域做 —— 本开关量那条路的数值代价。
+#    None = 现行 (fp32 求和); torch.float16 = 先取 fp16 再在 fp16 域累加。
+MASS_DTYPE = None
 
 
 @torch.no_grad()
 def payload_reference(payload, *, expcast=True, query_indices=None, tile_width=None,
-                      score_dtype=_UNSET, deq_trunc_bits=_UNSET, deq_split_qscale=_UNSET):
+                      score_dtype=_UNSET, deq_trunc_bits=_UNSET, deq_split_qscale=_UNSET,
+                      mass_dtype=_UNSET):
     """All keys, optionally selected queries; decoded operands and FP32 matmuls.
 
     tile_width 是**在线更新的粒度**, 默认取 ONLINE_TILE = K_TILE * CHUNK ——
@@ -104,6 +109,8 @@ def payload_reference(payload, *, expcast=True, query_indices=None, tile_width=N
         score_dtype = SCORE_DTYPE
     if deq_trunc_bits is _UNSET:
         deq_trunc_bits = DEQ_TRUNC_BITS
+    if mass_dtype is _UNSET:
+        mass_dtype = MASS_DTYPE
     if deq_split_qscale is _UNSET:
         deq_split_qscale = DEQ_SPLIT_QSCALE
     q, k, v = payload["q"].float(), payload["k"].float(), payload["v"].float()
@@ -145,12 +152,16 @@ def payload_reference(payload, *, expcast=True, query_indices=None, tile_width=N
             new_m = torch.maximum(m, scores.amax(-1, keepdim=True))
             alpha = torch.exp(m - new_m)
             shifted = scores - new_m
+            #  ★`dtype=` 强制累加域 —— 不写它 torch 会在内部用 fp32 累加 half 张量,
+            #    量到的就不是"行和在 fp16 域做"这件事 (E23: 仪器先对)。
+            _msum = (lambda t: t.sum(-1, keepdim=True)) if mass_dtype is None else \
+                    (lambda t: t.to(mass_dtype).sum(-1, keepdim=True, dtype=mass_dtype).float())
             if expcast:
                 p = expcast_decode(shifted)
-                tile_mass = p.sum(-1, keepdim=True)
+                tile_mass = _msum(p)
             else:
                 p = torch.exp(shifted)
-                tile_mass = p.sum(-1, keepdim=True)
+                tile_mass = _msum(p)
                 p = p.half().float()
             out = out * alpha + p @ v[:, :, begin:begin + count]
             mass = mass * alpha + tile_mass
@@ -175,12 +186,16 @@ def payload_reference(payload, *, expcast=True, query_indices=None, tile_width=N
         new_m = torch.maximum(m, scores.amax(-1, keepdim=True))
         alpha = torch.exp(m - new_m)
         shifted = scores - new_m
+        #  ★`dtype=` 强制累加域 —— 不写它 torch 会在内部用 fp32 累加 half 张量,
+        #    量到的就不是"行和在 fp16 域做"这件事 (E23: 仪器先对)。
+        _msum = (lambda t: t.sum(-1, keepdim=True)) if mass_dtype is None else \
+                (lambda t: t.to(mass_dtype).sum(-1, keepdim=True, dtype=mass_dtype).float())
         if expcast:
             p = expcast_decode(shifted)
-            tile_mass = p.sum(-1, keepdim=True)
+            tile_mass = _msum(p)
         else:
             p = torch.exp(shifted)
-            tile_mass = p.sum(-1, keepdim=True)
+            tile_mass = _msum(p)
             p = p.half().float()  # PV uses FP16; denominator is pre-cast FP32.
         out = out * alpha + p @ v[:, :, begin:begin + count]
         mass = mass * alpha + tile_mass
