@@ -867,16 +867,23 @@ extern "C" __global__ __aicore__ void vc910_cube_v2_probe(
 //  ★两条出口读同一份 L0C, 所以 int32 那份既是参考也是"FPC 没破坏别的东西"的旁证。
 //  ★几何与 vc910_cube_v2_probe 一致 (M=64, N=128, d=128), 活动部件尽量少。
 extern "C" __global__ __aicore__ void vc910_fixpipe_vdeq_probe(
-        GM_ADDR s_i32, GM_ADDR s_f16, GM_ADDR q, GM_ADDR k, GM_ADDR deq) {
+        GM_ADDR s_i32, GM_ADDR s_f16, GM_ADDR s_sc1, GM_ADDR s_sc2,
+        GM_ADDR q, GM_ADDR k, GM_ADDR deq, GM_ADDR deqs) {
     if ASCEND_IS_AIC {
         constexpr uint16_t D = 128;
         using namespace vc910::cube2;
-        mm_qk_two_exits(reinterpret_cast<__gm__ int32_t*>(s_i32),
-                        reinterpret_cast<__gm__ half*>(s_f16),
-                        reinterpret_cast<__gm__ uint64_t*>(deq),
-                        reinterpret_cast<__gm__ int8_t*>(q),
-                        reinterpret_cast<__gm__ int8_t*>(k),
-                        D, D, D, vc910::map::NBLK);
+        //  deqs 是两个标量 deq 值 (上半/下半), 用 GM 传进来而不是写死 ——
+        //  主机侧要按不同假设换编码重跑, 不该每换一次就重编一次内核。
+        auto *ds = reinterpret_cast<__gm__ uint64_t*>(deqs);
+        mm_qk_four_exits(reinterpret_cast<__gm__ int32_t*>(s_i32),
+                         reinterpret_cast<__gm__ half*>(s_f16),
+                         reinterpret_cast<__gm__ half*>(s_sc1),
+                         reinterpret_cast<__gm__ half*>(s_sc2),
+                         reinterpret_cast<__gm__ uint64_t*>(deq),
+                         ds[0], ds[1],
+                         reinterpret_cast<__gm__ int8_t*>(q),
+                         reinterpret_cast<__gm__ int8_t*>(k),
+                         D, D, D, vc910::map::NBLK);
     }
 }
 

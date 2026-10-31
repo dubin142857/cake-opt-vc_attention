@@ -174,6 +174,32 @@ __aicore__ inline void qk_fix_vdeq(uint32_t ping, __gm__ half *gm_s, uint16_t s_
                          UNIT_FLAG_OFF, VDEQF16, 0, false, true);
 }
 
+//  ---- 标量反量化 (DEQF16) 与 M 方向半区拆分 ---------------------------------
+//  ★为什么需要这两条 (F234): 生产形态里 **cube tile 是 M=64 而 Q_SCALE_BLOCK=32**,
+//    一个 tile 跨两个 Q 量化块; 而 fixpipe 的反量化沿 N 逐通道、沿 M **均匀**,
+//    施加不了 qscale 这个 M 方向因子。可行形态是**按 32 行半区各发一次**,
+//    每次带自己的标量 `qscale_half * kscale_block * t.scale`。
+//    又因 NBLK == K_SCALE_BLOCK == 128 (一个 tile 正好一个 K 量化块), 每次只要一个**标量**。
+//  ★标量路径与 F233 已坐实的向量路径**是两条**: 它走 `set_quant_pre` 这个**另一个 SPR**
+//    (不碰 L1/FB/FPC), 而那句有歧义的 "bits[31:13] is deq value of fp32" 恰恰长在
+//    标量那一支。所以编码不能从向量那条推, 要单独测。
+__aicore__ inline void qk_fix_deq_scalar(uint32_t ping, __gm__ half *gm_s, uint16_t s_cols,
+                                         uint64_t deq, uint16_t m_off, uint16_t m_size) {
+    auto l0c = reinterpret_cast<__cc__ int32_t *>(
+        static_cast<uintptr_t>(ping ? L0C_PING : L0C_PONG));
+    //  ★L0C 的 NZ 排布: NBLK/16 个 N 分形, 每个分形内 MBLK 行 x 16 列连续,
+    //    故分形间距 = MBLK*16 = srcStride*16 (srcStride 传 MBLK, 与全尺寸那次相同),
+    //    而**第 m_off 行**在每个分形内的偏移是 m_off*16 个元素。
+    //    ★srcStride 仍传 MBLK 而**不是** m_size —— 它描述的是源分形间距, 不是本次搬几行。
+    //    这一条是待验假设, 由 D 出口的数值判决。
+    //  ★不能用 asc_set_l0c2gm_config: 它 `config = 0` 会清 FPC (见 qk_fix_vdeq 的注记);
+    //    标量模式的值走 set_quant_pre 这个另一个 SPR, 与 FPC 无关。
+    set_quant_pre(deq);
+    copy_matrix_cc_to_gm(gm_s + uint32_t(m_off) * s_cols, l0c + uint32_t(m_off) * 16,
+                         0, NBLK, m_size, s_cols, MBLK,
+                         UNIT_FLAG_OFF, DEQF16, 0, false, true);
+}
+
 __aicore__ inline void qk_fix(uint32_t ping, __gm__ int32_t *gm_s, uint16_t s_cols) {
     auto l0c = reinterpret_cast<__cc__ int32_t *>(
         static_cast<uintptr_t>(ping ? L0C_PING : L0C_PONG));
@@ -223,6 +249,41 @@ __aicore__ inline void mm_qk_two_exits(__gm__ int32_t *gm_s_i32, __gm__ half *gm
     qk_fix(1, gm_s_i32, s_cols);
     asc_sync();
     qk_fix_vdeq(1, gm_s_f16, s_cols);
+    asc_sync();
+}
+
+//  ★四条出口的探针版: 在同一份 L0C 上依次走
+//      int32 (NoQuant, 对照) · VDEQF16 (向量, F233 已坐实) ·
+//      DEQF16 全 64 行一个标量 (C: 只验标量编码) ·
+//      DEQF16 两个 32 行半区各一个标量 (D: 验 M 方向拆分, 编码由 C 给定)
+//    **一次构建测两个未知量, 但两个出口分开**, 不把它们混在一个判决里 (E4)。
+__aicore__ inline void mm_qk_four_exits(__gm__ int32_t *gm_s_i32, __gm__ half *gm_s_f16,
+                                        __gm__ half *gm_s_sc1, __gm__ half *gm_s_sc2,
+                                        __gm__ uint64_t *gm_deq,
+                                        uint64_t deq_a, uint64_t deq_b,
+                                        __gm__ int8_t *gm_q, __gm__ int8_t *gm_k,
+                                        uint16_t d, uint16_t q_row_stride, uint16_t k_row_stride,
+                                        uint16_t s_cols) {
+    qk_load_deq(gm_deq);
+    qk_gm2l1_q(gm_q, d, q_row_stride);
+    qk_gm2l1_k(1, gm_k, d, k_row_stride);
+    asc_sync();
+    qk_deq_to_fb();
+    qk_l12l0(1, d);
+    asc_sync();
+    qk_mad(1, d);
+    asc_sync();
+    qk_fix(1, gm_s_i32, s_cols);
+    asc_sync();
+    qk_fix_vdeq(1, gm_s_f16, s_cols);
+    asc_sync();
+    //  C: 全 64 行一个标量
+    qk_fix_deq_scalar(1, gm_s_sc1, s_cols, deq_a, 0, MBLK);
+    asc_sync();
+    //  D: 两个半区各一个标量 —— 上半 deq_a, 下半 deq_b。主机侧按半区分别对模型。
+    qk_fix_deq_scalar(1, gm_s_sc2, s_cols, deq_a, 0, MBLK / 2);
+    asc_sync();
+    qk_fix_deq_scalar(1, gm_s_sc2, s_cols, deq_b, MBLK / 2, MBLK / 2);
     asc_sync();
 }
 
