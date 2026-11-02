@@ -339,22 +339,36 @@ public:
                     VBar();
                     probe.Mark(1);   // t1_vec: 掩码 + ReduceMax(fp16) + Max 的发射
                 }
-                //  ★E38: 把本 chunk 的行最大值由"未乘 qs"转到"已乘 qs"的域, 再与历史最大合并。
-                //    `qs` 对本半核是**一个标量** (ROWS=32 恰好一个 Q_SCALE_BLOCK), 故这是
-                //    32 个元素上的两次操作, 不是一遍。
-                Muls(rowmax, rowmax, qs_scalar, ROWS);
-                VBar();
+                //  ★E51: 行最大值整条**维护在未乘 qs 的分数域**。
+                //    为什么 (理由**不是** "Sterbenz 引理", 那个理由算下来不成立 ——
+                //    `fp16(-m)` 的误差 `|m|*eps` 乘回 qs 正好还是 `|rowmax|*eps`):
+                //      现在若存 `qs*max`, 它是一个**计算出来的乘积**, 转 fp16 必有舍入,
+                //      而那正是 exp 的相对误差;
+                //      存未乘 qs 的 `max` 则不同 —— `tmaxh` 由 `WholeReduceMax<half>` 从 fp16 源
+                //      **选出**, `Max` 不产生新值, 故 `rowmax` 恒等于某个已存 fp16 值,
+                //      转 fp16 **零误差**。移位值由"有舍入"变"精确", 这才是收益来源。
+                //    数学等价: qs > 0 故 `max(qs*s) = qs*max(s)`。
+                //    `m` 的初值 -3.4e38 在本域里同样是哨兵: Sub 后仍是大负数, 乘 qs 仍是,
+                //    Exp 给 0 —— 语义不变。
                 Max(rowmax, rowmax, m, ROWS);
                 VBar();
                 Sub(alpha, m, rowmax, ROWS);
                 VBar();
+                //  ★alpha 要的是已乘 qs 的差值, 故在这里补一次 (ROWS 个元素, 不是一遍)。
+                Muls(alpha, alpha, qs_scalar, ROWS);
+                VBar();
                 Exp(alpha, alpha, ROWS);
                 VBar();
-                //  ★趟 2 要的是 `qs*s - rowmax`, 而 `Axpy` 是 `dst += src*scalar`,
-                //    故把 dst 预填成 **-rowmax**。bmax 原先只给那条 Sub 用, 现在改存 -rowmax。
-                Muls(rowmaxNeg, rowmax, -1.0f, ROWS);
+                //  ★E51: 两条路要的填值在**不同的域**, 分别造:
+                //    expcast 支走 `Axpy<float,half>(work, sc, qs_half)`, 要**已乘 qs** 的
+                //      `-qs*rowmax` —— 借 `tmax` 槽 (它只在趟 1 活) 临时算;
+                //    控制支走 `Axpy<half,half>(workh, sc, 1.0)` + `Muls(qs)`, 要**未乘 qs** 的
+                //      `-rowmax`, 且它转 fp16 零舍入。
+                Muls(tmax, rowmax, -qs_scalar, ROWS);
                 VBar();
-                Brcb(bmax, rowmaxNeg, ROWS / 8, BrcbRepeatParams(1, 8));
+                Brcb(bmax, tmax, ROWS / 8, BrcbRepeatParams(1, 8));
+                VBar();
+                Muls(rowmaxNeg, rowmax, -1.0f, ROWS);
                 VBar();
                 //  ★E50: 控制支要的是 half 广播块。两条 ROWS 量级的操作, 每 chunk 一次。
                 //    `Brcb` 按文档取 8 个 b16/b32 值各广播成一个 32B 块 —— half 时
@@ -469,7 +483,12 @@ public:
                         Adds(workh, bmaxh, half(0), uint64_t(NB), ROWS,
                              UnaryRepeatParams(1, 0, uint8_t(N / 16), 1));
                         VBar();
-                        Axpy<half, half>(workh, sc, qs_half, ROWS * NB);
+                        //  ★E51: 先在**未乘 qs 的域**做减法 (填值零舍入), 再统一乘 qs。
+                        //    代价是多一条整块 fp16 `Muls`; 换回的是移位值不再有
+                        //    `|rowmax|*eps` 的舍入 —— 而那是 F258 测出的那 16 倍劣化的来源。
+                        Axpy<half, half>(workh, sc, half(1.0f), ROWS * NB);
+                        VBar();
+                        Muls(workh, workh, qs_half, ROWS * NB);
                         VBar();
                         Exp(workh, workh, ROWS * NB);
                         VBar();
