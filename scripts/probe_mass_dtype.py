@@ -54,21 +54,24 @@ def main() -> int:
         return 100 * float(d.square().mean().sqrt() / dense.float().square().mean().sqrt())
 
     print(f"形状 q={a.queries} k={a.keys} h={a.heads} d={a.dim} · 查询行 {len(ids)}")
-    print(f"{'路径':10s}{'分母求和域':16s}{'dense RMSE %':>16s}{'相对现行 (pp)':>18s}")
+    print(f"{'路径':10s}{'改了什么':28s}{'dense RMSE %':>16s}{'相对现行 (pp)':>18s}")
     worst = 0.0
     for cast in (False, True):
         name = "expcast" if cast else "control"
         base = None
-        for label, md in (("fp32 (现行)", None), ("**fp16**", torch.float16)):
+        for label, md, ed in (("现行 (全 fp32)", None, None),
+                              ("只换求和域", torch.float16, None),
+                              ("只换 exp 计算域", None, torch.float16),
+                              ("**两者一起 (消融件真跑的)**", torch.float16, torch.float16)):
             ref = payload_reference(cpu_p, expcast=cast, query_indices=ids,
-                                    tile_width=ONLINE_TILE, mass_dtype=md)
+                                    tile_width=ONLINE_TILE, mass_dtype=md, exp_dtype=ed)
             r = rmse(ref)
-            if md is None:
+            if md is None and ed is None:
                 base = r; delta = ""
             else:
                 delta = f"{r - base:+.6f}"
                 worst = max(worst, r - base)
-            print(f"{name:10s}{label:16s}{r:16.6f}{delta:>18s}")
+            print(f"{name:10s}{label:28s}{r:16.6f}{delta:>18s}")
     print()
     #  逐例闸: 内核改契约而 oracle 不改时, 两者相差多少
     print("=== 逐例闸 (1%): 内核走 fp16 分母而 oracle 仍 fp32, 两者的相对差 ===")
@@ -77,13 +80,14 @@ def main() -> int:
         name = "expcast" if cast else "control"
         b = payload_reference(cpu_p, expcast=cast, query_indices=ids, tile_width=ONLINE_TILE)
         n_ = payload_reference(cpu_p, expcast=cast, query_indices=ids, tile_width=ONLINE_TILE,
-                               mass_dtype=torch.float16)
+                               mass_dtype=torch.float16, exp_dtype=torch.float16)
         bf = b.float()
         rel = float((n_.float() - bf).square().mean().sqrt() / bf.square().mean().sqrt())
         worst_case = max(worst_case, rel)
         print(f"  {name:10s} 相对 RMSE = {rel*100:.6f} %")
     print()
     print(f"★判据 (测前写定): dense RMSE 增量 <= **0.02 个百分点** 且逐例 < 1%")
+    print(f"  ★**交付闸更紧**: 闸是 2.98%, 当前 control 2.976722%, 只剩 **0.0033 pp** 余量。")
     print(f"  实测最差增量 **{worst:+.6f} pp** -> {'过' if worst <= 0.02 else '**不过**'}")
     print(f"  实测最差逐例 **{worst_case*100:.6f} %** -> {'过' if worst_case < 0.01 else '**不过**'}")
     print(f"  ★回归闸: control/fp32 应为 **2.976722%** (本脚本口径, 当前契约);"
