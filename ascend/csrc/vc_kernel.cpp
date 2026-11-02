@@ -24,16 +24,6 @@ using namespace vc910;
 //    —— 即它**只门控 aiv_scalar_time**, 对 vec / mte3 无效。用它判 vec 是无效的。
 constexpr bool VC_METRICS_REGION = false;
 
-//  ---- 甲-1 的**消融件** (E44, 2026-10-31): 趟 2 整体搬 fp16 宽度, 量"速率轴"的上界 ----
-//  ★**默认 false, 生产路径逐字不动**。置位后数值**故意不对** (分母也走 fp16,
-//    广播块与行和落点都用重解释的缓冲), 只为让**指令形状**与真的 fp16 版本一致。
-//  ★为什么要量它: 约束流水是 vector (ratio 0.8052), 而 `aiv_vec_fp16_ratio` 实测 **0.000000**;
-//    参考实现 Laser 同一比率 **0.658**。达芬奇核 2048 位 SIMD —— fp32 每 repeat 64 元素,
-//    fp16 **128** 元素。即约束流水上 100% 的工作跑在**半宽**。
-//  ★测完必须改回 false 并重建, 核对五条确定性摘要回到基线 (E44 写定的收尾条件)。
-//  模式: 0=关 (生产) · 1=乙式 全 fp16 (E44/F251, 分母也 fp16, **不可实现**)
-//        2=甲式 fp16 算 + **fp32 分母** (E47, 保住数值契约的那一种)
-constexpr uint32_t VC_ABLATE_FP16_PASS2 = 0;
 
 //  ---- 甲-2 的**单价探针** (E45, 2026-10-31): 一条 mask 形 level-0 调用值多少时间 ----
 //  ★真机给不了逐指令时间 (`--aic-metrics=Source` 只给逐基本块**计数**), 故不直接问
@@ -95,7 +85,7 @@ public:
         TPipe pipe;
         //  ★raw 双缓冲: 趟 1 的 S 搬运与本块计算重叠。UB 精算 (ROWS=32,N=128,MAX_D=128,CHUNK=4):
         //    raw 2x16384 + score 65536 + p 8192 + acc 16384 + pv 16384 + vs 512 + state 1536
-        //    + lut 512 + sub 16384 + cmp 512 + brcb 2048 = 160768, UB 196608, 余 35840 - reduce_bytes。
+        //    + lut 512 + sub 16384 + cmp 512 + brcb 3072 = 161920, UB 196608, 余 34688 - reduce_bytes。
         pipe.InitBuffer(rawBuf, VEC_RAW_SLOTS * ROWS * N * 4);
         //  ★score 由单块扩到**整个 chunk**: 两趟法要求全 chunk 用同一归一化基准,
         //    故第一趟算出的分数必须留着给第二趟用 (重读 GM 会让 AIV 读由 186 涨到 335 GB)。
@@ -109,14 +99,14 @@ public:
         //  VectorBytes 的账 (主机的 UB 预算检查就对不上)。
         //  10 -> 12 槽: 第 10 槽存 chunk 内逐块的 ReduceMax 中间量 tmax,
         //  第 11 槽存 chunk 的质量累加 massAcc (原来每 tile 一次, 现在每 chunk 一次)。
-        pipe.InitBuffer(stateBuf, 12 * ROWS * 4);
+        pipe.InitBuffer(stateBuf, 13 * ROWS * 4);   // 第 13 槽: E50 的 half 暂存
         pipe.InitBuffer(lutBuf, 128 * 4);
         //  H26: 位运算解码用的两块。subBuf 存 e=0 支的 c/512, cmpBuf 存逐元素掩码 (1 bit/元素)。
         pipe.InitBuffer(subBuf, ROWS * N * 4);
         pipe.InitBuffer(cmpBuf, ROWS * N / 8);
         // H8: two per-row broadcast buffers. Brcb expands one value into a full
         // 32B block, so ROWS values occupy ROWS blocks = ROWS * 8 floats each.
-        pipe.InitBuffer(brcbBuf, 2 * ROWS * 8 * 4);
+        pipe.InitBuffer(brcbBuf, 3 * ROWS * 8 * 4);  // 第 3 槽: E50 的 half 广播块
         pipe.InitBuffer(tmpBuf, t.reduce_bytes);
         const int32_t taskDoneEvent = static_cast<int32_t>(pipe.FetchEventID(HardEvent::MTE3_S));
         //  ★E38: 趟 1 的 S 直接从 GM 落进 **fp16 的 chunkScore**, `rawBuf` 在趟 1 完全退出。
@@ -125,9 +115,8 @@ public:
         //    两者在趟 2 内同时活, 但分属不同槽, 不冲突。
         auto raw = rawBuf.Get<int32_t>();                      // 槽 0: ExpCast 用
         auto work = rawBuf.Get<float>()[ROWS * N];             // 槽 1: 趟 2 的 fp32 工作块
-        //  ★E44 消融件的三个 half 视图 (默认分支里一个都不会被用到, 编译器会整段消掉):
-        //    workh 与 work **同一字节偏移** (槽 1); bmaxh 复用广播块; massh 借 subBuf ——
-        //    subBuf 只在 expcast 路径用, 控制路径空闲。数值无意义, 只为指令形状一致。
+        //  ★E50: `workh` 与 `work` **同一字节偏移** (rawBuf 槽 1) —— 两条路互斥,
+        //    `t.expcast` 为真走 fp32 的 work, 为假走 fp16 的 workh, 不会同时活。
         auto workh = rawBuf.Get<half>()[2 * ROWS * N];
         auto chunkScore = scoreBuf.Get<half>();   // ★fp16; CHUNK 块连续, 第 j 块在 [j*ROWS*NB]
         auto ph = pBuf.Get<half>();
@@ -145,12 +134,18 @@ public:
         //  H11: acc 的 rescale 推迟到拿到对应 pv 的那一刻, 故 alpha 必须按 tile 暂存两槽。
         LocalTensor<float> alphaHold[2] = {states[8 * ROWS], states[9 * ROWS]};
         auto tmax = states[10 * ROWS], massAcc = states[11 * ROWS];
+        //  ★E50 的 half 暂存 (stateBuf 第 13 槽, ROWS 个 float = 2*ROWS 个 half):
+        //    前半 = -rowmax 的 half 版 (给 Brcb), 后半 = fp16 行和的落点。
+        //    与槽 4 的 `mass`、槽 5 的 `rowmaxNeg` 都不重叠 —— Cast 的铁律。
+        auto hscratch   = states[12 * ROWS].ReinterpretCast<half>();
+        auto rowmaxNegH = hscratch[0];
+        auto massh      = hscratch[ROWS];
         auto table = lutBuf.Get<float>();
         auto brcb = brcbBuf.Get<float>();
         auto bmax = brcb[0], balpha = brcb[ROWS * 8];
-        auto bmaxh = brcbBuf.Get<half>();                      // E44 消融件: 广播块的 half 视图
-        auto massh = subBuf.Get<half>();                       // E44 消融件: 行和的 half 落点
-        auto workf = subBuf.Get<float>();                      // E47 甲式: fp32 分母的落点 (与 workh 不重叠)
+        //  ★E50: half 广播块放 brcbBuf 的**第三槽** —— 不能与 bmax 共用字节,
+        //    否则写 half 广播会毁掉 fp32 广播, 而 expcast 支要用后者。
+        auto bmaxh = brcbBuf.Get<half>()[2 * ROWS * 8 * 2];
         auto tmp = tmpBuf.Get<uint8_t>();
         auto e0val = subBuf.Get<float>();
         auto cmp = cmpBuf.Get<uint8_t>();
@@ -361,6 +356,13 @@ public:
                 VBar();
                 Brcb(bmax, rowmaxNeg, ROWS / 8, BrcbRepeatParams(1, 8));
                 VBar();
+                //  ★E50: 控制支要的是 half 广播块。两条 ROWS 量级的操作, 每 chunk 一次。
+                //    `Brcb` 按文档取 8 个 b16/b32 值各广播成一个 32B 块 —— half 时
+                //    一块 16 个元素, 正是填值 `srcBlkStride=0` 要读的那个块。
+                Cast(rowmaxNegH, rowmaxNeg, RoundMode::CAST_NONE, ROWS);
+                VBar();
+                Brcb(bmaxh, rowmaxNegH, ROWS / 8, BrcbRepeatParams(1, 8));
+                VBar();
                 //  ---- 趟 2: 归一化 + exp + 写 P ----
                 Duplicate(massAcc, 0.0f, ROWS);
                 VBar();
@@ -369,30 +371,27 @@ public:
                 //    aiv_vec_time 必然明显下降; 若纹丝不动, 说明门控在本采集模式下无效。
                 MetricsOff();
                 for (uint32_t j = 0; j < n_in; ++j) {
-                    //  ★E38: `sc` 现在是 **fp16 只读**源; fp32 的就地运算改在 `work` 上 (rawBuf 槽 1)。
                     auto sc = chunkScore[j * ROWS * NB];
-                    //  ★把"转 fp32 + 乘 qs + 减行最大值"合成**一条** `Axpy`:
-                    //    `Axpy` 是 `dst += src*scalar`, 故先把 dst 逐行填成 `-rowmax`
-                    //    (bmax 现在存的正是 -rowmax 的广播块), 再累加 `qs*s`,
-                    //    得到 `qs*s - rowmax`, 与改动前那条 `Sub` 的结果同义。
-                    //  ★填值那一遍的代价已实测: vec +11.9 ms (F241); 它换掉的是趟 1 的一整遍 Cast。
-                    //  ★`Axpy` 的标量类型跟 src 即 fp16, 跨步各按自己数据宽度 (F239 坐实)。
-                    if constexpr (VC_ABLATE_FP16_PASS2 != 0) {
-                        //  ★填值: fp16 一个 repeat 128 个元素, 故**一次**调用覆盖整行 (fp32 要两次)。
-                        Adds(workh[0], bmaxh, half(0), uint64_t(NB), ROWS,
-                             UnaryRepeatParams(1, 0, uint8_t(N / 16), 1));
+                    //  ★E50 (甲-6): 趟 2 按 `t.expcast` **在块层拆开**, 两条路几乎不共享代码。
+                    //    选这个写法的理由 (三种都列过了, 只有这一种站得住):
+                    //      · ExpCast 走 E4M3 的**位运算**解码 (Cast(RINT)->int32 / ShiftLeft / Select),
+                    //        那段**必须**在 fp32/int32 域 —— 所以 expcast 本来就搬不到 fp16;
+                    //        若让填值与 Axpy 走 fp16, 只是把它的指数参数白舍一道:
+                    //        F257 实测 expcast 的逐例会到 **0.5406%**, 对 1% 闸只剩 1.85 倍余量,
+                    //        **白拿风险而没有收益**。
+                    //      · 分支提到 chunk 外层同效, 但要复制整段 chunk 代码。
+                    //    分支代价: `t.expcast` 是 tiling 的运行时常量, 每块一次、预测稳定,
+                    //    每核约 203747 块 x 1 周期 / 1.8 GHz ≈ **113 us**, 对 22 ms 的收益可忽略。
+                    if (t.expcast) {
+                        //  ---- ExpCast 支: **逐字保持 fp32**, 数值契约不变 ----
+                        //  ★`Mins(sc,120)` 已删的前提 (bmax >= 本 tile 每元素, 故 work <= 0)
+                        //    原样成立 —— 本支一个字没动。
+                        for (uint32_t off = 0; off < NB; off += 64)
+                            Adds(work[off], bmax, 0.0f, uint64_t(64), ROWS,
+                                 UnaryRepeatParams(1, 0, uint8_t(N / 8), 1));
                         VBar();
-                        Axpy<half, half>(workh, sc, qs_half, ROWS * NB);
+                        Axpy<float, half>(work, sc, qs_half, ROWS * NB);
                         VBar();
-                    } else {
-                    for (uint32_t off = 0; off < NB; off += 64)
-                        Adds(work[off], bmax, 0.0f, uint64_t(64), ROWS,
-                             UnaryRepeatParams(1, 0, uint8_t(N / 8), 1));
-                    VBar();
-                    Axpy<float, half>(work, sc, qs_half, ROWS * NB);
-                    VBar();
-                    }
-                if (t.expcast) {
                     // Separate FP32 multiply/add is part of the numerical contract.
                     Muls(work, work, EXPCAST_GAIN, ROWS * NB);
                     VBar();
@@ -435,46 +434,7 @@ public:
                     VBar();
                     Select(work, cmp, e0val, raw.ReinterpretCast<float>(),
                            SELMODE::VSEL_TENSOR_TENSOR_MODE, ROWS * NB);
-                } else if constexpr (VC_ABLATE_FP16_PASS2 != 0) {
-                    Exp(workh, workh, ROWS * NB);
-                } else {
-                    Exp(work, work, ROWS * NB);
-                }
-                VBar();
-                //  ★先发布 P, 再求行和 —— 与原先的次序相反。理由: 下面的折叠会**原地破坏** work,
-                //    故必须先把 P 取走。`mass` 仍是**取 half 之前**的 fp32 之和 ——
-                //    Cast 不修改 work, 所以数值契约不变 (reference.py 的 p = p.half().float()
-                //    对应的正是"分母用 pre-cast 的 fp32"这一条)。
-                if constexpr (VC_ABLATE_FP16_PASS2 != 0) {
-                    //  ★消融: fp16 下 NB=128 **恰好一个 repeat**, 于是三条指令整条消失 ——
-                    //    (a) `Cast(ph, work)` 不需要 (workh 本身就是 fp16 的 P);
-                    //    (b) 折叠 `Add(NB -> NB/2)` 不需要 (fp32 要折是因为它的 repeat 只有 64);
-                    //    (c) 填值由两次 64 元素调用变一次 128 元素调用。
-                    //    即速率轴这一刀**顺带砍掉三条**, 不只是把宽度翻倍。
-                    SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
-                    WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
-                    DataCopy(pgs[slot + j], workh, ROWS * NB);
-                    if constexpr (VC_ABLATE_FP16_PASS2 == 2) {
-                        //  ★甲式: 分母保住 fp32。目标用 `subBuf` 而**不是** work ——
-                        //    workh 与 work 是同一段字节 (rawBuf 槽 1 的两种视图),
-                        //    `Cast(work, workh, ...)` 会 dst/src 重叠, 铁律禁止 (F242 实撞两次)。
-                        Cast(workf, workh, RoundMode::CAST_NONE, ROWS * NB);
                         VBar();
-                        Add(workf[0], workf[NB / 2], workf[0], uint64_t(NB / 2), ROWS,
-                            BinaryRepeatParams(1, 1, 1, NB / 8, NB / 8, NB / 8));
-                        VBar();
-                        WholeReduceSum<float>(mass, workf, NB / 2, ROWS, 1, 1, NB / 8);
-                        VBar();
-                    } else {
-                    //  ★`WholeReduceSum` 带独立 dst 类型的那个重载被 3510/5102/3003/3113 圈住,
-                    //    **2201 上没有** (kernel_operator_vec_reduce_intf_impl.h:305 对 327),
-                    //    故行和只能落 half 再 Cast 回 fp32。
-                    WholeReduceSum<half>(massh, workh, NB, ROWS, 1, 1, NB / 16);
-                    VBar();
-                    Cast(mass, massh, RoundMode::CAST_NONE, ROWS);
-                    VBar();
-                    }
-                } else {
                 Cast(ph, work, RoundMode::CAST_NONE, ROWS * NB);
                 SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
                 WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
@@ -495,7 +455,38 @@ public:
                 VBar();
                 WholeReduceSum<float>(mass, work, NB / 2, ROWS, 1, 1, NB / 8);
                 VBar();
-                }
+                        VBar();
+                    } else {
+                        //  ---- 控制支: 趟 2 **全程 fp16** ----
+                        //  ★达芬奇核 2048 位 SIMD: fp32 每 repeat 64 个元素, fp16 **128** 个。
+                        //    NB=128 个 half 恰好**一个 repeat**, 于是这条路顺带砍掉三条指令:
+                        //      (a) 填值由**两次** 64 元素调用变**一次** 128 元素调用;
+                        //      (b) `Cast(ph, work)` 整条消失 —— `workh` 本身就是要写出的 fp16 的 P;
+                        //      (c) 折叠 `Add(NB -> NB/2)` 整条消失 (fp32 要折是因为它的 repeat 只有 64)。
+                        //  ★数值契约的代价已离线量清 (F257): dense RMSE +0.000610 pp,
+                        //    逐例 0.0537% (对 1% 闸 18.6 倍余量)。代价几乎全来自 `exp` 在 fp16 域算,
+                        //    行和改 fp16 那一项只有 -0.000010 pp。
+                        Adds(workh, bmaxh, half(0), uint64_t(NB), ROWS,
+                             UnaryRepeatParams(1, 0, uint8_t(N / 16), 1));
+                        VBar();
+                        Axpy<half, half>(workh, sc, qs_half, ROWS * NB);
+                        VBar();
+                        Exp(workh, workh, ROWS * NB);
+                        VBar();
+                        //  ★先发布 P 再求行和: 下面的归约不破坏 workh, 但保持与 fp32 支同一次序,
+                        //    免得两支的 MTE3 时序不一致。
+                        SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
+                        WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
+                        DataCopy(pgs[slot + j], workh, ROWS * NB);
+                        //  ★`WholeReduceSum` 带独立 dst 类型的那个重载被 3510/5102/3003/3113 圈住,
+                        //    **2201 上没有** (kernel_operator_vec_reduce_intf_impl.h:305 对 327),
+                        //    故行和只能落 half 再 Cast 回 fp32。NB=128 是一个 fp16 repeat, 不需折叠。
+                        WholeReduceSum<half>(massh, workh, NB, ROWS, 1, 1, NB / 16);
+                        VBar();
+                        //  ★`Cast` 的 dst/src 不重叠: mass 在 stateBuf 槽 4, massh 在槽 12 的后半。
+                        Cast(mass, massh, RoundMode::CAST_NONE, ROWS);
+                        VBar();
+                    }
                 //  ★E45 单价探针 (默认 K=0, 整段被编掉)。放在这里是因为此处 `work`
                 //    已被折叠原地破坏, 是死数据 —— 加零对它做什么都不影响下游。
                 if constexpr (VC_PROBE_MASKCALLS > 0) {

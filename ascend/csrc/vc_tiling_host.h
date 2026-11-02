@@ -62,16 +62,16 @@ constexpr uint32_t VectorBytes(uint32_t reduce_bytes, uint32_t tile_m = M, uint3
          + rows * MAX_D * 4               // accBuf
          + rows * MAX_D * 4               // pvBuf
          + MAX_D * 4                      // vsBuf
-         + 12 * rows * 4                  // stateBuf (H11 的 alpha 两槽 + tmax + massAcc 在内)
+         + 13 * rows * 4                  // stateBuf (H11 的 alpha 两槽 + tmax + massAcc + E50 的 half 暂存)
          + 128 * 4                        // lutBuf
          + rows * N * 4                   // subBuf   (H26 位运算解码)
          + rows * N / 8                   // cmpBuf   (H26 的逐元素掩码)
-         + 2 * rows * 8 * 4               // brcbBuf  (rowmax / alpha 的逐行广播)
+         + 3 * rows * 8 * 4               // brcbBuf  (rowmax / alpha 的逐行广播 + E50 的 half 广播)
          + reduce_bytes;                  // tmpBuf
 }
 //  本机几何 (M=64, N=128, MAX_D=128, CHUNK=4, VEC_RAW_SLOTS=2) 的取值钉死 ——
 //  改任何一项都要回来核这个数, 否则又会悄悄与 InitBuffer 分叉。
-static_assert(VectorBytes(0, 64, 4) == 160768, "★UB 账与内核的 InitBuffer 列表对不上");
+static_assert(VectorBytes(0, 64, 4) == 161920, "★UB 账与内核的 InitBuffer 列表对不上");
 static_assert(VectorBytes(0, 64, 4) <= 196608, "★静态部分已超 UB, 还没算 reduce_bytes");
 //  ★旧布局的两条取值断言已删: N 由 256 改 128 后它们的数值不再成立, 而主路径也已
 //    改用 WorkspaceBytesV2。WorkspaceBytes 本体保留 —— 上面那条"拿空间换流量"的

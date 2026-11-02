@@ -66,10 +66,10 @@ DEQ_SPLIT_QSCALE = True
 #  ★分母的求和域 (甲-5 / E48): 现行契约是"**取 fp16 之前**的 fp32 之和";
 #    内核若把趟 2 整体搬到 fp16, 行和就只能在 fp16 域做 —— 本开关量那条路的数值代价。
 #    None = 现行 (fp32 求和); torch.float16 = 先取 fp16 再在 fp16 域累加。
-MASS_DTYPE = None
+MASS_DTYPE = torch.float16   # ★E50 起: 内核控制路径的行和在 fp16 域累加
 #  ★`exp` 的**计算域** (E49): 内核若把趟 2 搬 fp16, 指数参数 `qs*(s-m)` 本身就是 fp16 表示的,
 #    `Exp` 也在 fp16 域算。这与 MASS_DTYPE (只管求和域) 是**两件事**, 要分开量。
-EXP_DTYPE = None
+EXP_DTYPE = torch.float16    # ★E50 起: 内核控制路径的 exp 在 fp16 域算
 
 
 @torch.no_grad()
@@ -116,6 +116,12 @@ def payload_reference(payload, *, expcast=True, query_indices=None, tile_width=N
         mass_dtype = MASS_DTYPE
     if exp_dtype is _UNSET:
         exp_dtype = EXP_DTYPE
+    #  ★E50: 这两个契约**只适用于控制路径**。ExpCast 走 E4M3 的位运算解码,
+    #    那段必须在 fp32/int32 域, 内核里 expcast 支逐字没动 —— 故 oracle 也不能动它。
+    #    (实测: 若对 expcast 也施加 fp16 契约, 逐行相对 RMSE 最大到 3.19%, 远超 1% 闸。)
+    if expcast:
+        mass_dtype = None
+        exp_dtype = None
     if deq_split_qscale is _UNSET:
         deq_split_qscale = DEQ_SPLIT_QSCALE
     q, k, v = payload["q"].float(), payload["k"].float(), payload["v"].float()
