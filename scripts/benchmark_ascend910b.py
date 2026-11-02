@@ -27,6 +27,10 @@ def main():
     parser.add_argument("--heads", type=int, default=2)
     parser.add_argument("--dim", type=int, choices=(64, 128), default=128)
     parser.add_argument("--dtype", choices=("float16", "bfloat16"), default="bfloat16")
+    #  ★--std (2026-11-02 补): 输入分布的标准差。默认 1.0 即原来的 torch.randn。
+    #    为什么要它: 分数量级随 std 线性变, 而 fp16 趟 2 的移位误差按 |rowmax|*eps 走 ——
+    #    std 越大精度代价越大。甲方给的测试形状要 std=5, 没有这个开关就量不了。
+    parser.add_argument("--std", type=float, default=1.0)
     parser.add_argument("--warmup", type=int, default=2)
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--trials", type=int, default=3)
@@ -80,7 +84,7 @@ def main():
             save()
         dtype = getattr(torch, args.dtype)
         generator = torch.Generator().manual_seed(0)
-        original = [torch.randn((1, args.heads, n, args.dim), generator=generator).to(dtype)
+        original = [(torch.randn((1, args.heads, n, args.dim), generator=generator) * args.std).to(dtype)
                     for n in (args.queries, args.keys, args.keys)]
         q, k, v = [x.to(f"npu:{args.device}") for x in original]
         full, core, refs = {}, {}, {}

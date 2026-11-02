@@ -1,0 +1,41 @@
+{
+  "status": "failed",
+  "config": {
+    "device": 4,
+    "backends": [
+      "vc_control"
+    ],
+    "require_laser": false,
+    "queries": 38139,
+    "keys": 38139,
+    "heads": 1,
+    "dim": 128,
+    "dtype": "bfloat16",
+    "std": 5.0,
+    "warmup": 2,
+    "repeats": 3,
+    "trials": 3,
+    "check_queries": 32,
+    "output": "results/shape38139_h1_std5.json"
+  },
+  "torch": "2.9.0+cpu",
+  "shape_nhd": [
+    1,
+    38139,
+    1,
+    128
+  ],
+  "scope": "synchronized API wall ms, not kernel durations; full includes fresh preprocessing; fixed core excludes input preprocessing",
+  "contract": "dense noncausal MHA, original HND inputs and contiguous HND outputs; VC INT8 Q32/K128, E4M3 V decoded to FP16, no V smoothing",
+  "finite_scan_in_timing": false,
+  "baseline_error": null,
+  "skipped": {},
+  "mindie_laser": null,
+  "accuracy": {},
+  "timings": {},
+  "torch_npu": "2.9.0",
+  "device": "Ascend910B2",
+  "cann_root": "/usr/local/Ascend/cann-9.0.0",
+  "vc_version": "0.2.0",
+  "error": "AssertionError('Nonfinite output/reference')"
+}
