@@ -1,0 +1,22 @@
+{
+  "status": "failed",
+  "op_name": "vc_laser_quant_attention",
+  "vendor": "vc_laser_quant",
+  "op_type": "VcLaserQuantAttention",
+  "native_api": "aclnnVcLaserQuantAttention",
+  "cann_root": "/usr/local/Ascend/cann-9.0.0",
+  "soc": "ascend910b",
+  "jobs": 16,
+  "source_dir": "/data0/z60106022/a-vc_attention_opt/vc-attention/build/mindie_laser_quant_source",
+  "install_dir": "/data0/z60106022/a-vc_attention_opt/vc-attention/build/mindie_laser_quant_install",
+  "source_manifest": {
+    "path": "/data0/z60106022/a-vc_attention_opt/vc-attention/build/mindie_laser_quant_source_manifest.json",
+    "sha256": "ee69b85e8715207d795c50e8b399f0a43e358b4a6948380ee967103f6d5d8b02"
+  },
+  "operator_manifest": "/data0/z60106022/a-vc_attention_opt/vc-attention/results/mindie_laser_quant_build_operator.json",
+  "bridge_manifest": "/data0/z60106022/a-vc_attention_opt/vc-attention/results/mindie_laser_quant_build_bridge.json",
+  "marker_token": "vc_mindie_laser_quant_v1",
+  "marker_environment": "VC_MINDIE_LASER_QUANT_MARKER_FILE",
+  "error": "CalledProcessError: Command '['cmake', '--build', '/data0/z60106022/a-vc_attention_opt/vc-attention/build/mindie_laser_quant_source/build/build', '--target', 'package', '--parallel', '16']' returned non-zero exit status 2.",
+  "traceback": "Traceback (most recent call last):\n  File \"/data0/z60106022/a-vc_attention_opt/vc-attention/scripts/build_mindie_laser_quant.py\", line 253, in build\n    native = operator_builder(source, cann, soc, jobs, install_dir, operator_output, **kwargs)\n  File \"/data0/z60106022/a-vc_attention_opt/vc-attention/scripts/build_mindie_laser_local.py\", line 253, in build\n    step[\"elapsed_seconds\"] = runner(command, source, env, phase)\n  File \"/data0/z60106022/a-vc_attention_opt/vc-attention/scripts/build_cann_fas_local.py\", line 107, in run_visible\n    raise subprocess.CalledProcessError(code, command)\nsubprocess.CalledProcessError: Command '['cmake', '--build', '/data0/z60106022/a-vc_attention_opt/vc-attention/build/mindie_laser_quant_source/build/build', '--target', 'package', '--parallel', '16']' returned non-zero exit status 2.\n"
+}
