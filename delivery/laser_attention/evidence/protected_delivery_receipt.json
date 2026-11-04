@@ -1,0 +1,259 @@
+{
+  "after": {
+    "budgets": [
+      {
+        "id": "runs",
+        "limit": 3,
+        "resource": "full native target measurement",
+        "unit": "runs"
+      }
+    ],
+    "decisions": [
+      {
+        "action": "Delaytemperature toafterrawTop8 andcenter, FP32logits/softmax",
+        "capabilities": [],
+        "depends_on": [],
+        "discriminating_probe": "ImmutableE119temperature1 sourcewitness plusstrictownPV andcounts",
+        "evidence": {
+          "kind": "unknown",
+          "note": "Not supplied",
+          "reference": "",
+          "scope": ""
+        },
+        "exit_conditions": [
+          "Allprimaryruns beatE119andLaser individually",
+          "<=3fulltargetruns; seed2supplementseparate"
+        ],
+        "hypotheses": [],
+        "id": "joint",
+        "milestone": "Actual13components andfulltarget/alltrials",
+        "models": [
+          "delay"
+        ],
+        "status": "planned"
+      }
+    ],
+    "groups": [],
+    "hypotheses": [],
+    "id": "E122-delayed-temperature",
+    "models": [
+      {
+        "fingerprint": "d232a22567d9160a152386756586c7bcc250d1b830ed9ed934b959af4da7876e",
+        "id": "inline",
+        "reference": "/data0/db00946854/a-vc_attention_opt/env/e115-inline-card7-a/model.json"
+      },
+      {
+        "fingerprint": "095f27b6d1e4d624980942b045c4f35fba05ab3b03e585a417b42272fb6f815e",
+        "id": "postmax",
+        "reference": "/data0/db00946854/a-vc_attention_opt/env/e116-postmax-card7-c/model.json"
+      },
+      {
+        "fingerprint": "534285584d5af11bf500c18d2a84f87adca442abe3375c85719cd33b9ec8cca1",
+        "id": "float",
+        "reference": "/data0/db00946854/a-vc_attention_opt/env/e118-float-card7-a/model.json"
+      },
+      {
+        "fingerprint": "c8178455369c4b8ef15e8b0a9b8f3df1069c59c69699e95506702b43246b1ff9",
+        "id": "half",
+        "reference": "/data0/db00946854/a-vc_attention_opt/env/e118-half-card7-a/model.json"
+      },
+      {
+        "fingerprint": "6be1b9c870790cd2fbaee220861d2f3d13d5e78c7c7abd0b2005b088ca9968b3",
+        "id": "pair",
+        "reference": "/data0/db00946854/a-vc_attention_opt/env/e119-pair-card7-a/model.json"
+      },
+      {
+        "fingerprint": "24704219e398f361411e890b037eb505a093a39ae6496493eebb5a3f782994c2",
+        "id": "delay",
+        "reference": "/data0/db00946854/a-vc_attention_opt/env/e122-delay-card7-d/model.json"
+      }
+    ],
+    "objective": "Faster prepared attention and cheaper precision recovery using delayedscale; actualsame-run comparisons, video separate",
+    "predictions": [
+      {
+        "decision": "joint",
+        "evidence": {
+          "kind": "unknown",
+          "note": "Not supplied",
+          "reference": "",
+          "scope": ""
+        },
+        "id": "core",
+        "lower": 2.35,
+        "metric": "candidate_producer_device_task_sum",
+        "model": "delay",
+        "reference_model": "",
+        "scope": "Actual full native producer core; preparation/publiccast separate; not completeprepared Delivery metric",
+        "unit": "ms",
+        "upper": 2.8
+      }
+    ],
+    "schema_version": 1,
+    "transitions": [],
+    "uses": [],
+    "validated_best": "delay",
+    "working_head": "delay"
+  },
+  "before": {
+    "budgets": [
+      {
+        "id": "runs",
+        "limit": 3,
+        "resource": "full native target measurement",
+        "unit": "runs"
+      }
+    ],
+    "decisions": [
+      {
+        "action": "Delaytemperature toafterrawTop8 andcenter, FP32logits/softmax",
+        "capabilities": [],
+        "depends_on": [],
+        "discriminating_probe": "ImmutableE119temperature1 sourcewitness plusstrictownPV andcounts",
+        "evidence": {
+          "kind": "unknown",
+          "note": "Not supplied",
+          "reference": "",
+          "scope": ""
+        },
+        "exit_conditions": [
+          "Allprimaryruns beatE119andLaser individually",
+          "<=3fulltargetruns; seed2supplementseparate"
+        ],
+        "hypotheses": [],
+        "id": "joint",
+        "milestone": "Actual13components andfulltarget/alltrials",
+        "models": [
+          "delay"
+        ],
+        "status": "planned"
+      }
+    ],
+    "groups": [],
+    "hypotheses": [],
+    "id": "E122-delayed-temperature",
+    "models": [
+      {
+        "fingerprint": "d232a22567d9160a152386756586c7bcc250d1b830ed9ed934b959af4da7876e",
+        "id": "inline",
+        "reference": "/data0/db00946854/a-vc_attention_opt/env/e115-inline-card7-a/model.json"
+      },
+      {
+        "fingerprint": "095f27b6d1e4d624980942b045c4f35fba05ab3b03e585a417b42272fb6f815e",
+        "id": "postmax",
+        "reference": "/data0/db00946854/a-vc_attention_opt/env/e116-postmax-card7-c/model.json"
+      },
+      {
+        "fingerprint": "534285584d5af11bf500c18d2a84f87adca442abe3375c85719cd33b9ec8cca1",
+        "id": "float",
+        "reference": "/data0/db00946854/a-vc_attention_opt/env/e118-float-card7-a/model.json"
+      },
+      {
+        "fingerprint": "c8178455369c4b8ef15e8b0a9b8f3df1069c59c69699e95506702b43246b1ff9",
+        "id": "half",
+        "reference": "/data0/db00946854/a-vc_attention_opt/env/e118-half-card7-a/model.json"
+      },
+      {
+        "fingerprint": "6be1b9c870790cd2fbaee220861d2f3d13d5e78c7c7abd0b2005b088ca9968b3",
+        "id": "pair",
+        "reference": "/data0/db00946854/a-vc_attention_opt/env/e119-pair-card7-a/model.json"
+      },
+      {
+        "fingerprint": "24704219e398f361411e890b037eb505a093a39ae6496493eebb5a3f782994c2",
+        "id": "delay",
+        "reference": "/data0/db00946854/a-vc_attention_opt/env/e122-delay-card7-d/model.json"
+      }
+    ],
+    "objective": "Faster prepared attention and cheaper precision recovery using delayedscale; actualsame-run comparisons, video separate",
+    "predictions": [
+      {
+        "decision": "joint",
+        "evidence": {
+          "kind": "unknown",
+          "note": "Not supplied",
+          "reference": "",
+          "scope": ""
+        },
+        "id": "core",
+        "lower": 2.35,
+        "metric": "candidate_producer_device_task_sum",
+        "model": "delay",
+        "reference_model": "",
+        "scope": "Actual full native producer core; preparation/publiccast separate; not completeprepared Delivery metric",
+        "unit": "ms",
+        "upper": 2.8
+      }
+    ],
+    "schema_version": 1,
+    "transitions": [],
+    "uses": [],
+    "validated_best": "pair",
+    "working_head": "delay"
+  },
+  "conditions": [
+    "Only the frozen measured workload and numerical-check contract is validated; video quality remains unreviewed",
+    "Every supplied run is checked; no best-of-run filtering or pooled positive/negative cancellation",
+    "RunPlan metric bindings are trusted evaluator declarations, not mathematical or binary equivalence proofs",
+    "This changes campaign selection only; it does not checkout git, install libraries or alter a shared environment",
+    "Changed tools/dependencies make old evidence stale and require fresh validation; history is not silently upgraded"
+  ],
+  "plan": {
+    "campaign_fingerprint": "c28f5eb35db023617aa35021531ffec64b18726b6217e2a132f4a611b4d76015",
+    "candidate_metric": "candidate_device_task_sum",
+    "id": "E122-delay-promote",
+    "incumbent": {
+      "path": "/data0/db00946854/a-vc_attention_opt/env/e119-delivery/receipt.json",
+      "role": "output",
+      "sha256": "320c528152b777b30dbf4661464909f8acbf998101c88811c28f715bf8e66f10",
+      "size_bytes": 8653
+    },
+    "incumbent_metric": "previous_device_task_sum",
+    "minimum_gain_fraction": 0,
+    "minimum_runs": 2,
+    "operation": "promote",
+    "reason": "Both exactclosure independent fresh primaryruns beat actualsame-run E119/Laser completeprepared and separately checked namedcore; explicit newroundedscore approximation, quality/video separate",
+    "reference_metric": "laser_device_task_sum",
+    "runs": [
+      {
+        "path": "/data0/db00946854/a-vc_attention_opt/env/e122-delay-card7-d/run/latest.json",
+        "role": "output",
+        "sha256": "fb1478ba31eb36506d38c74d3517197fc6c2e80a2d220fdb9c02df5832b12728",
+        "size_bytes": 341571
+      },
+      {
+        "path": "/data0/db00946854/a-vc_attention_opt/env/e122-delay-card7-e/run/latest.json",
+        "role": "output",
+        "sha256": "69c1bc628fb54bbe2c984c9b60f4504acd177929d9a18cbc5fa99d7ee1da2898",
+        "size_bytes": 341571
+      }
+    ],
+    "schema_version": 1,
+    "scope": "measured_contract_only",
+    "target_model": "delay",
+    "unit": "ms"
+  },
+  "readings": [
+    {
+      "candidate": 2.5780533333333335,
+      "gain_fraction": 0.20292194073258754,
+      "hardware": "ascend",
+      "incumbent": 2.6117399999999997,
+      "reference": 3.23438,
+      "run_fingerprint": "2d84188e440ada83ad3436975b43dfee61de06656c0558eb93063a029b10e586",
+      "run_plan": "6253417f1dcdaeba84a75bc9aedc0187a7736fd992ff0947b486152402caedaf",
+      "unit": "ms"
+    },
+    {
+      "candidate": 2.5786466666666668,
+      "gain_fraction": 0.2294496737885353,
+      "hardware": "ascend",
+      "incumbent": 2.609386666666667,
+      "reference": 3.3465000000000003,
+      "run_fingerprint": "2bd1208e3f5b1f03a611a87fff2a8bea50c7071fab0fdc4ea72fac4eeef298cf",
+      "run_plan": "3525abdec0abb525f49366edc95a2d5e9ba6429b9b266156fd8b83f284f7b98e",
+      "unit": "ms"
+    }
+  ],
+  "reasons": [],
+  "schema_version": 1,
+  "status": "promoted"
+}

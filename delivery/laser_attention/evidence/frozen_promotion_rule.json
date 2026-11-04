@@ -1,0 +1,11 @@
+{
+  "minimum_runs": 2,
+  "minimum_gain_fraction": 0,
+  "candidate_metric": "candidate_device_task_sum",
+  "reference_metric": "laser_device_task_sum",
+  "incumbent_metric": "previous_device_task_sum",
+  "maximum_full_runs": 3,
+  "protected_parent": "/data0/db00946854/a-vc_attention_opt/env/e119-delivery/receipt.json",
+  "scope": "measured_contract_only",
+  "core_rule": "Firstprimarycore mustalsobeatboth actualsame-run named-core durations beforeexactrepeat; completemetrics donot substituteprimarycore"
+}

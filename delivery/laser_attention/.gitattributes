@@ -1,0 +1,5 @@
+* -text
+**/* -text
+*.csv whitespace=cr-at-eol
+# Frozen source copies retain their original bytes, including legacy whitespace.
+source/** -whitespace

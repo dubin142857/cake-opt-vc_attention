@@ -1,0 +1,100 @@
+{
+  "status": "passed",
+  "contract_version": 1,
+  "torch_api": "torch.ops.vc_laser_sparse_candidates_score_chunk.produce",
+  "scope": "Block1 eight-score groups, two GM ring slots, MTE2 group readfree and bulk8 output",
+  "operation": "sparse_candidates_score_chunk",
+  "soc": "Ascend910B2",
+  "cann_root": "/data0/db00946854/a-vc_attention_opt/env/Ascend92/cann-9.2.0",
+  "build_dir": "/data0/db00946854/a-vc_attention_opt/vc-attention/build/mindie_laser_sparse_candidates_score_chunk_cann920",
+  "runtime": {
+    "torch": "2.9.0+cpu",
+    "torch_npu": "2.9.0",
+    "python_executable": "/data0/db00946854/a-vc_attention_opt/.venv-ascend/bin/python",
+    "python": "3.12.13 (main, May  6 2026, 18:46:41) [GCC 15.2.0]",
+    "torch_root": "/data0/db00946854/a-vc_attention_opt/.venv-ascend/lib/python3.12/site-packages/torch",
+    "torch_npu_root": "/data0/db00946854/a-vc_attention_opt/.venv-ascend/lib/python3.12/site-packages/torch_npu",
+    "torch_abi": 1
+  },
+  "definitions": {
+    "ASCEND_CANN_PACKAGE_PATH": "/data0/db00946854/a-vc_attention_opt/env/Ascend92/cann-9.2.0",
+    "SOC_VERSION": "Ascend910B2",
+    "Python3_EXECUTABLE": "/data0/db00946854/a-vc_attention_opt/.venv-ascend/bin/python",
+    "CMAKE_HOME_DIRECTORY": "/data0/db00946854/a-vc_attention_opt/vc-attention/ascend/laser_sparse_candidates_score_chunk",
+    "CMAKE_GENERATOR": "Unix Makefiles",
+    "CMAKE_BUILD_TYPE": "Release",
+    "VC_TORCH_ROOT": "/data0/db00946854/a-vc_attention_opt/.venv-ascend/lib/python3.12/site-packages/torch",
+    "VC_TORCH_NPU_ROOT": "/data0/db00946854/a-vc_attention_opt/.venv-ascend/lib/python3.12/site-packages/torch_npu",
+    "VC_TORCH_VERSION": "2.9.0+cpu",
+    "VC_TORCH_NPU_VERSION": "2.9.0",
+    "VC_TORCH_ABI": "1"
+  },
+  "source_files": [
+    {
+      "path": "/data0/db00946854/a-vc_attention_opt/vc-attention/ascend/laser_sparse_candidates_score_chunk/CMakeLists.txt",
+      "sha256": "06dbb11778dc2a1e2c2546ba7f475aec0da27d147bb660e9e86c9cbe4adfe6eb"
+    },
+    {
+      "path": "/data0/db00946854/a-vc_attention_opt/vc-attention/ascend/laser_sparse_candidates_score_chunk/candidate_contract.h",
+      "sha256": "14230b65bfdce6b2a9f733ba3d285507e23b5086aeee9d11a72e9afc197c3d2b"
+    },
+    {
+      "path": "/data0/db00946854/a-vc_attention_opt/vc-attention/ascend/laser_sparse_candidates_score_chunk/candidate_cube.h",
+      "sha256": "30892b5a1ee593483e4f97618530caeed68ed22992f0738351bd9bba9b2c6668"
+    },
+    {
+      "path": "/data0/db00946854/a-vc_attention_opt/vc-attention/ascend/laser_sparse_candidates_score_chunk/candidate_selector.h",
+      "sha256": "3f1f36ce912373d93932ff6cf470ff54168c86e6858733100bd664cc9c39d4f7"
+    },
+    {
+      "path": "/data0/db00946854/a-vc_attention_opt/vc-attention/ascend/laser_sparse_candidates_score_chunk/candidate_vector.h",
+      "sha256": "108ad8ed8092fd3dc8082ba076675a6d6b28eacf6d5d8b7fcebc4a9700751d2a"
+    },
+    {
+      "path": "/data0/db00946854/a-vc_attention_opt/vc-attention/ascend/laser_sparse_candidates_score_chunk/candidate_kernel.cpp",
+      "sha256": "6d7f5bb48849418134063e24de28ba3e5b84e987b8bc46e87802607d4df7b620"
+    },
+    {
+      "path": "/data0/db00946854/a-vc_attention_opt/vc-attention/ascend/laser_sparse_candidates_score_chunk/candidate_probe.cpp",
+      "sha256": "58669f95ab4c9791b51161524d15897f8a4075881ff0ada5376634502b186a46"
+    },
+    {
+      "path": "/data0/db00946854/a-vc_attention_opt/vc-attention/ascend/laser_sparse_candidates_score_chunk/candidate_diagnostic.cpp",
+      "sha256": "c4bd9e7eb29410b3bfe0f5b64751258ed4040d2b1aa2236259b47f939647642e"
+    },
+    {
+      "path": "/data0/db00946854/a-vc_attention_opt/vc-attention/ascend/laser_sparse_candidates_score_chunk/candidate_torch.cpp",
+      "sha256": "dc81a59a2f3c6d3e42ff3e5859cd5843893b38bda41adf86ce02ec5ed2ec56a9"
+    }
+  ],
+  "commands": [
+    [
+      "cmake",
+      "-S",
+      "/data0/db00946854/a-vc_attention_opt/vc-attention/ascend/laser_sparse_candidates_score_chunk",
+      "-B",
+      "/data0/db00946854/a-vc_attention_opt/vc-attention/build/mindie_laser_sparse_candidates_score_chunk_cann920",
+      "-G",
+      "Unix Makefiles",
+      "-DASCEND_CANN_PACKAGE_PATH=/data0/db00946854/a-vc_attention_opt/env/Ascend92/cann-9.2.0",
+      "-DSOC_VERSION=Ascend910B2",
+      "-DPython3_EXECUTABLE=/data0/db00946854/a-vc_attention_opt/.venv-ascend/bin/python",
+      "-DCMAKE_BUILD_TYPE=Release",
+      "-DVC_TORCH_ROOT=/data0/db00946854/a-vc_attention_opt/.venv-ascend/lib/python3.12/site-packages/torch",
+      "-DVC_TORCH_NPU_ROOT=/data0/db00946854/a-vc_attention_opt/.venv-ascend/lib/python3.12/site-packages/torch_npu",
+      "-DVC_TORCH_VERSION=2.9.0+cpu",
+      "-DVC_TORCH_NPU_VERSION=2.9.0",
+      "-DVC_TORCH_ABI=1"
+    ],
+    [
+      "cmake",
+      "--build",
+      "/data0/db00946854/a-vc_attention_opt/vc-attention/build/mindie_laser_sparse_candidates_score_chunk_cann920",
+      "--parallel",
+      "4"
+    ]
+  ],
+  "device_object_refresh": [],
+  "library_path": "/data0/db00946854/a-vc_attention_opt/vc-attention/build/mindie_laser_sparse_candidates_score_chunk_cann920/libvc_laser_sparse_candidates_score_chunk.so",
+  "library_sha256": "e7e5f7925f0d92b8afd435f7c986bbb0f83162688c134385b0bb901dbf7b3434"
+}

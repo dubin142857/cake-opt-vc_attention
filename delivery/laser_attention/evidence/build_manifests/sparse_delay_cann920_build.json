@@ -1,0 +1,120 @@
+{
+  "status": "passed",
+  "contract_version": 1,
+  "torch_api": "torch.ops.vc_laser_sparse_delay.produce",
+  "scope": "Postmax Top8 + FP32 vmla PV; exact half-factor premise independently checked",
+  "operation": "sparse_delay",
+  "soc": "Ascend910B2",
+  "cann_root": "/data0/db00946854/a-vc_attention_opt/env/Ascend92/cann-9.2.0",
+  "build_dir": "/data0/db00946854/a-vc_attention_opt/env/e122-delay-build",
+  "runtime": {
+    "torch": "2.9.0+cpu",
+    "torch_npu": "2.9.0",
+    "python_executable": "/data0/db00946854/a-vc_attention_opt/.venv-ascend/bin/python",
+    "python": "3.12.13 (main, May  6 2026, 18:46:41) [GCC 15.2.0]",
+    "torch_root": "/data0/db00946854/a-vc_attention_opt/.venv-ascend/lib/python3.12/site-packages/torch",
+    "torch_npu_root": "/data0/db00946854/a-vc_attention_opt/.venv-ascend/lib/python3.12/site-packages/torch_npu",
+    "torch_abi": 1
+  },
+  "definitions": {
+    "ASCEND_CANN_PACKAGE_PATH": "/data0/db00946854/a-vc_attention_opt/env/Ascend92/cann-9.2.0",
+    "SOC_VERSION": "Ascend910B2",
+    "Python3_EXECUTABLE": "/data0/db00946854/a-vc_attention_opt/.venv-ascend/bin/python",
+    "CMAKE_HOME_DIRECTORY": "/data0/db00946854/a-vc_attention_opt/env/e122-project/ascend/laser_sparse_delay",
+    "CMAKE_GENERATOR": "Unix Makefiles",
+    "CMAKE_BUILD_TYPE": "Release",
+    "VC_TORCH_ROOT": "/data0/db00946854/a-vc_attention_opt/.venv-ascend/lib/python3.12/site-packages/torch",
+    "VC_TORCH_NPU_ROOT": "/data0/db00946854/a-vc_attention_opt/.venv-ascend/lib/python3.12/site-packages/torch_npu",
+    "VC_TORCH_VERSION": "2.9.0+cpu",
+    "VC_TORCH_NPU_VERSION": "2.9.0",
+    "VC_TORCH_ABI": "1"
+  },
+  "source_files": [
+    {
+      "path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/ascend/laser_sparse_delay/CMakeLists.txt",
+      "sha256": "0ec3a9581196145f3a409f9b7943059ab1a6b8b2753a18f499a8f13f861b593a"
+    },
+    {
+      "path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/ascend/laser_sparse_delay/candidate_contract.h",
+      "sha256": "ab4a4a050dcda51e5e27fcd753da35bb0cf93d0ac2ec91f6b077e476b74d4a57"
+    },
+    {
+      "path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/ascend/laser_sparse_delay/candidate_cube.h",
+      "sha256": "30892b5a1ee593483e4f97618530caeed68ed22992f0738351bd9bba9b2c6668"
+    },
+    {
+      "path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/ascend/laser_sparse_delay/candidate_selector.h",
+      "sha256": "81ab904667c954a449e97734b6e01d97e4ad12b53d14840aaf0d7ad321d9f70c"
+    },
+    {
+      "path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/ascend/laser_sparse_delay/candidate_vector.h",
+      "sha256": "60a60d36db4707ff21ba6e372d7f4c58d19b088e2740dbac24292d2fc4cb34f2"
+    },
+    {
+      "path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/ascend/laser_sparse_delay/online_top8.h",
+      "sha256": "e7795e11d42297085a2f5cf4177994f8a9d7db52f27b53d24f07e027db30a3da"
+    },
+    {
+      "path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/ascend/laser_sparse_delay/inline_pv.h",
+      "sha256": "35ac4fd1dd34be7b47c50c1480aa27af3561e5ad024b2814fb7cd88b9e973b55"
+    },
+    {
+      "path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/ascend/laser_sparse_delay/candidate_kernel.cpp",
+      "sha256": "902354403a6406edfc2bce3d366a9f220878fb9b3ad7e5b49bbc56a16027bb07"
+    },
+    {
+      "path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/ascend/laser_sparse_delay/candidate_probe.cpp",
+      "sha256": "bca2545c9dc5884dddf9ec7950a7e49aa0904e07cccd96d4ce7d394a3d42ed3c"
+    },
+    {
+      "path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/ascend/laser_sparse_delay/candidate_diagnostic.cpp",
+      "sha256": "4336813a840311f329261bcc0b593ab91c8ce501d8d7622963ae05f97fa91b2e"
+    },
+    {
+      "path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/ascend/laser_sparse_delay/candidate_torch.cpp",
+      "sha256": "127ee3614e6d60bf42175c75e44e7d15cff760a2ef29cd076d854d648b59c3a0"
+    },
+    {
+      "path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/ascend/laser_sparse_delay/qk_tile.cpp",
+      "sha256": "5e6e377f460079ae7c815d411dd457f7dd8357f9612a6e111beb4b547274376d"
+    },
+    {
+      "path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/ascend/laser_sparse_delay/fma_probe.cpp",
+      "sha256": "d9bc458cf336261b68bf4f44c35b81c319c79f75f28fae105eddec99ffdd8ab0"
+    },
+    {
+      "path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/ascend/laser_sparse_delay/pair_probe.cpp",
+      "sha256": "124edaecd824b2f4d3651aaaf9ccf16b15a1d1fab5cd1f41e819b7d6c35039ac"
+    }
+  ],
+  "commands": [
+    [
+      "cmake",
+      "-S",
+      "/data0/db00946854/a-vc_attention_opt/env/e122-project/ascend/laser_sparse_delay",
+      "-B",
+      "/data0/db00946854/a-vc_attention_opt/env/e122-delay-build",
+      "-G",
+      "Unix Makefiles",
+      "-DASCEND_CANN_PACKAGE_PATH=/data0/db00946854/a-vc_attention_opt/env/Ascend92/cann-9.2.0",
+      "-DSOC_VERSION=Ascend910B2",
+      "-DPython3_EXECUTABLE=/data0/db00946854/a-vc_attention_opt/.venv-ascend/bin/python",
+      "-DCMAKE_BUILD_TYPE=Release",
+      "-DVC_TORCH_ROOT=/data0/db00946854/a-vc_attention_opt/.venv-ascend/lib/python3.12/site-packages/torch",
+      "-DVC_TORCH_NPU_ROOT=/data0/db00946854/a-vc_attention_opt/.venv-ascend/lib/python3.12/site-packages/torch_npu",
+      "-DVC_TORCH_VERSION=2.9.0+cpu",
+      "-DVC_TORCH_NPU_VERSION=2.9.0",
+      "-DVC_TORCH_ABI=1"
+    ],
+    [
+      "cmake",
+      "--build",
+      "/data0/db00946854/a-vc_attention_opt/env/e122-delay-build",
+      "--parallel",
+      "4"
+    ]
+  ],
+  "device_object_refresh": [],
+  "library_path": "/data0/db00946854/a-vc_attention_opt/env/e122-delay-build/libvc_laser_sparse_delay.so",
+  "library_sha256": "0684a020b6837bcdf7ec61805d023cffa57b6717e50a78b9081a1d46f900e4ad"
+}

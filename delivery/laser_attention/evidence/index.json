@@ -1,0 +1,269 @@
+{
+  "schema_version": 1,
+  "published_best": "E122 sparse_delay",
+  "hardware": "Ascend910B2",
+  "cann": "9.2.0",
+  "shape": [
+    1,
+    1,
+    38139,
+    128
+  ],
+  "dtype": "bfloat16",
+  "std": 5,
+  "publication_scope": "measured_contract_only, performance best with incomplete full-query quality/video acceptance",
+  "runs": [
+    {
+      "id": "primary_d",
+      "seed": 0,
+      "scope": "promotion_primary",
+      "core_analysis": "evidence/runs/primary_d/core_analysis.json",
+      "worker_report": "evidence/runs/primary_d/worker_report.json",
+      "tables": [
+        {
+          "variant": "laser",
+          "path": "evidence/runs/primary_d/csv/laser_0.csv",
+          "submitted_calls": 3,
+          "original_member": "report_41vfay4t/baseline/local/trace/00_laser_b3tnvnmm/dubin-910b_7_20261103230202286_ascend_pt/ASCEND_PROFILER_OUTPUT/kernel_details.csv"
+        },
+        {
+          "variant": "previous",
+          "path": "evidence/runs/primary_d/csv/previous_0.csv",
+          "submitted_calls": 3,
+          "original_member": "report_41vfay4t/baseline/local/trace/01_previous_4p2_jpzh/dubin-910b_7_20261103230207100_ascend_pt/ASCEND_PROFILER_OUTPUT/kernel_details.csv"
+        },
+        {
+          "variant": "candidate",
+          "path": "evidence/runs/primary_d/csv/candidate_0.csv",
+          "submitted_calls": 3,
+          "original_member": "report_41vfay4t/baseline/local/trace/02_candidate_f8z5twt6/dubin-910b_7_20261103230211884_ascend_pt/ASCEND_PROFILER_OUTPUT/kernel_details.csv"
+        },
+        {
+          "variant": "candidate_producer",
+          "path": "evidence/runs/primary_d/csv/candidate_producer_0.csv",
+          "submitted_calls": 3,
+          "original_member": "report_41vfay4t/baseline/local/trace/03_candidate_producer_i1ecneed/dubin-910b_7_20261103230216666_ascend_pt/ASCEND_PROFILER_OUTPUT/kernel_details.csv"
+        },
+        {
+          "variant": "candidate_consumer",
+          "path": "evidence/runs/primary_d/csv/candidate_consumer_0.csv",
+          "submitted_calls": 3,
+          "original_member": "report_41vfay4t/baseline/local/trace/05_candidate_consumer_v6o_95pc/dubin-910b_7_20261103230226055_ascend_pt/ASCEND_PROFILER_OUTPUT/kernel_details.csv"
+        },
+        {
+          "variant": "candidate_full",
+          "path": "evidence/runs/primary_d/csv/candidate_full_0.csv",
+          "submitted_calls": 3,
+          "original_member": "report_41vfay4t/baseline/local/trace/06_candidate_full_qmhs08wg/dubin-910b_7_20261103230230842_ascend_pt/ASCEND_PROFILER_OUTPUT/kernel_details.csv"
+        },
+        {
+          "variant": "candidate_prepare",
+          "path": "evidence/runs/primary_d/csv/candidate_prepare_0.csv",
+          "submitted_calls": 3,
+          "original_member": "report_41vfay4t/baseline/local/trace/07_candidate_prepare_qoccfq0q/dubin-910b_7_20261103230235654_ascend_pt/ASCEND_PROFILER_OUTPUT/kernel_details.csv"
+        },
+        {
+          "variant": "laser_full",
+          "path": "evidence/runs/primary_d/csv/laser_full_0.csv",
+          "submitted_calls": 3,
+          "original_member": "report_41vfay4t/baseline/local/trace/08_laser_full_4ba3yc0j/dubin-910b_7_20261103230240451_ascend_pt/ASCEND_PROFILER_OUTPUT/kernel_details.csv"
+        },
+        {
+          "variant": "laser_preprocessing",
+          "path": "evidence/runs/primary_d/csv/laser_preprocessing_0.csv",
+          "submitted_calls": 3,
+          "original_member": "report_41vfay4t/baseline/local/trace/09_laser_preprocessing_aiq_qi7a/dubin-910b_7_20261103230245244_ascend_pt/ASCEND_PROFILER_OUTPUT/kernel_details.csv"
+        }
+      ],
+      "recorded_core_ms": {
+        "candidate": 2.5633866666666667,
+        "previous": 2.6006066666666663,
+        "laser": 3.218213333333333
+      },
+      "source_receipt_sha256": "fb1478ba31eb36506d38c74d3517197fc6c2e80a2d220fdb9c02df5832b12728",
+      "source_raw_archive": {
+        "path": "/data0/db00946854/a-vc_attention_opt/env/e122-delay-card7-d/run/attempt-0/work/measure.raw.tar",
+        "sha256": "5e7edbc76c30570da694bbf5b6aeab1d9f25e260b3d44e79f2c9bc300b3825d8",
+        "size_bytes": 51138560,
+        "role": "input"
+      }
+    },
+    {
+      "id": "primary_e",
+      "seed": 0,
+      "scope": "promotion_primary",
+      "core_analysis": "evidence/runs/primary_e/core_analysis.json",
+      "worker_report": "evidence/runs/primary_e/worker_report.json",
+      "tables": [
+        {
+          "variant": "laser",
+          "path": "evidence/runs/primary_e/csv/laser_0.csv",
+          "submitted_calls": 3,
+          "original_member": "report_1ygb83n9/baseline/local/trace/00_laser_ox5t5039/dubin-910b_7_20261103231950644_ascend_pt/ASCEND_PROFILER_OUTPUT/kernel_details.csv"
+        },
+        {
+          "variant": "previous",
+          "path": "evidence/runs/primary_e/csv/previous_0.csv",
+          "submitted_calls": 3,
+          "original_member": "report_1ygb83n9/baseline/local/trace/01_previous_j9fglnqi/dubin-910b_7_20261103231955459_ascend_pt/ASCEND_PROFILER_OUTPUT/kernel_details.csv"
+        },
+        {
+          "variant": "candidate",
+          "path": "evidence/runs/primary_e/csv/candidate_0.csv",
+          "submitted_calls": 3,
+          "original_member": "report_1ygb83n9/baseline/local/trace/02_candidate_w7a3frsh/dubin-910b_7_20261103232000241_ascend_pt/ASCEND_PROFILER_OUTPUT/kernel_details.csv"
+        },
+        {
+          "variant": "candidate_producer",
+          "path": "evidence/runs/primary_e/csv/candidate_producer_0.csv",
+          "submitted_calls": 3,
+          "original_member": "report_1ygb83n9/baseline/local/trace/03_candidate_producer_86sci991/dubin-910b_7_20261103232004925_ascend_pt/ASCEND_PROFILER_OUTPUT/kernel_details.csv"
+        },
+        {
+          "variant": "candidate_consumer",
+          "path": "evidence/runs/primary_e/csv/candidate_consumer_0.csv",
+          "submitted_calls": 3,
+          "original_member": "report_1ygb83n9/baseline/local/trace/05_candidate_consumer__g92_7h5/dubin-910b_7_20261103232014404_ascend_pt/ASCEND_PROFILER_OUTPUT/kernel_details.csv"
+        },
+        {
+          "variant": "candidate_full",
+          "path": "evidence/runs/primary_e/csv/candidate_full_0.csv",
+          "submitted_calls": 3,
+          "original_member": "report_1ygb83n9/baseline/local/trace/06_candidate_full_5ldplz72/dubin-910b_7_20261103232018992_ascend_pt/ASCEND_PROFILER_OUTPUT/kernel_details.csv"
+        },
+        {
+          "variant": "candidate_prepare",
+          "path": "evidence/runs/primary_e/csv/candidate_prepare_0.csv",
+          "submitted_calls": 3,
+          "original_member": "report_1ygb83n9/baseline/local/trace/07_candidate_prepare_hqf38co9/dubin-910b_7_20261103232023680_ascend_pt/ASCEND_PROFILER_OUTPUT/kernel_details.csv"
+        },
+        {
+          "variant": "laser_full",
+          "path": "evidence/runs/primary_e/csv/laser_full_0.csv",
+          "submitted_calls": 3,
+          "original_member": "report_1ygb83n9/baseline/local/trace/08_laser_full_s1y2zpof/dubin-910b_7_20261103232028468_ascend_pt/ASCEND_PROFILER_OUTPUT/kernel_details.csv"
+        },
+        {
+          "variant": "laser_preprocessing",
+          "path": "evidence/runs/primary_e/csv/laser_preprocessing_0.csv",
+          "submitted_calls": 3,
+          "original_member": "report_1ygb83n9/baseline/local/trace/09_laser_preprocessing_gk0mzbak/dubin-910b_7_20261103232033157_ascend_pt/ASCEND_PROFILER_OUTPUT/kernel_details.csv"
+        }
+      ],
+      "recorded_core_ms": {
+        "candidate": 2.567426666666667,
+        "previous": 2.5993066666666667,
+        "laser": 3.330246666666667
+      },
+      "source_receipt_sha256": "69c1bc628fb54bbe2c984c9b60f4504acd177929d9a18cbc5fa99d7ee1da2898",
+      "source_raw_archive": {
+        "path": "/data0/db00946854/a-vc_attention_opt/env/e122-delay-card7-e/run/attempt-0/work/measure.raw.tar",
+        "sha256": "52bd6ec1c61818fdfb0f14bca60000373de644a4429f859338c042eb3e02ab6b",
+        "size_bytes": 51138560,
+        "role": "input"
+      }
+    },
+    {
+      "id": "seed2",
+      "seed": 2,
+      "scope": "supplemental_not_promotion",
+      "core_analysis": "evidence/runs/seed2/core_analysis.json",
+      "worker_report": "evidence/runs/seed2/worker_report.json",
+      "tables": [
+        {
+          "variant": "laser",
+          "path": "evidence/runs/seed2/csv/laser_0.csv",
+          "submitted_calls": 3,
+          "original_member": "report_jzi1r2u7/baseline/local/trace/00_laser_tt3gy03d/dubin-910b_7_20261103232708482_ascend_pt/ASCEND_PROFILER_OUTPUT/kernel_details.csv"
+        },
+        {
+          "variant": "previous",
+          "path": "evidence/runs/seed2/csv/previous_0.csv",
+          "submitted_calls": 3,
+          "original_member": "report_jzi1r2u7/baseline/local/trace/01_previous__j_cwevk/dubin-910b_7_20261103232713216_ascend_pt/ASCEND_PROFILER_OUTPUT/kernel_details.csv"
+        },
+        {
+          "variant": "candidate",
+          "path": "evidence/runs/seed2/csv/candidate_0.csv",
+          "submitted_calls": 3,
+          "original_member": "report_jzi1r2u7/baseline/local/trace/02_candidate_uexqz5z2/dubin-910b_7_20261103232718037_ascend_pt/ASCEND_PROFILER_OUTPUT/kernel_details.csv"
+        },
+        {
+          "variant": "candidate_producer",
+          "path": "evidence/runs/seed2/csv/candidate_producer_0.csv",
+          "submitted_calls": 3,
+          "original_member": "report_jzi1r2u7/baseline/local/trace/03_candidate_producer_zjyahl9e/dubin-910b_7_20261103232722839_ascend_pt/ASCEND_PROFILER_OUTPUT/kernel_details.csv"
+        },
+        {
+          "variant": "candidate_consumer",
+          "path": "evidence/runs/seed2/csv/candidate_consumer_0.csv",
+          "submitted_calls": 3,
+          "original_member": "report_jzi1r2u7/baseline/local/trace/05_candidate_consumer_osjzx678/dubin-910b_7_20261103232732468_ascend_pt/ASCEND_PROFILER_OUTPUT/kernel_details.csv"
+        },
+        {
+          "variant": "candidate_full",
+          "path": "evidence/runs/seed2/csv/candidate_full_0.csv",
+          "submitted_calls": 3,
+          "original_member": "report_jzi1r2u7/baseline/local/trace/06_candidate_full_7y58nvit/dubin-910b_7_20261103232737161_ascend_pt/ASCEND_PROFILER_OUTPUT/kernel_details.csv"
+        },
+        {
+          "variant": "candidate_prepare",
+          "path": "evidence/runs/seed2/csv/candidate_prepare_0.csv",
+          "submitted_calls": 3,
+          "original_member": "report_jzi1r2u7/baseline/local/trace/07_candidate_prepare_4b9n7fep/dubin-910b_7_20261103232741967_ascend_pt/ASCEND_PROFILER_OUTPUT/kernel_details.csv"
+        },
+        {
+          "variant": "laser_full",
+          "path": "evidence/runs/seed2/csv/laser_full_0.csv",
+          "submitted_calls": 3,
+          "original_member": "report_jzi1r2u7/baseline/local/trace/08_laser_full_1tr4ibjw/dubin-910b_7_20261103232746676_ascend_pt/ASCEND_PROFILER_OUTPUT/kernel_details.csv"
+        },
+        {
+          "variant": "laser_preprocessing",
+          "path": "evidence/runs/seed2/csv/laser_preprocessing_0.csv",
+          "submitted_calls": 3,
+          "original_member": "report_jzi1r2u7/baseline/local/trace/09_laser_preprocessing_i9xdknhu/dubin-910b_7_20261103232751487_ascend_pt/ASCEND_PROFILER_OUTPUT/kernel_details.csv"
+        }
+      ],
+      "recorded_core_ms": {
+        "candidate": 2.5611733333333335,
+        "previous": 2.5947666666666667,
+        "laser": 3.1830199999999995
+      },
+      "source_receipt_sha256": "36682ded1408837c4dceba6eaba00d0bd9ec09c6e4917aa98ef260673479d1e1",
+      "source_raw_archive": {
+        "path": "/data0/db00946854/a-vc_attention_opt/env/e122-delay-seed2-card7/run/attempt-0/work/measure.raw.tar",
+        "sha256": "ccba923355c8a8275eb3ecb1535ff4029fc26b8242148541538a2f6473dc6274",
+        "size_bytes": 51159040,
+        "role": "input"
+      }
+    }
+  ],
+  "current_fullquery_quality_percent": {
+    "E122_seed0": 1.4591165522254859,
+    "E122_seed2": 1.499866751706226,
+    "E125_seed0": 0.623448333394384,
+    "Laser_seed0_same_E125_run": 0.7351836033856226
+  },
+  "progress": {
+    "E125_native_core_ms": 4.853986666666667,
+    "E125_same_run_E122_core_ms": 2.5950266666666666,
+    "E125_same_run_Laser_core_ms": 3.31348,
+    "E125_status": "verified research, slower, not promoted",
+    "next": "KV-bucket grouped-Cube selective completion; unimplemented. Failure-artifact trusted capture remains an infra item."
+  },
+  "code_paths": {
+    "native": "source/vc-attention/ascend/laser_sparse_delay",
+    "adapter": "source/vc-attention/scripts/mindie_laser_candidate_delay.py",
+    "checks": "source/cake-toolkit/plugins/vc_attention_e122/checks.py",
+    "fullquery_audit": "source/cake-toolkit/plugins/vc_attention_e123/audit.py"
+  },
+  "cake_local_commits": {
+    "best": "770cb98",
+    "fullquery_and_search": "79bba5c",
+    "native_local2_negative": "3fb32fd"
+  },
+  "new_hardware_measurements_for_publication": 0,
+  "full_raw_archives_or_tensors_included": false,
+  "raw_kernel_CSVs_included": true
+}

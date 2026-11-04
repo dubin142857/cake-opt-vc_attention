@@ -1,0 +1,430 @@
+{
+  "archive_symlinks": [],
+  "candidate_over_laser_device_sum": 0.805411791179118,
+  "delay": {
+    "components": 13,
+    "contract": "RawTop8 from actual E119binarytemperature1; centeredFP32scale/weights/source/PV checked; distinct roundingtie behavior, video unverified"
+  },
+  "device": {
+    "candidate": {
+      "capture_span_ms": 7.73656,
+      "task_sum_ms": 2.57706,
+      "tasks_per_call": 2.0,
+      "union_ms": 2.57706
+    },
+    "candidate_consumer": {
+      "capture_span_ms": 0.05894,
+      "task_sum_ms": 0.015966666666666667,
+      "tasks_per_call": 1.0,
+      "union_ms": 0.015966666666666667
+    },
+    "candidate_full": {
+      "capture_span_ms": 8.67556,
+      "task_sum_ms": 2.6494266666666664,
+      "tasks_per_call": 11.0,
+      "union_ms": 2.649426666666667
+    },
+    "candidate_prepare": {
+      "capture_span_ms": 1.1837,
+      "task_sum_ms": 0.05316666666666666,
+      "tasks_per_call": 9.0,
+      "union_ms": 0.05316666666666667
+    },
+    "candidate_producer": {
+      "capture_span_ms": 7.6892,
+      "task_sum_ms": 2.5611733333333335,
+      "tasks_per_call": 1.0,
+      "union_ms": 2.5611733333333335
+    },
+    "laser": {
+      "capture_span_ms": 9.60462,
+      "task_sum_ms": 3.1996799999999994,
+      "tasks_per_call": 3.0,
+      "union_ms": 3.19968
+    },
+    "laser_full": {
+      "capture_span_ms": 10.63566,
+      "task_sum_ms": 3.260353333333333,
+      "tasks_per_call": 12.0,
+      "union_ms": 3.260353333333333
+    },
+    "laser_preprocessing": {
+      "capture_span_ms": 1.00924,
+      "task_sum_ms": 0.053593333333333326,
+      "tasks_per_call": 9.0,
+      "union_ms": 0.05359333333333333
+    },
+    "previous": {
+      "capture_span_ms": 7.81624,
+      "task_sum_ms": 2.6035866666666667,
+      "tasks_per_call": 2.0,
+      "union_ms": 2.6035866666666667
+    }
+  },
+  "observations": {
+    "candidate_selection": {
+      "device_timing": "unavailable",
+      "scope": "Declared host-only selection; finalized CPU trace only, no device timing inferred",
+      "submitted_calls": 3,
+      "trace_files": [
+        "/data0/db00946854/a-vc_attention_opt/env/e122-delay-seed2-card7/run/attempt-0/work/measure-data/report_jzi1r2u7/baseline/local/trace/04_candidate_selection_hzcl7tc2/dubin-910b_7_20261103232727649_ascend_pt/ASCEND_PROFILER_OUTPUT/trace_view.json"
+      ]
+    }
+  },
+  "paired_api": {
+    "candidate": {
+      "max_ms": 2.621979097602889,
+      "median_ms": 2.6096628978848457,
+      "min_ms": 2.598484797636047,
+      "trials_ms": [
+        2.6119019952602684,
+        2.621979097602889,
+        2.6174850994721055,
+        2.598484797636047,
+        2.6096628978848457,
+        2.6040707947686315,
+        2.605828898958862,
+        2.6043358957394958,
+        2.617268997710198
+      ]
+    },
+    "laser": {
+      "max_ms": 3.199667896842584,
+      "median_ms": 3.1944227986969054,
+      "min_ms": 3.1775044975802302,
+      "trials_ms": [
+        3.1881976989097893,
+        3.199667896842584,
+        3.194981795968488,
+        3.1775044975802302,
+        3.193562797969207,
+        3.1944227986969054,
+        3.1947968003805727,
+        3.1942008004989475,
+        3.1945218972396106
+      ]
+    },
+    "previous": {
+      "max_ms": 2.6387033984065056,
+      "median_ms": 2.6369753992184997,
+      "min_ms": 2.6301892998162657,
+      "trials_ms": [
+        2.6301892998162657,
+        2.6339503994677216,
+        2.6386023964732885,
+        2.6387033984065056,
+        2.6361584023106843,
+        2.6319454016629606,
+        2.6369753992184997,
+        2.6371254003606737,
+        2.6370684965513647
+      ]
+    }
+  },
+  "scope": "Declared candidate/previous/Laser; profiler device task sum/union, paired synchronized wall API and full/preparation kept distinct",
+  "seed": 2,
+  "shape": [
+    1,
+    1,
+    38139,
+    128
+  ],
+  "source_report_sha256": "777ed958dfe714573f1a1ae1f43f2ccabd39045013917fc3fe1c6bc05eab3963",
+  "stages": {
+    "candidate_consumer": {
+      "max": 0.07231830386444926,
+      "median": 0.07014719885773957,
+      "min": 0.06818710244260728,
+      "trials": [
+        0.06869820063002408,
+        0.07229330367408693,
+        0.0693352019879967,
+        0.07231830386444926,
+        0.07014719885773957,
+        0.06818710244260728,
+        0.06882320158183575,
+        0.07191419717855752,
+        0.0710242020431906
+      ]
+    },
+    "candidate_full": {
+      "max": 2.7175938012078404,
+      "median": 2.7119876991491765,
+      "min": 2.7057496015913785,
+      "trials": [
+        2.7120557031594217,
+        2.707804599776864,
+        2.713899704394862,
+        2.7117146004457027,
+        2.7157418022397906,
+        2.7057496015913785,
+        2.7119876991491765,
+        2.707609598292038,
+        2.7175938012078404
+      ]
+    },
+    "candidate_prepare": {
+      "max": 0.49838440027087927,
+      "median": 0.3578269970603287,
+      "min": 0.35000190255232155,
+      "trials": [
+        0.3578269970603287,
+        0.35455700126476586,
+        0.35000190255232155,
+        0.3684811992570758,
+        0.49838440027087927,
+        0.3587351005990058,
+        0.3571009961888194,
+        0.3588849969673902,
+        0.3569889988284558
+      ]
+    },
+    "candidate_producer": {
+      "max": 2.603402896784246,
+      "median": 2.5991488015279174,
+      "min": 2.5949057016987354,
+      "trials": [
+        2.603402896784246,
+        2.5949057016987354,
+        2.5972867966629565,
+        2.602047799155116,
+        2.5973877985961735,
+        2.6027909014374018,
+        2.6016937976237386,
+        2.5986836990341544,
+        2.5991488015279174
+      ]
+    },
+    "candidate_selection": {
+      "max": 0.013131200103089213,
+      "median": 0.012122199404984713,
+      "min": 0.011694204295054078,
+      "trials": [
+        0.012122199404984713,
+        0.012430199421942234,
+        0.011734204599633813,
+        0.011727202218025923,
+        0.011709198588505387,
+        0.01224519801326096,
+        0.013131200103089213,
+        0.011694204295054078,
+        0.012175203301012516
+      ]
+    },
+    "laser_full": {
+      "max": 3.3010396000463516,
+      "median": 3.2984776014927775,
+      "min": 3.2973404973745346,
+      "trials": [
+        3.29970860038884,
+        3.297487599775195,
+        3.3010396000463516,
+        3.300884598866105,
+        3.298102499684319,
+        3.2977405993733555,
+        3.2973404973745346,
+        3.2984776014927775,
+        3.3000735042151064
+      ]
+    },
+    "laser_preprocessing": {
+      "max": 0.29786499799229205,
+      "median": 0.29348990065045655,
+      "min": 0.28323380392976105,
+      "trials": [
+        0.2847328025382012,
+        0.2878868021070957,
+        0.28323380392976105,
+        0.29348990065045655,
+        0.29497689683921635,
+        0.29399890336208045,
+        0.29786499799229205,
+        0.2919769030995667,
+        0.29417199548333883
+      ]
+    }
+  },
+  "std": 5,
+  "target_check": {
+    "centered_halfweights": {
+      "boundary_differences": 9,
+      "max_half_neighbor_steps": 1,
+      "rows_checked": 38144
+    },
+    "cpu_block_reference_error": {
+      "max_abs": 0.1912576061552671,
+      "reference_rms": 4.480535864077048,
+      "relative_rmse": 0.006138965089826506,
+      "rmse": 0.027505853253284637
+    },
+    "dense_error": {
+      "max_abs": 0.3397633731365204,
+      "reference_rms": 4.477797492208643,
+      "relative_rmse": 0.00791852781105334,
+      "rmse": 0.03545756397431905
+    },
+    "fp32_pv_error": {
+      "max_abs": 4.709698259830475e-06,
+      "reference_rms": 4.5603949074161925,
+      "relative_rmse": 5.595686555487285e-08,
+      "rmse": 2.551854047114147e-07
+    },
+    "incumbent_algorithm_error": {
+      "max_abs": 0.40625,
+      "reference_rms": 4.56103556649968,
+      "relative_rmse": 0.004543159401748574,
+      "rmse": 0.020721511615652655
+    },
+    "incumbent_pipeline": {
+      "fp32_pv_error": {
+        "max_abs": 4.447530955076218e-06,
+        "reference_rms": 4.560366736948899,
+        "relative_rmse": 5.5884510597540885e-08,
+        "rmse": 2.548538632396937e-07
+      },
+      "packet_bit_differences": 0,
+      "producer_counters": {
+        "candidates": 11366912,
+        "cores": 24,
+        "online_merges": 5960,
+        "output_dma_calls": 2384,
+        "padding_id_entries": 915456,
+        "qk_blocks": 88804,
+        "query_tiles": 298,
+        "scale_elements": 11366912,
+        "scale_elements_per_block": 64,
+        "score_chunk_blocks": 8,
+        "score_entries": 305152,
+        "score_groups": 11324,
+        "score_readfree": 22648,
+        "score_reuse_waits": 10728,
+        "score_tail_waits": 596,
+        "selection_window_blocks": 32,
+        "sort32_calls": 11324
+      },
+      "public_output_error": {
+        "max_abs": 0.062497912440449,
+        "reference_rms": 4.5606185119584035,
+        "relative_rmse": 0.0013663278493248558,
+        "rmse": 0.006231300083035249
+      },
+      "pv_counters": {
+        "cores": 48,
+        "groups": 2384,
+        "invalid_rows": 0,
+        "output_dma_calls": 11920,
+        "pv_counter_version": 2,
+        "query_rows": 38144,
+        "value_rows_read": 305152
+      }
+    },
+    "incumbent_reference": {
+      "public_vs_previous": {
+        "max_abs": 0.03125,
+        "reference_rms": 4.5610355235961935,
+        "relative_rmse": 1.6213374350192584e-05,
+        "rmse": 7.394977636859172e-05
+      },
+      "pv_vs_previous": {
+        "max_abs": 0.03739595413208008,
+        "reference_rms": 4.560366716765059,
+        "relative_rmse": 1.3662097003784251e-05,
+        "rmse": 6.230417245727333e-05
+      },
+      "scope": "All descending global block-max Top8 score bits exact; each ID/score is a legal scaled E97 block max, independently audited on every differing ID. Tied IDs need not match torch.TopK. Own-weight PV/packet checked separately.",
+      "score_bit_differences": 0,
+      "source_audit": {
+        "changed_ids": 6,
+        "illegal_pairs": 0,
+        "independent_qk_tiles": 6,
+        "independently_checked_pairs": 6,
+        "scale_map": {
+          "changed_argmax_rows": 110,
+          "composition_value_bit_mismatches": 0,
+          "elements": 65536,
+          "monotonicity_violations": 0,
+          "rows": 512,
+          "source_pair_errors": 0
+        },
+        "scope": "Unchanged IDs use E97 pair witness; every changed ID and old ID checked against identical-primitive raw QK tile plus full observed hardware half scale lookup"
+      },
+      "source_pair_differences": 0,
+      "weights_max_abs": 0.00048828125,
+      "weights_sum_max_abs": 0.0003789663314819336
+    },
+    "packet_bit_differences": 0,
+    "producer_counters": {
+      "candidates": 11366912,
+      "cores": 24,
+      "online_merges": 5960,
+      "output_dma_calls": 2384,
+      "padding_id_entries": 915456,
+      "qk_blocks": 88804,
+      "query_tiles": 298,
+      "raw_reduction_elements": 11366912,
+      "scale_elements": 915456,
+      "scale_elements_per_vector_tile": 1536,
+      "score_chunk_blocks": 8,
+      "score_entries": 305152,
+      "score_groups": 11324,
+      "score_readfree": 22648,
+      "score_reuse_waits": 10728,
+      "score_tail_waits": 596,
+      "selection_window_blocks": 32,
+      "sort32_calls": 11324
+    },
+    "public_cast_byte_differences": 0,
+    "public_output_error": {
+      "max_abs": 0.062466423492878675,
+      "reference_rms": 4.560646684563434,
+      "relative_rmse": 0.001365437813464432,
+      "rmse": 0.006227279436954106
+    },
+    "pv_counters": {
+      "cores": 48,
+      "groups": 2384,
+      "invalid_rows": 0,
+      "output_dma_calls": 11920,
+      "pv_counter_version": 2,
+      "query_rows": 38144,
+      "value_rows_read": 305152
+    },
+    "raw_reference_counters": {
+      "candidates": 11366912,
+      "cores": 24,
+      "online_merges": 5960,
+      "output_dma_calls": 2384,
+      "padding_id_entries": 915456,
+      "qk_blocks": 88804,
+      "query_tiles": 298,
+      "scale_elements": 11366912,
+      "scale_elements_per_block": 64,
+      "score_chunk_blocks": 8,
+      "score_entries": 305152,
+      "score_groups": 11324,
+      "score_readfree": 22648,
+      "score_reuse_waits": 10728,
+      "score_tail_waits": 596,
+      "selection_window_blocks": 32,
+      "sort32_calls": 11324
+    },
+    "raw_source": {
+      "ID_errors": 0,
+      "padding_columns": 32,
+      "rows_checked": 38144,
+      "scope": "Original unchanged E119 binary withtemperature1; FP32scaled score andrawTop8ID exact; no dense/video equivalence",
+      "score_bit_errors": 0,
+      "score_columns": 8
+    },
+    "reference_bits": {
+      "public_vs_previous": {
+        "max_abs": 0.40625,
+        "reference_rms": 4.5610355235961935,
+        "relative_rmse": 0.004543183829155468,
+        "rmse": 0.020721622835005872
+      },
+      "scope": "Distinctdeclaredcoarse/refineapproximation; ownsource/point/PVchecks govern"
+    }
+  },
+  "video": "unverified"
+}

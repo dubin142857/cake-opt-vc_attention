@@ -1,0 +1,1730 @@
+{
+  "native_sources": [
+    {
+      "operation": "sparse_delay",
+      "source": "source/vc-attention/ascend/laser_sparse_delay/CMakeLists.txt",
+      "sha256": "0ec3a9581196145f3a409f9b7943059ab1a6b8b2753a18f499a8f13f861b593a"
+    },
+    {
+      "operation": "sparse_delay",
+      "source": "source/vc-attention/ascend/laser_sparse_delay/candidate_contract.h",
+      "sha256": "ab4a4a050dcda51e5e27fcd753da35bb0cf93d0ac2ec91f6b077e476b74d4a57"
+    },
+    {
+      "operation": "sparse_delay",
+      "source": "source/vc-attention/ascend/laser_sparse_delay/candidate_cube.h",
+      "sha256": "30892b5a1ee593483e4f97618530caeed68ed22992f0738351bd9bba9b2c6668"
+    },
+    {
+      "operation": "sparse_delay",
+      "source": "source/vc-attention/ascend/laser_sparse_delay/candidate_selector.h",
+      "sha256": "81ab904667c954a449e97734b6e01d97e4ad12b53d14840aaf0d7ad321d9f70c"
+    },
+    {
+      "operation": "sparse_delay",
+      "source": "source/vc-attention/ascend/laser_sparse_delay/candidate_vector.h",
+      "sha256": "60a60d36db4707ff21ba6e372d7f4c58d19b088e2740dbac24292d2fc4cb34f2"
+    },
+    {
+      "operation": "sparse_delay",
+      "source": "source/vc-attention/ascend/laser_sparse_delay/online_top8.h",
+      "sha256": "e7795e11d42297085a2f5cf4177994f8a9d7db52f27b53d24f07e027db30a3da"
+    },
+    {
+      "operation": "sparse_delay",
+      "source": "source/vc-attention/ascend/laser_sparse_delay/inline_pv.h",
+      "sha256": "35ac4fd1dd34be7b47c50c1480aa27af3561e5ad024b2814fb7cd88b9e973b55"
+    },
+    {
+      "operation": "sparse_delay",
+      "source": "source/vc-attention/ascend/laser_sparse_delay/candidate_kernel.cpp",
+      "sha256": "902354403a6406edfc2bce3d366a9f220878fb9b3ad7e5b49bbc56a16027bb07"
+    },
+    {
+      "operation": "sparse_delay",
+      "source": "source/vc-attention/ascend/laser_sparse_delay/candidate_probe.cpp",
+      "sha256": "bca2545c9dc5884dddf9ec7950a7e49aa0904e07cccd96d4ce7d394a3d42ed3c"
+    },
+    {
+      "operation": "sparse_delay",
+      "source": "source/vc-attention/ascend/laser_sparse_delay/candidate_diagnostic.cpp",
+      "sha256": "4336813a840311f329261bcc0b593ab91c8ce501d8d7622963ae05f97fa91b2e"
+    },
+    {
+      "operation": "sparse_delay",
+      "source": "source/vc-attention/ascend/laser_sparse_delay/candidate_torch.cpp",
+      "sha256": "127ee3614e6d60bf42175c75e44e7d15cff760a2ef29cd076d854d648b59c3a0"
+    },
+    {
+      "operation": "sparse_delay",
+      "source": "source/vc-attention/ascend/laser_sparse_delay/qk_tile.cpp",
+      "sha256": "5e6e377f460079ae7c815d411dd457f7dd8357f9612a6e111beb4b547274376d"
+    },
+    {
+      "operation": "sparse_delay",
+      "source": "source/vc-attention/ascend/laser_sparse_delay/fma_probe.cpp",
+      "sha256": "d9bc458cf336261b68bf4f44c35b81c319c79f75f28fae105eddec99ffdd8ab0"
+    },
+    {
+      "operation": "sparse_delay",
+      "source": "source/vc-attention/ascend/laser_sparse_delay/pair_probe.cpp",
+      "sha256": "124edaecd824b2f4d3651aaaf9ccf16b15a1d1fab5cd1f41e819b7d6c35039ac"
+    },
+    {
+      "operation": "sparse_pair",
+      "source": "source/vc-attention/ascend/laser_sparse_pair/CMakeLists.txt",
+      "sha256": "edd15a93f6a92ad70e470be518132e728eea35b572dac94c0050e83e1f333a5e"
+    },
+    {
+      "operation": "sparse_pair",
+      "source": "source/vc-attention/ascend/laser_sparse_pair/candidate_contract.h",
+      "sha256": "ab4a4a050dcda51e5e27fcd753da35bb0cf93d0ac2ec91f6b077e476b74d4a57"
+    },
+    {
+      "operation": "sparse_pair",
+      "source": "source/vc-attention/ascend/laser_sparse_pair/candidate_cube.h",
+      "sha256": "30892b5a1ee593483e4f97618530caeed68ed22992f0738351bd9bba9b2c6668"
+    },
+    {
+      "operation": "sparse_pair",
+      "source": "source/vc-attention/ascend/laser_sparse_pair/candidate_selector.h",
+      "sha256": "e94e3a6a4fd6f0097aa75decfdbf642ebc1cde18e9b8c213a9d1cd3362c107f3"
+    },
+    {
+      "operation": "sparse_pair",
+      "source": "source/vc-attention/ascend/laser_sparse_pair/candidate_vector.h",
+      "sha256": "880eea263481d90bd55137301ae1953f26fb7579a2e21c03a0e78dacb0995e7c"
+    },
+    {
+      "operation": "sparse_pair",
+      "source": "source/vc-attention/ascend/laser_sparse_pair/online_top8.h",
+      "sha256": "df2171ffa02da05d75e34c8e2b0bc5661080e5ad6665198fd5fc8fc1b77c3ce3"
+    },
+    {
+      "operation": "sparse_pair",
+      "source": "source/vc-attention/ascend/laser_sparse_pair/inline_pv.h",
+      "sha256": "6abb1a1914a36abadae089fc3c840f1d5c85660606eb9047c49f0e670de5371d"
+    },
+    {
+      "operation": "sparse_pair",
+      "source": "source/vc-attention/ascend/laser_sparse_pair/candidate_kernel.cpp",
+      "sha256": "7a0b0025bbb1d2cde504df85fb4348582883e0d60303b6fba0fde6e61b1c1f43"
+    },
+    {
+      "operation": "sparse_pair",
+      "source": "source/vc-attention/ascend/laser_sparse_pair/candidate_probe.cpp",
+      "sha256": "731b85e3a0064b88637763e5ba480deb99921476a4912b9298df9f0c4021b8bc"
+    },
+    {
+      "operation": "sparse_pair",
+      "source": "source/vc-attention/ascend/laser_sparse_pair/candidate_diagnostic.cpp",
+      "sha256": "468b35807e7605cf396e09f2f102a3d6669fceb7789b7194ef7a3b3cc1ea7759"
+    },
+    {
+      "operation": "sparse_pair",
+      "source": "source/vc-attention/ascend/laser_sparse_pair/candidate_torch.cpp",
+      "sha256": "0503c9e3286bfb85f51096177b37b8040eb7028b1e3bdb4d9e657523122dcad2"
+    },
+    {
+      "operation": "sparse_pair",
+      "source": "source/vc-attention/ascend/laser_sparse_pair/qk_tile.cpp",
+      "sha256": "ad937ddd597c491071e51e199535c1c13a38330b8055da3e76e4a2d9c6580804"
+    },
+    {
+      "operation": "sparse_pair",
+      "source": "source/vc-attention/ascend/laser_sparse_pair/fma_probe.cpp",
+      "sha256": "55c45a6cd6dcaac551aa92b8a6bdc2e651013fd470b93d0ab0f675d61bef97ca"
+    },
+    {
+      "operation": "sparse_pair",
+      "source": "source/vc-attention/ascend/laser_sparse_pair/pair_probe.cpp",
+      "sha256": "e27c60379448fea3381aa7549ff990c156b7ef91708f5ac7e5facb36a6aebfb3"
+    },
+    {
+      "operation": "sparse_pv",
+      "source": "source/vc-attention/ascend/laser_sparse_pv/CMakeLists.txt",
+      "sha256": "f1af8ea9d676904a6b66fb7aba8dbbd8145cd6c847157d7311a32e7179c8485a"
+    },
+    {
+      "operation": "sparse_pv",
+      "source": "source/vc-attention/ascend/laser_sparse_pv/sparse_pv_kernel_impl.h",
+      "sha256": "57fd95c8c70293ceb163b5e2ab5da9783d9950422efb423f4adfeb6e275be945"
+    },
+    {
+      "operation": "sparse_pv",
+      "source": "source/vc-attention/ascend/laser_sparse_pv/sparse_pv_kernel.cpp",
+      "sha256": "8eb3c0dc8cc19af7a38118e0b65f9a0bcc823889939b7e9acabf4b5471eed386"
+    },
+    {
+      "operation": "sparse_pv",
+      "source": "source/vc-attention/ascend/laser_sparse_pv/sparse_pv_torch.cpp",
+      "sha256": "ddaebbcc65303c2b763ca5647ed4234edb13aa26d13a6712a441661d8ecc4c94"
+    },
+    {
+      "operation": "sparse_finalize",
+      "source": "source/vc-attention/ascend/laser_sparse_finalize/CMakeLists.txt",
+      "sha256": "3bd56dc3dde62278069c02b8e50057d4537173c64bb5a3c658a90fd964788e81"
+    },
+    {
+      "operation": "sparse_finalize",
+      "source": "source/vc-attention/ascend/laser_sparse_finalize/sparse_finalize_kernel_impl.h",
+      "sha256": "42da3241d46b371f62e70d8c799319e75cdfc901148833c81a54c20ff46ef46a"
+    },
+    {
+      "operation": "sparse_finalize",
+      "source": "source/vc-attention/ascend/laser_sparse_finalize/sparse_finalize_kernel.cpp",
+      "sha256": "7fe6cb6873948e6c7520bf4ebf998c2a4a7663d102bfd2ae55e1313d24e7d4cb"
+    },
+    {
+      "operation": "sparse_finalize",
+      "source": "source/vc-attention/ascend/laser_sparse_finalize/sparse_finalize_torch.cpp",
+      "sha256": "fcbc67f3434eaa2d2ed4d759295d97aae3ac2d6e4c46e06ed9d78df9e31b416c"
+    },
+    {
+      "operation": "sparse_candidates_score_chunk",
+      "source": "source/vc-attention/ascend/laser_sparse_candidates_score_chunk/CMakeLists.txt",
+      "sha256": "06dbb11778dc2a1e2c2546ba7f475aec0da27d147bb660e9e86c9cbe4adfe6eb"
+    },
+    {
+      "operation": "sparse_candidates_score_chunk",
+      "source": "source/vc-attention/ascend/laser_sparse_candidates_score_chunk/candidate_contract.h",
+      "sha256": "14230b65bfdce6b2a9f733ba3d285507e23b5086aeee9d11a72e9afc197c3d2b"
+    },
+    {
+      "operation": "sparse_candidates_score_chunk",
+      "source": "source/vc-attention/ascend/laser_sparse_candidates_score_chunk/candidate_cube.h",
+      "sha256": "30892b5a1ee593483e4f97618530caeed68ed22992f0738351bd9bba9b2c6668"
+    },
+    {
+      "operation": "sparse_candidates_score_chunk",
+      "source": "source/vc-attention/ascend/laser_sparse_candidates_score_chunk/candidate_selector.h",
+      "sha256": "3f1f36ce912373d93932ff6cf470ff54168c86e6858733100bd664cc9c39d4f7"
+    },
+    {
+      "operation": "sparse_candidates_score_chunk",
+      "source": "source/vc-attention/ascend/laser_sparse_candidates_score_chunk/candidate_vector.h",
+      "sha256": "108ad8ed8092fd3dc8082ba076675a6d6b28eacf6d5d8b7fcebc4a9700751d2a"
+    },
+    {
+      "operation": "sparse_candidates_score_chunk",
+      "source": "source/vc-attention/ascend/laser_sparse_candidates_score_chunk/candidate_kernel.cpp",
+      "sha256": "6d7f5bb48849418134063e24de28ba3e5b84e987b8bc46e87802607d4df7b620"
+    },
+    {
+      "operation": "sparse_candidates_score_chunk",
+      "source": "source/vc-attention/ascend/laser_sparse_candidates_score_chunk/candidate_probe.cpp",
+      "sha256": "58669f95ab4c9791b51161524d15897f8a4075881ff0ada5376634502b186a46"
+    },
+    {
+      "operation": "sparse_candidates_score_chunk",
+      "source": "source/vc-attention/ascend/laser_sparse_candidates_score_chunk/candidate_diagnostic.cpp",
+      "sha256": "c4bd9e7eb29410b3bfe0f5b64751258ed4040d2b1aa2236259b47f939647642e"
+    },
+    {
+      "operation": "sparse_candidates_score_chunk",
+      "source": "source/vc-attention/ascend/laser_sparse_candidates_score_chunk/candidate_torch.cpp",
+      "sha256": "dc81a59a2f3c6d3e42ff3e5859cd5843893b38bda41adf86ce02ec5ed2ec56a9"
+    },
+    {
+      "operation": "max_scale_probe",
+      "source": "source/vc-attention/ascend/laser_max_scale_probe/CMakeLists.txt",
+      "sha256": "5f1cbfb74f86d478ca13ed3de06e67794fe3ec53b8d1a5397cfe29ffcfa00499"
+    },
+    {
+      "operation": "max_scale_probe",
+      "source": "source/vc-attention/ascend/laser_max_scale_probe/max_scale_probe_kernel.cpp",
+      "sha256": "c370683fba3d6856f8ba18508c8df16d4766bf473d5b4bf289c62029d4fea845"
+    },
+    {
+      "operation": "max_scale_probe",
+      "source": "source/vc-attention/ascend/laser_max_scale_probe/max_scale_probe_torch.cpp",
+      "sha256": "04c707d799284a061b117bff6d541f3526d7c3e123efdcc834dfe220c3431784"
+    },
+    {
+      "operation": "sparse_inline_pv",
+      "source": "source/vc-attention/ascend/laser_sparse_inline_pv/CMakeLists.txt",
+      "sha256": "1e2a4ce8f617b0ab33e6ce8e16fa8cbd29d4731b66624262b3e81c062dcaf181"
+    },
+    {
+      "operation": "sparse_inline_pv",
+      "source": "source/vc-attention/ascend/laser_sparse_inline_pv/candidate_contract.h",
+      "sha256": "ab4a4a050dcda51e5e27fcd753da35bb0cf93d0ac2ec91f6b077e476b74d4a57"
+    },
+    {
+      "operation": "sparse_inline_pv",
+      "source": "source/vc-attention/ascend/laser_sparse_inline_pv/candidate_cube.h",
+      "sha256": "30892b5a1ee593483e4f97618530caeed68ed22992f0738351bd9bba9b2c6668"
+    },
+    {
+      "operation": "sparse_inline_pv",
+      "source": "source/vc-attention/ascend/laser_sparse_inline_pv/candidate_selector.h",
+      "sha256": "3f1f36ce912373d93932ff6cf470ff54168c86e6858733100bd664cc9c39d4f7"
+    },
+    {
+      "operation": "sparse_inline_pv",
+      "source": "source/vc-attention/ascend/laser_sparse_inline_pv/candidate_vector.h",
+      "sha256": "3e872d0772d17b4948f7452bde27d20cdb7c1c99f953ca01840e97ec760482cd"
+    },
+    {
+      "operation": "sparse_inline_pv",
+      "source": "source/vc-attention/ascend/laser_sparse_inline_pv/online_top8.h",
+      "sha256": "df2171ffa02da05d75e34c8e2b0bc5661080e5ad6665198fd5fc8fc1b77c3ce3"
+    },
+    {
+      "operation": "sparse_inline_pv",
+      "source": "source/vc-attention/ascend/laser_sparse_inline_pv/inline_pv.h",
+      "sha256": "358a39f579805dc1608a3a72c6067ea28e9b78ad1f32203b5b5424db87b0bd0c"
+    },
+    {
+      "operation": "sparse_inline_pv",
+      "source": "source/vc-attention/ascend/laser_sparse_inline_pv/candidate_kernel.cpp",
+      "sha256": "69ab4e1edaa763436cebd7d2bbae4fbbb314a7836d09146905d2ec501e23b05a"
+    },
+    {
+      "operation": "sparse_inline_pv",
+      "source": "source/vc-attention/ascend/laser_sparse_inline_pv/candidate_probe.cpp",
+      "sha256": "1c1f49d841ac587f3ed1bbd37439a11184c2c89c362d05426a67c1a64e149ae5"
+    },
+    {
+      "operation": "sparse_inline_pv",
+      "source": "source/vc-attention/ascend/laser_sparse_inline_pv/candidate_diagnostic.cpp",
+      "sha256": "13d455633987d2ec829101213209a5bc8d73343c12f97c7fdc080066267a9065"
+    },
+    {
+      "operation": "sparse_inline_pv",
+      "source": "source/vc-attention/ascend/laser_sparse_inline_pv/candidate_torch.cpp",
+      "sha256": "0635ac9a0700f35b3f66502789042c294df60c10b5a916e98c4b069d6ccba566"
+    },
+    {
+      "operation": "sparse_postmax_scale",
+      "source": "source/vc-attention/ascend/laser_sparse_postmax_scale/CMakeLists.txt",
+      "sha256": "929cd4858b53b3cc1f76e237c7466d8d87247c84f92edb1eb422455975ea838b"
+    },
+    {
+      "operation": "sparse_postmax_scale",
+      "source": "source/vc-attention/ascend/laser_sparse_postmax_scale/candidate_contract.h",
+      "sha256": "ab4a4a050dcda51e5e27fcd753da35bb0cf93d0ac2ec91f6b077e476b74d4a57"
+    },
+    {
+      "operation": "sparse_postmax_scale",
+      "source": "source/vc-attention/ascend/laser_sparse_postmax_scale/candidate_cube.h",
+      "sha256": "30892b5a1ee593483e4f97618530caeed68ed22992f0738351bd9bba9b2c6668"
+    },
+    {
+      "operation": "sparse_postmax_scale",
+      "source": "source/vc-attention/ascend/laser_sparse_postmax_scale/candidate_selector.h",
+      "sha256": "9ee45efcbed4cd2104275b9043206b8765f71c8477e92bab5cfeb18cbbb5abb7"
+    },
+    {
+      "operation": "sparse_postmax_scale",
+      "source": "source/vc-attention/ascend/laser_sparse_postmax_scale/candidate_vector.h",
+      "sha256": "8bcf751ee8f11916b4df908bec1e6d264fe48a583695e616292b62e22efdc6c3"
+    },
+    {
+      "operation": "sparse_postmax_scale",
+      "source": "source/vc-attention/ascend/laser_sparse_postmax_scale/online_top8.h",
+      "sha256": "df2171ffa02da05d75e34c8e2b0bc5661080e5ad6665198fd5fc8fc1b77c3ce3"
+    },
+    {
+      "operation": "sparse_postmax_scale",
+      "source": "source/vc-attention/ascend/laser_sparse_postmax_scale/inline_pv.h",
+      "sha256": "358a39f579805dc1608a3a72c6067ea28e9b78ad1f32203b5b5424db87b0bd0c"
+    },
+    {
+      "operation": "sparse_postmax_scale",
+      "source": "source/vc-attention/ascend/laser_sparse_postmax_scale/candidate_kernel.cpp",
+      "sha256": "35abd8ce2d2a758c750391c7cc22187478b9b771afb5e32c71cf6cdf000895a9"
+    },
+    {
+      "operation": "sparse_postmax_scale",
+      "source": "source/vc-attention/ascend/laser_sparse_postmax_scale/candidate_probe.cpp",
+      "sha256": "662d866d6b1c846ad80201f946242789c6110b49817bb012ee784a5d18f97f10"
+    },
+    {
+      "operation": "sparse_postmax_scale",
+      "source": "source/vc-attention/ascend/laser_sparse_postmax_scale/candidate_diagnostic.cpp",
+      "sha256": "bf56d23254d30e799e314b1e38418b70528f27a8d37c2db4bf68a97d203d82fc"
+    },
+    {
+      "operation": "sparse_postmax_scale",
+      "source": "source/vc-attention/ascend/laser_sparse_postmax_scale/candidate_torch.cpp",
+      "sha256": "a94a50eb40228708bdd6e2980bb2353b8e2d975d0800bcd54ce11b095bbc2564"
+    },
+    {
+      "operation": "sparse_postmax_scale",
+      "source": "source/vc-attention/ascend/laser_sparse_postmax_scale/qk_tile.cpp",
+      "sha256": "4d763198c7ba5ac9840b06ec67bbff0a0d45ce4f62e31036994bf68101f0070f"
+    }
+  ],
+  "files": {
+    "evidence/build_manifests/sparse_delay_cann920_build.json": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/results/sparse_delay_cann920_build.json",
+      "sha256": "5c5fe64c56593aa63354dfd06633c05494afe85baa265485b978480b70fd9fae",
+      "bytes": 5824,
+      "role": "original_build_manifest"
+    },
+    "source/vc-attention/ascend/laser_sparse_delay/CMakeLists.txt": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/ascend/laser_sparse_delay/CMakeLists.txt",
+      "sha256": "0ec3a9581196145f3a409f9b7943059ab1a6b8b2753a18f499a8f13f861b593a",
+      "bytes": 2877,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_delay/candidate_contract.h": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/ascend/laser_sparse_delay/candidate_contract.h",
+      "sha256": "ab4a4a050dcda51e5e27fcd753da35bb0cf93d0ac2ec91f6b077e476b74d4a57",
+      "bytes": 762,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_delay/candidate_cube.h": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/ascend/laser_sparse_delay/candidate_cube.h",
+      "sha256": "30892b5a1ee593483e4f97618530caeed68ed22992f0738351bd9bba9b2c6668",
+      "bytes": 5790,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_delay/candidate_selector.h": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/ascend/laser_sparse_delay/candidate_selector.h",
+      "sha256": "81ab904667c954a449e97734b6e01d97e4ad12b53d14840aaf0d7ad321d9f70c",
+      "bytes": 7913,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_delay/candidate_vector.h": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/ascend/laser_sparse_delay/candidate_vector.h",
+      "sha256": "60a60d36db4707ff21ba6e372d7f4c58d19b088e2740dbac24292d2fc4cb34f2",
+      "bytes": 2567,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_delay/online_top8.h": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/ascend/laser_sparse_delay/online_top8.h",
+      "sha256": "e7795e11d42297085a2f5cf4177994f8a9d7db52f27b53d24f07e027db30a3da",
+      "bytes": 6444,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_delay/inline_pv.h": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/ascend/laser_sparse_delay/inline_pv.h",
+      "sha256": "35ac4fd1dd34be7b47c50c1480aa27af3561e5ad024b2814fb7cd88b9e973b55",
+      "bytes": 7277,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_delay/candidate_kernel.cpp": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/ascend/laser_sparse_delay/candidate_kernel.cpp",
+      "sha256": "902354403a6406edfc2bce3d366a9f220878fb9b3ad7e5b49bbc56a16027bb07",
+      "bytes": 380,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_delay/candidate_probe.cpp": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/ascend/laser_sparse_delay/candidate_probe.cpp",
+      "sha256": "bca2545c9dc5884dddf9ec7950a7e49aa0904e07cccd96d4ce7d394a3d42ed3c",
+      "bytes": 803,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_delay/candidate_diagnostic.cpp": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/ascend/laser_sparse_delay/candidate_diagnostic.cpp",
+      "sha256": "4336813a840311f329261bcc0b593ab91c8ce501d8d7622963ae05f97fa91b2e",
+      "bytes": 1667,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_delay/candidate_torch.cpp": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/ascend/laser_sparse_delay/candidate_torch.cpp",
+      "sha256": "127ee3614e6d60bf42175c75e44e7d15cff760a2ef29cd076d854d648b59c3a0",
+      "bytes": 14153,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_delay/qk_tile.cpp": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/ascend/laser_sparse_delay/qk_tile.cpp",
+      "sha256": "5e6e377f460079ae7c815d411dd457f7dd8357f9612a6e111beb4b547274376d",
+      "bytes": 1403,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_delay/fma_probe.cpp": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/ascend/laser_sparse_delay/fma_probe.cpp",
+      "sha256": "d9bc458cf336261b68bf4f44c35b81c319c79f75f28fae105eddec99ffdd8ab0",
+      "bytes": 2999,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_delay/pair_probe.cpp": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/ascend/laser_sparse_delay/pair_probe.cpp",
+      "sha256": "124edaecd824b2f4d3651aaaf9ccf16b15a1d1fab5cd1f41e819b7d6c35039ac",
+      "bytes": 696,
+      "role": "source"
+    },
+    "evidence/build_manifests/sparse_pair_cann920_build.json": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e119-project/results/sparse_pair_cann920_build.json",
+      "sha256": "08b8424dd5c4a93fc8f0fecbea2010283d645123ad4819aa6dcd31b7fe0bdb5b",
+      "bytes": 5801,
+      "role": "original_build_manifest"
+    },
+    "source/vc-attention/ascend/laser_sparse_pair/CMakeLists.txt": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e119-project/ascend/laser_sparse_pair/CMakeLists.txt",
+      "sha256": "edd15a93f6a92ad70e470be518132e728eea35b572dac94c0050e83e1f333a5e",
+      "bytes": 2866,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_pair/candidate_contract.h": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e119-project/ascend/laser_sparse_pair/candidate_contract.h",
+      "sha256": "ab4a4a050dcda51e5e27fcd753da35bb0cf93d0ac2ec91f6b077e476b74d4a57",
+      "bytes": 762,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_pair/candidate_cube.h": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e119-project/ascend/laser_sparse_pair/candidate_cube.h",
+      "sha256": "30892b5a1ee593483e4f97618530caeed68ed22992f0738351bd9bba9b2c6668",
+      "bytes": 5790,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_pair/candidate_selector.h": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e119-project/ascend/laser_sparse_pair/candidate_selector.h",
+      "sha256": "e94e3a6a4fd6f0097aa75decfdbf642ebc1cde18e9b8c213a9d1cd3362c107f3",
+      "bytes": 7878,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_pair/candidate_vector.h": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e119-project/ascend/laser_sparse_pair/candidate_vector.h",
+      "sha256": "880eea263481d90bd55137301ae1953f26fb7579a2e21c03a0e78dacb0995e7c",
+      "bytes": 2433,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_pair/online_top8.h": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e119-project/ascend/laser_sparse_pair/online_top8.h",
+      "sha256": "df2171ffa02da05d75e34c8e2b0bc5661080e5ad6665198fd5fc8fc1b77c3ce3",
+      "bytes": 6510,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_pair/inline_pv.h": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e119-project/ascend/laser_sparse_pair/inline_pv.h",
+      "sha256": "6abb1a1914a36abadae089fc3c840f1d5c85660606eb9047c49f0e670de5371d",
+      "bytes": 7188,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_pair/candidate_kernel.cpp": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e119-project/ascend/laser_sparse_pair/candidate_kernel.cpp",
+      "sha256": "7a0b0025bbb1d2cde504df85fb4348582883e0d60303b6fba0fde6e61b1c1f43",
+      "bytes": 379,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_pair/candidate_probe.cpp": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e119-project/ascend/laser_sparse_pair/candidate_probe.cpp",
+      "sha256": "731b85e3a0064b88637763e5ba480deb99921476a4912b9298df9f0c4021b8bc",
+      "bytes": 802,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_pair/candidate_diagnostic.cpp": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e119-project/ascend/laser_sparse_pair/candidate_diagnostic.cpp",
+      "sha256": "468b35807e7605cf396e09f2f102a3d6669fceb7789b7194ef7a3b3cc1ea7759",
+      "bytes": 1666,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_pair/candidate_torch.cpp": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e119-project/ascend/laser_sparse_pair/candidate_torch.cpp",
+      "sha256": "0503c9e3286bfb85f51096177b37b8040eb7028b1e3bdb4d9e657523122dcad2",
+      "bytes": 11242,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_pair/qk_tile.cpp": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e119-project/ascend/laser_sparse_pair/qk_tile.cpp",
+      "sha256": "ad937ddd597c491071e51e199535c1c13a38330b8055da3e76e4a2d9c6580804",
+      "bytes": 1402,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_pair/fma_probe.cpp": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e119-project/ascend/laser_sparse_pair/fma_probe.cpp",
+      "sha256": "55c45a6cd6dcaac551aa92b8a6bdc2e651013fd470b93d0ab0f675d61bef97ca",
+      "bytes": 2998,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_pair/pair_probe.cpp": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e119-project/ascend/laser_sparse_pair/pair_probe.cpp",
+      "sha256": "e27c60379448fea3381aa7549ff990c156b7ef91708f5ac7e5facb36a6aebfb3",
+      "bytes": 695,
+      "role": "source"
+    },
+    "evidence/build_manifests/mindie_laser_sparse_pv_cann920_build.json": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/vc-attention/results/mindie_laser_sparse_pv_cann920_build.json",
+      "sha256": "26b9dc4d4dca954135fa42a801be5418e8a00bfc8e00ac5a0a9826934eea6fcb",
+      "bytes": 3787,
+      "role": "original_build_manifest"
+    },
+    "source/vc-attention/ascend/laser_sparse_pv/CMakeLists.txt": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/vc-attention/ascend/laser_sparse_pv/CMakeLists.txt",
+      "sha256": "f1af8ea9d676904a6b66fb7aba8dbbd8145cd6c847157d7311a32e7179c8485a",
+      "bytes": 2758,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_pv/sparse_pv_kernel_impl.h": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/vc-attention/ascend/laser_sparse_pv/sparse_pv_kernel_impl.h",
+      "sha256": "57fd95c8c70293ceb163b5e2ab5da9783d9950422efb423f4adfeb6e275be945",
+      "bytes": 5146,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_pv/sparse_pv_kernel.cpp": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/vc-attention/ascend/laser_sparse_pv/sparse_pv_kernel.cpp",
+      "sha256": "8eb3c0dc8cc19af7a38118e0b65f9a0bcc823889939b7e9acabf4b5471eed386",
+      "bytes": 408,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_pv/sparse_pv_torch.cpp": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/vc-attention/ascend/laser_sparse_pv/sparse_pv_torch.cpp",
+      "sha256": "ddaebbcc65303c2b763ca5647ed4234edb13aa26d13a6712a441661d8ecc4c94",
+      "bytes": 4272,
+      "role": "source"
+    },
+    "evidence/build_manifests/mindie_laser_sparse_finalize_cann920_build.json": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/vc-attention/results/mindie_laser_sparse_finalize_cann920_build.json",
+      "sha256": "4ae06f48d1c1d799ef9955607469bcc12382d728ca0c5fd964da7901fd96ef50",
+      "bytes": 3883,
+      "role": "original_build_manifest"
+    },
+    "source/vc-attention/ascend/laser_sparse_finalize/CMakeLists.txt": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/vc-attention/ascend/laser_sparse_finalize/CMakeLists.txt",
+      "sha256": "3bd56dc3dde62278069c02b8e50057d4537173c64bb5a3c658a90fd964788e81",
+      "bytes": 2842,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_finalize/sparse_finalize_kernel_impl.h": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/vc-attention/ascend/laser_sparse_finalize/sparse_finalize_kernel_impl.h",
+      "sha256": "42da3241d46b371f62e70d8c799319e75cdfc901148833c81a54c20ff46ef46a",
+      "bytes": 7766,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_finalize/sparse_finalize_kernel.cpp": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/vc-attention/ascend/laser_sparse_finalize/sparse_finalize_kernel.cpp",
+      "sha256": "7fe6cb6873948e6c7520bf4ebf998c2a4a7663d102bfd2ae55e1313d24e7d4cb",
+      "bytes": 225,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_finalize/sparse_finalize_torch.cpp": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/vc-attention/ascend/laser_sparse_finalize/sparse_finalize_torch.cpp",
+      "sha256": "fcbc67f3434eaa2d2ed4d759295d97aae3ac2d6e4c46e06ed9d78df9e31b416c",
+      "bytes": 5225,
+      "role": "source"
+    },
+    "evidence/build_manifests/mindie_laser_sparse_candidates_score_chunk_cann920_build.json": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/vc-attention/results/mindie_laser_sparse_candidates_score_chunk_cann920_build.json",
+      "sha256": "ec5a91d670f8e959906f2c6f264dd8dd0e76b78d8f51e4f6a691a35e2450a46b",
+      "bytes": 5188,
+      "role": "original_build_manifest"
+    },
+    "source/vc-attention/ascend/laser_sparse_candidates_score_chunk/CMakeLists.txt": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/vc-attention/ascend/laser_sparse_candidates_score_chunk/CMakeLists.txt",
+      "sha256": "06dbb11778dc2a1e2c2546ba7f475aec0da27d147bb660e9e86c9cbe4adfe6eb",
+      "bytes": 3023,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_candidates_score_chunk/candidate_contract.h": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/vc-attention/ascend/laser_sparse_candidates_score_chunk/candidate_contract.h",
+      "sha256": "14230b65bfdce6b2a9f733ba3d285507e23b5086aeee9d11a72e9afc197c3d2b",
+      "bytes": 606,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_candidates_score_chunk/candidate_cube.h": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/vc-attention/ascend/laser_sparse_candidates_score_chunk/candidate_cube.h",
+      "sha256": "30892b5a1ee593483e4f97618530caeed68ed22992f0738351bd9bba9b2c6668",
+      "bytes": 5790,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_candidates_score_chunk/candidate_selector.h": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/vc-attention/ascend/laser_sparse_candidates_score_chunk/candidate_selector.h",
+      "sha256": "3f1f36ce912373d93932ff6cf470ff54168c86e6858733100bd664cc9c39d4f7",
+      "bytes": 5899,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_candidates_score_chunk/candidate_vector.h": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/vc-attention/ascend/laser_sparse_candidates_score_chunk/candidate_vector.h",
+      "sha256": "108ad8ed8092fd3dc8082ba076675a6d6b28eacf6d5d8b7fcebc4a9700751d2a",
+      "bytes": 2177,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_candidates_score_chunk/candidate_kernel.cpp": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/vc-attention/ascend/laser_sparse_candidates_score_chunk/candidate_kernel.cpp",
+      "sha256": "6d7f5bb48849418134063e24de28ba3e5b84e987b8bc46e87802607d4df7b620",
+      "bytes": 397,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_candidates_score_chunk/candidate_probe.cpp": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/vc-attention/ascend/laser_sparse_candidates_score_chunk/candidate_probe.cpp",
+      "sha256": "58669f95ab4c9791b51161524d15897f8a4075881ff0ada5376634502b186a46",
+      "bytes": 810,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_candidates_score_chunk/candidate_diagnostic.cpp": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/vc-attention/ascend/laser_sparse_candidates_score_chunk/candidate_diagnostic.cpp",
+      "sha256": "c4bd9e7eb29410b3bfe0f5b64751258ed4040d2b1aa2236259b47f939647642e",
+      "bytes": 1683,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_candidates_score_chunk/candidate_torch.cpp": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/vc-attention/ascend/laser_sparse_candidates_score_chunk/candidate_torch.cpp",
+      "sha256": "dc81a59a2f3c6d3e42ff3e5859cd5843893b38bda41adf86ce02ec5ed2ec56a9",
+      "bytes": 8056,
+      "role": "source"
+    },
+    "evidence/build_manifests/max_scale_probe_cann920_build.json": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e116-project/results/max_scale_probe_cann920_build.json",
+      "sha256": "35beb370a34cc267c23790fc41fd57a36df05249bcb3d15c788b4152b02ca91c",
+      "bytes": 3568,
+      "role": "original_build_manifest"
+    },
+    "source/vc-attention/ascend/laser_max_scale_probe/CMakeLists.txt": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e116-project/ascend/laser_max_scale_probe/CMakeLists.txt",
+      "sha256": "5f1cbfb74f86d478ca13ed3de06e67794fe3ec53b8d1a5397cfe29ffcfa00499",
+      "bytes": 2842,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_max_scale_probe/max_scale_probe_kernel.cpp": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e116-project/ascend/laser_max_scale_probe/max_scale_probe_kernel.cpp",
+      "sha256": "c370683fba3d6856f8ba18508c8df16d4766bf473d5b4bf289c62029d4fea845",
+      "bytes": 1969,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_max_scale_probe/max_scale_probe_torch.cpp": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e116-project/ascend/laser_max_scale_probe/max_scale_probe_torch.cpp",
+      "sha256": "04c707d799284a061b117bff6d541f3526d7c3e123efdcc834dfe220c3431784",
+      "bytes": 2597,
+      "role": "source"
+    },
+    "evidence/build_manifests/sparse_inline_pv_cann920_build.json": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/vc-attention/results/sparse_inline_pv_cann920_build.json",
+      "sha256": "c817858f407106f267e5ab7580993e08a2c9af8b8f7ab9aac8e243997a5b6e29",
+      "bytes": 5342,
+      "role": "original_build_manifest"
+    },
+    "source/vc-attention/ascend/laser_sparse_inline_pv/CMakeLists.txt": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/vc-attention/ascend/laser_sparse_inline_pv/CMakeLists.txt",
+      "sha256": "1e2a4ce8f617b0ab33e6ce8e16fa8cbd29d4731b66624262b3e81c062dcaf181",
+      "bytes": 2880,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_inline_pv/candidate_contract.h": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/vc-attention/ascend/laser_sparse_inline_pv/candidate_contract.h",
+      "sha256": "ab4a4a050dcda51e5e27fcd753da35bb0cf93d0ac2ec91f6b077e476b74d4a57",
+      "bytes": 762,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_inline_pv/candidate_cube.h": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/vc-attention/ascend/laser_sparse_inline_pv/candidate_cube.h",
+      "sha256": "30892b5a1ee593483e4f97618530caeed68ed22992f0738351bd9bba9b2c6668",
+      "bytes": 5790,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_inline_pv/candidate_selector.h": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/vc-attention/ascend/laser_sparse_inline_pv/candidate_selector.h",
+      "sha256": "3f1f36ce912373d93932ff6cf470ff54168c86e6858733100bd664cc9c39d4f7",
+      "bytes": 5899,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_inline_pv/candidate_vector.h": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/vc-attention/ascend/laser_sparse_inline_pv/candidate_vector.h",
+      "sha256": "3e872d0772d17b4948f7452bde27d20cdb7c1c99f953ca01840e97ec760482cd",
+      "bytes": 2226,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_inline_pv/online_top8.h": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/vc-attention/ascend/laser_sparse_inline_pv/online_top8.h",
+      "sha256": "df2171ffa02da05d75e34c8e2b0bc5661080e5ad6665198fd5fc8fc1b77c3ce3",
+      "bytes": 6510,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_inline_pv/inline_pv.h": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/vc-attention/ascend/laser_sparse_inline_pv/inline_pv.h",
+      "sha256": "358a39f579805dc1608a3a72c6067ea28e9b78ad1f32203b5b5424db87b0bd0c",
+      "bytes": 6813,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_inline_pv/candidate_kernel.cpp": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/vc-attention/ascend/laser_sparse_inline_pv/candidate_kernel.cpp",
+      "sha256": "69ab4e1edaa763436cebd7d2bbae4fbbb314a7836d09146905d2ec501e23b05a",
+      "bytes": 384,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_inline_pv/candidate_probe.cpp": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/vc-attention/ascend/laser_sparse_inline_pv/candidate_probe.cpp",
+      "sha256": "1c1f49d841ac587f3ed1bbd37439a11184c2c89c362d05426a67c1a64e149ae5",
+      "bytes": 807,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_inline_pv/candidate_diagnostic.cpp": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/vc-attention/ascend/laser_sparse_inline_pv/candidate_diagnostic.cpp",
+      "sha256": "13d455633987d2ec829101213209a5bc8d73343c12f97c7fdc080066267a9065",
+      "bytes": 1671,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_inline_pv/candidate_torch.cpp": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/vc-attention/ascend/laser_sparse_inline_pv/candidate_torch.cpp",
+      "sha256": "0635ac9a0700f35b3f66502789042c294df60c10b5a916e98c4b069d6ccba566",
+      "bytes": 7345,
+      "role": "source"
+    },
+    "evidence/build_manifests/sparse_postmax_scale_cann920_build.json": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e116-project/results/sparse_postmax_scale_cann920_build.json",
+      "sha256": "649d4a5243522e76597c77303085bab29065e09df04e9be394cbca123d4660ac",
+      "bytes": 5556,
+      "role": "original_build_manifest"
+    },
+    "source/vc-attention/ascend/laser_sparse_postmax_scale/CMakeLists.txt": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e116-project/ascend/laser_sparse_postmax_scale/CMakeLists.txt",
+      "sha256": "929cd4858b53b3cc1f76e237c7466d8d87247c84f92edb1eb422455975ea838b",
+      "bytes": 2936,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_postmax_scale/candidate_contract.h": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e116-project/ascend/laser_sparse_postmax_scale/candidate_contract.h",
+      "sha256": "ab4a4a050dcda51e5e27fcd753da35bb0cf93d0ac2ec91f6b077e476b74d4a57",
+      "bytes": 762,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_postmax_scale/candidate_cube.h": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e116-project/ascend/laser_sparse_postmax_scale/candidate_cube.h",
+      "sha256": "30892b5a1ee593483e4f97618530caeed68ed22992f0738351bd9bba9b2c6668",
+      "bytes": 5790,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_postmax_scale/candidate_selector.h": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e116-project/ascend/laser_sparse_postmax_scale/candidate_selector.h",
+      "sha256": "9ee45efcbed4cd2104275b9043206b8765f71c8477e92bab5cfeb18cbbb5abb7",
+      "bytes": 5966,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_postmax_scale/candidate_vector.h": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e116-project/ascend/laser_sparse_postmax_scale/candidate_vector.h",
+      "sha256": "8bcf751ee8f11916b4df908bec1e6d264fe48a583695e616292b62e22efdc6c3",
+      "bytes": 2241,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_postmax_scale/online_top8.h": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e116-project/ascend/laser_sparse_postmax_scale/online_top8.h",
+      "sha256": "df2171ffa02da05d75e34c8e2b0bc5661080e5ad6665198fd5fc8fc1b77c3ce3",
+      "bytes": 6510,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_postmax_scale/inline_pv.h": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e116-project/ascend/laser_sparse_postmax_scale/inline_pv.h",
+      "sha256": "358a39f579805dc1608a3a72c6067ea28e9b78ad1f32203b5b5424db87b0bd0c",
+      "bytes": 6813,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_postmax_scale/candidate_kernel.cpp": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e116-project/ascend/laser_sparse_postmax_scale/candidate_kernel.cpp",
+      "sha256": "35abd8ce2d2a758c750391c7cc22187478b9b771afb5e32c71cf6cdf000895a9",
+      "bytes": 388,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_postmax_scale/candidate_probe.cpp": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e116-project/ascend/laser_sparse_postmax_scale/candidate_probe.cpp",
+      "sha256": "662d866d6b1c846ad80201f946242789c6110b49817bb012ee784a5d18f97f10",
+      "bytes": 811,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_postmax_scale/candidate_diagnostic.cpp": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e116-project/ascend/laser_sparse_postmax_scale/candidate_diagnostic.cpp",
+      "sha256": "bf56d23254d30e799e314b1e38418b70528f27a8d37c2db4bf68a97d203d82fc",
+      "bytes": 1675,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_postmax_scale/candidate_torch.cpp": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e116-project/ascend/laser_sparse_postmax_scale/candidate_torch.cpp",
+      "sha256": "a94a50eb40228708bdd6e2980bb2353b8e2d975d0800bcd54ce11b095bbc2564",
+      "bytes": 8291,
+      "role": "source"
+    },
+    "source/vc-attention/ascend/laser_sparse_postmax_scale/qk_tile.cpp": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e116-project/ascend/laser_sparse_postmax_scale/qk_tile.cpp",
+      "sha256": "4d763198c7ba5ac9840b06ec67bbff0a0d45ce4f62e31036994bf68101f0070f",
+      "bytes": 1405,
+      "role": "source"
+    },
+    "source/cake-toolkit/core/opgen/campaign.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/opgen/campaign.py",
+      "sha256": "6abc39f647fe582a1129a462cc59f5e8427ea981a76f32be5fe76b63e6eb6c39",
+      "bytes": 9241,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/__init__.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/opgen/__init__.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/opgen/__init__.py",
+      "sha256": "d63c6a43825ed53f6202917b861452ad087d09d6e904c302dc7061e45d108599",
+      "bytes": 2875,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/opgen/delivery.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/opgen/delivery.py",
+      "sha256": "22a624ccc5dafd32c2126bb899c1b336665ffa860a08a71d6d63f070d0860664",
+      "bytes": 11235,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/opgen/delivery_test.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/opgen/delivery_test.py",
+      "sha256": "ea20db79b863b4d91b0c2c2c10fb5c8a6980dbb824b6e36029584480fd275624",
+      "bytes": 12411,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/opgen/runner_test.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/opgen/runner_test.py",
+      "sha256": "24a63e9997e728ec5cd7d2cab60639076a8dbbe04117712278745fe40440bf53",
+      "bytes": 15512,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/opgen/architecture.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/opgen/architecture.py",
+      "sha256": "91a7ac94684c47642ff4358df142dee1a25d82dd747b48f33f0b5e646613a1a5",
+      "bytes": 40718,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/opgen/legacy.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/opgen/legacy.py",
+      "sha256": "b6567e7c3d21f4d0bc0af20cf301080911128956d26d691b6d0ae4d8fd2e8a94",
+      "bytes": 9351,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/opgen/ir.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/opgen/ir.py",
+      "sha256": "a9cee6b33cb77c15476034900212c02ff3842bde9071886d00b455f1a0f2367a",
+      "bytes": 45947,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/socspec.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/socspec.py",
+      "sha256": "50bdedee36e5c013ef9b48963933ec8b415c1dec05087b095fa53e2a34351cdb",
+      "bytes": 49479,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/pipeplan.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/pipeplan.py",
+      "sha256": "d88e2810f266a59eaf4758b4cd455e2ab3b263ca8639c1535581ef8bf90f2eb2",
+      "bytes": 53051,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/hwfloor.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/hwfloor.py",
+      "sha256": "465cc09c027607eccc42719d9baae7b24fc302654b20abf109ea58fd7a6d65aa",
+      "bytes": 125561,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/trust.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/trust.py",
+      "sha256": "9b1b4be9d07416655faeb87bd778d8dd2908a8fd6f920c8bef21bccfa5fd18ee",
+      "bytes": 180707,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/_refs.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/_refs.py",
+      "sha256": "e39a0fc8bee81582d9c737dfb2fb3ba9beb1f053e85ae979d196872f9f307c92",
+      "bytes": 41980,
+      "role": "frozen_harness"
+    },
+    "source/cake-toolkit/core/perf.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/perf.py",
+      "sha256": "862d5de8a0b977b35869193ba436bd959654cc0e1c97d31c46780500c050c8fc",
+      "bytes": 431701,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/aprof.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/aprof.py",
+      "sha256": "e00472ecfccc5227f87b2eedc254d6ba2dfe20dcdebd7f1dd4c9b87aa4f65574",
+      "bytes": 258332,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/mmplan.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/mmplan.py",
+      "sha256": "83316527b9c412dfb018cd0e0a9db3cafc034e95950bf57e71a9a7efbb729ce4",
+      "bytes": 76607,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/ub_budget.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/ub_budget.py",
+      "sha256": "18bf019db1d781a3dad5e9d095428ec422929ba3d97868417dd80b64cd1963f5",
+      "bytes": 164443,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/_dialect.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/_dialect.py",
+      "sha256": "bd29a033bf27b2648499711f76772f9612e0bbbc1bcd6635f7a1350835959aba",
+      "bytes": 6344,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/opgen/qty.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/opgen/qty.py",
+      "sha256": "04c22d20f9e76f942e256e7ab465bd9650ba6fa06f344e4701c6d4d055efac16",
+      "bytes": 4855,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/opgen/observation.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/opgen/observation.py",
+      "sha256": "1223034b15993867d4d25f286f31517ea4e2fb1383c5cd04269fa2cad1d8c54c",
+      "bytes": 10571,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/opgen/architecture_test.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/opgen/architecture_test.py",
+      "sha256": "0fffa7d98b1e1e9d338540ca770f13f386373b7a21b52a145111f880a67078de",
+      "bytes": 25915,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/opgen/graph.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/opgen/graph.py",
+      "sha256": "e5903774349d367061379a21b7fb4d27693ba4668e276eeda70f29b90eaba3b7",
+      "bytes": 9871,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/opgen/semantics.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/opgen/semantics.py",
+      "sha256": "37c6928814655980edb94670410a0013b50e6662779ec919a08c2c93277f46c8",
+      "bytes": 18231,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/opgen/caps.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/opgen/caps.py",
+      "sha256": "c68b76a03d56a8bb6f1554868feb6f41f27e21e6f5f37cc6d349271d6a0443d4",
+      "bytes": 22450,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/detsync_lint.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/detsync_lint.py",
+      "sha256": "ee6763a45f032fdc58581669bf1407077b93207b4a1c7716a372081bd19bebcc",
+      "bytes": 260236,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/wscap.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/wscap.py",
+      "sha256": "385750615995626fbacbcb0edd5473e7a25b2ac699fae2edad005109f5938b62",
+      "bytes": 61984,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/gen_spec.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/gen_spec.py",
+      "sha256": "5cd334d6d7d39970c11898016a651097e3fc3ce71b3e184a3e235bf2e529c9f7",
+      "bytes": 14657,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/_jsonout.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/_jsonout.py",
+      "sha256": "a2d28550ed479a88ffc7424ca35570822740e8b2401de745989a4c92192a4420",
+      "bytes": 1902,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/opgen/schedule.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/opgen/schedule.py",
+      "sha256": "4ab14f5db1ff01f0b65be8c977d0ecbdc08e76716530a6c129955924df654f20",
+      "bytes": 26850,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/opgen/loops.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/opgen/loops.py",
+      "sha256": "eee7983416d4c6239a112d68e6ebf7c0792cba87c52f00977452787fb8f76bcd",
+      "bytes": 26969,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/opgen/loops_test.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/opgen/loops_test.py",
+      "sha256": "71d35973377de2a822889b9dd50e8043241f2c7024bfb1e066059facaa296b0e",
+      "bytes": 21925,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/opgen/__main__.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/opgen/__main__.py",
+      "sha256": "1549d7faf97a1a874013a804eb1124cb348785b1cdde5a46add35058d3119fb7",
+      "bytes": 13899,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/opgen/trace.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/opgen/trace.py",
+      "sha256": "59b9cf19ac54762a48912457b0836fe1931b8f75ce05eee7e2475e97c28fa13d",
+      "bytes": 27542,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/opgen/transforms.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/opgen/transforms.py",
+      "sha256": "bb04408d37265dc9dc3ec2fde9ed524ac5ea07c72c772a9a276180d3f19933f2",
+      "bytes": 29577,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/opgen/api.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/opgen/api.py",
+      "sha256": "e249566810a9a4eadd0af874648e1365371c6523f2abc3cd98a0a23439126ee2",
+      "bytes": 68375,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/opgen/equiv.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/opgen/equiv.py",
+      "sha256": "bd1da8931207df752e2075e47470c1c15ba6fdc50c1f9521d0fad0483b5d2c7f",
+      "bytes": 52816,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/opgen/gate.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/opgen/gate.py",
+      "sha256": "339155d5f50f336583f57c574c3665e510a79a29bbe777cf381083b271f88b3f",
+      "bytes": 33998,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/mixaddr.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/mixaddr.py",
+      "sha256": "b9313c52cf0d8b56d145904b757de8716524c5c21161c2a3bdafe0d8583c46d7",
+      "bytes": 16259,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/opgen/simfunc.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/opgen/simfunc.py",
+      "sha256": "8822651f30e21a67f562d02a24b7615e7ab63ecc5b7574a5ab570759d2b574fe",
+      "bytes": 14220,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/_benchpath.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/_benchpath.py",
+      "sha256": "dfae59bb083c3ff3c61210e85965257aca193998dc74eab28a98adbc2ce4892f",
+      "bytes": 1999,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/opgen/selfcheck.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/opgen/selfcheck.py",
+      "sha256": "8f5a48975890b24cea89c39a20608dea4f209e19578eab73660aed08caa9f178",
+      "bytes": 12518,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/opgen/ascend.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/opgen/ascend.py",
+      "sha256": "4a1070e39c37500032643801cf1b6962128de3e8b4ca9ee9c0c2ab56348e6ed7",
+      "bytes": 13447,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/opgen/ascend_sandbox.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/opgen/ascend_sandbox.py",
+      "sha256": "e7fdc8dbe25770c5465b75bf0f13cc825b8bc20c861ef3989e88388f6f4251a4",
+      "bytes": 2466,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/opgen/runner.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/opgen/runner.py",
+      "sha256": "7635ba36261162b1977603180c7e6030e65be9026cefb6016b942ee7963de6bf",
+      "bytes": 25749,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/opgen/lowering.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/opgen/lowering.py",
+      "sha256": "44da81ea4b7d2bc8541b1c23ab1e52ee1a6cd061223b6c75a8a8cbf6590f351a",
+      "bytes": 10048,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/opgen/lowering_test.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/opgen/lowering_test.py",
+      "sha256": "770276b65c4f8e08b0f90497e91734c7e2d40cb9f73d8c0b54432f9ed215897a",
+      "bytes": 6899,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/opgen/transforms_test.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/opgen/transforms_test.py",
+      "sha256": "5d50fcc50691fbc32e25f44372172daa603d7ce3dd2307f9d8ec5b0b08006cd1",
+      "bytes": 29508,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/opgen/policy.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/opgen/policy.py",
+      "sha256": "00be3acc86548827830b5a1eb542ffb55341a0fa9407c68bf019a86dba199cfb",
+      "bytes": 25029,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/opgen/policy_test.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/opgen/policy_test.py",
+      "sha256": "4ef0bf01bbef00516a631f2dcbdef5d43b1bcb69f99630addf0d6d9f871f6583",
+      "bytes": 22048,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/opgen/analysis.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/opgen/analysis.py",
+      "sha256": "4af091e08a7be1f80d824fa61a1f1d5fbcd510091894fbb38f91cc469bac733f",
+      "bytes": 27466,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/opgen/analysis_test.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/opgen/analysis_test.py",
+      "sha256": "e1866e6e5e557d50faad7e3a278bd66663eac7b1b48ead92e6950fcb0f990485",
+      "bytes": 18873,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/opgen/schedule_test.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/opgen/schedule_test.py",
+      "sha256": "a5744df32ba415f574a79fe8aa9916d5b4ebaeeb1b2b14216b8bf8c0c6fca695",
+      "bytes": 20285,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/opgen/ascend_sandbox_test.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/opgen/ascend_sandbox_test.py",
+      "sha256": "9fa7f74234fc88167a0355e4c0314278cc15f6fa8674b41d0fbed0c1ee13ffac",
+      "bytes": 5367,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/opgen/ascend_test.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/opgen/ascend_test.py",
+      "sha256": "b35dd5b890d9402610ac6fb96faa36ef25211e9c0e5128c74af1755d95f6f19d",
+      "bytes": 9777,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/opgen/trace_test.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/opgen/trace_test.py",
+      "sha256": "6465e35f0f1f495973a66ff83a813783bddc32b25d4edf50c10955ac5e4bbfff",
+      "bytes": 19132,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/opgen/research_test.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/opgen/research_test.py",
+      "sha256": "68047cdb66a18f2686bd58c6ddac916cb8e0917b1a20c49601e1cef9b99aebc2",
+      "bytes": 20717,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/core/opgen/ascend_cli.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/core/opgen/ascend_cli.py",
+      "sha256": "17e5745959f8d2374b48f533a01720c5027fcecb2daa405d31bca7b4e011bd0d",
+      "bytes": 154,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/plugins/vc_attention_e123/audit.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/plugins/vc_attention_e123/audit.py",
+      "sha256": "a6f9158d63d684a527f44dbbaaf0d1ab8d54287bc5e6e7f03204b7f7e880d673",
+      "bytes": 12954,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/plugins/__init__.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/plugins/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/plugins/vc_attention_e123/__init__.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/plugins/vc_attention_e123/__init__.py",
+      "sha256": "715d29b95de7bf7df8f6cdbebc7620f68c530b58ba465f9a53b8aa069a1bb75d",
+      "bytes": 80,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/plugins/vc_attention_e122/analyze.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/plugins/vc_attention_e122/analyze.py",
+      "sha256": "f2d10854c01a7724d9a29b3247682402fcbcef440fd6ab86048c6d21e711dbe4",
+      "bytes": 5063,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/plugins/vc_attention_e122/__init__.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/plugins/vc_attention_e122/__init__.py",
+      "sha256": "60f53217017c95acd24e0354779422ac8bef172e15f89b4588403bce536e512a",
+      "bytes": 71,
+      "role": "frozen_harness"
+    },
+    "source/cake-toolkit/plugins/vc_attention_e122/plan.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/plugins/vc_attention_e122/plan.py",
+      "sha256": "dfe4a5d24b20b1f1575c8b7b63f5ac9052cc2e042882859eaee42b61931e17b5",
+      "bytes": 5445,
+      "role": "frozen_harness"
+    },
+    "source/cake-toolkit/plugins/vc_attention_e116/preflight.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/plugins/vc_attention_e116/preflight.py",
+      "sha256": "1a2c1725847d64ae0b597befc4db20c1ae36fd11b65ea80a590e052f0f949ac8",
+      "bytes": 3468,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/plugins/vc_attention_e116/__init__.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/plugins/vc_attention_e116/__init__.py",
+      "sha256": "22c58e59c6737599df11a0ff317c97d567b5e39b8078debf4e81b024685e682e",
+      "bytes": 85,
+      "role": "frozen_harness"
+    },
+    "source/cake-toolkit/plugins/vc_attention_e116/plan.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/plugins/vc_attention_e116/plan.py",
+      "sha256": "6e742a6340b850df1d8f13be860d15c844fb86c4a3da2383986b0b08e45a1b1b",
+      "bytes": 4613,
+      "role": "frozen_harness"
+    },
+    "source/cake-toolkit/plugins/vc_attention/plan.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/plugins/vc_attention/plan.py",
+      "sha256": "e830d867a6e202b6ba540db2808d29ada3194f7edc7d106083ca15f14cd40ea5",
+      "bytes": 13258,
+      "role": "frozen_harness"
+    },
+    "source/cake-toolkit/plugins/vc_attention/__init__.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/plugins/vc_attention/__init__.py",
+      "sha256": "dea55faaddd7017fe8f51c1187837470d657cc1826b18558dd7fdbfa88ea77b7",
+      "bytes": 84,
+      "role": "frozen_harness"
+    },
+    "source/cake-toolkit/plugins/vc_attention/architecture.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/plugins/vc_attention/architecture.py",
+      "sha256": "35914739f5be55476d173d4b658fa50e36afe9dc2498684e4e6efb23efe9a06f",
+      "bytes": 15973,
+      "role": "frozen_harness"
+    },
+    "source/cake-toolkit/plugins/vc_attention_e116/capsule.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/plugins/vc_attention_e116/capsule.py",
+      "sha256": "a3ad08818d52b3f4be4473cf2c0cbeecf9e7271d97d26564d3aad6dca7439026",
+      "bytes": 1687,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/plugins/vc_attention_e122/execution.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/plugins/vc_attention_e122/execution.py",
+      "sha256": "320485681110615a7f00eba39f99442a76a1c21bb8f21fe7d539814c6dcdb65e",
+      "bytes": 3985,
+      "role": "frozen_harness"
+    },
+    "source/cake-toolkit/plugins/vc_attention_e119/pair_probe.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/plugins/vc_attention_e119/pair_probe.py",
+      "sha256": "a48b8b4369795cec2eb929de2bc32656c7d5c9c054bffa122f201440688a4b10",
+      "bytes": 4511,
+      "role": "frozen_harness"
+    },
+    "source/cake-toolkit/plugins/vc_attention_e119/__init__.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/plugins/vc_attention_e119/__init__.py",
+      "sha256": "617d221b1ecab150bd9e96ddb74640c02acdb66b863471b2670433b35de19ffe",
+      "bytes": 83,
+      "role": "frozen_harness"
+    },
+    "source/cake-toolkit/plugins/vc_attention/execution.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/plugins/vc_attention/execution.py",
+      "sha256": "21242f44629106502f3e7c9fd6934a9449e968a15880cff7f53156ca3abcf947",
+      "bytes": 14235,
+      "role": "frozen_harness"
+    },
+    "source/cake-toolkit/plugins/vc_attention_e122/checks.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/plugins/vc_attention_e122/checks.py",
+      "sha256": "bc251150c5b80b40dcc67feb86164acb34d9088a20ff39674b1cbd72a12961a0",
+      "bytes": 4690,
+      "role": "frozen_harness"
+    },
+    "source/vc-attention/scripts/probe_mindie_laser_sparse_attention.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/probe_mindie_laser_sparse_attention.py",
+      "sha256": "bca4dad6acd3a10147275968a07de38d5b468fdd10319b795235f69e4150340c",
+      "bytes": 39268,
+      "role": "frozen_harness"
+    },
+    "source/cake-toolkit/plugins/vc_attention_e121/checks.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/plugins/vc_attention_e121/checks.py",
+      "sha256": "67683a8a50707c16595680988d0d1db733eb4dee0a13a5d44ff4b72f139787bf",
+      "bytes": 15374,
+      "role": "supporting_source"
+    },
+    "source/cake-toolkit/plugins/vc_attention_e121/__init__.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/plugins/vc_attention_e121/__init__.py",
+      "sha256": "30e37dea551f62c12c8fed3e7ea9747ecaf33c3c6b64137a8211f213c1dd7e40",
+      "bytes": 66,
+      "role": "supporting_source"
+    },
+    "source/vc-attention/scripts/mindie_laser_quant_preprocessing.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/mindie_laser_quant_preprocessing.py",
+      "sha256": "a8fc4add40b0a950a8f925d76a34f0db54676be9662a790642c5b588fdf56a52",
+      "bytes": 7630,
+      "role": "frozen_harness"
+    },
+    "source/vc-attention/scripts/mindie_laser_quant_backend.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/mindie_laser_quant_backend.py",
+      "sha256": "378ef33f5cf21d59d08a8345cf442ddad98a5814cb7ecfe2b0321a9baf7d14ef",
+      "bytes": 9379,
+      "role": "frozen_harness"
+    },
+    "source/vc-attention/scripts/mindie_laser_quant_fused.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/mindie_laser_quant_fused.py",
+      "sha256": "50536b535909d91083547dba241f4c32466ff5d1361f64e5b838d652d11f86f3",
+      "bytes": 11696,
+      "role": "frozen_harness"
+    },
+    "source/vc-attention/scripts/prepare_mindie_laser_stream_overlap_source.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/prepare_mindie_laser_stream_overlap_source.py",
+      "sha256": "58b0006ab67146eda249a434315c8ba369c1c42ad4bbb49a0024589bfabc5414",
+      "bytes": 7557,
+      "role": "frozen_harness"
+    },
+    "source/vc-attention/scripts/prepare_mindie_laser_stream_onepass_source.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/prepare_mindie_laser_stream_onepass_source.py",
+      "sha256": "c1bb53d4fd7168d05d2304869491db239ca1baa9dbfdd235add9caa63d9159a2",
+      "bytes": 4275,
+      "role": "frozen_harness"
+    },
+    "source/vc-attention/scripts/prepare_mindie_laser_global_stream_source.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/prepare_mindie_laser_global_stream_source.py",
+      "sha256": "5e6600bbf47825d5a33468b6cc8132a3201019d0da15cabb0980e16d0e85d30f",
+      "bytes": 5362,
+      "role": "frozen_harness"
+    },
+    "source/vc-attention/scripts/prepare_mindie_laser_global_geometry_source.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/prepare_mindie_laser_global_geometry_source.py",
+      "sha256": "3897b38bf15a3cbd0c05dffedc35cd09315855120283d4e72835e3b981cf0bcd",
+      "bytes": 7582,
+      "role": "frozen_harness"
+    },
+    "source/vc-attention/scripts/prepare_mindie_laser_global_pipe_source.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/prepare_mindie_laser_global_pipe_source.py",
+      "sha256": "1127c35780ee70cc6907e76d284f4c5876078d71a89ecdbd7d4c0735043f9f56",
+      "bytes": 2710,
+      "role": "frozen_harness"
+    },
+    "source/vc-attention/scripts/prepare_mindie_laser_global_half_sum_source.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/prepare_mindie_laser_global_half_sum_source.py",
+      "sha256": "6bae49e006b7746d4c7328c7179a71b1b032d4ca5fa25fdaf15d1433fe3de245",
+      "bytes": 3123,
+      "role": "frozen_harness"
+    },
+    "source/vc-attention/scripts/prepare_mindie_laser_global_probe_source.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/prepare_mindie_laser_global_probe_source.py",
+      "sha256": "7e53f20f04b8762ef7606fff23761d66609f34d7b18f9aff960c49eba2c90c9d",
+      "bytes": 9972,
+      "role": "frozen_harness"
+    },
+    "source/vc-attention/scripts/mindie_laser_candidate_inline_pv.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/mindie_laser_candidate_inline_pv.py",
+      "sha256": "e7633c5afa3f9e76db58b99c6abfbd302ab31b8e95cee2fdf61b33065efd02c1",
+      "bytes": 4817,
+      "role": "frozen_harness"
+    },
+    "source/vc-attention/scripts/mindie_laser_sparse_pv.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/mindie_laser_sparse_pv.py",
+      "sha256": "11ac551c1250f2c09a20585bd722f0e4f24f7ad3db251fa9b62f6b84af1c0f03",
+      "bytes": 4789,
+      "role": "frozen_harness"
+    },
+    "source/vc-attention/scripts/benchmark_mindie_laser_quant.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/benchmark_mindie_laser_quant.py",
+      "sha256": "430142956ae41553c719875d5286b7d22375cf32953a5566786189914ffe66e2",
+      "bytes": 52260,
+      "role": "frozen_harness"
+    },
+    "source/vc-attention/scripts/mindie_laser_backend.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/mindie_laser_backend.py",
+      "sha256": "3523d9e4cb3c169604b2343e29ab097d2b8482622e97a7b13cebbb938c3ef076",
+      "bytes": 18911,
+      "role": "frozen_harness"
+    },
+    "source/vc-attention/scripts/benchmark_mindie_laser_local.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/benchmark_mindie_laser_local.py",
+      "sha256": "67c95aecda6ad1a203d8e498f6fe89f4d65f67197bd187466fe66d8f86ddd659",
+      "bytes": 32050,
+      "role": "frozen_harness"
+    },
+    "source/vc-attention/scripts/prepare_mindie_laser_source.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/prepare_mindie_laser_source.py",
+      "sha256": "4684548f43e939f473af45774b11c5456a0b2ad2f3b2c9d82438c4e9f410e5af",
+      "bytes": 29343,
+      "role": "frozen_harness"
+    },
+    "source/vc-attention/scripts/mindie_laser_expcast_patch.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/mindie_laser_expcast_patch.py",
+      "sha256": "310a46176c61951d7e2de362f2c8444427df8f49edac73c50171629768f6333d",
+      "bytes": 3378,
+      "role": "frozen_harness"
+    },
+    "source/vc-attention/scripts/mindie_laser_probe_patch.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/mindie_laser_probe_patch.py",
+      "sha256": "6cf9db16106ef7b2446ab84317059deff7aa5d882504a079e8f34a85bce0733f",
+      "bytes": 9858,
+      "role": "frozen_harness"
+    },
+    "source/vc-attention/scripts/prepare_cann_fas_source.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/prepare_cann_fas_source.py",
+      "sha256": "7f0d90665fb21d3c9553e0c69bb73127171673e283ae9bbef1bb5bc04ed9b37f",
+      "bytes": 15240,
+      "role": "frozen_harness"
+    },
+    "source/vc-attention/scripts/mindie_laser_provider_checks.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/mindie_laser_provider_checks.py",
+      "sha256": "b554b84b5f8f8cf4001ef872b9bf316a03603e57cb1ba614de3396d3a51eed1b",
+      "bytes": 5663,
+      "role": "frozen_harness"
+    },
+    "source/vc-attention/scripts/benchmark_cann_fas_local.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/benchmark_cann_fas_local.py",
+      "sha256": "039707207c137c2762ce5c70b022c601a5567f51a96910133e6a8454486c8222",
+      "bytes": 26037,
+      "role": "frozen_harness"
+    },
+    "source/vc-attention/scripts/mindie_laser_quant_trace.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/mindie_laser_quant_trace.py",
+      "sha256": "ce48a18e155c730fbf697f79836a07e742f95081990802cb496e1a9b2d815f35",
+      "bytes": 17397,
+      "role": "frozen_harness"
+    },
+    "source/vc-attention/scripts/mindie_laser_quant_reference.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/mindie_laser_quant_reference.py",
+      "sha256": "ebc42e3cd3e51d27657eeea15c2f3bbabbf9b27e6c264b6a8bcb19366a583a1e",
+      "bytes": 12068,
+      "role": "frozen_harness"
+    },
+    "source/vc-attention/scripts/mindie_laser_expcast_reference.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/mindie_laser_expcast_reference.py",
+      "sha256": "5138f2bb882df87e2479f8ad3d48768f7d6b6f91353994c552a311dd480514db",
+      "bytes": 1703,
+      "role": "frozen_harness"
+    },
+    "source/vc-attention/scripts/prepare_mindie_laser_quant_source.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/prepare_mindie_laser_quant_source.py",
+      "sha256": "3c52d08282e85034e865a3b415ec7d2dad65d872bf1d917414a872fc827349b4",
+      "bytes": 7239,
+      "role": "frozen_harness"
+    },
+    "source/vc-attention/scripts/mindie_laser_candidate_online_top8.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/mindie_laser_candidate_online_top8.py",
+      "sha256": "faa85e8434d53b346feeffbcd36dc47eaf71fc5a1163961662e1f95329775875",
+      "bytes": 4743,
+      "role": "frozen_harness"
+    },
+    "source/vc-attention/scripts/mindie_laser_sparse_finalize.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/mindie_laser_sparse_finalize.py",
+      "sha256": "52f3a9c320f4d2930c0bfa496627cd4b81c743c143a4b444c90198779dd76fe6",
+      "bytes": 3111,
+      "role": "frozen_harness"
+    },
+    "source/vc-attention/scripts/mindie_laser_candidate_finalize.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/mindie_laser_candidate_finalize.py",
+      "sha256": "f1562ff4328839421c2578e055a74a9f35ea8a84144319dc88f13173b0d94ddd",
+      "bytes": 3443,
+      "role": "frozen_harness"
+    },
+    "source/vc-attention/scripts/mindie_laser_candidate_score_chunk.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/mindie_laser_candidate_score_chunk.py",
+      "sha256": "395c1ca93dfcf8a6488ca69115f5b8f97ae2c3bdaa0cd067239994487be41dc2",
+      "bytes": 2375,
+      "role": "frozen_harness"
+    },
+    "source/vc-attention/scripts/mindie_laser_candidate_block1.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/mindie_laser_candidate_block1.py",
+      "sha256": "9dba56426a433457c886a82bbce9d1af2571088ffe8ccf517b093e23a6600732",
+      "bytes": 2334,
+      "role": "frozen_harness"
+    },
+    "source/vc-attention/scripts/mindie_laser_sparse_candidates.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/mindie_laser_sparse_candidates.py",
+      "sha256": "9266c004d633f0b2de51b0400e9948ef39c1fc384b2d1e4e04d4b44aeb993c8c",
+      "bytes": 11755,
+      "role": "frozen_harness"
+    },
+    "source/vc-attention/scripts/mindie_laser_candidate_lookup.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/mindie_laser_candidate_lookup.py",
+      "sha256": "5abb3db697e0d16de8152e3fb42a5f23a5108bf30ef70edfa0053f6808a415b0",
+      "bytes": 2699,
+      "role": "frozen_harness"
+    },
+    "source/vc-attention/scripts/mindie_laser_sparse_reference.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/mindie_laser_sparse_reference.py",
+      "sha256": "7b4457ab030af5f2a61fcf2b4cf7730c0b94cc280cf165f7a888ceb8b638c122",
+      "bytes": 13849,
+      "role": "frozen_harness"
+    },
+    "source/cake-toolkit/plugins/vc_attention_e118/math_probe.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/plugins/vc_attention_e118/math_probe.py",
+      "sha256": "42f6de40c8ea976910013cdda251310b63d7cf2c7bd7d71300000dd7a09886ce",
+      "bytes": 4881,
+      "role": "frozen_harness"
+    },
+    "source/cake-toolkit/plugins/vc_attention_e118/__init__.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/plugins/vc_attention_e118/__init__.py",
+      "sha256": "f8fa60c85bce04cec1b4784049b3db5b4e2ec9ce5de59e6a8367f8af5c3ada1c",
+      "bytes": 79,
+      "role": "frozen_harness"
+    },
+    "source/vc-attention/scripts/probe_mindie_laser_inline_pv.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/probe_mindie_laser_inline_pv.py",
+      "sha256": "746136122fdf7a68ed4c3a30730570dcdc0a28a79afde13a6de1265398ae0334",
+      "bytes": 3374,
+      "role": "frozen_harness"
+    },
+    "source/vc-attention/scripts/mindie_laser_fma_checks.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/mindie_laser_fma_checks.py",
+      "sha256": "bfe35b512f9cd3ab7cd8edf79f11cd0eff651444ad5957adaca4ede8b392d4ad",
+      "bytes": 153,
+      "role": "frozen_harness"
+    },
+    "source/cake-toolkit/plugins/vc_attention_e118/contract.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/plugins/vc_attention_e118/contract.py",
+      "sha256": "f8c8f5891675df00c392ac211a18b267ccb12f78a00e366d0e34db2e7afbb757",
+      "bytes": 1215,
+      "role": "frozen_harness"
+    },
+    "source/vc-attention/scripts/probe_mindie_laser_sparse_finalize.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/probe_mindie_laser_sparse_finalize.py",
+      "sha256": "6f549119a51b7335668e7ff882a4e6b87a203320b9dd82f5b0e7588fd7e0681f",
+      "bytes": 5666,
+      "role": "frozen_harness"
+    },
+    "source/vc-attention/scripts/mindie_laser_candidate_dma_overlap.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/mindie_laser_candidate_dma_overlap.py",
+      "sha256": "ebfc1f17fbb3a939206ac9e2dfd2006d4c6d375b9bbcb0f5680a1585fa1fb587",
+      "bytes": 1915,
+      "role": "frozen_harness"
+    },
+    "source/vc-attention/scripts/mindie_laser_global.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/mindie_laser_global.py",
+      "sha256": "25391196740261299f6cb1726b65686b27c77479a906b577463c154a8a8cf150",
+      "bytes": 15703,
+      "role": "frozen_harness"
+    },
+    "source/vc-attention/scripts/mindie_laser_quant_pairing.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/mindie_laser_quant_pairing.py",
+      "sha256": "943dffbeea00b04a67b9a6e557a50e69b4d2d1977c9dd061d9b3dc8242e4b251",
+      "bytes": 7133,
+      "role": "frozen_harness"
+    },
+    "source/vc-attention/scripts/mindie_laser_online_checks.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/mindie_laser_online_checks.py",
+      "sha256": "839902c1099c9e247b676798cc4ceae97d4e55d0447590d89653124cad174864",
+      "bytes": 3278,
+      "role": "frozen_harness"
+    },
+    "source/vc-attention/scripts/mindie_laser_postmax_checks.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/mindie_laser_postmax_checks.py",
+      "sha256": "af873079ed3ee4b4ad742b3e252080b457d8d5d5320f1d4971b3dca1d504bf69",
+      "bytes": 5269,
+      "role": "frozen_harness"
+    },
+    "source/vc-attention/scripts/probe_attention_sparse_components.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/probe_attention_sparse_components.py",
+      "sha256": "aef2e8fc42e6e05544b92a738c6fccf81f87f3dc4b020ff8e824d03be2a517c4",
+      "bytes": 27126,
+      "role": "frozen_harness"
+    },
+    "source/vc-attention/scripts/mindie_laser_candidate_fma.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/mindie_laser_candidate_fma.py",
+      "sha256": "4f50f04bdacb718b3294381e1bd0503e8a8079220188dfd2f8e3912dc1066e1f",
+      "bytes": 3072,
+      "role": "frozen_harness"
+    },
+    "source/vc-attention/scripts/mindie_laser_candidate_postmax_scale.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/mindie_laser_candidate_postmax_scale.py",
+      "sha256": "9ba6faa01368038ef7943924d74664bb639a001de0ccb61daa278f97555d5248",
+      "bytes": 4449,
+      "role": "frozen_harness"
+    },
+    "source/cake-toolkit/plugins/vc_attention_e116/math_probe.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/plugins/vc_attention_e116/math_probe.py",
+      "sha256": "b2faaf8a37885f9a3b8cc8d8749ea6ddf652b1d7e67881e9f79252fabd29cd8a",
+      "bytes": 7942,
+      "role": "frozen_harness"
+    },
+    "source/vc-attention/scripts/mindie_laser_candidate_delay.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/mindie_laser_candidate_delay.py",
+      "sha256": "4cfd5aa9c467ac16b8f7b8a60e154840a97f04e309a1969a09568bbf3760808f",
+      "bytes": 3246,
+      "role": "frozen_harness"
+    },
+    "source/vc-attention/scripts/build_mindie_laser_quant_preprocess.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/build_mindie_laser_quant_preprocess.py",
+      "sha256": "a58b99dbfb385b8b57b12be6af57e5050db1a43285983ae11cb3469f88b63f36",
+      "bytes": 28111,
+      "role": "frozen_harness"
+    },
+    "source/vc-attention/scripts/__init__.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/__init__.py",
+      "sha256": "e00694cbaa2b48f48c03b49149c673ff47602079efe8637673275a59029be063",
+      "bytes": 80,
+      "role": "frozen_harness"
+    },
+    "source/vc-attention/scripts/build_cann_fas_local.py": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/build_cann_fas_local.py",
+      "sha256": "c5ef6f240b30c673b813624aa4bb30ebf996a51fcfd99a7cd922b301eed2a889",
+      "bytes": 9889,
+      "role": "frozen_harness"
+    },
+    "evidence/runs/primary_d/run_receipt.json": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-delay-card7-d/run/latest.json",
+      "sha256": "fb1478ba31eb36506d38c74d3517197fc6c2e80a2d220fdb9c02df5832b12728",
+      "bytes": 341571,
+      "role": "original_verified_receipt"
+    },
+    "evidence/runs/primary_d/measure_summary.json": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-delay-card7-d/run/attempt-0/work/measure.summary.json",
+      "sha256": "d1b8b75a4d3c9137f2627d46db8b6aafa464470292ae3856c7c4807a72458e93",
+      "bytes": 12747,
+      "role": "original_measure_summary"
+    },
+    "evidence/runs/primary_d/core_analysis.json": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-primary-result.json",
+      "sha256": "919f155fdd851f32109f66b6e91325d717a57134a8b36bb7d0e001648911fdb4",
+      "bytes": 13294,
+      "role": "original_named_core_analysis"
+    },
+    "evidence/runs/primary_e/run_receipt.json": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-delay-card7-e/run/latest.json",
+      "sha256": "69c1bc628fb54bbe2c984c9b60f4504acd177929d9a18cbc5fa99d7ee1da2898",
+      "bytes": 341571,
+      "role": "original_verified_receipt"
+    },
+    "evidence/runs/primary_e/measure_summary.json": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-delay-card7-e/run/attempt-0/work/measure.summary.json",
+      "sha256": "994f671a5c15f01a3d130c7df804ce939338b52dddcd235cc044239eec0cedec",
+      "bytes": 12810,
+      "role": "original_measure_summary"
+    },
+    "evidence/runs/primary_e/core_analysis.json": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-repeat-result.json",
+      "sha256": "d1a00591dfa463a71cae7443f356cd85126d32b7ea196cc331540265eadd3c84",
+      "bytes": 13288,
+      "role": "original_named_core_analysis"
+    },
+    "evidence/runs/seed2/run_receipt.json": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-delay-seed2-card7/run/latest.json",
+      "sha256": "36682ded1408837c4dceba6eaba00d0bd9ec09c6e4917aa98ef260673479d1e1",
+      "bytes": 341968,
+      "role": "original_verified_receipt"
+    },
+    "evidence/runs/seed2/measure_summary.json": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-delay-seed2-card7/run/attempt-0/work/measure.summary.json",
+      "sha256": "1d9ac428089c19dd6f4f6aa96e6c09d7a91cb1ed24f6f8ddbf37dae0aed6252d",
+      "bytes": 12799,
+      "role": "original_measure_summary"
+    },
+    "evidence/runs/seed2/core_analysis.json": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-seed2-result.json",
+      "sha256": "dff7f4b3c360c240705d64976d912d0e34b8859325c56935b3a17be334e4f5d5",
+      "bytes": 13291,
+      "role": "original_named_core_analysis"
+    },
+    "evidence/protected_delivery_receipt.json": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-delivery/receipt.json",
+      "sha256": "22f8f4a609a7de1b6456fe5cdb1412297f0d90ef644f89a76f03dddf286eee98",
+      "bytes": 9353,
+      "role": "original_evidence"
+    },
+    "evidence/protected_delivery_plan.json": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-delivery/plan.json",
+      "sha256": "4edd31fd461ef8d7f110f46e020a13a709aff48a98f47c4f27beb7ac84542d21",
+      "bytes": 1392,
+      "role": "original_evidence"
+    },
+    "evidence/frozen_promotion_rule.json": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-delivery/frozen-rule.json",
+      "sha256": "c2ef4a41387f678fb16dd6490423a7440cb70861a5bb73ab17bce7640b163abc",
+      "bytes": 509,
+      "role": "original_evidence"
+    },
+    "evidence/e122_frozen_prediction.json": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e122-frozen.json",
+      "sha256": "458a47522118fee000e2ddc5f7f34fd547734e954f8a4401b51c8eb8760d458d",
+      "bytes": 14526,
+      "role": "original_evidence"
+    },
+    "evidence/full_query_quality_e123.json": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e123-full-quality-a/report.json",
+      "sha256": "0d8084dfbc5a80520d8b7e57f05ad8d43bd133c21572b772ba45f82a4ce64e2c",
+      "bytes": 93772,
+      "role": "original_evidence"
+    },
+    "evidence/full_query_quality_e125.json": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e125-full-quality-c/report.json",
+      "sha256": "6ff981ceec480ed4b01ccb7fce625cb725794cf77243105caa6b2108eba0f939",
+      "bytes": 36401,
+      "role": "original_evidence"
+    },
+    "evidence/e125_negative_core.json": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/e125-core-c.json",
+      "sha256": "5cdf0d9a2fdb0bf8a110bf877b6e8562961caef5b25c7a03322d886cf245adf8",
+      "bytes": 13281,
+      "role": "original_evidence"
+    },
+    "evidence/protected_best_reverification.json": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/publish-e122-verify-best.log",
+      "sha256": "fbb7dfd5ebf0805923cc8a31eb6247fb612695229ee4b54a79102e292571f28d",
+      "bytes": 109,
+      "role": "original_evidence"
+    },
+    "evidence/seed2_reverification.json": {
+      "original_path": "/data0/db00946854/a-vc_attention_opt/env/publish-e122-verify-seed2.log",
+      "sha256": "81d2da5a16d0dea74ffc8b5f4c71138e4fc4422e7bde15a851fe93b95df9c3da",
+      "bytes": 63,
+      "role": "original_evidence"
+    }
+  },
+  "scope": "Files are byte copies. frozen_harness is bound by E122 primary plan; supporting_source is later/offline or static import support, not claimed measured native execution. Native binary and original raw tensors/trace archives are retained locally; original receipts keep absolute paths."
+}

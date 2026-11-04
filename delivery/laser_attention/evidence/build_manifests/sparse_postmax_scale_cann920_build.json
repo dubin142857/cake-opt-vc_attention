@@ -1,0 +1,112 @@
+{
+  "status": "passed",
+  "contract_version": 1,
+  "torch_api": "torch.ops.vc_laser_sparse_postmax_scale.produce",
+  "scope": "Raw block max then half scale, window top8 and inline FP32 PV; new tie contract",
+  "operation": "sparse_postmax_scale",
+  "soc": "Ascend910B2",
+  "cann_root": "/data0/db00946854/a-vc_attention_opt/env/Ascend92/cann-9.2.0",
+  "build_dir": "/data0/db00946854/a-vc_attention_opt/env/e116-postmax-build",
+  "runtime": {
+    "torch": "2.9.0+cpu",
+    "torch_npu": "2.9.0",
+    "python_executable": "/data0/db00946854/a-vc_attention_opt/.venv-ascend/bin/python",
+    "python": "3.12.13 (main, May  6 2026, 18:46:41) [GCC 15.2.0]",
+    "torch_root": "/data0/db00946854/a-vc_attention_opt/.venv-ascend/lib/python3.12/site-packages/torch",
+    "torch_npu_root": "/data0/db00946854/a-vc_attention_opt/.venv-ascend/lib/python3.12/site-packages/torch_npu",
+    "torch_abi": 1
+  },
+  "definitions": {
+    "ASCEND_CANN_PACKAGE_PATH": "/data0/db00946854/a-vc_attention_opt/env/Ascend92/cann-9.2.0",
+    "SOC_VERSION": "Ascend910B2",
+    "Python3_EXECUTABLE": "/data0/db00946854/a-vc_attention_opt/.venv-ascend/bin/python",
+    "CMAKE_HOME_DIRECTORY": "/data0/db00946854/a-vc_attention_opt/env/e116-project/ascend/laser_sparse_postmax_scale",
+    "CMAKE_GENERATOR": "Unix Makefiles",
+    "CMAKE_BUILD_TYPE": "Release",
+    "VC_TORCH_ROOT": "/data0/db00946854/a-vc_attention_opt/.venv-ascend/lib/python3.12/site-packages/torch",
+    "VC_TORCH_NPU_ROOT": "/data0/db00946854/a-vc_attention_opt/.venv-ascend/lib/python3.12/site-packages/torch_npu",
+    "VC_TORCH_VERSION": "2.9.0+cpu",
+    "VC_TORCH_NPU_VERSION": "2.9.0",
+    "VC_TORCH_ABI": "1"
+  },
+  "source_files": [
+    {
+      "path": "/data0/db00946854/a-vc_attention_opt/env/e116-project/ascend/laser_sparse_postmax_scale/CMakeLists.txt",
+      "sha256": "929cd4858b53b3cc1f76e237c7466d8d87247c84f92edb1eb422455975ea838b"
+    },
+    {
+      "path": "/data0/db00946854/a-vc_attention_opt/env/e116-project/ascend/laser_sparse_postmax_scale/candidate_contract.h",
+      "sha256": "ab4a4a050dcda51e5e27fcd753da35bb0cf93d0ac2ec91f6b077e476b74d4a57"
+    },
+    {
+      "path": "/data0/db00946854/a-vc_attention_opt/env/e116-project/ascend/laser_sparse_postmax_scale/candidate_cube.h",
+      "sha256": "30892b5a1ee593483e4f97618530caeed68ed22992f0738351bd9bba9b2c6668"
+    },
+    {
+      "path": "/data0/db00946854/a-vc_attention_opt/env/e116-project/ascend/laser_sparse_postmax_scale/candidate_selector.h",
+      "sha256": "9ee45efcbed4cd2104275b9043206b8765f71c8477e92bab5cfeb18cbbb5abb7"
+    },
+    {
+      "path": "/data0/db00946854/a-vc_attention_opt/env/e116-project/ascend/laser_sparse_postmax_scale/candidate_vector.h",
+      "sha256": "8bcf751ee8f11916b4df908bec1e6d264fe48a583695e616292b62e22efdc6c3"
+    },
+    {
+      "path": "/data0/db00946854/a-vc_attention_opt/env/e116-project/ascend/laser_sparse_postmax_scale/online_top8.h",
+      "sha256": "df2171ffa02da05d75e34c8e2b0bc5661080e5ad6665198fd5fc8fc1b77c3ce3"
+    },
+    {
+      "path": "/data0/db00946854/a-vc_attention_opt/env/e116-project/ascend/laser_sparse_postmax_scale/inline_pv.h",
+      "sha256": "358a39f579805dc1608a3a72c6067ea28e9b78ad1f32203b5b5424db87b0bd0c"
+    },
+    {
+      "path": "/data0/db00946854/a-vc_attention_opt/env/e116-project/ascend/laser_sparse_postmax_scale/candidate_kernel.cpp",
+      "sha256": "35abd8ce2d2a758c750391c7cc22187478b9b771afb5e32c71cf6cdf000895a9"
+    },
+    {
+      "path": "/data0/db00946854/a-vc_attention_opt/env/e116-project/ascend/laser_sparse_postmax_scale/candidate_probe.cpp",
+      "sha256": "662d866d6b1c846ad80201f946242789c6110b49817bb012ee784a5d18f97f10"
+    },
+    {
+      "path": "/data0/db00946854/a-vc_attention_opt/env/e116-project/ascend/laser_sparse_postmax_scale/candidate_diagnostic.cpp",
+      "sha256": "bf56d23254d30e799e314b1e38418b70528f27a8d37c2db4bf68a97d203d82fc"
+    },
+    {
+      "path": "/data0/db00946854/a-vc_attention_opt/env/e116-project/ascend/laser_sparse_postmax_scale/candidate_torch.cpp",
+      "sha256": "a94a50eb40228708bdd6e2980bb2353b8e2d975d0800bcd54ce11b095bbc2564"
+    },
+    {
+      "path": "/data0/db00946854/a-vc_attention_opt/env/e116-project/ascend/laser_sparse_postmax_scale/qk_tile.cpp",
+      "sha256": "4d763198c7ba5ac9840b06ec67bbff0a0d45ce4f62e31036994bf68101f0070f"
+    }
+  ],
+  "commands": [
+    [
+      "cmake",
+      "-S",
+      "/data0/db00946854/a-vc_attention_opt/env/e116-project/ascend/laser_sparse_postmax_scale",
+      "-B",
+      "/data0/db00946854/a-vc_attention_opt/env/e116-postmax-build",
+      "-G",
+      "Unix Makefiles",
+      "-DASCEND_CANN_PACKAGE_PATH=/data0/db00946854/a-vc_attention_opt/env/Ascend92/cann-9.2.0",
+      "-DSOC_VERSION=Ascend910B2",
+      "-DPython3_EXECUTABLE=/data0/db00946854/a-vc_attention_opt/.venv-ascend/bin/python",
+      "-DCMAKE_BUILD_TYPE=Release",
+      "-DVC_TORCH_ROOT=/data0/db00946854/a-vc_attention_opt/.venv-ascend/lib/python3.12/site-packages/torch",
+      "-DVC_TORCH_NPU_ROOT=/data0/db00946854/a-vc_attention_opt/.venv-ascend/lib/python3.12/site-packages/torch_npu",
+      "-DVC_TORCH_VERSION=2.9.0+cpu",
+      "-DVC_TORCH_NPU_VERSION=2.9.0",
+      "-DVC_TORCH_ABI=1"
+    ],
+    [
+      "cmake",
+      "--build",
+      "/data0/db00946854/a-vc_attention_opt/env/e116-postmax-build",
+      "--parallel",
+      "4"
+    ]
+  ],
+  "device_object_refresh": [],
+  "library_path": "/data0/db00946854/a-vc_attention_opt/env/e116-postmax-build/libvc_laser_sparse_postmax_scale.so",
+  "library_sha256": "fadbdcfe31bc7ae390e4ba5e496521dee246ee4ac30e1c1600af5e83689aab65"
+}

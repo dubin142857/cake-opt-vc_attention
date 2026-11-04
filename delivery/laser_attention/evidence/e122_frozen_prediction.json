@@ -1,0 +1,142 @@
+{
+  "id": "E122",
+  "kind": "prediction",
+  "title": "Delay common temperature past raw Top8 and center before FP32 scale; cheaper precision recovery",
+  "move_class": "工作量",
+  "move_classes": [
+    "工作量",
+    "次序"
+  ],
+  "basis": "E121 native quality improved but19.11% slower incumbent. Reduce avoidable scale/cast work before adding original-point stage; work counts are predictions, not hardware bounds.",
+  "roundgate_brief": "==== 以下由 `python -m core.roundgate --brief` 生成, 原样带进下一跳简报 ====\n★历史冻结条目使用type而非canonical kind: E116；未静默推断为prediction\n★历史轴标签缺失或冲突: E111, E112, E114, E116\n★历史冻结存在多个编号流 E/F；编号排序不能确定实验先后\n★历史最新跳、连跳与轴覆盖未知；保留原文，先核对元数据，不能据此要求换轴。\n★未结的结构性待办 7 条 —— 结合当前组合方案评估相关性:\n  · **甲-10** (来自 F275)\n      当前CANN9.2已构建并实测QK-int8 Laser参照：H1/S38139/std5下prepared API 3.8557ms， dense 3.2655ms，数值6.0087% vs0.3841%。构建阻塞已消除，但这是QK-only，不是完整v1。 待补：真实流水和kernel成本归因；必要时再测E4M3 V/ExpCast或旧H28范围。 不再重复旧8条链接环境假说，不把当前实现更慢外推为量化在芯片上无效。\n      [动手前先查仓里有没有现成的 —— F253 实撞: `aprof --denom` 早就实现了那个问题, 而连着两跳手工重推]\n        ./core/opdbg whatfor <把你要做的事写成两三个词>   (本条待办里没有反引号标的标识符可自动取词)\n  · **甲-11** (来自 F263)\n      `heads=1` 时输出非有限 (S=38139, std=1 即可复现, 与 std 无关)。\n      E50 之前同样失败, 故是既有缺口。\n      先查的方向 (都没验): 任务切分在 H=1 时的退化 (任务数 = ceil(S/64) x 1, 24 核分不均?) ·\n      `kpad` 或 workspace 的尺寸假设 · 跨核旗标在任务数少时的配对。\n      复现: `python3 scripts/benchmark_ascend910b.py --device <干净卡> --backends vc_control\n             --queries 38139 --keys 38139 --heads 1 --dim 128 --std 1 --warmup 1 --repeats 1 --trials 1`\n      判据: 该命令跑出 dense RMSE 且不抛 Nonfinite。\n      [动手前先查仓里有没有现成的 —— F253 实撞: `aprof --denom` 早就实现了那个问题, 而连着两跳手工重推]\n        ./core/opdbg whatfor kpad\n          (这几个词零命中 —— 换你自己的说法再查一次)\n  · **甲-12** (来自 F263)\n      `std=5` 时 decoded-reference 相对 RMSE 到 **0.96** (闸 1%)。E50 之前是 0.9531, 同样崩。\n      量级线索: 分数幅值随 std 线性放大, QK 的 int8 对称量化很可能**饱和**;\n      另 ExpCast 的 E4M3 解码值域也有限。\n      先查的方向 (都没验): `prepare()` 算 q_scale/k_scale 的方式在大 std 下是否溢出/饱和 ·\n      int8 QK 的动态范围 · ExpCast 的 120 偏置假设。\n      ★先做**离线**判: 用 `reference.py` 的 oracle 在 std=1/2/5 上算 dense RMSE,\n      看是契约本身就崩还是内核与契约脱节 —— 零卡时。\n      复现: 同上但 `--heads 28 --std 5`。\n      判据: decoded-reference 回到 < 1%; 并写明 v1 方案支持的 std 上限。\n      [动手前先查仓里有没有现成的 —— F253 实撞: `aprof --denom` 早就实现了那个问题, 而连着两跳手工重推]\n        ./core/opdbg whatfor <把你要做的事写成两三个词>   (本条待办里没有反引号标的标识符可自动取词)\n  · **甲-15** (来自 F290)\n      E72->E73 fresh相对排序翻转需解释。先做仪器轴：核对生产kernel/CANN/hash与真实tiling核心分工， 别沿用简单ceil(Q/256)/24任务模型；读Address映射的coreGroupNum/coreNumPerGroup。 再查输入/工作区分配布局、时钟/采样/缓存条件，设计能分开“实现变了”和“摆放/测量条件变了”的对照。 同进程同名vendor不可混载；如做独立命名baseline必须证明其与原baseline等价。不得先把微小胜负归为噪声或宣称上界。\n      [动手前先查仓里有没有现成的 —— F253 实撞: `aprof --denom` 早就实现了那个问题, 而连着两跳手工重推]\n        ./core/opdbg whatfor <把你要做的事写成两三个词>   (本条待办里没有反引号标的标识符可自动取词)\n  · **甲-22** (来自 F400)\n      E97保留E94 score8生产/builtin TopK，融合映射+FP32softmax+packet+PV后完整设备3.333vs同轮E94 3.509/Laser3.200ms，降低5.037%仍慢Laser4.155%；7tasks替代20。原生数值/回退/全归档核验通过，165host、新13组件过；新softmax独立契约保留。独立consumer .470ms超预测且APImax/min1.508，冷prep6.465/full9.342ms双超预测。E97作为稀疏核心优选，E73历史完整最佳保留，跨轮不决定胜负。下一跳先过新gate冻结，解释/削减geometry构造冷成本，并考虑finalize标量/索引搬运与TopK输出布局；先检索/读本机接口、维持坏64bit位置安全/原PV闸和C>512回退。不得隐藏cold/异常trial，不能按组件差值归因或宣布硬件极限；固定top8/std1/碰撞坏行/任意V/视频仍未验。\n      [动手前先查仓里有没有现成的 —— F253 实撞: `aprof --denom` 早就实现了那个问题, 而连着两跳手工重推]\n        ./core/opdbg whatfor <把你要做的事写成两三个词>   (本条待办里没有反引号标的标识符可自动取词)\n  · **甲-7** (来自 F256)\n      次序轴换抓手: 定位那 32776 us 向量空闲的来源 (屏障已排除, 只值 745 us)。\n      先做的不是消融而是**采样**: F249 实测 AIV 的跨核等待在两次采样间从 23.4% 跳到 0.5%,\n      单次读数不能下判 —— 要用 `scripts/phase_probe_one.py` (已改恒等式分解) 跑 >= 5 次,\n      取 wait_o / wait_s 的**分布**, 先确认等待到底占多少、稳不稳。\n      判据 (测前写定): 若 wait_o+wait_s 的中位数 >= 15% of span, 则空闲主要是跨核等待,\n      次序轴的抓手是 AIC/AIV 的交接; < 5% 则不是等待, 要去查 MTE2 与 vec 的重叠度。\n      [动手前先查仓里有没有现成的 —— F253 实撞: `aprof --denom` 早就实现了那个问题, 而连着两跳手工重推]\n        ./core/opdbg whatfor <把你要做的事写成两三个词>   (本条待办里没有反引号标的标识符可自动取词)\n  · **甲-9** (来自 F259)\n      把 oracle 对 fp16 趟 2 的建模做准, 恢复 `decoded_reference` 的回归检出能力\n      (现 1.55e-3, E50 之前是 1.04e-4, 差 15 倍)。\n      两个已知的建模缺口: (1) 内核的 `Exp<half>` 与 torch 的 `exp(half)` 舍入不同;\n      (2) 内核的 `WholeReduceSum<half>` 是硬件树形归约, torch 的 sum 顺序不同。\n      做法: 先写**数值探针**分别量这两条各占多少 (照 probe_vec_reduce.py 的形式,\n      小整数输入使结果与顺序无关, 则\"不逐位相同\"只可能是建模错)。\n      判据 (测前写定): 两条建模缺口合计能解释 `decoded_reference` 的 **>= 80%**,\n      则按模型修 oracle, `decoded_reference` 应回到 **< 4e-4**;\n      若解释不到 50%, 说明还有第三个未知量, 先找它再改 oracle。\n      ★不许用放宽判据的办法\"恢复\" —— 那是把探测器关掉。\n      [动手前先查仓里有没有现成的 —— F253 实撞: `aprof --denom` 早就实现了那个问题, 而连着两跳手工重推]\n        ./core/opdbg whatfor decoded_reference decoded_reference decoded_reference\n          (这几个词零命中 —— 换你自己的说法再查一次)\n★冻结预测可声明 move_class 或 move_classes；轴只用于描述，组合方案允许中间负收益。\n========================================================================\n",
+  "mathematics": "For positive common temperature s, exact TopK(raw) agrees in values/IDs absent ties with TopK(s*raw); softmax(s*raw)=softmax(s*(raw-max(raw))). Floating half-scale/half-score maps introduce ties. New algorithm selects raw-half blockmax/globalTop8 then FP32 centered delta*s andsoftmax, halfweights/FP32vmla PV. Rawhalf QK rounding remains; no exact equivalence claim vs old scaled-half selection or dense.",
+  "CPU": {
+    "inputs": [
+      {
+        "path": "/data0/db00946854/a-vc_attention_opt/env/e119-pair-card7-b/run/attempt-0/work/measure-data/report_iuxbrjmq/baseline/local/target.pt",
+        "sha256": "4750ee1f9b42b2e7752007d65dafb7f48b24e576611ff2c933eb99b10f1e8358",
+        "bytes": 40950138
+      },
+      {
+        "path": "/data0/db00946854/a-vc_attention_opt/env/e117-seed1-card7/run/attempt-0/work/measure-data/report_01i2v2ff/baseline/local/target.pt",
+        "sha256": "ad80c97085179221d36860c7ea337849ebf428ac7c8cb1de5635cfbe39d39fa6",
+        "bytes": 40950138
+      },
+      {
+        "path": "/data0/db00946854/a-vc_attention_opt/env/e117-seed2-card7/run/attempt-0/work/measure-data/report_z0afzvky/baseline/local/target.pt",
+        "sha256": "b28987a26f630617fb2ffa058df08634d6c6c0ca9849bb8df5da211ea4ca3903",
+        "bytes": 40950138
+      }
+    ],
+    "cases": "std5 actualarchive seeds0/1/2 andstd1 sameoriginalgenerator seeds0/1/2; each349queries/full38139K, sameold32subset",
+    "grid": "2x2x2 rawdot_cast(f16/f32),temperature_dtype(f16/f32),score_cast(f16/f32) plus9th rawf16 center-before-f32temperature. Compute full originalFP64dot oncepercase; blockmax per128 andglobalTop8. Preserve source IDs separately from weight precision. Finite enumerated9paths, not complete math discovery.",
+    "domain": "CPU FP64 originaldot->F32 -> declaredcastgraphs, semantic FP64softmax/halfweights/FP64PV->FP32/publicBF16; center path F32 subtraction/multiplication. No CANN fidelity proof.",
+    "predictions": {
+      "old32_baseline_half_max_relative": [
+        0.008,
+        0.02
+      ],
+      "old32_rawhalf_float_final_max_expected": [
+        0.0,
+        0.01
+      ],
+      "old32_rawhalf_float_final_favorable": [
+        0.0,
+        0.007
+      ],
+      "old32_rawhalf_float_final_adverse": [
+        0.01,
+        0.05
+      ],
+      "old32_fullfloat_max_relative": [
+        0.0,
+        0.005
+      ],
+      "std1_fullfloat_all349_relative": [
+        0.35,
+        0.55
+      ],
+      "center_vs_unscaled_order_ID_errors": [
+        0,
+        0
+      ],
+      "center_vs_B_public_relative": [
+        0.0,
+        0.001
+      ]
+    },
+    "budget": "6casesx9paths, <=300CPU seconds, <=64MiB newrawselectedstates, no fullmatrix archive; named measuredsource/freeze archived with identities."
+  },
+  "native": {
+    "project": "env/e122-project",
+    "operation": "sparse_delay",
+    "namespace": "vc_laser_sparse_delay",
+    "base": "protected E119 immutable pair; keep halfQK/score8/pair128/window32/Top8/phaselease/PV; removeperblockMuls only frompaired production route, keep primitive legacy pair/probe intact",
+    "scale": "afterglobalTop8 preserve rawstate; inPV each16rowgroup subtractrawmaximum thenMulsFP32 scale beforeExp. Export FP32scaled scores forproof, expectedliteralUB155520Bunchanged.",
+    "reference": "Actual E119 shared library has exported aclrtlaunch_vc_sparse_pair_fp16, verified nm. Diagnostic raw_reference entry uses old function ABI via dlsym on exact alreadyloaded provider and temperature1. Old binary/QK/reduction/sort untouched. RawhalfTop8values andIDs mustexactmatch newsource perallinitializedrows. Timed previous still ordinaryE119; diagnostic reference never timed as candidate or mixed with previous.",
+    "proof": "Original FMA90/pair108 remainunchanged actual primitive obligations. Full rawsource witness from originalbinary plus exact FP32scale-score compare, calibrated FP32delta-exp/halfweight check, originalownPVrel1e-5/abs1e-4, packets/head/tail/publiccast/determinism,13components. Different oldincumbent outputs allowed only declarednewapprox. No wholepipelineoldbitclaim.",
+    "predictions": {
+      "UB_bytes": [
+        155520,
+        155520
+      ],
+      "source_raw_Top8_ID_and_value_errors": [
+        0,
+        0
+      ],
+      "FP32_scaled_score_value_errors": [
+        0,
+        0
+      ],
+      "own_PV_relative": [
+        0.0,
+        1e-05
+      ],
+      "own_PV_abs": [
+        0.0,
+        0.0001
+      ],
+      "core_expected_ms": [
+        2.35,
+        2.8
+      ],
+      "core_favorable_ms": [
+        0.0,
+        2.55
+      ],
+      "core_neutral_ms": [
+        2.55,
+        2.68
+      ],
+      "core_adverse_ms": [
+        2.68,
+        3.4
+      ],
+      "full_device_expected_ms": [
+        2.4,
+        2.9
+      ],
+      "full_API_expected_ms": [
+        2.45,
+        3.1
+      ],
+      "prep_device_expected_ms": [
+        0.04,
+        0.12
+      ],
+      "primary_dense32Q_relative_expected": [
+        0.0,
+        0.01
+      ],
+      "heldoutseed2_dense32Q_relative_expected": [
+        0.0,
+        0.01
+      ]
+    },
+    "decision": "Implement the delayed native pathway afterCPU unlessa semantic contradiction isfound; usefulquality/performance remain empirical. If firstprimarycompletevalid beatsbothsame-runE119/Laser, repeat exactclosure oncebeforepromotion. Otherwise retainallruns andconsideroriginaloptionalheldoutseed2 ratherthanbesttrialchasing.",
+    "budget": "<=3nativebuildattempts incl<=2localizedcorrections. <=3fulltargetmeasurements: primaryseed0 andconditionalexactrepeat; optionalseed2separatequalityworkload. Atmostoneextra check-only mechanism replay ifan actualprimitive mismatchneedsdiagnosis; preserveallfailures. No newexecutor/SIM/platform expansion.",
+    "promotion": "Beforemeasure freezeactualCampaign/Delivery minimum2/gain0 againstsame-runLaser andE119, allruns included; onlymeasured_contract_only, no video orstd1generalitypromotion."
+  },
+  "infra": "PrecisionDAG interventions mustseparate rawcast/tempcast/scorecast andcenter path, notconflate CPUqualitywith nativecost. Failure raw/partial evidence reusedfromE121, no standalone format-only success. If anothernativecostloss, inspect retainedwork/service/dependencymodel; existingkcount/probe documentation notautomatically a completion-time model.",
+  "safety": "No oldE119/E121 pinnedsource/headerchanges; isolatednewproject/package. Existingprotectedguardprofile/runner/capsule/archive/delivery, freshcurrentoccupancy+3originalrc0 eachrun. No physical0/sharedCANNwrites/restarts/remote pushes. User_devprobe unstaged unchanged."
+}

@@ -1,0 +1,80 @@
+{
+  "status": "passed",
+  "contract_version": 1,
+  "torch_api": "torch.ops.vc_laser_sparse_pv.weighted",
+  "scope": "AIV fused sparse V gather and FP32 weighted sum; no attention rebuild",
+  "operation": "sparse_pv",
+  "soc": "Ascend910B2",
+  "cann_root": "/data0/db00946854/a-vc_attention_opt/env/Ascend92/cann-9.2.0",
+  "build_dir": "/data0/db00946854/a-vc_attention_opt/vc-attention/build/mindie_laser_sparse_pv_cann920",
+  "runtime": {
+    "torch": "2.9.0+cpu",
+    "torch_npu": "2.9.0",
+    "python_executable": "/data0/db00946854/a-vc_attention_opt/.venv-ascend/bin/python",
+    "python": "3.12.13 (main, May  6 2026, 18:46:41) [GCC 15.2.0]",
+    "torch_root": "/data0/db00946854/a-vc_attention_opt/.venv-ascend/lib/python3.12/site-packages/torch",
+    "torch_npu_root": "/data0/db00946854/a-vc_attention_opt/.venv-ascend/lib/python3.12/site-packages/torch_npu",
+    "torch_abi": 1
+  },
+  "definitions": {
+    "ASCEND_CANN_PACKAGE_PATH": "/data0/db00946854/a-vc_attention_opt/env/Ascend92/cann-9.2.0",
+    "SOC_VERSION": "Ascend910B2",
+    "Python3_EXECUTABLE": "/data0/db00946854/a-vc_attention_opt/.venv-ascend/bin/python",
+    "CMAKE_HOME_DIRECTORY": "/data0/db00946854/a-vc_attention_opt/vc-attention/ascend/laser_sparse_pv",
+    "CMAKE_GENERATOR": "Unix Makefiles",
+    "CMAKE_BUILD_TYPE": "Release",
+    "VC_TORCH_ROOT": "/data0/db00946854/a-vc_attention_opt/.venv-ascend/lib/python3.12/site-packages/torch",
+    "VC_TORCH_NPU_ROOT": "/data0/db00946854/a-vc_attention_opt/.venv-ascend/lib/python3.12/site-packages/torch_npu",
+    "VC_TORCH_VERSION": "2.9.0+cpu",
+    "VC_TORCH_NPU_VERSION": "2.9.0",
+    "VC_TORCH_ABI": "1"
+  },
+  "source_files": [
+    {
+      "path": "/data0/db00946854/a-vc_attention_opt/vc-attention/ascend/laser_sparse_pv/CMakeLists.txt",
+      "sha256": "f1af8ea9d676904a6b66fb7aba8dbbd8145cd6c847157d7311a32e7179c8485a"
+    },
+    {
+      "path": "/data0/db00946854/a-vc_attention_opt/vc-attention/ascend/laser_sparse_pv/sparse_pv_kernel_impl.h",
+      "sha256": "57fd95c8c70293ceb163b5e2ab5da9783d9950422efb423f4adfeb6e275be945"
+    },
+    {
+      "path": "/data0/db00946854/a-vc_attention_opt/vc-attention/ascend/laser_sparse_pv/sparse_pv_kernel.cpp",
+      "sha256": "8eb3c0dc8cc19af7a38118e0b65f9a0bcc823889939b7e9acabf4b5471eed386"
+    },
+    {
+      "path": "/data0/db00946854/a-vc_attention_opt/vc-attention/ascend/laser_sparse_pv/sparse_pv_torch.cpp",
+      "sha256": "ddaebbcc65303c2b763ca5647ed4234edb13aa26d13a6712a441661d8ecc4c94"
+    }
+  ],
+  "commands": [
+    [
+      "cmake",
+      "-S",
+      "/data0/db00946854/a-vc_attention_opt/vc-attention/ascend/laser_sparse_pv",
+      "-B",
+      "/data0/db00946854/a-vc_attention_opt/vc-attention/build/mindie_laser_sparse_pv_cann920",
+      "-G",
+      "Unix Makefiles",
+      "-DASCEND_CANN_PACKAGE_PATH=/data0/db00946854/a-vc_attention_opt/env/Ascend92/cann-9.2.0",
+      "-DSOC_VERSION=Ascend910B2",
+      "-DPython3_EXECUTABLE=/data0/db00946854/a-vc_attention_opt/.venv-ascend/bin/python",
+      "-DCMAKE_BUILD_TYPE=Release",
+      "-DVC_TORCH_ROOT=/data0/db00946854/a-vc_attention_opt/.venv-ascend/lib/python3.12/site-packages/torch",
+      "-DVC_TORCH_NPU_ROOT=/data0/db00946854/a-vc_attention_opt/.venv-ascend/lib/python3.12/site-packages/torch_npu",
+      "-DVC_TORCH_VERSION=2.9.0+cpu",
+      "-DVC_TORCH_NPU_VERSION=2.9.0",
+      "-DVC_TORCH_ABI=1"
+    ],
+    [
+      "cmake",
+      "--build",
+      "/data0/db00946854/a-vc_attention_opt/vc-attention/build/mindie_laser_sparse_pv_cann920",
+      "--parallel",
+      "4"
+    ]
+  ],
+  "device_object_refresh": [],
+  "library_path": "/data0/db00946854/a-vc_attention_opt/vc-attention/build/mindie_laser_sparse_pv_cann920/libvc_laser_sparse_pv.so",
+  "library_sha256": "e879d1722afc22204048373997c9057770ab5822d6676b8ddc5b08eda3c2aec3"
+}

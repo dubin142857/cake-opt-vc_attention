@@ -1,0 +1,14 @@
+{
+  "relocated_compile_status": "passed",
+  "compiler_soc": "Ascend910B2",
+  "CANN": "9.2.0",
+  "native_sources": 14,
+  "source_SHA256s_equal_recorded_build": true,
+  "relocated_library_sha256": "2f3fe28b2375c4d2c6300f923d4a20cdb16cab5730b7e2b954afc03b8d80b2d6",
+  "recorded_measured_library_sha256": "0684a020b6837bcdf7ec61805d023cffa57b6717e50a78b9081a1d46f900e4ad",
+  "compiled_binary_included": false,
+  "new_NPU_measurements": 0,
+  "scope": "Relocation compilation only; recorded performance belongs to original sealed binaries/capsules, not a new performance claim",
+  "git_bytes_policy": "Package-scoped -text preserves frozen source/rawCSV bytes. cr-at-eol applies only to CSV whitespace display; numerical/identity gates unchanged. Without it Git EOL normalization would invalidate archived SHA256.",
+  "frozen_source_whitespace_policy": "Only source/** is exempt from cosmetic Git whitespace diagnostics because these are byte-identical snapshots, including existing EOF/trailing whitespace. README/tools remain checked. SHA256/native-source/CSV/report/commit checks are unchanged; no numerical or performance gate is relaxed."
+}

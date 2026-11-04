@@ -1,0 +1,506 @@
+{
+  "status": "archived_raw_replayed",
+  "receipt": {
+    "path": "/data0/db00946854/a-vc_attention_opt/env/e122-delay-seed2-card7/run/latest.json",
+    "sha256": "36682ded1408837c4dceba6eaba00d0bd9ec09c6e4917aa98ef260673479d1e1",
+    "size_bytes": 341968,
+    "role": "output"
+  },
+  "source": {
+    "path": "/data0/db00946854/a-vc_attention_opt/cake-toolkit/plugins/vc_attention_e122/analyze.py",
+    "sha256": "f2d10854c01a7724d9a29b3247682402fcbcef440fd6ab86048c6d21e711dbe4",
+    "size_bytes": 5063,
+    "role": "harness"
+  },
+  "parser": {
+    "path": "/data0/db00946854/a-vc_attention_opt/env/e122-project/scripts/mindie_laser_quant_trace.py",
+    "sha256": "ce48a18e155c730fbf697f79836a07e742f95081990802cb496e1a9b2d815f35",
+    "size_bytes": 17397,
+    "role": "harness"
+  },
+  "report_sha256": "777ed958dfe714573f1a1ae1f43f2ccabd39045013917fc3fe1c6bc05eab3963",
+  "core": {
+    "candidate": {
+      "kernel": "vc_sparse_delay_fp16",
+      "calls": 3,
+      "mean_device_task_ms": 2.5611733333333335,
+      "counters_as_exported": {
+        "aicore_time(us)": {
+          "samples": 3,
+          "median": 2406.748,
+          "min": 2401.505,
+          "max": 2407.36
+        },
+        "aic_total_cycles": {
+          "samples": 3,
+          "median": 103971531.0,
+          "min": 103745001.0,
+          "max": 103997963.0
+        },
+        "aic_mac_time(us)": {
+          "samples": 3,
+          "median": 1118.428,
+          "min": 1118.276,
+          "max": 1118.484
+        },
+        "aic_mac_ratio": {
+          "samples": 3,
+          "median": 0.465,
+          "min": 0.465,
+          "max": 0.466
+        },
+        "aic_scalar_time(us)": {
+          "samples": 3,
+          "median": 1294.41,
+          "min": 1290.973,
+          "max": 1295.66
+        },
+        "aic_scalar_ratio": {
+          "samples": 3,
+          "median": 0.538,
+          "min": 0.536,
+          "max": 0.539
+        },
+        "aic_mte1_time(us)": {
+          "samples": 3,
+          "median": 699.962,
+          "min": 699.723,
+          "max": 700.304
+        },
+        "aic_mte1_ratio": {
+          "samples": 3,
+          "median": 0.291,
+          "min": 0.291,
+          "max": 0.292
+        },
+        "aic_mte2_time(us)": {
+          "samples": 3,
+          "median": 994.551,
+          "min": 991.55,
+          "max": 995.398
+        },
+        "aic_mte2_ratio": {
+          "samples": 3,
+          "median": 0.413,
+          "min": 0.413,
+          "max": 0.413
+        },
+        "aic_fixpipe_time(us)": {
+          "samples": 3,
+          "median": 1159.828,
+          "min": 1156.951,
+          "max": 1161.428
+        },
+        "aic_fixpipe_ratio": {
+          "samples": 3,
+          "median": 0.482,
+          "min": 0.481,
+          "max": 0.483
+        },
+        "aic_icache_miss_rate": {
+          "samples": 3,
+          "median": 0.0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "aiv_time(us)": {
+          "samples": 3,
+          "median": 2433.652,
+          "min": 2428.375,
+          "max": 2434.633
+        },
+        "aiv_total_cycles": {
+          "samples": 3,
+          "median": 210267523.0,
+          "min": 209811574.0,
+          "max": 210352328.0
+        },
+        "aiv_vec_time(us)": {
+          "samples": 3,
+          "median": 1615.501,
+          "min": 1615.501,
+          "max": 1615.501
+        },
+        "aiv_vec_ratio": {
+          "samples": 3,
+          "median": 0.664,
+          "min": 0.664,
+          "max": 0.665
+        },
+        "aiv_scalar_time(us)": {
+          "samples": 3,
+          "median": 2216.912,
+          "min": 2212.487,
+          "max": 2219.378
+        },
+        "aiv_scalar_ratio": {
+          "samples": 3,
+          "median": 0.911,
+          "min": 0.911,
+          "max": 0.912
+        },
+        "aiv_mte2_time(us)": {
+          "samples": 3,
+          "median": 709.154,
+          "min": 705.427,
+          "max": 711.323
+        },
+        "aiv_mte2_ratio": {
+          "samples": 3,
+          "median": 0.291,
+          "min": 0.29,
+          "max": 0.292
+        },
+        "aiv_mte3_time(us)": {
+          "samples": 3,
+          "median": 52.737,
+          "min": 52.521,
+          "max": 55.322
+        },
+        "aiv_mte3_ratio": {
+          "samples": 3,
+          "median": 0.022,
+          "min": 0.022,
+          "max": 0.023
+        },
+        "aiv_icache_miss_rate": {
+          "samples": 3,
+          "median": 0.0,
+          "min": 0.0,
+          "max": 0.0
+        }
+      },
+      "variant": "candidate_producer",
+      "archived_member": "report_jzi1r2u7/baseline/local/trace/03_candidate_producer_zjyahl9e/dubin-910b_7_20261103232722839_ascend_pt/ASCEND_PROFILER_OUTPUT/kernel_details.csv",
+      "sha256": "2edf440dcc36fb0ca41ee88bf3dd4e82a09c7494a9fc299f3a2c771cff4f38be"
+    },
+    "previous": {
+      "kernel": "vc_sparse_pair_fp16",
+      "calls": 3,
+      "mean_device_task_ms": 2.5947666666666667,
+      "counters_as_exported": {
+        "aicore_time(us)": {
+          "samples": 3,
+          "median": 2429.732,
+          "min": 2427.447,
+          "max": 2449.788
+        },
+        "aic_total_cycles": {
+          "samples": 3,
+          "median": 104964435.0,
+          "min": 104865707.0,
+          "max": 105830827.0
+        },
+        "aic_mac_time(us)": {
+          "samples": 3,
+          "median": 1118.545,
+          "min": 1118.349,
+          "max": 1118.56
+        },
+        "aic_mac_ratio": {
+          "samples": 3,
+          "median": 0.46,
+          "min": 0.457,
+          "max": 0.461
+        },
+        "aic_scalar_time(us)": {
+          "samples": 3,
+          "median": 1295.399,
+          "min": 1294.581,
+          "max": 1300.071
+        },
+        "aic_scalar_ratio": {
+          "samples": 3,
+          "median": 0.533,
+          "min": 0.531,
+          "max": 0.534
+        },
+        "aic_mte1_time(us)": {
+          "samples": 3,
+          "median": 700.134,
+          "min": 699.634,
+          "max": 700.843
+        },
+        "aic_mte1_ratio": {
+          "samples": 3,
+          "median": 0.288,
+          "min": 0.286,
+          "max": 0.289
+        },
+        "aic_mte2_time(us)": {
+          "samples": 3,
+          "median": 993.867,
+          "min": 991.113,
+          "max": 1016.689
+        },
+        "aic_mte2_ratio": {
+          "samples": 3,
+          "median": 0.409,
+          "min": 0.408,
+          "max": 0.415
+        },
+        "aic_fixpipe_time(us)": {
+          "samples": 3,
+          "median": 1161.71,
+          "min": 1161.524,
+          "max": 1166.752
+        },
+        "aic_fixpipe_ratio": {
+          "samples": 3,
+          "median": 0.478,
+          "min": 0.476,
+          "max": 0.479
+        },
+        "aic_icache_miss_rate": {
+          "samples": 3,
+          "median": 0.0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "aiv_time(us)": {
+          "samples": 3,
+          "median": 2456.672,
+          "min": 2454.388,
+          "max": 2476.38
+        },
+        "aiv_total_cycles": {
+          "samples": 3,
+          "median": 212256423.0,
+          "min": 212059154.0,
+          "max": 213959212.0
+        },
+        "aiv_vec_time(us)": {
+          "samples": 3,
+          "median": 1635.542,
+          "min": 1635.542,
+          "max": 1635.55
+        },
+        "aiv_vec_ratio": {
+          "samples": 3,
+          "median": 0.666,
+          "min": 0.66,
+          "max": 0.666
+        },
+        "aiv_scalar_time(us)": {
+          "samples": 3,
+          "median": 2237.12,
+          "min": 2236.195,
+          "max": 2242.741
+        },
+        "aiv_scalar_ratio": {
+          "samples": 3,
+          "median": 0.911,
+          "min": 0.906,
+          "max": 0.911
+        },
+        "aiv_mte2_time(us)": {
+          "samples": 3,
+          "median": 707.177,
+          "min": 705.682,
+          "max": 718.866
+        },
+        "aiv_mte2_ratio": {
+          "samples": 3,
+          "median": 0.288,
+          "min": 0.288,
+          "max": 0.29
+        },
+        "aiv_mte3_time(us)": {
+          "samples": 3,
+          "median": 55.023,
+          "min": 54.847,
+          "max": 55.283
+        },
+        "aiv_mte3_ratio": {
+          "samples": 3,
+          "median": 0.022,
+          "min": 0.022,
+          "max": 0.023
+        },
+        "aiv_icache_miss_rate": {
+          "samples": 3,
+          "median": 0.0,
+          "min": 0.0,
+          "max": 0.001
+        }
+      },
+      "variant": "previous",
+      "archived_member": "report_jzi1r2u7/baseline/local/trace/01_previous__j_cwevk/dubin-910b_7_20261103232713216_ascend_pt/ASCEND_PROFILER_OUTPUT/kernel_details.csv",
+      "sha256": "d554a3e9450ca74f3d7017627856f24e73e4df30518233df8d0b880c250bda72"
+    },
+    "laser": {
+      "kernel": "VcLaserAttention",
+      "calls": 3,
+      "mean_device_task_ms": 3.1830199999999995,
+      "counters_as_exported": {
+        "aicore_time(us)": {
+          "samples": 3,
+          "median": 2833.211,
+          "min": 2830.797,
+          "max": 2899.314
+        },
+        "aic_total_cycles": {
+          "samples": 3,
+          "median": 122394733.0,
+          "min": 122290435.0,
+          "max": 125250368.0
+        },
+        "aic_mac_time(us)": {
+          "samples": 3,
+          "median": 2283.902,
+          "min": 2283.65,
+          "max": 2288.67
+        },
+        "aic_mac_ratio": {
+          "samples": 3,
+          "median": 0.806,
+          "min": 0.789,
+          "max": 0.807
+        },
+        "aic_scalar_time(us)": {
+          "samples": 3,
+          "median": 550.561,
+          "min": 549.171,
+          "max": 555.256
+        },
+        "aic_scalar_ratio": {
+          "samples": 3,
+          "median": 0.194,
+          "min": 0.192,
+          "max": 0.194
+        },
+        "aic_mte1_time(us)": {
+          "samples": 3,
+          "median": 1509.102,
+          "min": 1501.016,
+          "max": 1509.73
+        },
+        "aic_mte1_ratio": {
+          "samples": 3,
+          "median": 0.533,
+          "min": 0.518,
+          "max": 0.533
+        },
+        "aic_mte2_time(us)": {
+          "samples": 3,
+          "median": 1963.88,
+          "min": 1959.462,
+          "max": 2070.76
+        },
+        "aic_mte2_ratio": {
+          "samples": 3,
+          "median": 0.693,
+          "min": 0.692,
+          "max": 0.714
+        },
+        "aic_fixpipe_time(us)": {
+          "samples": 3,
+          "median": 1282.493,
+          "min": 1281.229,
+          "max": 1300.533
+        },
+        "aic_fixpipe_ratio": {
+          "samples": 3,
+          "median": 0.453,
+          "min": 0.449,
+          "max": 0.453
+        },
+        "aic_icache_miss_rate": {
+          "samples": 3,
+          "median": 0.0,
+          "min": 0.0,
+          "max": 0.0
+        },
+        "aiv_time(us)": {
+          "samples": 3,
+          "median": 2829.893,
+          "min": 2827.471,
+          "max": 2895.994
+        },
+        "aiv_total_cycles": {
+          "samples": 3,
+          "median": 244502748.0,
+          "min": 244293502.0,
+          "max": 250213922.0
+        },
+        "aiv_vec_time(us)": {
+          "samples": 3,
+          "median": 2154.541,
+          "min": 2154.541,
+          "max": 2154.541
+        },
+        "aiv_vec_ratio": {
+          "samples": 3,
+          "median": 0.761,
+          "min": 0.744,
+          "max": 0.762
+        },
+        "aiv_scalar_time(us)": {
+          "samples": 3,
+          "median": 726.468,
+          "min": 726.154,
+          "max": 726.615
+        },
+        "aiv_scalar_ratio": {
+          "samples": 3,
+          "median": 0.257,
+          "min": 0.251,
+          "max": 0.257
+        },
+        "aiv_mte2_time(us)": {
+          "samples": 3,
+          "median": 837.555,
+          "min": 837.349,
+          "max": 879.815
+        },
+        "aiv_mte2_ratio": {
+          "samples": 3,
+          "median": 0.296,
+          "min": 0.296,
+          "max": 0.304
+        },
+        "aiv_mte3_time(us)": {
+          "samples": 3,
+          "median": 945.36,
+          "min": 944.282,
+          "max": 967.263
+        },
+        "aiv_mte3_ratio": {
+          "samples": 3,
+          "median": 0.334,
+          "min": 0.334,
+          "max": 0.334
+        },
+        "aiv_icache_miss_rate": {
+          "samples": 3,
+          "median": 0.0,
+          "min": 0.0,
+          "max": 0.0
+        }
+      },
+      "variant": "laser",
+      "archived_member": "report_jzi1r2u7/baseline/local/trace/00_laser_tt3gy03d/dubin-910b_7_20261103232708482_ascend_pt/ASCEND_PROFILER_OUTPUT/kernel_details.csv",
+      "sha256": "4d648df74cc65165525943bb10de8365dae580ccd6d40b67fef094236c03e629"
+    }
+  },
+  "gain_vs_previous_fraction": 0.012946571946096608,
+  "gain_vs_laser_fraction": 0.195363732136985,
+  "beats_both_core": true,
+  "quality": {
+    "candidate_RMSE_ratio": 0.00791852781105334,
+    "candidate_RMSE_percent": 0.7918527811053341,
+    "laser_RMSE_ratio": 0.012463136521908292,
+    "laser_RMSE_percent": 1.2463136521908291,
+    "scope": "Actual original32query sample; not video or all rows quality"
+  },
+  "device_scope": "Named core mean device task durations across3 submitted profiler calls; not API wall or full prepared sums",
+  "busy_scope": "Exported counters overlap; not additive phase cost or critical path",
+  "shape": [
+    1,
+    1,
+    38139,
+    128
+  ],
+  "std": 5,
+  "seed": 2
+}

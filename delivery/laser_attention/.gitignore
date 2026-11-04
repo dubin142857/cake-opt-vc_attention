@@ -1,0 +1,4 @@
+build/
+source/vc-attention/results/
+__pycache__/
+*.pyc

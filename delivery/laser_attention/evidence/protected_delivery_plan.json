@@ -1,0 +1,35 @@
+{
+  "campaign_fingerprint": "c28f5eb35db023617aa35021531ffec64b18726b6217e2a132f4a611b4d76015",
+  "candidate_metric": "candidate_device_task_sum",
+  "id": "E122-delay-promote",
+  "incumbent": {
+    "path": "/data0/db00946854/a-vc_attention_opt/env/e119-delivery/receipt.json",
+    "role": "output",
+    "sha256": "320c528152b777b30dbf4661464909f8acbf998101c88811c28f715bf8e66f10",
+    "size_bytes": 8653
+  },
+  "incumbent_metric": "previous_device_task_sum",
+  "minimum_gain_fraction": 0,
+  "minimum_runs": 2,
+  "operation": "promote",
+  "reason": "Both exactclosure independent fresh primaryruns beat actualsame-run E119/Laser completeprepared and separately checked namedcore; explicit newroundedscore approximation, quality/video separate",
+  "reference_metric": "laser_device_task_sum",
+  "runs": [
+    {
+      "path": "/data0/db00946854/a-vc_attention_opt/env/e122-delay-card7-d/run/latest.json",
+      "role": "output",
+      "sha256": "fb1478ba31eb36506d38c74d3517197fc6c2e80a2d220fdb9c02df5832b12728",
+      "size_bytes": 341571
+    },
+    {
+      "path": "/data0/db00946854/a-vc_attention_opt/env/e122-delay-card7-e/run/latest.json",
+      "role": "output",
+      "sha256": "69c1bc628fb54bbe2c984c9b60f4504acd177929d9a18cbc5fa99d7ee1da2898",
+      "size_bytes": 341571
+    }
+  ],
+  "schema_version": 1,
+  "scope": "measured_contract_only",
+  "target_model": "delay",
+  "unit": "ms"
+}
